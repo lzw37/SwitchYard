@@ -1,0 +1,6 @@
+@SwitchYard.Service_HostAddress = http://localhost:5102
+
+GET {{SwitchYard.Service_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

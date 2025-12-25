@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.14.36623.8
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SwitchYard.Hump", "SwitchYard.Hump\SwitchYard.Hump.csproj", "{59EA8A0C-C50F-501F-9EA9-7CB5BE9881A8}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SwitchYard.Service", "SwitchYard.Service\SwitchYard.Service.csproj", "{FAFC9616-BAFE-7C50-1991-F7D22A081DA9}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{59EA8A0C-C50F-501F-9EA9-7CB5BE9881A8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{59EA8A0C-C50F-501F-9EA9-7CB5BE9881A8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{59EA8A0C-C50F-501F-9EA9-7CB5BE9881A8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{59EA8A0C-C50F-501F-9EA9-7CB5BE9881A8}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FAFC9616-BAFE-7C50-1991-F7D22A081DA9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FAFC9616-BAFE-7C50-1991-F7D22A081DA9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FAFC9616-BAFE-7C50-1991-F7D22A081DA9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FAFC9616-BAFE-7C50-1991-F7D22A081DA9}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {B66E22C1-99AA-4FC5-9FC0-E1CD3D0E38FB}
+	EndGlobalSection
+EndGlobal
