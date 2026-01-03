@@ -1,15 +1,19 @@
 <template>
     <div style="width:100%;height:100%">
         <div class="flatlayout-toolbar">
-            <label for="leftmargin-slider" style="width:auto;margin-right:10px">横向基线</label>
-            <el-slider id="leftmargin-slider" size="small" v-model="leftMarginSliderValue" :min="-50" :max="500"
-                :step="10" style="width:200px" />
-            <label for="scalex-slider" style="width:auto;margin-right:10px">横向缩放</label>
-            <el-slider id="scalex-slider" size="small" v-model="scaleX" :min="0.1" :max="5" :step="0.01"
-                style="width:200px" />
-            <label for="baseline-slider" style="width:auto;margin-right:10px">纵向基线</label>
-            <el-slider id="baseline-slider" size="small" v-model="baseLineY" :min="0" :max="250" :step="1"
-                style="width:200px" />
+            <div class="flatlayout-toolbar__group">
+                <label for="leftmargin-slider">横向基线</label>
+                <el-slider id="leftmargin-slider" size="small" v-model="leftMarginSliderValue" :min="-50" :max="500"
+                    :step="10" />
+            </div>
+            <div class="flatlayout-toolbar__group">
+                <label for="scalex-slider">横向缩放</label>
+                <el-slider id="scalex-slider" size="small" v-model="scaleX" :min="0.1" :max="5" :step="0.01" />
+            </div>
+            <div class="flatlayout-toolbar__group">
+                <label for="baseline-slider">纵向基线</label>
+                <el-slider id="baseline-slider" size="small" v-model="baseLineY" :min="0" :max="250" :step="1" />
+            </div>
         </div>
         <svg id="hump-layout-ctrl" ref="svgRef" @mousedown="handleDragStart" @mousemove="handleDragMove"
             @mouseup="handleDragEnd" @mouseleave="handleDragEnd" @click.self="handleSvgClick">
@@ -18,20 +22,20 @@
                     :class="{ 'flatlayout-segment-selected': selectedElements.segments.includes(seg.id) }"
                     @mouseover="handlePositionSegmentMouseOver($event)"
                     @mouseout="handlePositionSegmentMouseOut($event)" @click.stop="toggleSegment(seg.id)">
-                    <line class="flatlayout-baseline" :x1="getX(getPositionBySegmentID(seg.id)?.startPosition.x)"
-                        :x2="getX(getPositionBySegmentID(seg.id)?.endPosition.x)"
+                    <line class="flatlayout-baseline" :x1="getX(getPositionBySegmentID(seg.id)?.startPosition?.x)"
+                        :x2="getX(getPositionBySegmentID(seg.id)?.endPosition?.x)"
                         :y1="baseLineY + getPositionSegmentDeltaY(seg)" :y2="baseLineY + getPositionSegmentDeltaY(seg)">
                     </line>
                     <line class="flatlayout-baselinecurve" v-if="seg.curveDegree > 0"
-                        :x1="getX(getPositionBySegmentID(seg.id)?.startPosition.x)" :y1="baseLineY"
-                        :x2="getX(getPositionBySegmentID(seg.id)?.startPosition.x)"
+                        :x1="getX(getPositionBySegmentID(seg.id)?.startPosition?.x)" :y1="baseLineY"
+                        :x2="getX(getPositionBySegmentID(seg.id)?.startPosition?.x)"
                         :y2="baseLineY + getPositionSegmentDeltaY(seg)" />
                     <line class="flatlayout-baselinecurve" v-if="seg.curveDegree > 0"
-                        :x1="getX(getPositionBySegmentID(seg.id)?.endPosition.x)" :y1="baseLineY"
-                        :x2="getX(getPositionBySegmentID(seg.id)?.endPosition.x)"
+                        :x1="getX(getPositionBySegmentID(seg.id)?.endPosition?.x)" :y1="baseLineY"
+                        :x2="getX(getPositionBySegmentID(seg.id)?.endPosition?.x)"
                         :y2="baseLineY + getPositionSegmentDeltaY(seg)" />
                     <text v-if="seg.curveDegree > 0"
-                        :x="(getX(getPositionBySegmentID(seg.id)?.startPosition.x) + getX(getPositionBySegmentID(seg.id)?.endPosition.x)) / 2"
+                        :x="(getX(getPositionBySegmentID(seg.id)?.startPosition?.x) + getX(getPositionBySegmentID(seg.id)?.endPosition.x)) / 2"
                         :y="curveDegreePositions.find(p => p.id === seg.id)?.y || (baseLineY + getPositionSegmentDeltaY(seg) + 15)"
                         class="flatlayout-curve-degree">{{
                             getDegreeStr(seg.curveDegree) }}</text>
@@ -212,19 +216,39 @@ const curveDegreePositions = computed(() => {
     return result;
 })
 
+/**
+ * 将位置坐标转换为SVG的X坐标
+ * @param position 位置坐标
+ * @returns SVG中的X坐标
+ */
 function getX(position: number): number {
     return (position * scaleX.value + leftMargin.value);
 }
 
+/**
+ * 将SVG的X坐标转换为位置坐标
+ * @param x SVG中的X坐标
+ * @returns 位置坐标
+ */
 function getPositionByX(x: number): number {
     return (x - leftMargin.value) / scaleX.value;
 }
 
+/**
+ * 根据位置ID获取位置的X坐标
+ * @param positionID 位置ID
+ * @returns 位置的X坐标，如果未找到则返回0
+ */
 function getPositionByPositionID(positionID: string): number {
     const pos = props.flatLayout?.positionList.find((p: { id: { toString: () => string; }; }) => p.id.toString() === positionID)
     return pos ? pos.x : 0;
 }
 
+/**
+ * 根据区段ID获取区段的起始和结束位置
+ * @param positionSegmentID 区段ID
+ * @returns 包含startPosition和endPosition的对象，如果未找到则返回null
+ */
 function getPositionBySegmentID(positionSegmentID: string) {
     const segment = props.flatLayout?.positionSegmentList.find((seg: any) => seg.id === positionSegmentID);
     if (!segment) return null;
@@ -233,6 +257,11 @@ function getPositionBySegmentID(positionSegmentID: string) {
     return { startPosition, endPosition };
 }
 
+/**
+ * 根据ID获取区段的长度
+ * @param id 区段ID
+ * @returns 区段长度，如果未找到则返回空字符串
+ */
 function getLengthById(id: string) {
     return props.flatLayout?.positionSegmentList.find((s: any) => s.id === id)?.length || '';
 }
@@ -252,36 +281,64 @@ watch(
     }
 )
 
+/**
+ * 处理位置区段鼠标悬停事件，添加激活样式
+ * @param event 鼠标事件
+ */
 function handlePositionSegmentMouseOver(event: Event) {
     const target = event.currentTarget as SVGGElement;
     target.classList.add('flatlayout-baseline-active');
 }
 
+/**
+ * 处理位置区段鼠标离开事件，移除激活样式
+ * @param event 鼠标事件
+ */
 function handlePositionSegmentMouseOut(event: Event) {
     const target = event.currentTarget as SVGGElement;
     target.classList.remove('flatlayout-baseline-active');
 }
 
+/**
+ * 处理道岔鼠标悬停事件，添加激活样式
+ * @param event 鼠标事件
+ */
 function handleSwitchMouseOver(event: Event) {
     const target = event.currentTarget as SVGGElement;
     target.classList.add('flatlayout-switch-active');
 }
 
+/**
+ * 处理道岔鼠标离开事件，移除激活样式
+ * @param event 鼠标事件
+ */
 function handleSwitchMouseOut(event: Event) {
     const target = event.currentTarget as SVGGElement;
     target.classList.remove('flatlayout-switch-active');
 }
 
+/**
+ * 处理减速器鼠标悬停事件，添加激活样式
+ * @param event 鼠标事件
+ */
 function handleRetarderMouseOver(event: Event) {
     const target = event.currentTarget as SVGGElement;
     target.classList.add('flatlayout-retarder-active');
 }
 
+/**
+ * 处理减速器鼠标离开事件，移除激活样式
+ * @param event 鼠标事件
+ */
 function handleRetarderMouseOut(event: Event) {
     const target = event.currentTarget as SVGGElement;
     target.classList.remove('flatlayout-retarder-active');
 }
 
+/**
+ * 切换区段的选中状态
+ * @param id 区段ID
+ */
 function toggleSegment(id: string) {
     const list = selectedElements.value.segments
     if (list.includes(id)) {
@@ -291,6 +348,10 @@ function toggleSegment(id: string) {
     }
 }
 
+/**
+ * 切换位置的选中状态
+ * @param id 位置ID
+ */
 function togglePosition(id: string) {
     const list = selectedElements.value.positions
     if (list.includes(id)) {
@@ -300,6 +361,10 @@ function togglePosition(id: string) {
     }
 }
 
+/**
+ * 切换道岔的选中状态
+ * @param id 道岔绑定位置ID
+ */
 function toggleSwitch(id: string) {
     const list = selectedElements.value.switches
     if (list.includes(id)) {
@@ -309,6 +374,10 @@ function toggleSwitch(id: string) {
     }
 }
 
+/**
+ * 切换减速器的选中状态
+ * @param id 减速器绑定区段ID
+ */
 function toggleRetarder(id: string) {
     const list = selectedElements.value.retarders
     if (list.includes(id)) {
@@ -318,22 +387,47 @@ function toggleRetarder(id: string) {
     }
 }
 
+/**
+ * 检查区段是否被选中
+ * @param id 区段ID
+ * @returns 是否选中
+ */
 function isSegmentSelected(id: string) {
     return selectedElements.value.segments.includes(id)
 }
 
+/**
+ * 检查位置是否被选中
+ * @param id 位置ID
+ * @returns 是否选中
+ */
 function isPositionSelected(id: string) {
     return selectedElements.value.positions.includes(id)
 }
 
+/**
+ * 检查道岔是否被选中
+ * @param id 道岔绑定位置ID
+ * @returns 是否选中
+ */
 function isSwitchSelected(id: string) {
     return selectedElements.value.switches.includes(id)
 }
 
+/**
+ * 检查减速器是否被选中
+ * @param id 减速器绑定区段ID
+ * @returns 是否选中
+ */
 function isRetarderSelected(id: string) {
     return selectedElements.value.retarders.includes(id)
 }
 
+/**
+ * 获取道岔尾部的偏移位置
+ * @param sw 道岔对象
+ * @returns 包含deltaX和deltaY的对象，表示偏移量
+ */
 function getSwitchTailPosition(sw: Switch) {
     if (sw.type === SwitchTypes.Single || sw.type === SwitchTypes.Slip) {
         if (sw.direction === SwitchDirections.Forward) {
@@ -356,6 +450,11 @@ function getSwitchTailPosition(sw: Switch) {
     }
 }
 
+/**
+ * 获取位置区段的Y轴偏移量（用于曲线表示）
+ * @param ps 位置区段对象
+ * @returns Y轴偏移量
+ */
 function getPositionSegmentDeltaY(ps: PositionSegment) {
     if (ps.curveDegree === 0) {
         return 0;
@@ -369,6 +468,11 @@ function getPositionSegmentDeltaY(ps: PositionSegment) {
     return 0;
 }
 
+/**
+ * 将十进制度数转换为度分秒字符串
+ * @param degreeDecimal 十进制度数
+ * @returns 度分秒字符串
+ */
 function getDegreeStr(degreeDecimal: number): string {
     const absDegree = Math.abs(degreeDecimal);
     let degrees = Math.floor(absDegree);
@@ -393,6 +497,9 @@ function getDegreeStr(degreeDecimal: number): string {
     return str;
 }
 
+/**
+ * 清空所有选中元素
+ */
 function clearSelections() {
     selectedElements.value = {
         segments: [],
@@ -402,12 +509,20 @@ function clearSelections() {
     }
 }
 
+/**
+ * 处理键盘按键事件，按Esc键清空选择
+ * @param event 键盘事件
+ */
 function handleKeyDown(event: KeyboardEvent) {
     if (event.key === 'Escape') {
         clearSelections()
     }
 }
 
+/**
+ * 处理鼠标拖拽开始事件
+ * @param event 鼠标事件
+ */
 function handleDragStart(event: MouseEvent) {
     if (!svgRef.value) return
     const rect = svgRef.value.getBoundingClientRect()
@@ -417,6 +532,10 @@ function handleDragStart(event: MouseEvent) {
     isDragging.value = true
 }
 
+/**
+ * 处理鼠标拖拽移动事件
+ * @param event 鼠标事件
+ */
 function handleDragMove(event: MouseEvent) {
     if (!isDragging.value || !svgRef.value) return
     const rect = svgRef.value.getBoundingClientRect()
@@ -429,6 +548,10 @@ function handleDragMove(event: MouseEvent) {
     dragRect.value = { ...dragRect.value, x, y, width, height }
 }
 
+/**
+ * 处理鼠标拖拽结束事件
+ * @param event 鼠标事件
+ */
 function handleDragEnd(event: MouseEvent) {
     if (!isDragging.value) return
     handleDragMove(event)
@@ -445,11 +568,20 @@ function handleDragEnd(event: MouseEvent) {
     }
 }
 
+/**
+ * 处理SVG点击事件，清空选择（如果未被抑制）
+ */
 function handleSvgClick() {
     if (suppressClickClear.value) return
     clearSelections()
 }
 
+/**
+ * 检查位置区段是否在矩形内
+ * @param seg 区段对象
+ * @param rect 矩形对象
+ * @returns 是否在矩形内
+ */
 function isPositionSegmentInRect(seg: any, rect: { x: number; y: number; width: number; height: number }): boolean {
     const startX = getX(getPositionBySegmentID(seg.id)?.startPosition.x);
     const endX = getX(getPositionBySegmentID(seg.id)?.endPosition.x);
@@ -465,6 +597,12 @@ function isPositionSegmentInRect(seg: any, rect: { x: number; y: number; width: 
     return xFullyContained && yIn;
 }
 
+/**
+ * 检查道岔是否在矩形内
+ * @param sw 道岔对象
+ * @param rect 矩形对象
+ * @returns 是否在矩形内
+ */
 function isSwitchInRect(sw: any, rect: { x: number; y: number; width: number; height: number }): boolean {
     const posX = getX(getPositionByPositionID(sw.bindingPositionID));
     const rectLeft = rect.x;
@@ -476,6 +614,12 @@ function isSwitchInRect(sw: any, rect: { x: number; y: number; width: number; he
     return xIn && yOverlap;
 }
 
+/**
+ * 检查减速器是否在矩形内
+ * @param re 减速器对象
+ * @param rect 矩形对象
+ * @returns 是否在矩形内
+ */
 function isRetarderInRect(re: any, rect: { x: number; y: number; width: number; height: number }): boolean {
     const startX = getX(getPositionBySegmentID(re.bindingPositionSegmentID)?.startPosition.x);
     const width = (getPositionBySegmentID(re.bindingPositionSegmentID)?.endPosition.x - getPositionBySegmentID(re.bindingPositionSegmentID)?.startPosition.x) * scaleX.value;
@@ -494,6 +638,10 @@ function isRetarderInRect(re: any, rect: { x: number; y: number; width: number; 
     return xOverlap && yOverlap;
 }
 
+/**
+ * 选择矩形内的对象
+ * @param rect 矩形对象
+ */
 function selectObjectsInRect(rect: { x: number; y: number; width: number; height: number }) {
     const segments = props.flatLayout?.positionSegmentList.filter((seg: any) => isPositionSegmentInRect(seg, rect)).map((seg: any) => seg.id) || [];
     const switches = props.flatLayout?.switchList.filter((sw: any) => isSwitchInRect(sw, rect)).map((sw: any) => sw.bindingPositionID) || [];
@@ -532,6 +680,50 @@ defineExpose({})
 }
 
 .flatlayout-toolbar {
-    display: flex
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 20px;
+    margin-top: 5px;
+    margin-left: 5px;
+    margin-right: 5px;
+    margin-bottom: 16px;
+    border: 1px solid #dbe3f1;
+    border-radius: 2px;
+    background: linear-gradient(135deg, #f8fafc, #eef3ff);
+    box-shadow: 0 5px 15px rgba(15, 23, 42, 0.08);
+}
+
+.flatlayout-toolbar__group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 4px 4px;
+    border-radius: 5px;
+    border: 1px solid #e3eaf7;
+    background: #ffffff;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.flatlayout-toolbar__group:hover {
+    border-color: #c3d4f7;
+    box-shadow: 0 4px 10px rgba(15, 23, 42, 0.12);
+}
+
+.flatlayout-toolbar__group label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #1f2a37;
+    min-width: 70px;
+    text-align: right;
+    letter-spacing: 0.02em;
+}
+
+.flatlayout-toolbar__group .el-slider {
+    flex: 1;
+    min-width: 180px;
+    margin-right: 4px;
 }
 </style>

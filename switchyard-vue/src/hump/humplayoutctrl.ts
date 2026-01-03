@@ -69,15 +69,15 @@ export class PositionSegment {
 }
 
 export class Switch {
-    bindingPosition?: Position;
-    bindingPositionSegment?: PositionSegment;
+    bindingPositionID?: string;
+    bindingPositionSegmentID?: string;
     type: SwitchTypes;
     direction: SwitchDirections;
     side: SwitchSides;
 
     constructor(opts: Partial<Switch> = {}) {
-        this.bindingPosition = opts.bindingPosition;
-        this.bindingPositionSegment = opts.bindingPositionSegment;
+        this.bindingPositionID = opts.bindingPositionID;
+        this.bindingPositionSegmentID = opts.bindingPositionSegmentID;
         this.type = opts.type ?? SwitchTypes.Single;
         this.direction = opts.direction ?? SwitchDirections.Forward;
         this.side = opts.side ?? SwitchSides.Left;

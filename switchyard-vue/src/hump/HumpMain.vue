@@ -10,7 +10,7 @@
             </el-tab-pane>
 
             <el-tab-pane label="纵断面设计" name="profile">
-                <el-card shadow="hover">纵断面设计视图（占位）</el-card>
+                <HumpSlopDesigner />
             </el-tab-pane>
 
             <el-tab-pane label="车辆溜放检算" name="release">
@@ -23,6 +23,7 @@
 <script lang="ts" setup>
 import { ref } from 'vue'
 import HumpLayout from './HumpLayout.vue';
+import HumpSlopDesigner from './HumpSlopDesigner.vue';
 
 const activeTab = ref('plan')
 const selectedLine = ref<number | null>(null)
