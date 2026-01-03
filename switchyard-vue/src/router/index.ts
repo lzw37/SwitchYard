@@ -22,6 +22,11 @@ const router = createRouter({
             name: "hump",
             component: () => import("../hump/HumpMain.vue"),
         },
+        {
+            path: "/courses",
+            name: "courses",
+            component: () => import("../course/CourseMain.vue"),
+        },
     ],
 });
 

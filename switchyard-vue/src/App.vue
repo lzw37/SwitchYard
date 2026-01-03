@@ -2,14 +2,19 @@
 import { RouterLink, RouterView, useRoute } from 'vue-router'
 import HelloWorld from './components/HelloWorld.vue'
 import HumpMain from './hump/HumpMain.vue'
+import CourseMain from './course/CourseMain.vue'
 
 const route = useRoute()
-const isHumpRoute = () => route.path === '/hump'
+const isHumpRoute = () => route.path === '/hump' || route.path.startsWith('/hump/')
+const isCourseMainRoute = () => route.path === '/courses' || route.path.startsWith('/courses/')
 </script>
 
 <template>
     <template v-if="isHumpRoute()">
         <HumpMain />
+    </template>
+    <template v-else-if="isCourseMainRoute()">
+        <CourseMain />
     </template>
 
     <template v-else>

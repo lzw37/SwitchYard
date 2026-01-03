@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 
 namespace SwitchYard.Hump
@@ -27,6 +28,11 @@ namespace SwitchYard.Hump
         public List<Switch> SwitchList { get; set; }
 
         /// <summary>
+        /// 减速器列表
+        /// </summary>
+        public List<Retarder> RetarderList { get; set; }
+
+        /// <summary>
         /// 获取某位置范围内的各类道岔数量
         /// </summary>
         /// <param name="startX">开始位置x坐标</param>
@@ -38,17 +44,25 @@ namespace SwitchYard.Hump
             var diamonds = this.SwitchList.FindAll(s => s.BindingPositionSegment?.StartPosition.X >= startX && s.BindingPositionSegment?.EndPosition.X <= endX);
             var count = new SwitchCount()
             {
-                ForwardCound = switches.Sum(s => { 
-                    return (s.Type == SwitchTypes.Single && s.Direction == SwitchDirections.Forward) ? 1 : 0; }),
-                
-                ReverseCount = switches.Sum(s => { 
-                    return (s.Type == SwitchTypes.Single && s.Direction == SwitchDirections.Reverse) ? 1 : 0; }),
-                
-                SlipCount = switches.Sum(s => { 
-                    return (s.Type == SwitchTypes.Slip) ? 1 : 0; }),
-                
-                DiamondCount = diamonds.Sum(s => { 
-                    return s.Type == SwitchTypes.Diamond ? 1 : 0; })
+                ForwardCound = switches.Sum(s =>
+                {
+                    return (s.Type == SwitchTypes.Single && s.Direction == SwitchDirections.Forward) ? 1 : 0;
+                }),
+
+                ReverseCount = switches.Sum(s =>
+                {
+                    return (s.Type == SwitchTypes.Single && s.Direction == SwitchDirections.Reverse) ? 1 : 0;
+                }),
+
+                SlipCount = switches.Sum(s =>
+                {
+                    return (s.Type == SwitchTypes.Slip) ? 1 : 0;
+                }),
+
+                DiamondCount = diamonds.Sum(s =>
+                {
+                    return s.Type == SwitchTypes.Diamond ? 1 : 0;
+                })
             };
             return count;
         }
@@ -63,15 +77,15 @@ namespace SwitchYard.Hump
         {
             var curveCorners = this.PositionSegmentList.FindAll(segment => segment.EndPosition.X >= startX && segment.StartPosition.X <= endX);
 
-            var sum = curveCorners.Sum(segment => segment.CurveCorner);
+            var sum = curveCorners.Sum(segment => segment.CurveDegree);
             var firstSegment = curveCorners.First();
             var lastSegment = curveCorners.Last();
 
             var startLengthError = startX - firstSegment.StartPosition.X;
             var endLengthError = lastSegment.EndPosition.X - endX;
 
-            var startCornerError = firstSegment.CurveCorner * (startLengthError / firstSegment.Length);
-            var endCornerError = lastSegment.CurveCorner * (endLengthError / lastSegment.Length);
+            var startCornerError = firstSegment.CurveDegree * (startLengthError / firstSegment.Length);
+            var endCornerError = lastSegment.CurveDegree * (endLengthError / lastSegment.Length);
 
             return sum - startCornerError - endCornerError;
         }
@@ -99,6 +113,8 @@ namespace SwitchYard.Hump
     /// </summary>
     public class Position
     {
+        public string ID { get; set; }
+
         /// <summary>
         /// 该位置点的x坐标/m
         /// </summary>
@@ -116,14 +132,31 @@ namespace SwitchYard.Hump
     public class PositionSegment
     {
         /// <summary>
+        /// 位置区间ID
+        /// </summary>
+        public string ID { get; set; }
+
+        /// <summary>
         /// 起始位置点
         /// </summary>
+        [JsonIgnore]
         public Position StartPosition { get; set; }
 
         /// <summary>
         /// 终止位置点
         /// </summary>
+        [JsonIgnore]
         public Position EndPosition { get; set; }
+
+        /// <summary>
+        /// 起始位置点ID
+        /// </summary>
+        public string StartPositionID { get; set; }
+
+        /// <summary>
+        /// 终止位置点ID
+        /// </summary>
+        public string EndPositionID { get; set; }
 
         /// <summary>
         /// 长度/m
@@ -133,7 +166,12 @@ namespace SwitchYard.Hump
         /// <summary>
         /// 转角总度数/°
         /// </summary>
-        public double CurveCorner { get; set; }
+        public double CurveDegree { get; set; }
+
+        /// <summary>
+        /// 转角方向
+        /// </summary>
+        public CurveDirections CurveDirection { get; set; }
 
         /// <summary>
         /// 位置参数（1:调车场,0:溜放部分）
@@ -149,12 +187,18 @@ namespace SwitchYard.Hump
         /// <summary>
         /// 道岔所在位置点
         /// </summary>
+        [JsonIgnore]
         public Position BindingPosition { get; set; }
+
+        public string BindingPositionID { get; set; }
 
         /// <summary>
         /// 道岔所在位置区间（仅对菱形交叉生效）
         /// </summary>
+        [JsonIgnore]
         public PositionSegment BindingPositionSegment { get; set; }
+
+        public string BindingPositionSegmentID { get; set; }
 
         /// <summary>
         /// 道岔种类
@@ -180,12 +224,29 @@ namespace SwitchYard.Hump
         /// <summary>
         /// 减速器所在的位置区间
         /// </summary>
+        [JsonIgnore]
         public PositionSegment BindingPositionSegment { get; set; }
+
+        public string BindingPositionSegmentID { get; set; }
 
         /// <summary>
         /// 减速器数量配置
         /// </summary>
-        public int[] Numbers { get; set; }
+        public int[] NumberArray { get; set; }
+
+        [JsonIgnore]
+        public string Numbers
+        {
+            get
+            {
+                return NumberArray != null ? string.Join("+", NumberArray) : string.Empty;
+            }
+            set
+            {
+                var strArray = value.Split('+');
+                NumberArray = strArray.Select(s => int.Parse(s)).ToArray();
+            }
+        }
 
         /// <summary>
         /// 最大制动力/kN
@@ -241,7 +302,8 @@ namespace SwitchYard.Hump
         /// <summary>
         /// 菱形
         /// </summary>
-        Diamond
+        Diamond,
+        None
     }
 
     /// <summary>
@@ -257,7 +319,8 @@ namespace SwitchYard.Hump
         /// <summary>
         /// 顺向
         /// </summary>
-        Forward
+        Forward,
+        None
     }
 
     /// <summary>
@@ -273,6 +336,24 @@ namespace SwitchYard.Hump
         /// <summary>
         /// 右开
         /// </summary>
-        Right
+        Right,
+        None
+    }
+
+    /// <summary>
+    /// 曲线方向
+    /// </summary>
+    public enum CurveDirections
+    {
+        /// <summary>
+        /// 左转
+        /// </summary>
+        Left,
+
+        /// <summary>
+        /// 右转
+        /// </summary>
+        Right,
+        None
     }
 }
