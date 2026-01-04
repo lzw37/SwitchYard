@@ -1,6 +1,6 @@
 <template>
     <div style="width:100%;height:100%">
-        <div class="flatlayout-toolbar">
+        <div v-if="props.isToolbarDisplay" class="flatlayout-toolbar">
             <div class="flatlayout-toolbar__group">
                 <label for="leftmargin-slider">横向基线</label>
                 <el-slider id="leftmargin-slider" size="small" v-model="leftMarginSliderValue" :min="-50" :max="500"
@@ -96,7 +96,7 @@ import { Switch, SwitchTypes, SwitchDirections, SwitchSides, PositionSegment, Cu
 import axios from 'axios'
 
 const emit = defineEmits(['update:flatLayout'])
-const props = defineProps<{ flatLayout?: any }>()
+const props = defineProps<{ flatLayout?: any, isToolbarDisplay?: boolean, isEditable?: boolean }>()
 
 const svgRef = ref<SVGSVGElement | null>(null)
 

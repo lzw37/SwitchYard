@@ -1,7 +1,6 @@
 // TypeScript equivalents of backend classes from Position.cs
 
-import $ from "jquery";
-import { createSemanticDiagnosticsBuilderProgram } from "typescript";
+import type { s } from "vue-router/dist/router-CWoNjPRp.mjs";
 
 export enum SwitchTypes {
     Single = 0,
@@ -40,6 +39,14 @@ export class Position {
     }
 }
 
+export class HPosition extends Position {
+    // 水平位置点，继承 Position
+}
+
+export class VPosition extends Position {
+    // 垂直位置点，继承 Position
+}
+
 export class PositionSegment {
     id: string = "";
     startPositionID: string;
@@ -68,7 +75,30 @@ export class PositionSegment {
     }
 }
 
+export class HPositionSegment extends PositionSegment {
+    // 水平位置区间，继承 PositionSegment，已有 curveDegree 等
+}
+
+export class VPositionSegment extends PositionSegment {
+    gradient: number; // 坡度/‰
+    height: number; // 高度/m
+
+    constructor(
+        id = "",
+        startPositionID = "",
+        endPositionID = "",
+        length = 0,
+        gradient = 0,
+        height = 0
+    ) {
+        super(id, startPositionID, endPositionID, length);
+        this.gradient = gradient;
+        this.height = height;
+    }
+}
+
 export class Switch {
+    id: string;
     bindingPositionID?: string;
     bindingPositionSegmentID?: string;
     type: SwitchTypes;
@@ -76,6 +106,7 @@ export class Switch {
     side: SwitchSides;
 
     constructor(opts: Partial<Switch> = {}) {
+        this.id = opts.id ?? "";
         this.bindingPositionID = opts.bindingPositionID;
         this.bindingPositionSegmentID = opts.bindingPositionSegmentID;
         this.type = opts.type ?? SwitchTypes.Single;
@@ -85,6 +116,7 @@ export class Switch {
 }
 
 export class Retarder {
+    id: string;
     bindingPositionSegment?: PositionSegment;
     numberArray: number[];
 
@@ -92,8 +124,21 @@ export class Retarder {
         bindingPositionSegment?: PositionSegment,
         numberArray: number[] = []
     ) {
+        this.id = "";
         this.bindingPositionSegment = bindingPositionSegment;
         this.numberArray = numberArray;
+    }
+
+    get numbers(): string {
+        return this.numberArray ? this.numberArray.join("+") : "";
+    }
+
+    set numbers(value: string) {
+        if (value) {
+            this.numberArray = value.split("+").map((s) => parseInt(s));
+        } else {
+            this.numberArray = [];
+        }
     }
 }
 
@@ -117,15 +162,27 @@ export class SwitchCount {
 }
 
 export class FlatLayout {
+    lineID: string;
     positionList: Position[];
     positionSegmentList: PositionSegment[];
     switchList: Switch[];
     retarderList: Retarder[];
 
     constructor() {
+        this.lineID = "";
         this.positionList = [];
         this.positionSegmentList = [];
         this.switchList = [];
         this.retarderList = [];
+    }
+}
+
+export class SlopeLayout {
+    positionList: VPosition[];
+    positionSegmentList: VPositionSegment[];
+
+    constructor() {
+        this.positionList = [];
+        this.positionSegmentList = [];
     }
 }

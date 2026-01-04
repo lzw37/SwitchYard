@@ -47,8 +47,8 @@ namespace SwitchYard.Service.Controllers
             var flatLayout = new SwitchYard.Hump.FlatLayout();
 
             DBConnector dbConnector = DBConnector.GetDBConnector();
-            flatLayout.PositionList = dbConnector.Query<SwitchYard.Hump.Position>("SELECT * FROM position");
-            flatLayout.PositionSegmentList = dbConnector.Query<SwitchYard.Hump.PositionSegment>("SELECT * FROM positionsegment");
+            flatLayout.PositionList = dbConnector.Query<SwitchYard.Hump.HPosition>("SELECT * FROM position");
+            flatLayout.PositionSegmentList = dbConnector.Query<SwitchYard.Hump.HPositionSegment>("SELECT * FROM positionsegment");
             flatLayout.SwitchList = dbConnector.Query<SwitchYard.Hump.Switch>("SELECT * FROM switch");
             flatLayout.RetarderList = dbConnector.Query<SwitchYard.Hump.Retarder>("SELECT * FROM retarder");
 
@@ -83,6 +83,46 @@ namespace SwitchYard.Service.Controllers
         {
             Console.WriteLine("FlatLayout saved: " + flatLayout.ToString());
             return Ok("FlatLayout saved successfully.");
+        }
+
+        [HttpGet(Name = "GetWagonConcept")]
+        public IActionResult GetWagonConcept() 
+        {
+            try
+            {
+                DBConnector dbConnector = DBConnector.GetDBConnector();
+                var wagonConceptList = dbConnector.Query<SwitchYard.Hump.WagonConcept>("SELECT * FROM wagonconcept");
+                _logger.LogInformation("WagonConcept retrieved with {WagonConceptCount} entries.", wagonConceptList?.Count ?? 0);
+                return Ok(wagonConceptList);
+            }
+            catch (Exception ex) 
+            {
+                _logger.LogError(ex, "Error retrieving WagonConcept.");
+                return StatusCode(500, "Internal server error while retrieving WagonConcept.");
+            }
+        }
+
+        [HttpGet(Name = "GetSlopeLayout")]
+        public IActionResult GetSlopeLayout()
+        {
+            try
+            {
+                var slopeLayout = new SwitchYard.Hump.SlopeLayout();
+
+                DBConnector dbConnector = DBConnector.GetDBConnector();
+                slopeLayout.PositionList = dbConnector.Query<SwitchYard.Hump.VPosition>("SELECT * FROM vposition");
+                slopeLayout.PositionSegmentList = dbConnector.Query<SwitchYard.Hump.VPositionSegment>("SELECT * FROM vpositionsegment");    
+
+                _logger.LogInformation("SlopeLayout retrieved with {PositionCount} positions and {SegmentCount} segments.",
+                    slopeLayout.PositionList?.Count ?? 0,
+                    slopeLayout.PositionSegmentList?.Count ?? 0);
+                return Ok(slopeLayout);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error retrieving SlopeLayout.");
+                return StatusCode(500, "Internal server error while retrieving SlopeLayout.");
+            }
         }
     }
 }

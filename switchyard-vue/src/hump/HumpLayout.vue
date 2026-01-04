@@ -11,7 +11,7 @@
 
         <div class="plan-graphic">
             <div class="graphic-placeholder">
-                <HumpLayoutCtrl ref="ctrlRef" v-model:flatLayout="flatLayout" />
+                <HumpLayoutCtrl ref="ctrlRef" v-model:flatLayout="flatLayout" :isToolbarDisplay="true" />
             </div>
         </div>
 
@@ -177,6 +177,7 @@ import HumpLayoutCtrl from './HumpLayoutCtrl.vue'
 import type { FlatLayout } from './humplayoutctrl'
 import { CurveDirections, SwitchTypes, SwitchDirections, SwitchSides } from './humplayoutctrl'
 import axios from 'axios'
+import config from '../config.json'
 
 const selectedLine = ref<number | null>(null)
 const lines = ref([
@@ -338,7 +339,7 @@ function insertPositionAfter(index: number) {
 }
 
 function loadFlatLayout() {
-    axios.get('https://localhost:7297/hump/getflatlayout').then(response => {
+    axios.get(`${config.serverurl}/hump/getflatlayout`).then(response => {
         flatLayout.value = response.data
         if (flatLayout.value?.positionSegmentList) {
             flatLayout.value.positionSegmentList.forEach(seg => {

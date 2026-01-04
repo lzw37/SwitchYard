@@ -15,12 +15,12 @@ namespace SwitchYard.Hump
         /// <summary>
         /// 位置点列表
         /// </summary>
-        public List<Position> PositionList { get; set; }
+        public List<HPosition> PositionList { get; set; }
 
         /// <summary>
         /// 位置区间列表
         /// </summary>
-        public List<PositionSegment> PositionSegmentList { get; set; }
+        public List<HPositionSegment> PositionSegmentList { get; set; }
 
         /// <summary>
         /// 道岔列表
@@ -109,10 +109,39 @@ namespace SwitchYard.Hump
     }
 
     /// <summary>
+    /// 驼峰从峰顶至某调车线计算点的纵断面图
+    /// </summary>
+    public class SlopeLayout
+    {
+        public List<VPosition> PositionList { get; set; }
+
+        public List<VPositionSegment> PositionSegmentList { get; set; }
+
+        /// <summary>
+        /// 获取某x坐标处的高度
+        /// </summary>
+        /// <param name="x">位置x坐标</param>
+        /// <returns>某x坐标处的高度/m</returns>
+        public double GetHeight(double x)
+        {
+            var seg = PositionSegmentList.Find(s => s.StartPosition.X <= x && s.EndPosition.X >= x);
+            if (seg == null)
+            {
+                throw new ApplicationException("x坐标错误，找不到区间");
+            }
+            var rate = (x - seg.StartPosition.X) / seg.Length;
+            var height = seg.StartPosition.Height + rate * (seg.EndPosition.Height - seg.StartPosition.Height);
+            return height;
+        }
+    }
+    /// <summary>
     /// 位置点
     /// </summary>
-    public class Position
+    public abstract class Position
     {
+        /// <summary>
+        /// 位置点ID
+        /// </summary>
         public string ID { get; set; }
 
         /// <summary>
@@ -127,9 +156,25 @@ namespace SwitchYard.Hump
     }
 
     /// <summary>
+    /// 水平位置点
+    /// </summary>
+    public class HPosition : Position
+    {
+
+    }
+
+    /// <summary>
+    /// 垂直位置点
+    /// </summary>
+    public class VPosition : Position
+    {
+
+    }
+
+    /// <summary>
     /// 位置区间
     /// </summary>
-    public class PositionSegment
+    public abstract class PositionSegment
     {
         /// <summary>
         /// 位置区间ID
@@ -162,7 +207,13 @@ namespace SwitchYard.Hump
         /// 长度/m
         /// </summary>
         public double Length { get; set; }
+    }
 
+    /// <summary>
+    /// 水平位置区间
+    /// </summary>
+    public class HPositionSegment : PositionSegment
+    {
         /// <summary>
         /// 转角总度数/°
         /// </summary>
@@ -180,6 +231,22 @@ namespace SwitchYard.Hump
     }
 
     /// <summary>
+    /// 垂直位置区间
+    /// </summary>
+    public class VPositionSegment : PositionSegment
+    {
+        /// <summary>
+        /// 坡度/‰
+        /// </summary>
+        public double Gradient { get; set; }
+
+        /// <summary>
+        /// 高度/m
+        /// </summary>
+        public double Height { get; set; }
+    }
+
+    /// <summary>
     /// 道岔
     /// </summary>
     public class Switch
@@ -188,7 +255,7 @@ namespace SwitchYard.Hump
         /// 道岔所在位置点
         /// </summary>
         [JsonIgnore]
-        public Position BindingPosition { get; set; }
+        public HPosition BindingPosition { get; set; }
 
         public string BindingPositionID { get; set; }
 
@@ -196,7 +263,7 @@ namespace SwitchYard.Hump
         /// 道岔所在位置区间（仅对菱形交叉生效）
         /// </summary>
         [JsonIgnore]
-        public PositionSegment BindingPositionSegment { get; set; }
+        public HPositionSegment BindingPositionSegment { get; set; }
 
         public string BindingPositionSegmentID { get; set; }
 
@@ -225,7 +292,7 @@ namespace SwitchYard.Hump
         /// 减速器所在的位置区间
         /// </summary>
         [JsonIgnore]
-        public PositionSegment BindingPositionSegment { get; set; }
+        public HPositionSegment BindingPositionSegment { get; set; }
 
         public string BindingPositionSegmentID { get; set; }
 
