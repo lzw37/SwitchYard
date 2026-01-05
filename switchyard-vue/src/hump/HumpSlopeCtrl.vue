@@ -1,14 +1,21 @@
 <template>
     <div>
+    </div>
+    <div>
         <svg id="slope" :style="{ height: svgHeight + 'px' }">
             <defs>
                 <linearGradient id="backgroundGradient" x1="0%" y1="0%" x2="0%" y2="100%">
                     <stop offset="0%" style="stop-color: #ECF4E8; stop-opacity: 0.8" />
                     <stop offset="100%" style="stop-color: #EFE9E3; stop-opacity: 1" />
                 </linearGradient>
+                <linearGradient id="resistanceShadeGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                    <stop offset="0%" style="stop-color: #C4E1E6; stop-opacity: 0.2" />
+                    <stop offset="100%" style="stop-color: #9ECFD4; stop-opacity: 0.3" />
+                </linearGradient>
             </defs>
             <g class="background-fill">
                 <polygon :points="polygonPoints" fill="url(#backgroundGradient)" />
+                <polygon :points="shadePoints" fill="url(#resistanceShadeGradient)"></polygon>
             </g>
             <g class="axis">
                 <line class="xaxis" :x1="marginLeft" :x2="marginLeft + sketchWidth" :y1="svgHeight - marginBottom"
@@ -41,6 +48,25 @@
                 <line v-if="dragMode === 'vertical'" class="guide-line vertical" :x1="getX(currentX)" :y1="marginTop"
                     :x2="getX(currentX)" :y2="svgHeight - marginBottom" />
             </g>
+            <g class="resistance-energy-height">
+                <polyline :points="resistancePoints" class="resistance-line" />
+                <g v-for="dataPoint in resistanceEnergyHeightData || []">
+                    <circle class="resistance-circle" :cx="getX(dataPoint.x)"
+                        :cy="getY(orgKineticEnergyY - dataPoint.height)" r="4" />
+                    <text class="resistance-text" :x="getX(dataPoint.x)"
+                        :y="(getY(orgKineticEnergyY - dataPoint.height) + getY(orgKineticEnergyY)) / 2">{{
+                            dataPoint.height
+                        }}m</text>
+                    <line class="resistance-vline" :x1="getX(dataPoint.x)"
+                        :y1="getY(orgKineticEnergyY - dataPoint.height)" :x2="getX(dataPoint.x)"
+                        :y2="getY(orgKineticEnergyY)"></line>
+                </g>
+            </g>
+            <g class="org-kinetic-energy-height"
+                v-if="kineticEnergyHeightData && kineticEnergyHeightData.length > 0 && slopeLayout?.positionList && slopeLayout.positionList.length > 0">
+                <line class="org-kinetic-energy-line" :x1="marginLeft" :x2="marginLeft + sketchWidth"
+                    :y1="getY(orgKineticEnergyY)" :y2="getY(orgKineticEnergyY)" />
+            </g>
         </svg>
     </div>
 </template>
@@ -50,6 +76,8 @@ import { ref, computed, onBeforeUnmount } from 'vue';
 
 const props = defineProps<{
     slopeLayout?: SlopeLayout | null
+    resistanceEnergyHeightData?: { x: number, height: number }[] | null
+    kineticEnergyHeightData?: { x: number, height: number }[] | null
 }>()
 
 const svgHeight = ref(400);
@@ -228,6 +256,38 @@ const textPositions = computed(() => {
     return map;
 });
 
+const resistancePoints = computed(() => {
+    if (!props.resistanceEnergyHeightData) return '';
+    return props.resistanceEnergyHeightData.map(dataPoint => {
+        const x = getX(dataPoint.x);
+        const y = getY(3.741 + 0.106 - dataPoint.height);
+        return `${x},${y}`;
+    }).join(' ');
+});
+
+const shadePoints = computed(() => {
+    if (!props.resistanceEnergyHeightData || !props.kineticEnergyHeightData || props.kineticEnergyHeightData.length === 0 || !props.slopeLayout?.positionList || props.slopeLayout.positionList.length === 0) return '';
+    const resPoints = props.resistanceEnergyHeightData.map(dataPoint => {
+        const x = getX(dataPoint.x);
+        const y = getY(3.741 + 0.106 - dataPoint.height);
+        return `${x},${y}`;
+    });
+    const kineticY = getY(orgKineticEnergyY.value);
+    const leftX = marginLeft.value;
+    const rightX = marginLeft.value + sketchWidth.value;
+    const points = [...resPoints, `${rightX},${kineticY}`, `${leftX},${kineticY}`];
+    return points.join(' ');
+});
+
+const orgKineticEnergyY = computed(() => {
+    const ked = props.kineticEnergyHeightData;
+    const sl = props.slopeLayout;
+    if (!ked || ked.length === 0 || !sl?.positionList || sl.positionList.length === 0) return 0;
+    const safeKed = ked as { x: number, height: number }[];
+    const safeSl = sl as SlopeLayout;
+    return safeKed[0]!.height + safeSl.positionList[0]!.height;
+});
+
 onBeforeUnmount(() => {
     window.removeEventListener('mousemove', onMouseMove);
     window.removeEventListener('mouseup', endDrag);
@@ -279,5 +339,42 @@ onBeforeUnmount(() => {
     stroke: darkred;
     stroke-width: 1px;
     opacity: 0.5;
+}
+
+.resistance-circle {
+    stroke: blue;
+    stroke-width: 1.5px;
+    fill: white;
+}
+
+.resistance-text {
+    font-size: 12px;
+    fill: blue;
+    text-anchor: middle;
+    dominant-baseline: middle;
+}
+
+.resistance-line {
+    stroke: blue;
+    stroke-width: 2px;
+    fill: none;
+}
+
+.resistance-shade {
+    /* fill: rgba(0, 0, 255, 0.2); */
+    stroke: none;
+}
+
+.org-kinetic-energy-line {
+    stroke: green;
+    stroke-width: 1px;
+    stroke-dasharray: 4 2;
+    fill: none;
+}
+
+.resistance-vline {
+    stroke: blue;
+    stroke-width: 1px;
+    opacity: 0.2;
 }
 </style>

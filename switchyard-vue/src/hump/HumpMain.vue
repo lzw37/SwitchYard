@@ -5,9 +5,14 @@
                 <HumpLayout />
             </el-tab-pane>
 
-            <el-tab-pane label="车辆参数" name="vehicle">
-                <el-card shadow="hover">
+            <el-tab-pane label="计算参数" name="vehicle">
+                <el-card class="param-card" shadow="hover">
+                    <h3>车辆参数</h3>
                     <Wagon />
+                </el-card>
+                <el-card class="param-card" shadow="hover">
+                    <h3>计算条件</h3>
+                    <HumpCalculationCondition />
                 </el-card>
             </el-tab-pane>
 
@@ -27,6 +32,7 @@ import { ref } from 'vue'
 import HumpLayout from './HumpLayout.vue';
 import HumpSlopeDesigner from './HumpSlopeDesigner.vue';
 import Wagon from './Wagon.vue';
+import HumpCalculationCondition from './HumpCalculationCondition.vue';
 
 const activeTab = ref('plan')
 const selectedLine = ref<number | null>(null)
@@ -78,5 +84,9 @@ el-card {
 
 .plan-subtabs {
     margin-top: 12px;
+}
+
+.param-card {
+    margin-bottom: 24px;
 }
 </style>

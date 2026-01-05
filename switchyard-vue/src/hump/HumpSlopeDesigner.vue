@@ -5,14 +5,17 @@
                 <el-button @click="toggleLeft" size="small" type="primary">工具</el-button>
             </div>
             <div class="center-section">
-                TOP MENU
+                <el-button @click="loadKineticEnergyHeight" size="small">初始动能高线</el-button>
+                <el-button @click="loadResistanceEnergyHeight" size="small">阻力能高线</el-button>
             </div>
             <div class="right-section">
                 <el-button @click="toggleRight" size="small" type="primary">数据</el-button>
             </div>
         </div>
         <div class="main-ctrl">
-            <HumpSlopeCtrl v-model:slope-layout="slopeLayout" />
+            <HumpSlopeCtrl v-model:slope-layout="slopeLayout"
+                :resistance-energy-height-data="resistanceEnergyHeightData"
+                :kinetic-energy-height-data="kineticEnergyHeightData" />
             <HumpSlopeSketchBlock v-model:slope-layout="slopeLayout" style="height:auto" />
             <HumpLayoutCtrl v-model:flat-layout="flatLayout" :is-toolbar-display="false" style="height:auto" />
         </div>
@@ -63,6 +66,10 @@ const rightVisible = ref(false);
 const globalLeftMargin = ref(0);
 const globalScaleX = ref(1);
 
+const resistanceEnergyHeightData = ref<{ x: number, height: number }[] | null>(null);
+const kineticEnergyHeightData = ref<{ x: number, height: number }[] | null>(null);
+
+
 // 加载纵断面设计数据
 function loadSlopeLayout() {
     axios.get(`${config.serverurl}/hump/getslopelayout`).then(response => {
@@ -71,6 +78,54 @@ function loadSlopeLayout() {
         }
     }).catch(error => {
         console.error("加载纵断面设计数据失败:", error);
+    });
+}
+
+// 加载阻力能高线数据
+function loadResistanceEnergyHeight() {
+    axios.post(`${config.serverurl}/hump/getresistanceenergyheight`, {
+        wagonTypeName: "P70H",
+        wagonVelocityOnTop: 1.4,
+        wagonVelocityOnSlop: 5.2,
+        wagonVelocityOnYard: 2.2,
+        windVelocity: 5,
+        isHeadWind: 1,
+        airDensity: 0.063,
+        temperature: -10,
+        g: 9.8,
+        retarderActivation: {},
+        retarderOutput: {}
+    }).then(response => {
+        if (response.data) {
+            console.log('kinetic energy height data loaded:', response.data);
+            resistanceEnergyHeightData.value = response.data as { x: number, height: number }[];
+        }
+    }).catch(error => {
+        console.error("加载动能高度数据失败:", error);
+    });
+}
+
+// 加载动能高线
+function loadKineticEnergyHeight() {
+    axios.post(`${config.serverurl}/hump/getkineticenergyheight`, {
+        wagonTypeName: "P70H",
+        wagonVelocityOnTop: 1.4,
+        wagonVelocityOnSlop: 5.2,
+        wagonVelocityOnYard: 2.2,
+        windVelocity: 5,
+        isHeadWind: 1,
+        airDensity: 0.063,
+        temperature: -10,
+        g: 9.8,
+        retarderActivation: {},
+        retarderOutput: {}
+    }).then(response => {
+        if (response.data) {
+            console.log('Resistance energy height data loaded:', response.data);
+            kineticEnergyHeightData.value = response.data as { x: number, height: number }[];
+        }
+    }).catch(error => {
+        console.error("加载阻力能高度数据失败:", error);
     });
 }
 
