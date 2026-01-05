@@ -48,6 +48,12 @@
             double Q = wagonMass; // 车辆总重/t
 
             double beta = 0; // 风向与车辆纵轴方向的夹角/°
+
+            if(v_wagon + v_wind * isHeadWind * Math.Cos(beta)==0) // 车与风合成速度为0时，相对静止，风阻力为0
+            {
+                return 0.0;
+            }
+
             double alpha = Math.Atan((v_wind * Math.Sin(beta)) / (v_wagon + v_wind * isHeadWind* Math.Cos(beta))); // 风速与车速的合成速度/°
 
             double cx1 = 1;

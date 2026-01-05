@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 
 namespace SwitchYard.Hump
@@ -15,9 +16,9 @@ namespace SwitchYard.Hump
         /// <param name="x">指定位置的x坐标</param>
         /// <param name="param">能高计算参数</param>
         /// <returns>重力势能高/m</returns>
-        public static double CalculateGravitationPotentialEnergyHeight(FlatLayout flatLayout, double x, EnergyCalculationParams param)
+        public static double CalculateGravitationPotentialEnergyHeight(SlopeLayout slopeLayout, double x, EnergyCalculationParams param)
         {
-            var height = flatLayout.GetHeight(x);
+            var height = slopeLayout.GetHeight(x);
             return height;
         }
 
@@ -40,15 +41,17 @@ namespace SwitchYard.Hump
         /// <param name="x">指定位置的x坐标</param>
         /// <param name="param">能高计算参数</param>
         /// <returns>动能高/m</returns>
-        public static double CalculateKineticEnergyHeight(FlatLayout flatLayout, double x, EnergyCalculationParams param)
+        public static double CalculateKineticEnergyHeight(FlatLayout flatLayout, SlopeLayout slopeLayout,
+            double x, EnergyCalculationParams param)
         {
             var orgKineticEnergyHeight = Math.Pow(param.WagonVelocityOnTop, 2) / (2 * param.g_);
+            var humpHeight = CalculateGravitationPotentialEnergyHeight(slopeLayout, 0, param);
 
-            var gravitationHeight = CalculateGravitationPotentialEnergyHeight(flatLayout, x, param);
+            var gravitationHeight = CalculateGravitationPotentialEnergyHeight(slopeLayout, x, param);
             var resistanceHeight = CalculateResistanceEnergyHeight(flatLayout, x, param);
             var breakingHeight = CalculateBreakingEnergyHeight(flatLayout, x, param);
 
-            return orgKineticEnergyHeight - gravitationHeight - resistanceHeight - breakingHeight;
+            return orgKineticEnergyHeight + (humpHeight- gravitationHeight) - resistanceHeight - breakingHeight;
         }
 
         /// <summary>
@@ -64,6 +67,11 @@ namespace SwitchYard.Hump
 
             var positionSegments = flatLayout.PositionSegmentList.FindAll(s => s.StartPosition.X < x)
                 .OrderBy(s => s.StartPosition.X).ToList();
+
+            if(positionSegments.Count == 0)
+            {
+                return 0.0;
+            }
 
             // 分别计算当前位置处，溜放部分和调车场部分的总溜放长度
             var totalLengthOnSlop = positionSegments.FindAll(x => x.LocationParam == 0).Sum(x => x.Length);
@@ -119,7 +127,13 @@ namespace SwitchYard.Hump
         /// <summary>
         /// 车辆信息
         /// </summary>
-        public WagonConcept Wagon { get; set; }
+        [JsonIgnore]
+        public WagonConcept? Wagon { get; set; }
+
+        /// <summary>
+        /// 车重名称
+        /// </summary>
+        public string WagonTypeName { get; set; }
 
         /// <summary>
         /// 推峰速度/(m/s)
@@ -164,7 +178,21 @@ namespace SwitchYard.Hump
         /// <summary>
         /// 考虑了车轮转动惯量的重力加速度/(m/s²)
         /// </summary>
-        public double g_ => (this.g / (1 + 0.42 * this.Wagon.AxleNumber / this.Wagon.GrossMass));
+        [JsonIgnore]
+        public double g_
+        {
+            get
+            {
+                if(this.Wagon == null)
+                {
+                    return this.g;
+                }
+                else
+                {
+                    return (this.g / (1 + 0.42 * this.Wagon.AxleNumber / this.Wagon.GrossMass));
+                }
+            }
+        } 
 
         /// <summary>
         /// 减速器激活状态
