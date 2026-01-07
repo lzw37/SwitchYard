@@ -175,8 +175,8 @@ namespace SwitchYard.Service.Controllers
 
                 foreach (var p in slopeLayout.PositionList)
                 {
-                    var energyHeight = HumpEnergyHeightCalculator.CalculateKineticEnergyHeight(flatLayout, slopeLayout, p.X, parameters);
-                    kineticEnergyHeightList.Add(new { x = p.X, height = Math.Round(energyHeight, 3) });
+                    var energyHeightResult = HumpEnergyHeightCalculator.CalculateKineticEnergyHeight(flatLayout, slopeLayout, p.X, parameters,p.ID);
+                    kineticEnergyHeightList.Add(new { x = p.X, result = energyHeightResult });
                 }
                 _logger.LogInformation("Kinetic Energy Height calculated for {PositionCount} positions.", kineticEnergyHeightList?.Count ?? 0);
                 return Ok(kineticEnergyHeightList);

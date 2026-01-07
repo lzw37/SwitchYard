@@ -9,16 +9,19 @@
                 <line class="slope-v" :x1="getX(sec.endX || 0)" :x2="getX(sec.endX || 0)" :y1="0" :y2="sketchHeight">
                 </line>
                 <text class="length-text" :x="getX((sec.startX + sec.endX) / 2)" :y="sketchHeight - 2">{{ sec.length
-                    }}</text>
-                <text class="gradient-text" :x="getX((sec.startX + sec.endX) / 2)" :y="fontSize + 2">{{ sec.gradient
                 }}</text>
+                <text class="gradient-text" :x="getX((sec.startX + sec.endX) / 2)" :y="fontSize + 2">{{ sec.gradient
+                    }}</text>
+            </g>
+            <g class="cursor">
+                <line class="cursor-vline" :y1="0" :y2="sketchHeight" :x1="getX(cursorX)" :x2="getX(cursorX)"></line>
             </g>
         </svg>
     </div>
 
 </template>
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue';
 import type { SlopeLayout } from './humplayoutctrl';
 
 class Sector {
@@ -32,12 +35,32 @@ class Sector {
 
 const props = defineProps<{
     slopeLayout?: SlopeLayout | null
+    globalScaleX?: number
+    globalCursorX?: number
 }>()
 
-const scaleX = ref(3.5);
+const emit = defineEmits<{
+    updateGlobalCursorX: [value: number]
+}>()
+const scaleX = computed(() => props.globalScaleX ?? 3.5);
 const marginLeft = ref(50);
 const sketchHeight = ref(40)
-const fontSize = ref(12);
+const fontSize = ref(13);
+
+const localCursorX = ref(0);
+const cursorX = computed({
+    get() {
+        return props.globalCursorX !== undefined ? props.globalCursorX : localCursorX.value;
+    },
+    set(newVal: number) {
+        if (props.globalCursorX === undefined) {
+            localCursorX.value = newVal;
+        }
+        else {
+            emit('updateGlobalCursorX', newVal);
+        }
+    }
+});
 
 function getX(posX: number): number {
     return posX * scaleX.value + marginLeft.value;
@@ -116,6 +139,28 @@ const sectors = computed(() => {
 }
 );
 
+function addCursorXListener() {
+    const svgElement = document.getElementById('slopesketch');
+    if (!svgElement) return;
+    svgElement.addEventListener('mousemove', (event) => {
+        const rect = svgElement.getBoundingClientRect();
+        const mouseX = event.clientX - rect.left;
+        const posX = (mouseX - marginLeft.value) / scaleX.value;
+        cursorX.value = posX;
+    });
+}
+
+onMounted(() => {
+    addCursorXListener();
+});
+
+onBeforeUnmount(() => {
+    const svgElement = document.getElementById('slopesketch');
+    if (svgElement) {
+        svgElement.removeEventListener('mousemove', () => { });
+    }
+});
+
 // 监听 props.slopeLayout 的变化，强制更新 sectors
 watch(() => props.slopeLayout, (newVal) => {
     if (newVal && newVal.positionSegmentList && newVal.positionList) {
@@ -137,6 +182,13 @@ watch(() => props.slopeLayout, (newVal) => {
     width: 100%;
 }
 
+.cursor-vline {
+    stroke: orange;
+    stroke-width: 1px;
+    pointer-events: none;
+    opacity: 0.4;
+}
+
 .slope-line {
     stroke: black;
     stroke-width: 1.5px;
@@ -155,13 +207,15 @@ watch(() => props.slopeLayout, (newVal) => {
 
 .length-text {
     fill: black;
-    font-size: v-bind(fontSize)px;
+    font-size: v-bind('fontSize + "px"');
     text-anchor: middle;
+    user-select: none;
 }
 
 .gradient-text {
     fill: black;
-    font-size: v-bind(fontSize)px;
+    font-size: v-bind('fontSize + "px"');
     text-anchor: middle;
+    user-select: none;
 }
 </style>

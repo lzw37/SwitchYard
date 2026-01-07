@@ -31,7 +31,7 @@
 }
 
 .flatlayout-curve-degree{
-    fill: blue;
+    fill: #3D90D7;
     font-size: small;
     text-anchor: middle;
     user-select: none;
@@ -61,7 +61,7 @@
 }
 
 .flatlayout-switch line{
-    stroke: blue;
+    stroke: #124170;
     stroke-width: 2;
     stroke-linecap: round;
 }

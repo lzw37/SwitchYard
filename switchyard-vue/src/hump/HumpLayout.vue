@@ -11,7 +11,8 @@
 
         <div class="plan-graphic">
             <div class="graphic-placeholder">
-                <HumpLayoutCtrl ref="ctrlRef" v-model:flatLayout="flatLayout" :isToolbarDisplay="true" />
+                <HumpLayoutCtrl ref="ctrlRef" v-model:flatLayout="flatLayout" v-model:globalCursorX="globalCursorX"
+                    :isToolbarDisplay="true" />
             </div>
         </div>
 
@@ -189,12 +190,17 @@ const planSubTab = ref('ctrl')
 
 const ctrlRef = ref<InstanceType<typeof HumpLayoutCtrl> | null>(null)
 const flatLayout = ref<FlatLayout | null>(null)
+const globalCursorX = ref<number | undefined>(undefined)
 
 const curveDirectionOptions = [
     { label: '左转', value: CurveDirections.Left },
     { label: '右转', value: CurveDirections.Right },
     { label: '无', value: CurveDirections.None }
 ]
+
+function updateGlobalCursorX(value: number) {
+    globalCursorX.value = value
+}
 
 function getCurveDirectionOptions(degree: number) {
     return curveDirectionOptions.filter(opt => opt.value !== CurveDirections.None || degree <= 0)

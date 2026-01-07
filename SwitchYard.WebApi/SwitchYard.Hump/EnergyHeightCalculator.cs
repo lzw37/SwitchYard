@@ -41,8 +41,8 @@ namespace SwitchYard.Hump
         /// <param name="x">指定位置的x坐标</param>
         /// <param name="param">能高计算参数</param>
         /// <returns>动能高/m</returns>
-        public static double CalculateKineticEnergyHeight(FlatLayout flatLayout, SlopeLayout slopeLayout,
-            double x, EnergyCalculationParams param)
+        public static KineticEnergyHeightResult CalculateKineticEnergyHeight(FlatLayout flatLayout, SlopeLayout slopeLayout,
+            double x, EnergyCalculationParams param, string? positionID=null)
         {
             var orgKineticEnergyHeight = Math.Pow(param.WagonVelocityOnTop, 2) / (2 * param.g_);
             var humpHeight = CalculateGravitationPotentialEnergyHeight(slopeLayout, 0, param);
@@ -50,8 +50,21 @@ namespace SwitchYard.Hump
             var gravitationHeight = CalculateGravitationPotentialEnergyHeight(slopeLayout, x, param);
             var resistanceHeight = CalculateResistanceEnergyHeight(flatLayout, x, param);
             var breakingHeight = CalculateBreakingEnergyHeight(flatLayout, x, param);
+            var kineticEnergyHeight = orgKineticEnergyHeight + (humpHeight- gravitationHeight) - resistanceHeight - breakingHeight;
+            var velocity = Math.Sqrt(2 * param.g_ * kineticEnergyHeight);
 
-            return orgKineticEnergyHeight + (humpHeight- gravitationHeight) - resistanceHeight - breakingHeight;
+            KineticEnergyHeightResult result = new KineticEnergyHeightResult()
+            {
+                PositionID = positionID,
+                OrgKineticEnergyHeight = orgKineticEnergyHeight,
+                GravitationHeight = Math.Round(gravitationHeight,3),
+                ResistanceHeight = Math.Round(resistanceHeight,3),
+                BreakingHeight = Math.Round(breakingHeight,3),
+                KineticEnergyHeight = Math.Round(kineticEnergyHeight,3),
+                Velocity = Math.Round(velocity,2)
+            };
+
+            return result;
         }
 
         /// <summary>
@@ -117,6 +130,47 @@ namespace SwitchYard.Hump
 
             return resistanceEnergyHeight * 0.001;
         }
+    }
+
+    /// <summary>
+    /// 动能高计算（系列）结果
+    /// </summary>
+    public class KineticEnergyHeightResult
+    {
+        /// <summary>
+        /// 位置ID
+        /// </summary>
+        public string? PositionID { get; set; }
+
+        /// <summary>
+        /// 初始动能高
+        /// </summary>
+        public double OrgKineticEnergyHeight { get; set; }
+
+        /// <summary>
+        /// 重力势能高/m
+        /// </summary>
+        public double GravitationHeight { get; set; }
+
+        /// <summary>
+        /// 阻力能高/m
+        /// </summary>
+        public double ResistanceHeight { get; set; }
+
+        /// <summary>
+        /// 制动能高/m
+        /// </summary>
+        public double BreakingHeight { get; set; }
+
+        /// <summary>
+        /// 动能高/m
+        /// </summary>
+        public double KineticEnergyHeight { get; set; }
+
+        /// <summary>
+        /// 溜放瞬时速度/(m/s)
+        /// </summary>
+        public double Velocity { get; set; }
     }
 
     /// <summary>

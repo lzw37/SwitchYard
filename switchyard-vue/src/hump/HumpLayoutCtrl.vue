@@ -15,8 +15,9 @@
                 <el-slider id="baseline-slider" size="small" v-model="baseLineY" :min="0" :max="250" :step="1" />
             </div>
         </div>
-        <svg id="hump-layout-ctrl" ref="svgRef" @mousedown="handleDragStart" @mousemove="handleDragMove"
-            @mouseup="handleDragEnd" @mouseleave="handleDragEnd" @click.self="handleSvgClick">
+        <svg id="hump-layout-ctrl" ref="svgRef" @mousedown="handleDragStart"
+            @mousemove="(event) => { handleDragMove(event); updateCursorX(event); }" @mouseup="handleDragEnd"
+            @mouseleave="handleDragEnd" @click.self="handleSvgClick">
             <g id="baseline-group">
                 <g v-for="seg in props.flatLayout?.positionSegmentList" :key="seg.id"
                     :class="{ 'flatlayout-segment-selected': selectedElements.segments.includes(seg.id) }"
@@ -86,6 +87,9 @@
                 <rect id="drag-rect" :x="dragRect.x" :y="dragRect.y" :width="dragRect.width" :height="dragRect.height">
                 </rect>
             </g>
+            <g id="cursor-group">
+                <line class="cursor-vline" :y1="0" :x1="getX(cursorX)" :x2="getX(cursorX)" :y2="500"></line>
+            </g>
         </svg>
     </div>
 </template>
@@ -95,13 +99,35 @@ import { ref, onMounted, onBeforeUnmount, watch, computed } from 'vue'
 import { Switch, SwitchTypes, SwitchDirections, SwitchSides, PositionSegment, CurveDirections } from './humplayoutctrl'
 import axios from 'axios'
 
-const emit = defineEmits(['update:flatLayout'])
-const props = defineProps<{ flatLayout?: any, isToolbarDisplay?: boolean, isEditable?: boolean }>()
+const emit = defineEmits(['update:flatLayout', 'update:globalCursorX'])
+const props = defineProps<{ flatLayout?: any, isToolbarDisplay?: boolean, isEditable?: boolean, globalScaleX?: number, globalCursorX?: number }>()
 
 const svgRef = ref<SVGSVGElement | null>(null)
 
+const localScaleX = ref(3.5) // 本地的x轴横向缩放比例，当全局scaleX不设置时使用这个
 // x轴横向缩放比例
-const scaleX = ref(3.5)
+const scaleX = computed({
+    get() {
+        return props.globalScaleX ?? localScaleX.value;
+    },
+    set(newVal) {
+        localScaleX.value = newVal;
+    }
+});
+
+const localCursorX = ref(0);
+const cursorX = computed({
+    get() {
+        return props.globalCursorX !== undefined ? props.globalCursorX : localCursorX.value;
+    },
+    set(newVal) {
+        if (props.globalCursorX === undefined) {
+            localCursorX.value = newVal;
+        } else {
+            emit('update:globalCursorX', newVal);
+        }
+    }
+});
 
 // 左侧边界距离
 const leftMargin = ref(50)
@@ -548,6 +574,14 @@ function handleDragMove(event: MouseEvent) {
     dragRect.value = { ...dragRect.value, x, y, width, height }
 }
 
+function updateCursorX(event: MouseEvent) {
+    if (!svgRef.value) return
+    const rect = svgRef.value.getBoundingClientRect()
+    const mouseX = event.clientX - rect.left
+    const posX = (mouseX - leftMargin.value) / scaleX.value
+    cursorX.value = posX
+}
+
 /**
  * 处理鼠标拖拽结束事件
  * @param event 鼠标事件
@@ -667,6 +701,13 @@ defineExpose({})
 
 <style lang="css">
 @import './humplayoutctrl.css';
+
+.cursor-vline {
+    stroke: orange;
+    stroke-width: 1px;
+    pointer-events: none;
+    opacity: 0.4;
+}
 
 .ctrl-elements {
     position: absolute;

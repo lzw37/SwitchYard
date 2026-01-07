@@ -13,9 +13,11 @@
                     <stop offset="100%" style="stop-color: #9ECFD4; stop-opacity: 0.3" />
                 </linearGradient>
             </defs>
+
             <g class="background-fill">
                 <polygon :points="polygonPoints" fill="url(#backgroundGradient)" />
-                <polygon :points="shadePoints" fill="url(#resistanceShadeGradient)"></polygon>
+                <polygon v-if="props.elementVisibility?.resistance" :points="shadePoints"
+                    fill="url(#resistanceShadeGradient)"></polygon>
             </g>
             <g class="axis">
                 <line class="xaxis" :x1="marginLeft" :x2="marginLeft + sketchWidth" :y1="svgHeight - marginBottom"
@@ -48,7 +50,7 @@
                 <line v-if="dragMode === 'vertical'" class="guide-line vertical" :x1="getX(currentX)" :y1="marginTop"
                     :x2="getX(currentX)" :y2="svgHeight - marginBottom" />
             </g>
-            <g class="resistance-energy-height">
+            <g v-if="props.elementVisibility?.resistance" class="resistance-energy-height">
                 <polyline :points="resistancePoints" class="resistance-line" />
                 <g v-for="dataPoint in resistanceEnergyHeightData || []">
                     <circle class="resistance-circle" :cx="getX(dataPoint.x)"
@@ -62,29 +64,82 @@
                         :y2="getY(orgKineticEnergyY)"></line>
                 </g>
             </g>
-            <g class="org-kinetic-energy-height"
-                v-if="kineticEnergyHeightData && kineticEnergyHeightData.length > 0 && slopeLayout?.positionList && slopeLayout.positionList.length > 0">
-                <line class="org-kinetic-energy-line" :x1="marginLeft" :x2="marginLeft + sketchWidth"
+            <g class="init-kinetic-energy-height"
+                v-if="props.elementVisibility?.initialKinetic && kineticEnergyHeightData && kineticEnergyHeightData.length > 0 && slopeLayout?.positionList && slopeLayout.positionList.length > 0">
+                <line class="init-kinetic-energy-line" :x1="marginLeft" :x2="marginLeft + sketchWidth"
                     :y1="getY(orgKineticEnergyY)" :y2="getY(orgKineticEnergyY)" />
+            </g>
+            <g class="kinetic-energy-height">
+                <!-- <polyline v-if="props.elementVisibility?.kinetic" :points="kineticPoints" class="resistance-line" /> -->
+                <!-- <circle v-if="props.elementVisibility?.kinetic" v-for="dataPoint in kineticEnergyHeightData || []"
+                    class="resistance-circle" :cx="getX(dataPoint.x)" :cy="getY(dataPoint.result.kineticEnergyHeight)"
+                    r="4" /> -->
+                <line v-if="props.elementVisibility?.kinetic" class="kinetic-vline" v-for="dataPoint in
+                    kineticEnergyHeightData || []" :x1="getX(dataPoint.x)"
+                    :y1="getY(dataPoint.result.gravitationHeight)" :x2="getX(dataPoint.x)"
+                    :y2="getY(dataPoint.result.gravitationHeight + dataPoint.result.kineticEnergyHeight)"></line>
+                <text v-if="props.elementVisibility?.kinetic" class="kinetic-text" v-for="dataPoint in
+                    kineticEnergyHeightData || []" :x="getX(dataPoint.x)"
+                    :y="kineticTextPositions.get(dataPoint.x) ?? ((getY(dataPoint.result.gravitationHeight) + getY(dataPoint.result.gravitationHeight + dataPoint.result.kineticEnergyHeight)) / 2)">{{
+                        dataPoint.result.kineticEnergyHeight
+                    }}m({{ dataPoint.result.velocity }}m/s)</text>
+            </g>
+            <g class="cursor">
+                <line class="cursor-vline" :y1="marginTop" :y2="svgHeight - marginBottom" :x1="getX(cursorX)"
+                    :x2="getX(cursorX)"></line>
             </g>
         </svg>
     </div>
 </template>
 <script setup lang="ts">
+import { k } from 'vue-router/dist/router-CWoNjPRp.mjs';
 import type { SlopeLayout } from './humplayoutctrl';
-import { ref, computed, onBeforeUnmount } from 'vue';
+import { ref, computed, onBeforeUnmount, onMounted } from 'vue';
 
 const props = defineProps<{
     slopeLayout?: SlopeLayout | null
     resistanceEnergyHeightData?: { x: number, height: number }[] | null
-    kineticEnergyHeightData?: { x: number, height: number }[] | null
+    kineticEnergyHeightData?: { x: number, result: any }[] | null
+    globalScaleX?: number
+    globalScaleY?: number
+    elementVisibility?: {
+        initialKinetic: boolean
+        resistance: boolean
+        kinetic: boolean
+        breaking: boolean
+    }
+    g_?: number
+    globalCursorX?: number
+}>()
+
+const emit = defineEmits<{
+    updateGlobalCursorX: [value: number]
 }>()
 
 const svgHeight = ref(400);
 
-const scaleX = ref(3.5);
+const scaleX = computed(() => props.globalScaleX ?? 3.5);
+const scaleY = computed(() => props.globalScaleY ?? 80);
+
+const localCursorX = ref(0);
+const cursorX = computed({
+    get() {
+        return props.globalCursorX !== undefined ? props.globalCursorX : localCursorX.value;
+    },
+    set(newVal: number) {
+        // 如果globalCursorX存在，则不更新本地值
+        if (props.globalCursorX === undefined) {
+            localCursorX.value = newVal;
+        }
+        else {
+            // 当globalCursorX存在时，emit事件更新父组件的globalCursorX
+            emit('updateGlobalCursorX', newVal);
+        }
+    }
+});
+
+
 const marginLeft = ref(50);
-const scaleY = ref(80);
 const marginBottom = ref(20);
 const marginTop = ref(20);
 const draggingId = ref<string | null>(null);
@@ -97,7 +152,7 @@ const currentX = ref(0);
 const currentHeight = ref(0);
 
 function getX(posX: number): number {
-    return posX * 3.5 + 50;
+    return posX * scaleX.value + marginLeft.value;
 }
 
 function getY(height: number): number {
@@ -147,13 +202,46 @@ function onMouseMove(event: MouseEvent) {
         target.x = Math.round(Math.max(0, newX) * 1000) / 1000;
         currentX.value = target.x;
     }
+    updateKineticEnergyHeights(draggingId.value);  // 更新能高线数据
+
+    if (target.x === 0) { // 峰高改变
+        // 更新其他位置的能高线数据
+        props.slopeLayout.positionList.forEach(p => {
+            if (p.id !== draggingId.value) {
+                updateKineticEnergyHeights(p.id);
+            }
+        });
+    }
 }
 
 function endDrag() {
-    if (!draggingId.value) return;
-    draggingId.value = null;
+    const finishedId = draggingId.value;
+    if (!finishedId) return;
+
     window.removeEventListener('mousemove', onMouseMove);
     window.removeEventListener('mouseup', endDrag);
+    // updateKineticEnergyHeights(finishedId);
+    draggingId.value = null;
+}
+
+function updateKineticEnergyHeights(id: string) {
+    if (props.slopeLayout && props.slopeLayout.positionList) {
+        const pos = props.slopeLayout.positionList.find(p => p.id === id);
+        const kineticResultPos = props.kineticEnergyHeightData?.find(ked => ked.x === pos?.x);
+        if (pos && kineticResultPos) {
+            kineticResultPos.result.gravitationHeight = pos.height;
+
+            const orgKineticEnergyHeight = kineticResultPos.result.orgKineticEnergyHeight;
+            const humpHeight = props.slopeLayout.positionList?.find(p => p.x === 0)?.height || 0;
+
+            const gravitationHeight = pos.height;
+            const resistanceHeight = kineticResultPos.result.resistanceHeight || 0;
+            const breakingHeight = kineticResultPos.result.breakingHeight || 0;
+
+            kineticResultPos.result.kineticEnergyHeight = Math.round((orgKineticEnergyHeight + (humpHeight - gravitationHeight) - resistanceHeight - breakingHeight) * 1000) / 1000;
+            kineticResultPos.result.velocity = Math.round(Math.sqrt(2 * (props.g_ ?? 9.81) * kineticResultPos.result.kineticEnergyHeight) * 1000) / 1000;
+        }
+    }
 }
 
 const sketchWidth = computed(() => {
@@ -256,11 +344,59 @@ const textPositions = computed(() => {
     return map;
 });
 
+// 调整动能文字位置，避免相互覆盖
+const kineticTextPositions = computed(() => {
+    const map = new Map<number, number>();
+    if (!props.kineticEnergyHeightData) return map;
+
+    const charWidth = fontSize.value * 0.6;
+    const textHeight = fontSize.value;
+    const placed: { x1: number; x2: number; y1: number; y2: number }[] = [];
+
+    for (const dataPoint of props.kineticEnergyHeightData) {
+        const text = `${dataPoint.result.kineticEnergyHeight}m(${dataPoint.result.velocity}m/s)`;
+        const width = Math.max(12, text.length * charWidth);
+        const cx = getX(dataPoint.x);
+        const baseY = (getY(dataPoint.result.gravitationHeight) + getY(dataPoint.result.gravitationHeight + dataPoint.result.kineticEnergyHeight)) / 2;
+        const step = textHeight + 4;
+
+        const getRect = (y: number) => ({
+            x1: cx - width / 2,
+            x2: cx + width / 2,
+            y1: y - textHeight,
+            y2: y
+        });
+
+        let ty = baseY;
+        let rect = getRect(ty);
+        let iter = 0;
+        while (placed.some(p => !(p.x2 < rect.x1 || p.x1 > rect.x2 || p.y2 < rect.y1 || p.y1 > rect.y2))) {
+            ty -= step;
+            rect = getRect(ty);
+            if (++iter > 30) break;
+        }
+
+        map.set(dataPoint.x, Math.round(ty * 1000) / 1000);
+        placed.push(rect);
+    }
+
+    return map;
+});
+
 const resistancePoints = computed(() => {
     if (!props.resistanceEnergyHeightData) return '';
     return props.resistanceEnergyHeightData.map(dataPoint => {
         const x = getX(dataPoint.x);
-        const y = getY(3.741 + 0.106 - dataPoint.height);
+        const y = getY(orgKineticEnergyY.value - dataPoint.height);
+        return `${x},${y}`;
+    }).join(' ');
+});
+
+const kineticPoints = computed(() => {
+    if (!props.kineticEnergyHeightData) return '';
+    return props.kineticEnergyHeightData.map(dataPoint => {
+        const x = getX(dataPoint.x);
+        const y = getY(dataPoint.result.kineticEnergyHeight);
         return `${x},${y}`;
     }).join(' ');
 });
@@ -269,7 +405,7 @@ const shadePoints = computed(() => {
     if (!props.resistanceEnergyHeightData || !props.kineticEnergyHeightData || props.kineticEnergyHeightData.length === 0 || !props.slopeLayout?.positionList || props.slopeLayout.positionList.length === 0) return '';
     const resPoints = props.resistanceEnergyHeightData.map(dataPoint => {
         const x = getX(dataPoint.x);
-        const y = getY(3.741 + 0.106 - dataPoint.height);
+        const y = getY(orgKineticEnergyY.value - dataPoint.height);
         return `${x},${y}`;
     });
     const kineticY = getY(orgKineticEnergyY.value);
@@ -283,9 +419,24 @@ const orgKineticEnergyY = computed(() => {
     const ked = props.kineticEnergyHeightData;
     const sl = props.slopeLayout;
     if (!ked || ked.length === 0 || !sl?.positionList || sl.positionList.length === 0) return 0;
-    const safeKed = ked as { x: number, height: number }[];
+    const safeKed = ked as { x: number, result: any }[];
     const safeSl = sl as SlopeLayout;
-    return safeKed[0]!.height + safeSl.positionList[0]!.height;
+    return safeKed[0]!.result.kineticEnergyHeight + safeSl.positionList[0]!.height;
+});
+
+function addCursorXListener() {
+    const svgElement = document.getElementById('slope');
+    if (!svgElement) return;
+    svgElement.addEventListener('mousemove', (event) => {
+        const rect = svgElement.getBoundingClientRect();
+        const mouseX = event.clientX - rect.left; // 鼠标相对于SVG左边界的X坐标
+        const posX = (mouseX - marginLeft.value) / scaleX.value;
+        cursorX.value = posX;
+    });
+}
+
+onMounted(() => {
+    addCursorXListener();
 });
 
 onBeforeUnmount(() => {
@@ -294,6 +445,13 @@ onBeforeUnmount(() => {
 });
 </script>
 <style scoped lang="css">
+.cursor-vline {
+    stroke: orange;
+    stroke-width: 1px;
+    pointer-events: none;
+    opacity: 0.4;
+}
+
 .te {
     color: blue;
 }
@@ -333,6 +491,7 @@ onBeforeUnmount(() => {
     font-size: 12px;
     fill: darkred;
     text-anchor: middle;
+    user-select: none;
 }
 
 .point-line {
@@ -342,20 +501,21 @@ onBeforeUnmount(() => {
 }
 
 .resistance-circle {
-    stroke: blue;
+    stroke: #4988C4;
     stroke-width: 1.5px;
     fill: white;
 }
 
 .resistance-text {
     font-size: 12px;
-    fill: blue;
+    fill: #4988C4;
     text-anchor: middle;
     dominant-baseline: middle;
+    user-select: none;
 }
 
 .resistance-line {
-    stroke: blue;
+    stroke: #4988C4;
     stroke-width: 2px;
     fill: none;
 }
@@ -365,16 +525,30 @@ onBeforeUnmount(() => {
     stroke: none;
 }
 
-.org-kinetic-energy-line {
-    stroke: green;
+.init-kinetic-energy-line {
+    stroke: #016B61;
     stroke-width: 1px;
     stroke-dasharray: 4 2;
     fill: none;
 }
 
 .resistance-vline {
-    stroke: blue;
+    stroke: #4988C4;
     stroke-width: 1px;
     opacity: 0.2;
+}
+
+.kinetic-vline {
+    stroke: #016B61;
+    stroke-width: 1px;
+    opacity: 0.6;
+}
+
+.kinetic-text {
+    font-size: 12px;
+    fill: #016B61;
+    text-anchor: middle;
+    dominant-baseline: middle;
+    user-select: none;
 }
 </style>
