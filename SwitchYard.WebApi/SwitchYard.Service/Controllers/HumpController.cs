@@ -2,6 +2,8 @@
 using Microsoft.Extensions.Logging;
 using SwitchYard.Hump;
 using System.Data.Common;
+using System.Net;
+using System.Runtime.CompilerServices;
 
 namespace SwitchYard.Service.Controllers
 {
@@ -175,7 +177,7 @@ namespace SwitchYard.Service.Controllers
 
                 foreach (var p in slopeLayout.PositionList)
                 {
-                    var energyHeightResult = HumpEnergyHeightCalculator.CalculateKineticEnergyHeight(flatLayout, slopeLayout, p.X, parameters,p.ID);
+                    var energyHeightResult = HumpEnergyHeightCalculator.CalculateKineticEnergyHeight(flatLayout, slopeLayout, p.X, parameters, p.ID);
                     kineticEnergyHeightList.Add(new { x = p.X, result = energyHeightResult });
                 }
                 _logger.LogInformation("Kinetic Energy Height calculated for {PositionCount} positions.", kineticEnergyHeightList?.Count ?? 0);
@@ -252,6 +254,99 @@ namespace SwitchYard.Service.Controllers
             {
                 _logger.LogError(ex, "Error calculating Breaking Energy Height.");
                 return StatusCode(500, "Internal server error while calculating Breaking Energy Height.");
+            }
+        }
+
+        private List<object> GetVelocityList(EnergyCalculationParams parameters)
+        {
+            var stepSize = 10;
+
+            var flatLayout = LoadFlatLayout();
+            var slopeLayout = LoadSlopeLayout();
+            var wagonConceptList = LoadWagonConcept();
+
+            parameters.Wagon = wagonConceptList.Find(w => w.TypeName == parameters.WagonTypeName);
+
+            var velocityList = new List<object>();
+
+            var flatXPositionList = flatLayout.PositionList.Select(position => { return position.X; }).ToList();
+            var slopeXPositionList = slopeLayout.PositionList.Select(position => { return position.X; }).ToList();
+            var xPositionList = flatXPositionList.Union(slopeXPositionList).Distinct().OrderBy(x => x).ToList();
+
+            var normXList = new List<double>();
+            for (var x = flatLayout.PositionList.First().X; x < flatLayout.PositionList.Last().X; x += stepSize)
+            {
+                normXList.Add(x);
+            }
+
+            xPositionList = xPositionList.Union(normXList).Distinct().OrderBy(x => x).ToList();
+
+            foreach (var p in xPositionList)
+            {
+                var energyHeightResult = HumpEnergyHeightCalculator.CalculateKineticEnergyHeight(flatLayout, slopeLayout, p, parameters);
+                velocityList.Add(new { x = p, velocity = energyHeightResult.Velocity });
+            }
+
+            return velocityList;
+        }
+
+        [HttpPost(Name = "GetVelocityCurve")]
+        public IActionResult GetVelocityCurve(EnergyCalculationParams parameters)
+        {
+            try
+            {
+                var velocityList = GetVelocityList(parameters);
+                _logger.LogInformation("Velocity calculated for {PositionCount} positions.", velocityList?.Count ?? 0);
+                return Ok(velocityList);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error calculating Velocity.");
+                return StatusCode(500, "Internal server error while calculating Velocity.");
+            }
+        }
+
+        [HttpPost(Name = "GetTimeCurve")]
+        public IActionResult GetTimeCurve(EnergyCalculationParams parameters)
+        {
+            try
+            {
+                var timeList = new List<object>();
+                var velocityList = GetVelocityList(parameters);
+
+                double startX = ((dynamic)velocityList[0]).x;
+                double cumulativeTime = 0.0;
+
+                timeList.Add(new { x = startX, time = cumulativeTime });
+
+                for (var i = 1; i < velocityList.Count; i++)
+                {
+                    var item_0 = velocityList[i-1];
+                    var item_t = velocityList[i];
+
+                    var v0 = ((dynamic)item_0).velocity;
+                    var vt = ((dynamic)item_t).velocity;
+
+                    var x0 = ((dynamic)item_0).x;
+                    var xt = ((dynamic)item_t).x;
+
+                    double duration = 2*(xt-x0)/(v0 + vt);
+                    cumulativeTime = cumulativeTime + duration;
+
+                    timeList.Add(new { x = xt, time = Math.Round(cumulativeTime,2) });
+                }
+
+                foreach (var item in velocityList)
+                {
+                }
+
+                _logger.LogInformation("Time calculated for {PositionCount} positions.", velocityList?.Count ?? 0);
+                return Ok(timeList);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error calculating Time.");
+                return StatusCode(500, "Internal server error while calculating Time.");
             }
         }
     }

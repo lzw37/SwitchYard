@@ -1,6 +1,6 @@
 <template>
     <section class="hump-main">
-        <el-tabs v-model="activeTab" type="card" class="hump-tabs">
+        <el-tabs v-model="activeTab" class="hump-tabs">
             <el-tab-pane label="平面展开图" name="plan">
                 <HumpLayout />
             </el-tab-pane>
@@ -15,13 +15,12 @@
                     <HumpCalculationCondition />
                 </el-card>
             </el-tab-pane>
-
             <el-tab-pane label="纵断面设计" name="profile">
                 <HumpSlopeDesigner />
             </el-tab-pane>
 
             <el-tab-pane label="车辆溜放检算" name="release">
-                <el-card shadow="hover">溜放检算结果（占位）</el-card>
+                <HumpHeadwayCheck />
             </el-tab-pane>
         </el-tabs>
     </section>
@@ -33,6 +32,7 @@ import HumpLayout from './HumpLayout.vue';
 import HumpSlopeDesigner from './HumpSlopeDesigner.vue';
 import Wagon from './Wagon.vue';
 import HumpCalculationCondition from './HumpCalculationCondition.vue';
+import HumpHeadwayCheck from './HumpHeadwayCheck.vue';
 
 const activeTab = ref('plan')
 const selectedLine = ref<number | null>(null)

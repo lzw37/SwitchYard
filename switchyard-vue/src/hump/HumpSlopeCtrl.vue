@@ -70,10 +70,6 @@
                     :y1="getY(orgKineticEnergyY)" :y2="getY(orgKineticEnergyY)" />
             </g>
             <g class="kinetic-energy-height">
-                <!-- <polyline v-if="props.elementVisibility?.kinetic" :points="kineticPoints" class="resistance-line" /> -->
-                <!-- <circle v-if="props.elementVisibility?.kinetic" v-for="dataPoint in kineticEnergyHeightData || []"
-                    class="resistance-circle" :cx="getX(dataPoint.x)" :cy="getY(dataPoint.result.kineticEnergyHeight)"
-                    r="4" /> -->
                 <line v-if="props.elementVisibility?.kinetic" class="kinetic-vline" v-for="dataPoint in
                     kineticEnergyHeightData || []" :x1="getX(dataPoint.x)"
                     :y1="getY(dataPoint.result.gravitationHeight)" :x2="getX(dataPoint.x)"
@@ -92,7 +88,6 @@
     </div>
 </template>
 <script setup lang="ts">
-import { k } from 'vue-router/dist/router-CWoNjPRp.mjs';
 import type { SlopeLayout } from './humplayoutctrl';
 import { ref, computed, onBeforeUnmount, onMounted } from 'vue';
 

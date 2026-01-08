@@ -372,6 +372,7 @@ onMounted(() => {
 
 .control-group span {
     font-size: small;
+    font-weight: 600;
     margin-right: 5px;
 }
 
