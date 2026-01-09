@@ -2,7 +2,7 @@
     <div class="headway-check-container">
         <!-- 工具栏 -->
         <div class="headway-toolbar">
-
+            <el-button @click="fetchData" type="primary">Debug获取数据</el-button>
             <div class="headway-toolbar__group">
                 <label>检算实例</label>
                 <el-select v-model="selectedVerification" placeholder="请选择检算数据" size="small" clearable>
@@ -12,17 +12,17 @@
                 </el-select>
             </div>
             <div class="headway-toolbar__group">
-                <el-button type="primary" size="small">新建检算实例</el-button>
-                <el-button type="danger" size="small">删除</el-button>
-                <el-button type="success" size="small">保存</el-button>
-            </div>
-            <div class="headway-toolbar__group">
                 <label>纵断面方案</label>
                 <el-select v-model="selectedDesignScheme" placeholder="请选择设计方案" size="small" clearable>
                     <el-option label="方案1" value="scheme1"></el-option>
                     <el-option label="方案2" value="scheme2"></el-option>
                     <el-option label="方案3" value="scheme3"></el-option>
                 </el-select>
+            </div>
+            <div class="headway-toolbar__group">
+                <el-button type="primary" size="small">新建检算实例</el-button>
+                <el-button type="danger" size="small">删除</el-button>
+                <el-button type="success" size="small">保存</el-button>
             </div>
             <div class="headway-toolbar__group">
                 <label>计算条件</label>
@@ -41,43 +41,49 @@
         </div>
 
         <!-- 图表容器 -->
-        <div class="charts-container">
-            <!-- 左侧：速度-距离曲线 -->
-            <div class="chart-wrapper">
-                <div class="chart-header">
-                    <span>速度-距离曲线</span>
-                    <div class="chart-tags">
-                        <el-tag v-for="tag in velocityTabs" :key="tag.name" closable
-                            @close="handleRemoveVelocityTab(tag.name)">
-                            {{ tag.label }}
-                        </el-tag>
-                    </div>
-                </div>
-                <div class="chart-content" id="velocity-distance-chart">
-                    <!-- 速度-距离曲线图表内容 -->
-                </div>
-            </div>
+        <div class="charts-container" :class="{
+            'velocity-fullscreen': fullscreenChart === 'velocity',
+            'time-fullscreen': fullscreenChart === 'time'
+        }">
+            <!-- 速度-距离曲线 -->
+            <HumpVelocityCurve ref="velocityCurveRef" :velocity-curve-data="velocityCurveData"
+                :velocity-tabs="velocityTabs" :chart-width="chartWidth" :chart-height="chartHeight"
+                :margin-left="marginLeft" :margin-right="marginRight" :margin-top="marginTop"
+                :margin-bottom="marginBottom" :fullscreen-chart="fullscreenChart" @remove-tab="handleRemoveVelocityTab"
+                @toggle-fullscreen="toggleFullscreen('velocity')" />
 
-            <!-- 右侧：时间-距离曲线 -->
-            <div class="chart-wrapper">
-                <div class="chart-header">
-                    <span>时间-距离曲线</span>
-                    <div class="chart-tags">
-                        <el-tag v-for="tag in timeTabs" :key="tag.name" closable @close="handleRemoveTimeTab(tag.name)">
-                            {{ tag.label }}
-                        </el-tag>
-                    </div>
-                </div>
-                <div class="chart-content" id="time-distance-chart">
-                    <!-- 时间-距离曲线图表内容 -->
-                </div>
-            </div>
+            <!-- 时间-距离曲线 -->
+            <HumpTimeCurve ref="timeCurveRef" :time-curve-data="timeCurveData" :time-tabs="timeTabs"
+                :chart-width="chartWidth" :chart-height="chartHeight" :margin-left="marginLeft"
+                :margin-right="marginRight" :margin-top="marginTop" :margin-bottom="marginBottom"
+                :fullscreen-chart="fullscreenChart" @remove-tab="handleRemoveTimeTab"
+                @toggle-fullscreen="toggleFullscreen('time')" />
         </div>
     </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import axios from 'axios'
+import config from '../config.json'
+import HumpVelocityCurve from './HumpVelocityCurve.vue'
+import HumpTimeCurve from './HumpTimeCurve.vue'
+
+// 全屏状态管理
+const fullscreenChart = ref<'velocity' | 'time' | null>(null)
+
+// 切换全屏状态
+const toggleFullscreen = (chartType: 'velocity' | 'time') => {
+    if (fullscreenChart.value === chartType) {
+        fullscreenChart.value = null
+    } else {
+        fullscreenChart.value = chartType
+    }
+    // 更新容器宽度
+    setTimeout(() => {
+        updateContainerWidth()
+    }, 100)
+}
 
 const selectedDesignScheme = ref('')
 const selectedCondition = ref('')
@@ -109,6 +115,188 @@ const handleRemoveTimeTab = (tagName: string) => {
     if (index > -1) {
         timeTabs.value.splice(index, 1)
     }
+}
+
+// 图表容器引用
+const velocityCurveRef = ref<InstanceType<typeof HumpVelocityCurve>>()
+const timeCurveRef = ref<InstanceType<typeof HumpTimeCurve>>()
+
+// 通过子组件ref访问chartContainer
+const velocityChartContainer = computed(() => velocityCurveRef.value?.chartContainer)
+const timeChartContainer = computed(() => timeCurveRef.value?.chartContainer)
+
+// 图表尺寸和边距
+const chartHeight = ref(300)
+const containerWidth = ref(800)
+const marginLeft = ref(60)
+const marginRight = ref(30)
+const marginTop = ref(30)
+const marginBottom = ref(50)
+
+// 响应式的图表宽度
+const chartWidth = computed(() => {
+    return Math.max(400, containerWidth.value - 32) // 减去padding
+})
+
+// 曲线数据
+interface VelocityPoint {
+    x: number
+    velocity: number
+}
+
+interface TimePoint {
+    x: number
+    time: number
+}
+
+interface VelocityCurveData {
+    seriesName: string
+    color: string
+    data: VelocityPoint[]
+}
+
+interface TimeCurveData {
+    seriesName: string
+    color: string
+    data: TimePoint[]
+}
+
+const velocityCurveData = ref<VelocityCurveData[]>([])
+const timeCurveData = ref<TimeCurveData[]>([])
+
+// 从后端获取数据
+const fetchVelocityCurve = async () => {
+    try {
+        const response = await axios.post(`${config.serverurl}/hump/GetVelocityCurve`, {
+            wagonTypeName: "P70H",
+            wagonVelocityOnTop: 1.4,
+            wagonVelocityOnSlop: 5.2,
+            wagonVelocityOnYard: 2.2,
+            windVelocity: 5,
+            isHeadWind: 1,
+            airDensity: 0.063,
+            temperature: -10,
+            g: 9.8,
+            retarderActivation: {},
+            retarderOutput: {}
+        })
+        const colors = ['#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#8b5cf6']
+        velocityCurveData.value = [
+            {
+                seriesName: '系列1',
+                color: '#3b82f6',
+                data: response.data
+            }
+        ]
+        // 数据载入后更新容器宽度
+        updateContainerWidth()
+    } catch (error) {
+        console.error('获取速度曲线数据失败:', error)
+        // 使用模拟数据
+        velocityCurveData.value = [
+            {
+                seriesName: '系列1',
+                color: '#3b82f6',
+                data: [
+                    { x: 0, velocity: 0 },
+                    { x: 100, velocity: 20 },
+                    { x: 200, velocity: 35 },
+                    { x: 300, velocity: 45 },
+                    { x: 400, velocity: 50 },
+                    { x: 500, velocity: 40 }
+                ]
+            }
+        ]
+        // 模拟数据载入后更新容器宽度
+        updateContainerWidth()
+    }
+}
+
+const fetchTimeCurve = async () => {
+    try {
+        const response = await axios.post(`${config.serverurl}/hump/GetTimeCurve`, {
+            wagonTypeName: "P70H",
+            wagonVelocityOnTop: 1.4,
+            wagonVelocityOnSlop: 5.2,
+            wagonVelocityOnYard: 2.2,
+            windVelocity: 5,
+            isHeadWind: 1,
+            airDensity: 0.063,
+            temperature: -10,
+            g: 9.8,
+            retarderActivation: {},
+            retarderOutput: {}
+        })
+        // 假设后端返回的数据格式：{ seriesName: string, data: TimePoint[] }
+        const colors = ['#e11d48', '#059669', '#dc2626', '#7c3aed', '#ea580c']
+        timeCurveData.value = [
+            {
+                seriesName: '系列1',
+                color: '#e11d48',
+                data: response.data
+            }
+        ]
+        // 数据载入后更新容器宽度
+        updateContainerWidth()
+    } catch (error) {
+        console.error('获取时间曲线数据失败:', error)
+        // 使用模拟数据
+        timeCurveData.value = [
+            {
+                seriesName: '系列1',
+                color: '#e11d48',
+                data: [
+                    { x: 0, time: 0 },
+                    { x: 100, time: 10 },
+                    { x: 200, time: 18 },
+                    { x: 300, time: 25 },
+                    { x: 400, time: 30 },
+                    { x: 500, time: 38 }
+                ]
+            }
+        ]
+        // 模拟数据载入后更新容器宽度
+        updateContainerWidth()
+    }
+}
+
+// 更新容器宽度
+const updateContainerWidth = () => {
+    nextTick(() => {
+        let targetContainer = null
+        if (fullscreenChart.value === 'velocity' && velocityChartContainer.value) {
+            targetContainer = velocityChartContainer.value
+        } else if (fullscreenChart.value === 'time' && timeChartContainer.value) {
+            targetContainer = timeChartContainer.value
+        } else if (!fullscreenChart.value && velocityChartContainer.value) {
+            // 默认使用速度图表容器获取宽度
+            targetContainer = velocityChartContainer.value
+        }
+
+        if (targetContainer) {
+            containerWidth.value = targetContainer.clientWidth
+        }
+    })
+}
+
+// 窗口大小变化监听
+const handleResize = () => {
+    updateContainerWidth()
+}
+
+// 组件挂载时获取数据
+onMounted(() => {
+    window.addEventListener('resize', handleResize)
+})
+
+// 组件卸载时移除监听器
+onBeforeUnmount(() => {
+    window.removeEventListener('resize', handleResize)
+})
+
+function fetchData() {
+    fetchVelocityCurve()
+    fetchTimeCurve()
 }
 </script>
 
@@ -163,6 +351,11 @@ const handleRemoveTimeTab = (tagName: string) => {
 }
 
 .headway-toolbar__group :deep(.el-button) {
+    position: relative;
+}
+
+.chart-header .fullscreen-btn {
+    right: 12px;
     margin: 0;
 }
 
@@ -174,59 +367,6 @@ const handleRemoveTimeTab = (tagName: string) => {
     padding: 16px 20px;
     overflow: auto;
     min-width: 800px;
-}
-
-.chart-wrapper {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    border: 1px solid #dbe3f1;
-    border-radius: 2px;
-    background: #ffffff;
-    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
-    overflow: hidden;
-}
-
-.chart-header {
-    display: flex;
-    padding: 12px 16px;
-    background: linear-gradient(135deg, #f8fafc, #eef3ff);
-    border-bottom: 1px solid #dbe3f1;
-    color: #1f2a37;
-    letter-spacing: 0.02em;
-    align-items: center;
-}
-
-.chart-header span {
-    font-size: 16px;
-    font-weight: 600;
-    letter-spacing: 0.02em;
-    flex-shrink: 0;
-}
-
-.chart-tags {
-    display: flex;
-    gap: 8px;
-    flex: 1;
-    margin-left: 16px;
-    align-items: center;
-    flex-wrap: wrap;
-}
-
-.chart-content {
-    flex: 1;
-    padding: 16px;
-    overflow: auto;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #9ca3af;
-    font-size: 12px;
-}
-
-/* Tag样式 */
-.chart-tags :deep(.el-tag) {
-    margin: 0;
-    font-size: small;
+    transition: all 0.3s ease-in-out;
 }
 </style>

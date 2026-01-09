@@ -196,7 +196,7 @@ namespace SwitchYard.Service.Controllers
         /// <param name="parameters">能高计算参数</param>
         /// <returns></returns>
         [HttpPost(Name = "GetResistanceEnergyHeight")]
-        public IActionResult GetResistanceEnergyHeight(EnergyCalculationParams parameters)
+        public IActionResult GetResistanceEnergyHeight(EnergyCalculationParams parameters, double? currentX =null)
         {
             try
             {
@@ -207,13 +207,22 @@ namespace SwitchYard.Service.Controllers
                 parameters.Wagon = wagonConceptList.Find(w => w.TypeName == parameters.WagonTypeName);
 
                 var resistanceEnergyHeightList = new List<object>();
-                //foreach (var p in slopeLayout.PositionList)
-                for (var i = slopeLayout.PositionList.First().X; i <= slopeLayout.PositionList.Last().X; i += 20)
+
+                if (currentX != null)
                 {
-                    //var energyHeight = HumpEnergyHeightCalculator.CalculateResistanceEnergyHeight(flatLayout, p.X, parameters);
-                    //resistanceEnergyHeightList.Add(new { x = p.X, height = Math.Round(energyHeight,3) });
-                    var energyHeight = HumpEnergyHeightCalculator.CalculateResistanceEnergyHeight(flatLayout, i, parameters);
-                    resistanceEnergyHeightList.Add(new { x = i, height = Math.Round(energyHeight, 3) });
+                    var energyHeight = HumpEnergyHeightCalculator.CalculateResistanceEnergyHeight(flatLayout, Convert.ToDouble(currentX), parameters);
+                    resistanceEnergyHeightList.Add(new { x = currentX, height = Math.Round(energyHeight, 3) });
+                }
+                else
+                {
+                    //foreach (var p in slopeLayout.PositionList)
+                    for (var i = slopeLayout.PositionList.First().X; i <= slopeLayout.PositionList.Last().X; i += 20)
+                    {
+                        //var energyHeight = HumpEnergyHeightCalculator.CalculateResistanceEnergyHeight(flatLayout, p.X, parameters);
+                        //resistanceEnergyHeightList.Add(new { x = p.X, height = Math.Round(energyHeight,3) });
+                        var energyHeight = HumpEnergyHeightCalculator.CalculateResistanceEnergyHeight(flatLayout, i, parameters);
+                        resistanceEnergyHeightList.Add(new { x = i, height = Math.Round(energyHeight, 3) });
+                    }
                 }
                 _logger.LogInformation("Resistance Energy Height calculated for {PositionCount} positions.", resistanceEnergyHeightList?.Count ?? 0);
                 return Ok(resistanceEnergyHeightList);

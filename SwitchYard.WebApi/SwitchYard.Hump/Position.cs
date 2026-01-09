@@ -62,6 +62,11 @@ namespace SwitchYard.Hump
                 DiamondCount = diamonds.Sum(s =>
                 {
                     return s.Type == SwitchTypes.Diamond ? 1 : 0;
+                }),
+
+                TotalCurveDegree = switches.Sum(s =>
+                {
+                    return s.CurveDegree;
                 })
             };
             return count;
@@ -268,6 +273,11 @@ namespace SwitchYard.Hump
         public string BindingPositionSegmentID { get; set; }
 
         /// <summary>
+        /// 曲线转角（车辆溜放方向）/°
+        /// </summary>
+        public double CurveDegree { get; set; }
+
+        /// <summary>
         /// 道岔种类
         /// </summary>
         public SwitchTypes Type { get; set; }
@@ -349,6 +359,11 @@ namespace SwitchYard.Hump
         /// 菱形交叉数量
         /// </summary>
         public int DiamondCount { get; set; }
+
+        /// <summary>
+        /// 车辆溜放方向的曲线转角角度总和/°
+        /// </summary>
+        public double TotalCurveDegree { get; set; }
     }
 
     /// <summary>

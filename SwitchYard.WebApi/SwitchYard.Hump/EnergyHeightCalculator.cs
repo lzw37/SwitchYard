@@ -105,7 +105,8 @@ namespace SwitchYard.Hump
             var switchResistancePower = HumpResistanceCalculator.SwitchResistance(sc.ReverseCount, sc.ForwardCound, sc.DiamondCount, sc.SlipCount);
 
             var curveCorner = flatLayout.GetCurveCornerCount(orgPosition.X, x);
-            var totalCurveResistancePower = HumpResistanceCalculator.CalculateCurveResistance(curveCorner);
+            var totalCurveResistancePower = HumpResistanceCalculator.CalculateCurveResistance(curveCorner + sc.TotalCurveDegree);  
+                // 在计算曲线阻力时，除了考虑纯曲线的转角以外，还需加上道岔的曲线转角
 
             // 计算当前位置处车辆在溜放部分和调车场部分的风阻力和基本阻力
             var airResistanceOnYard = HumpResistanceCalculator.CalculateAirResistance(

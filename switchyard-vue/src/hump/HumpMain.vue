@@ -18,9 +18,11 @@
             <el-tab-pane label="纵断面设计" name="profile">
                 <HumpSlopeDesigner />
             </el-tab-pane>
-
             <el-tab-pane label="车辆溜放检算" name="release">
                 <HumpHeadwayCheck />
+            </el-tab-pane>
+            <el-tab-pane label="车辆溜放仿真" name="simulation">
+                <HumpSim />
             </el-tab-pane>
         </el-tabs>
     </section>
@@ -33,6 +35,7 @@ import HumpSlopeDesigner from './HumpSlopeDesigner.vue';
 import Wagon from './Wagon.vue';
 import HumpCalculationCondition from './HumpCalculationCondition.vue';
 import HumpHeadwayCheck from './HumpHeadwayCheck.vue';
+import HumpSim from './HumpSim.vue';
 
 const activeTab = ref('plan')
 const selectedLine = ref<number | null>(null)

@@ -60,7 +60,7 @@
             double cx0 = 1;
             // 根据《铁路驼峰及调车场设计规范》（TB 10062-2018）规定，计算风阻力时，beta取0，alpha取0，cx1/cx0取1
 
-            double r = (rho * f * (cx1 / cx0)) / (2 * Q * Math.Pow(Math.Cos(alpha), 2)) 
+            double r = (rho * f * (cx1 / cx0)) / (Q * Math.Pow(Math.Cos(alpha), 2)) 
                 * Math.Pow(v_wagon + isHeadWind * v_wind * Math.Cos(beta), 2);
 
             return r; // 返回空气阻力/(N/kN)
