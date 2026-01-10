@@ -4,11 +4,13 @@ using SwitchYard.Hump;
 using System.Data.Common;
 using System.Net;
 using System.Runtime.CompilerServices;
+using Microsoft.AspNetCore.Authorization;
 
 namespace SwitchYard.Service.Controllers
 {
     [ApiController]
     [Route("[controller]/[action]")]
+    [Authorize] // 整个控制器需要授权
     public class HumpController : Controller
     {
         IConfiguration _config;
