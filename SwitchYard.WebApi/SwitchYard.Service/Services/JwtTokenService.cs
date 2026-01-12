@@ -38,8 +38,8 @@ namespace SwitchYard.Service.Services
 
             var claims = new List<Claim>
             {
-                new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
-                new Claim(ClaimTypes.Name, user.Username),
+                new Claim(ClaimTypes.NameIdentifier, user.Id),
+                new Claim(ClaimTypes.Name, user.Name),
                 new Claim(ClaimTypes.Role, user.Role),
                 new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
             };
@@ -102,18 +102,13 @@ namespace SwitchYard.Service.Services
         /// </summary>
         /// <param name="token">JWT Token</param>
         /// <returns>用户ID</returns>
-        public int? GetUserIdFromToken(string token)
+        public string? GetUserIdFromToken(string token)
         {
             var principal = ValidateToken(token);
             if (principal == null) return null;
 
             var userIdClaim = principal.FindFirst(ClaimTypes.NameIdentifier);
-            if (userIdClaim != null && int.TryParse(userIdClaim.Value, out int userId))
-            {
-                return userId;
-            }
-
-            return null;
+            return userIdClaim?.Value;
         }
 
         /// <summary>

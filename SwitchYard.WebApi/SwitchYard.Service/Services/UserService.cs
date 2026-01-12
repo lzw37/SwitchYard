@@ -2,6 +2,8 @@ using SwitchYard.Service.Models;
 using System.Security.Cryptography;
 using System.Text;
 using Konscious.Security.Cryptography;
+using Microsoft.Extensions.Logging;
+using SwitchYard.Service.Utils;
 
 namespace SwitchYard.Service.Services
 {
@@ -10,28 +12,15 @@ namespace SwitchYard.Service.Services
     /// </summary>
     public class UserService
     {
-        // 模拟用户数据库（实际应用中应该使用数据库）
-        private static readonly List<User> _users = new List<User>
+        private readonly ILogger<UserService> _logger;
+
+        // 雪花算法ID生成器（静态单例，workerId=1, datacenterId=1）
+        private static readonly SnowflakeIdGenerator _idGenerator = new SnowflakeIdGenerator(workerId: 1, datacenterId: 1);
+
+        public UserService(ILogger<UserService> logger)
         {
-            new User
-            {
-                Id = 1,
-                Username = "admin",
-                Password = HashPassword("240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9"), // 密码: admin123
-                Role = "Admin",
-                Email = "admin@switchyard.com",
-                IsActive = true
-            },
-            new User
-            {
-                Id = 2,
-                Username = "user",
-                Password = HashPassword("user123"), // 密码: user123
-                Role = "User",
-                Email = "user@switchyard.com",
-                IsActive = true
-            }
-        };
+            _logger = logger;
+        }
 
         /// <summary>
         /// 验证用户登录
@@ -41,18 +30,27 @@ namespace SwitchYard.Service.Services
         /// <returns>用户信息，如果验证失败则返回null</returns>
         public User? ValidateUser(string username, string password)
         {
-            var user = _users.FirstOrDefault(u =>
-                u.Username == username &&
-                u.IsActive);
+            try
+            {
+                var user = GetUserByUsername(username);
+                if (user == null || user.IsActive != 1)
+                {
+                    return null;
+                }
 
-            if (user == null)
+                // 直接比较密码哈希值
+                if (user.PasswordHash == password)
+                {
+                    return user;
+                }
+
                 return null;
-
-            // 使用Argon2id验证密码
-            if (VerifyPassword(password, user.Password))
-                return user;
-
-            return null;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "验证用户时发生错误: {Username}", username);
+                return null;
+            }
         }
 
         /// <summary>
@@ -62,7 +60,18 @@ namespace SwitchYard.Service.Services
         /// <returns>用户信息</returns>
         public User? GetUserByUsername(string username)
         {
-            return _users.FirstOrDefault(u => u.Username == username && u.IsActive);
+            try
+            {
+                var dbConnector = DBConnector.GetDBConnector();
+                var sql = "SELECT id, name, passwordhash, role, email, createat, isactive FROM user WHERE name = @Username AND isactive = 1";
+                var users = dbConnector.Query<User>(sql, new { Username = username });
+                return users?.FirstOrDefault();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "根据用户名获取用户时发生错误: {Username}", username);
+                return null;
+            }
         }
 
         /// <summary>
@@ -70,17 +79,96 @@ namespace SwitchYard.Service.Services
         /// </summary>
         /// <param name="id">用户ID</param>
         /// <returns>用户信息</returns>
-        public User? GetUserById(int id)
+        public User? GetUserById(string id)
         {
-            return _users.FirstOrDefault(u => u.Id == id && u.IsActive);
+            try
+            {
+                var dbConnector = DBConnector.GetDBConnector();
+                var sql = "SELECT id, name, passwordhash, role, email, createat, isactive FROM user WHERE id = @Id AND isactive = 1";
+                var users = dbConnector.Query<User>(sql, new { Id = id });
+                return users?.FirstOrDefault();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "根据ID获取用户时发生错误: {Id}", id);
+                return null;
+            }
         }
 
         /// <summary>
-        /// 密码哈希（使用Argon2id）
+        /// 创建新用户
+        /// </summary>
+        /// <param name="username">用户名</param>
+        /// <param name="password">密码（将被加密存储）</param>
+        /// <param name="email">邮箱</param>
+        /// <param name="role">角色</param>
+        /// <returns>创建的用户信息，失败返回null</returns>
+        public User? CreateUser(string username, string password, string? email = null, string role = "User")
+        {
+            try
+            {
+                // 检查用户名是否已存在
+                var existingUser = GetUserByUsername(username);
+                if (existingUser != null)
+                {
+                    _logger.LogWarning("创建用户失败: 用户名已存在 - {Username}", username);
+                    return null;
+                }
+
+                // 使用雪花算法生成新的用户ID
+                var userId = _idGenerator.NextIdString();
+
+                // 创建用户对象
+                var newUser = new User
+                {
+                    Id = userId,
+                    Name = username,
+                    PasswordHash = password, // 直接存储密码哈希（调用方应传入哈希值）
+                    Email = email,
+                    Role = role,
+                    CreateAt = DateTime.Now,
+                    IsActive = 1
+                };
+
+                // 插入数据库
+                var dbConnector = DBConnector.GetDBConnector();
+                var sql = @"INSERT INTO user (id, name, passwordhash, role, email, createat, isactive) 
+                            VALUES (@Id, @Name, @PasswordHash, @Role, @Email, @CreateAt, @IsActive)";
+                var rowsAffected = dbConnector.ExecuteNonQuery(sql, new
+                {
+                    Id = newUser.Id,
+                    Name = newUser.Name,
+                    PasswordHash = newUser.PasswordHash,
+                    Role = newUser.Role,
+                    Email = newUser.Email,
+                    CreateAt = newUser.CreateAt,
+                    IsActive = newUser.IsActive
+                });
+
+                if (rowsAffected > 0)
+                {
+                    _logger.LogInformation("成功创建用户: {Username}, ID: {UserId}", username, userId);
+                    return newUser;
+                }
+                else
+                {
+                    _logger.LogError("创建用户失败: 数据库插入失败 - {Username}", username);
+                    return null;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "创建用户时发生错误: {Username}", username);
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// 密码哈希（使用Argon2id）- 保留用于将来可能的密码加密需求
         /// </summary>
         /// <param name="password">明文密码</param>
         /// <returns>哈希后的密码（包含盐值）</returns>
-        private static string HashPassword(string password)
+        public static string HashPassword(string password)
         {
             // 生成16字节的随机盐值
             var salt = RandomNumberGenerator.GetBytes(16);
@@ -107,12 +195,12 @@ namespace SwitchYard.Service.Services
         }
 
         /// <summary>
-        /// 验证密码
+        /// 验证密码（使用Argon2id）- 保留用于将来可能的密码验证需求
         /// </summary>
         /// <param name="password">明文密码</param>
         /// <param name="hashedPassword">哈希后的密码（包含盐值）</param>
         /// <returns>密码是否匹配</returns>
-        private static bool VerifyPassword(string password, string hashedPassword)
+        public static bool VerifyPassword(string password, string hashedPassword)
         {
             try
             {

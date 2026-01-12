@@ -30,7 +30,7 @@ builder.Services.AddCors(options =>
 
 // 注册JWT服务
 builder.Services.AddSingleton<JwtTokenService>();
-builder.Services.AddSingleton<UserService>();
+builder.Services.AddScoped<UserService>();
 
 // 配置JWT认证
 var jwtSettings = builder.Configuration.GetSection("Jwt");

@@ -18,6 +18,11 @@
                         登录
                     </el-button>
                 </el-form-item>
+
+                <div class="register-link">
+                    <span>还没有账号？</span>
+                    <router-link to="/createuser">立即注册</router-link>
+                </div>
             </el-form>
         </div>
     </div>
@@ -29,6 +34,15 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import axios from 'axios'
+
+// 定义登录响应接口
+interface LoginResponse {
+    token: string
+    tokenType: string
+    expiresIn: number
+    name: string
+    role: string
+}
 
 const router = useRouter()
 const loginFormRef = ref<FormInstance>()
@@ -79,19 +93,23 @@ const handleLogin = async () => {
                 // 对密码进行 SHA-256 哈希
                 const hashedPassword = await hashPassword(loginForm.password)
 
-                const response = await axios.post('/api/Auth/login', {
+                const response = await axios.post<LoginResponse>('/api/Auth/login', {
                     username: loginForm.username,
                     password: hashedPassword
                 })
 
                 // 登录成功，保存 token 和用户信息
                 const data = response.data
-                localStorage.setItem('token', data.token)
-                localStorage.setItem('tokenType', data.tokenType)
-                localStorage.setItem('username', data.username)
-                localStorage.setItem('role', data.role)
+                if (data.token && data.name) {
+                    localStorage.setItem('token', data.token)
+                    localStorage.setItem('tokenType', data.tokenType || 'Bearer')
+                    localStorage.setItem('username', data.name)
+                    localStorage.setItem('role', data.role || 'User')
 
-                ElMessage.success('登录成功')
+                    ElMessage.success('登录成功')
+                } else {
+                    throw new Error('登录响应数据不完整')
+                }
 
                 // 跳转到首页
                 router.push('/')
@@ -147,6 +165,24 @@ const handleLogin = async () => {
 
 :deep(.el-form-item) {
     margin-bottom: 22px;
+}
+
+.register-link {
+    text-align: center;
+    margin-top: 15px;
+    font-size: 14px;
+    color: #666;
+}
+
+.register-link a {
+    color: #667eea;
+    text-decoration: none;
+    margin-left: 5px;
+    font-weight: 500;
+}
+
+.register-link a:hover {
+    text-decoration: underline;
 }
 
 :deep(.el-input__wrapper) {

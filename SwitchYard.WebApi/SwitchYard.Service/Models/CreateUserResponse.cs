@@ -1,9 +1,9 @@
 namespace SwitchYard.Service.Models
 {
     /// <summary>
-    /// 用户模型
+    /// 创建用户响应模型
     /// </summary>
-    public class User
+    public class CreateUserResponse
     {
         /// <summary>
         /// 用户ID
@@ -16,28 +16,23 @@ namespace SwitchYard.Service.Models
         public string Name { get; set; } = string.Empty;
 
         /// <summary>
-        /// 密码哈希
-        /// </summary>
-        public string PasswordHash { get; set; } = string.Empty;
-
-        /// <summary>
-        /// 角色
-        /// </summary>
-        public string Role { get; set; } = "User";
-
-        /// <summary>
         /// 邮箱
         /// </summary>
         public string? Email { get; set; }
 
         /// <summary>
-        /// 创建时间
+        /// 角色
         /// </summary>
-        public DateTime CreateAt { get; set; } = DateTime.Now;
+        public string Role { get; set; } = string.Empty;
 
         /// <summary>
-        /// 是否激活
+        /// 创建时间
         /// </summary>
-        public uint IsActive { get; set; } = 1;
+        public DateTime CreatedAt { get; set; }
+
+        /// <summary>
+        /// 消息
+        /// </summary>
+        public string Message { get; set; } = string.Empty;
     }
 }

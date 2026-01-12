@@ -23,7 +23,7 @@ namespace SwitchYard.Service.Models
         /// <summary>
         /// 用户名
         /// </summary>
-        public string Username { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
 
         /// <summary>
         /// 角色

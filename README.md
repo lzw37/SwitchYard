@@ -235,4 +235,4 @@ API 将在 `https://localhost:5001` 或 `http://localhost:5000` 上运行。
 
 项目维护者: 北京交通大学交通运输学院 “铁路站场与枢纽”课程组 廖正文 等
 
-项目链接: [https://gitee.com/your-repo/SwitchYard](https://gitee.com/your-repo/SwitchYard)
+项目链接: [https://gitee.com/lzw37/SwitchYard](https://gitee.com/lzw37/SwitchYard)

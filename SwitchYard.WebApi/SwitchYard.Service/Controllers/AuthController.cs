@@ -51,16 +51,74 @@ namespace SwitchYard.Service.Controllers
                     Token = token,
                     TokenType = "Bearer",
                     ExpiresIn = _jwtTokenService.GetExpirationSeconds(),
-                    Username = user.Username,
+                    Name = user.Name,
                     Role = user.Role
                 };
 
-                _logger.LogInformation("用户登录成功: {Username}", user.Username);
+                _logger.LogInformation("用户登录成功: {Username}", user.Name);
                 return Ok(response);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "登录过程中发生错误");
+                return StatusCode(500, new { message = "服务器内部错误" });
+            }
+        }
+
+        /// <summary>
+        /// 创建新用户
+        /// </summary>
+        /// <param name="request">创建用户请求</param>
+        /// <returns>创建结果</returns>
+        [HttpPost("createuser")]
+        public IActionResult CreateUser([FromBody] CreateUserRequest request)
+        {
+            try
+            {
+                // 验证请求
+                if (!ModelState.IsValid)
+                {
+                    return BadRequest(new { message = "请求参数无效", errors = ModelState });
+                }
+
+                // 检查用户名是否已存在
+                var existingUser = _userService.GetUserByUsername(request.Username);
+                if (existingUser != null)
+                {
+                    _logger.LogWarning("创建用户失败: 用户名已存在 - {Username}", request.Username);
+                    return Conflict(new { message = "用户名已存在" });
+                }
+
+                // 创建用户（直接使用传入的密码作为哈希值）
+                var newUser = _userService.CreateUser(
+                    request.Username,
+                    request.Password,
+                    request.Email,
+                    request.Role
+                );
+
+                if (newUser == null)
+                {
+                    _logger.LogError("创建用户失败 - {Username}", request.Username);
+                    return StatusCode(500, new { message = "创建用户失败" });
+                }
+
+                var response = new CreateUserResponse
+                {
+                    Id = newUser.Id,
+                    Name = newUser.Name,
+                    Email = newUser.Email,
+                    Role = newUser.Role,
+                    CreatedAt = newUser.CreateAt,
+                    Message = "用户创建成功"
+                };
+
+                _logger.LogInformation("用户创建成功: {Username}, ID: {UserId}", newUser.Name, newUser.Id);
+                return Ok(response);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "创建用户过程中发生错误");
                 return StatusCode(500, new { message = "服务器内部错误" });
             }
         }
@@ -129,10 +187,10 @@ namespace SwitchYard.Service.Controllers
                 return Ok(new
                 {
                     id = user.Id,
-                    username = user.Username,
+                    username = user.Name,
                     email = user.Email,
                     role = user.Role,
-                    createdAt = user.CreatedAt
+                    createdAt = user.CreateAt
                 });
             }
             catch (Exception ex)
