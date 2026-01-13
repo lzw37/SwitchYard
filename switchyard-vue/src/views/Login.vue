@@ -115,11 +115,12 @@ const handleLogin = async () => {
                 router.push('/')
             } catch (error: any) {
                 console.error('登录错误:', error)
-                // 错误已由axios拦截器处理，这里只需记录日志
                 if (error.response?.data?.message) {
                     ElMessage.error(error.response.data.message)
                 } else if (!error.response) {
                     ElMessage.error('网络错误，请稍后重试')
+                } else {
+                    ElMessage.error('登录失败，请检查用户名和密码')
                 }
             } finally {
                 loading.value = false

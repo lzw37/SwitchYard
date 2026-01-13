@@ -42,13 +42,15 @@ axios.interceptors.response.use(
             switch (error.response.status) {
                 case 401:
                     // Token过期或无效
-                    ElMessage.error("登录已过期，请重新登录");
+                    // ElMessage.error("登录已过期，请重新登录");
                     localStorage.removeItem("token");
                     localStorage.removeItem("tokenType");
                     localStorage.removeItem("username");
                     localStorage.removeItem("role");
                     // 跳转到登录页
-                    window.location.href = "/login";
+                    setTimeout(() => {
+                        window.location.href = "/login";
+                    }, 2000);
                     break;
                 case 403:
                     ElMessage.error("没有权限访问该资源");
