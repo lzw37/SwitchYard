@@ -38,8 +38,8 @@ namespace SwitchYard.Service.Services
                     return null;
                 }
 
-                // 直接比较密码哈希值
-                if (user.PasswordHash == password)
+                // 使用Argon2id验证密码
+                if (VerifyPassword(password, user.PasswordHash))
                 {
                     return user;
                 }
@@ -118,12 +118,15 @@ namespace SwitchYard.Service.Services
                 // 使用雪花算法生成新的用户ID
                 var userId = _idGenerator.NextIdString();
 
+                // 使用Argon2id对密码进行哈希加密
+                var hashedPassword = HashPassword(password);
+
                 // 创建用户对象
                 var newUser = new User
                 {
                     Id = userId,
                     Name = username,
-                    PasswordHash = password, // 直接存储密码哈希（调用方应传入哈希值）
+                    PasswordHash = hashedPassword, // 存储加密后的密码
                     Email = email,
                     Role = role,
                     CreateAt = DateTime.Now,
