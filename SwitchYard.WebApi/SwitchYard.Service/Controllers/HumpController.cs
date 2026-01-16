@@ -22,16 +22,35 @@ namespace SwitchYard.Service.Controllers
             _config = configuration;
         }
 
+        public IActionResult GetInstances()
+        {
+            try
+            {
+                DBConnector dbConnector = DBConnector.GetDBConnector();
+                var instanceList = dbConnector.Query<SwitchYard.Service.Models.Instance>("SELECT * FROM instance");
+            }
+            catch (Exception ex) 
+            {
+
+            }
+        }
+
+
+        public IActionResult GetSlopeLines()
+        {
+
+        }
+
         /// <summary>
         /// 获取驼峰溜放部分的平面布置图
         /// </summary>
         /// <returns></returns>
         [HttpGet(Name = "GetFlatLayout")]
-        public IActionResult GetFlatLayout()
+        public IActionResult GetFlatLayout(string instanceID, string slopeLineID)
         {
             try
             {
-                var flatLayout = LoadFlatLayout();
+                var flatLayout = LoadFlatLayout(instanceID, slopeLineID);
 
                 return Ok(flatLayout);
             }
@@ -46,7 +65,7 @@ namespace SwitchYard.Service.Controllers
         /// 加载驼峰溜放部分的平面布置图
         /// </summary>
         /// <returns></returns>
-        private Hump.FlatLayout LoadFlatLayout()
+        private Hump.FlatLayout LoadFlatLayout(string instanceID, string slopeLineID)
         {
             var flatLayout = new SwitchYard.Hump.FlatLayout();
 

@@ -8,6 +8,27 @@ using System.Threading.Tasks;
 namespace SwitchYard.Hump
 {
     /// <summary>
+    /// 溜放线
+    /// </summary>
+    public class SlopeLine
+    {
+        /// <summary>
+        /// 溜放线ID
+        /// </summary>
+        public string ID { get; set; }
+
+        /// <summary>
+        /// 溜放线名称
+        /// </summary>
+        public string Name { get; set; }
+
+        /// <summary>
+        /// 溜放线的平面展开图
+        /// </summary>
+        public FlatLayout? FlatLayout { get; set; }
+    }
+
+    /// <summary>
     /// 驼峰从峰顶至某调车线计算点的平面布置（展开）图
     /// </summary>
     public class FlatLayout
