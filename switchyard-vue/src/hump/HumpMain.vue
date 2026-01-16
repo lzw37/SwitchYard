@@ -1,27 +1,27 @@
 <template>
     <section class="hump-main">
         <el-tabs v-model="activeTab" class="hump-tabs">
-            <el-tab-pane label="平面展开图" name="plan">
+            <el-tab-pane :label="t('humpMain.tabs.plan')" name="plan">
                 <HumpLayout />
             </el-tab-pane>
 
-            <el-tab-pane label="计算参数" name="vehicle">
+            <el-tab-pane :label="t('humpMain.tabs.vehicle')" name="vehicle">
                 <el-card class="param-card" shadow="hover">
-                    <h3>车辆参数</h3>
+                    <h3>{{ t('humpMain.headings.wagonParams') }}</h3>
                     <Wagon />
                 </el-card>
                 <el-card class="param-card" shadow="hover">
-                    <h3>计算条件</h3>
+                    <h3>{{ t('humpMain.headings.calcCondition') }}</h3>
                     <HumpCalculationCondition />
                 </el-card>
             </el-tab-pane>
-            <el-tab-pane label="纵断面设计" name="profile">
+            <el-tab-pane :label="t('humpMain.tabs.profile')" name="profile">
                 <HumpSlopeDesigner />
             </el-tab-pane>
-            <el-tab-pane label="车辆溜放检算" name="release">
+            <el-tab-pane :label="t('humpMain.tabs.release')" name="release">
                 <HumpHeadwayCheck />
             </el-tab-pane>
-            <el-tab-pane label="车辆溜放仿真" name="simulation">
+            <el-tab-pane :label="t('humpMain.tabs.simulation')" name="simulation">
                 <HumpSim />
             </el-tab-pane>
         </el-tabs>
@@ -30,6 +30,7 @@
 
 <script lang="ts" setup>
 import { ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import HumpLayout from './HumpLayout.vue';
 import HumpSlopeDesigner from './HumpSlopeDesigner.vue';
 import Wagon from './Wagon.vue';
@@ -38,11 +39,12 @@ import HumpHeadwayCheck from './HumpHeadwayCheck.vue';
 import HumpSim from './HumpSim.vue';
 
 const activeTab = ref('plan')
+const { t } = useI18n()
 const selectedLine = ref<number | null>(null)
 const lines = ref([
-    { id: 1, name: '1 号线' },
-    { id: 2, name: '2 号线' },
-    { id: 3, name: '3 号线' }
+    { id: 1 },
+    { id: 2 },
+    { id: 3 }
 ])
 const planSubTab = ref('ctrl')
 </script>

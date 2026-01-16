@@ -2,41 +2,44 @@
     <div class="headway-check-container">
         <!-- 工具栏 -->
         <div class="headway-toolbar">
-            <el-button @click="fetchData" type="primary">Debug获取数据</el-button>
+            <el-button @click="fetchData" type="primary">{{ t('hump.headway.toolbar.debugFetch') }}</el-button>
             <div class="headway-toolbar__group">
-                <label>检算实例</label>
-                <el-select v-model="selectedVerification" placeholder="请选择检算数据" size="small" clearable>
-                    <el-option label="验证集1" value="verify1"></el-option>
-                    <el-option label="验证集2" value="verify2"></el-option>
-                    <el-option label="验证集3" value="verify3"></el-option>
+                <label>{{ t('hump.headway.labels.verification') }}</label>
+                <el-select v-model="selectedVerification"
+                    :placeholder="t('hump.headway.placeholders.selectVerification')" size="small" clearable>
+                    <el-option :label="t('hump.headway.options.verify1')" value="verify1"></el-option>
+                    <el-option :label="t('hump.headway.options.verify2')" value="verify2"></el-option>
+                    <el-option :label="t('hump.headway.options.verify3')" value="verify3"></el-option>
                 </el-select>
             </div>
             <div class="headway-toolbar__group">
-                <label>纵断面方案</label>
-                <el-select v-model="selectedDesignScheme" placeholder="请选择设计方案" size="small" clearable>
-                    <el-option label="方案1" value="scheme1"></el-option>
-                    <el-option label="方案2" value="scheme2"></el-option>
-                    <el-option label="方案3" value="scheme3"></el-option>
+                <label>{{ t('hump.headway.labels.designScheme') }}</label>
+                <el-select v-model="selectedDesignScheme" :placeholder="t('hump.headway.placeholders.selectDesign')"
+                    size="small" clearable>
+                    <el-option :label="t('hump.headway.options.scheme1')" value="scheme1"></el-option>
+                    <el-option :label="t('hump.headway.options.scheme2')" value="scheme2"></el-option>
+                    <el-option :label="t('hump.headway.options.scheme3')" value="scheme3"></el-option>
                 </el-select>
             </div>
             <div class="headway-toolbar__group">
-                <el-button type="primary" size="small">新建检算实例</el-button>
-                <el-button type="danger" size="small">删除</el-button>
-                <el-button type="success" size="small">保存</el-button>
+                <el-button type="primary" size="small">{{ t('hump.headway.toolbar.newVerification') }}</el-button>
+                <el-button type="danger" size="small">{{ t('hump.headway.toolbar.delete') }}</el-button>
+                <el-button type="success" size="small">{{ t('hump.headway.toolbar.save') }}</el-button>
             </div>
             <div class="headway-toolbar__group">
-                <label>计算条件</label>
-                <el-select v-model="selectedCondition" placeholder="请选择计算条件" size="small" clearable>
-                    <el-option label="条件A" value="conditionA"></el-option>
-                    <el-option label="条件B" value="conditionB"></el-option>
-                    <el-option label="条件C" value="conditionC"></el-option>
+                <label>{{ t('hump.headway.labels.condition') }}</label>
+                <el-select v-model="selectedCondition" :placeholder="t('hump.headway.placeholders.selectCondition')"
+                    size="small" clearable>
+                    <el-option :label="t('hump.headway.options.condA')" value="conditionA"></el-option>
+                    <el-option :label="t('hump.headway.options.condB')" value="conditionB"></el-option>
+                    <el-option :label="t('hump.headway.options.condC')" value="conditionC"></el-option>
                 </el-select>
             </div>
             <div class="headway-toolbar__group">
-                <el-button type="primary" size="small">生成速度-距离曲线</el-button>
+                <el-button type="primary" size="small">{{ t('hump.headway.toolbar.genVelocityChart') }}</el-button>
             </div>
             <div class="headway-toolbar__group">
-                <el-button type="primary" size="small">生成时间-距离曲线</el-button>
+                <el-button type="primary" size="small">{{ t('hump.headway.toolbar.genTimeChart') }}</el-button>
             </div>
         </div>
 
@@ -64,10 +67,13 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
-import axios from 'axios'
+import axios from '@/utils/axios'
 import config from '../config.json'
 import HumpVelocityCurve from './HumpVelocityCurve.vue'
 import HumpTimeCurve from './HumpTimeCurve.vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 // 全屏状态管理
 const fullscreenChart = ref<'velocity' | 'time' | null>(null)
@@ -91,14 +97,14 @@ const selectedVerification = ref('')
 
 // 速度-距离曲线tags数据
 const velocityTabs = ref([
-    { name: 'series1', label: '系列1' },
-    { name: 'series2', label: '系列2' }
+    { name: 'series1', label: t('hump.headway.series.series1') },
+    { name: 'series2', label: t('hump.headway.series.series2') }
 ])
 
 // 时间-距离曲线tags数据
 const timeTabs = ref([
-    { name: 'series1', label: '系列1' },
-    { name: 'series2', label: '系列2' }
+    { name: 'series1', label: t('hump.headway.series.series1') },
+    { name: 'series2', label: t('hump.headway.series.series2') }
 ])
 
 // 删除速度-距离曲线的tag
@@ -183,7 +189,7 @@ const fetchVelocityCurve = async () => {
         const colors = ['#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#8b5cf6']
         velocityCurveData.value = [
             {
-                seriesName: '系列1',
+                seriesName: t('hump.headway.series.series1'),
                 color: '#3b82f6',
                 data: response.data
             }
@@ -191,11 +197,11 @@ const fetchVelocityCurve = async () => {
         // 数据载入后更新容器宽度
         updateContainerWidth()
     } catch (error) {
-        console.error('获取速度曲线数据失败:', error)
+        console.error(t('hump.headway.messages.fetchVelocityFailed'), error)
         // 使用模拟数据
         velocityCurveData.value = [
             {
-                seriesName: '系列1',
+                seriesName: t('hump.headway.series.series1'),
                 color: '#3b82f6',
                 data: [
                     { x: 0, velocity: 0 },
@@ -231,7 +237,7 @@ const fetchTimeCurve = async () => {
         const colors = ['#e11d48', '#059669', '#dc2626', '#7c3aed', '#ea580c']
         timeCurveData.value = [
             {
-                seriesName: '系列1',
+                seriesName: t('hump.headway.series.series1'),
                 color: '#e11d48',
                 data: response.data
             }
@@ -239,11 +245,11 @@ const fetchTimeCurve = async () => {
         // 数据载入后更新容器宽度
         updateContainerWidth()
     } catch (error) {
-        console.error('获取时间曲线数据失败:', error)
+        console.error(t('hump.headway.messages.fetchTimeFailed'), error)
         // 使用模拟数据
         timeCurveData.value = [
             {
-                seriesName: '系列1',
+                seriesName: t('hump.headway.series.series1'),
                 color: '#e11d48',
                 data: [
                     { x: 0, time: 0 },

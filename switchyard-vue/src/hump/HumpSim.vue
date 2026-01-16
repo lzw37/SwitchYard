@@ -5,7 +5,7 @@
 <script setup lang="ts">
 import { computed, ref, onMounted } from 'vue'
 import type { SlopeLayout } from './humplayoutctrl';
-import axios from 'axios'
+import axios from '@/utils/axios'
 import config from '../config.json'
 const slopeLayout = ref<SlopeLayout | null>(null);
 </script>

@@ -1,0 +1,373 @@
+{
+    "login": {
+        "title": "用户登录",
+        "usernamePlaceholder": "请输入用户名",
+        "passwordPlaceholder": "请输入密码",
+        "login": "登录",
+        "registerPrompt": "还没有账号？",
+        "registerLink": "立即注册",
+        "validation": {
+            "usernameRequired": "请输入用户名",
+            "usernameLength": "用户名长度应在 3-20 个字符之间",
+            "passwordRequired": "请输入密码",
+            "passwordLength": "密码长度应在 6-30 个字符之间"
+        },
+        "success": "登录成功",
+        "incompleteResponse": "登录响应数据不完整",
+        "failed": "登录失败，请检查用户名和密码"
+    },
+    "createUser": {
+        "title": "创建新用户",
+        "username": "用户名",
+        "password": "密码",
+        "confirmPassword": "确认密码",
+        "email": "邮箱",
+        "role": "角色",
+        "placeholder": {
+            "username": "请输入用户名（3-50个字符）",
+            "password": "请输入密码（至少6个字符）",
+            "confirmPassword": "请再次输入密码",
+            "email": "请输入邮箱（可选）",
+            "selectRole": "请选择角色"
+        },
+        "roles": {
+            "user": "普通用户",
+            "admin": "管理员"
+        },
+        "buttons": {
+            "create": "创建用户",
+            "cancel": "取消",
+            "returnLogin": "返回登录"
+        },
+        "validation": {
+            "usernameRequired": "请输入用户名",
+            "usernameLength": "用户名长度应在 3-50 个字符之间",
+            "passwordRequired": "请输入密码",
+            "passwordLength": "密码长度应至少为 6 个字符",
+            "emailInvalid": "请输入正确的邮箱地址",
+            "roleRequired": "请选择角色",
+            "confirmRequired": "请再次输入密码",
+            "confirmMismatch": "两次输入的密码不一致"
+        },
+        "success": "用户创建成功",
+        "failed": "创建用户失败，请稍后重试",
+        "networkError": "网络错误，请稍后重试"
+    },
+    "userManager": {
+        "searchPlaceholder": "搜索用户名或邮箱",
+        "refresh": "刷新",
+        "columns": {
+            "username": "用户名",
+            "email": "邮箱",
+            "role": "角色",
+            "active": "可用",
+            "actions": "操作"
+        },
+        "actions": {
+            "edit": "编辑",
+            "setRole": "设置角色",
+            "delete": "删除"
+        },
+        "dialogs": {
+            "editTitle": "编辑用户",
+            "setRoleTitle": "设置角色",
+            "rolePlaceholder": "选择角色"
+        },
+        "buttons": {
+            "cancel": "取消",
+            "save": "保存"
+        },
+        "messages": {
+            "loadFailed": "加载用户失败",
+            "saveSuccess": "用户信息已保存",
+            "saveFailed": "保存失败",
+            "roleUpdated": "角色已更新",
+            "roleUpdateFailed": "设置角色失败",
+            "statusUpdated": "状态已更新",
+            "statusUpdateFailed": "更新状态失败",
+            "deleteConfirm": "确定删除用户 {username} 吗？此操作不可恢复。",
+            "deleted": "用户已删除",
+            "deleteFailed": "删除失败"
+        }
+    },
+    "userInfo": {
+        "title": "用户信息",
+        "labels": {
+            "username": "用户名",
+            "email": "邮箱",
+            "role": "角色"
+        },
+        "save": "保存修改",
+        "changePassword": {
+            "title": "修改密码",
+            "current": "当前密码",
+            "new": "新密码",
+            "confirm": "确认新密码",
+            "submit": "修改密码",
+            "success": "密码修改成功，请重新登录",
+            "failed": "修改密码失败"
+        },
+        "messages": {
+            "saveSuccess": "用户信息已保存",
+            "saveFailed": "保存失败",
+            "passwordIncomplete": "请输入完整的密码信息",
+            "passwordMismatch": "两次输入的密码不一致"
+        }
+    },
+    "common": {
+        "networkError": "网络错误，请稍后重试",
+        "confirm": "请确认"
+    },
+    "axios": {
+        "noPermission": "没有权限访问该资源",
+        "notFound": "请求的资源不存在",
+        "serverError": "服务器内部错误",
+        "requestFailed": "请求失败",
+        "networkError": "网络错误，请检查网络连接",
+        "requestConfigError": "请求配置错误"
+    },
+    "hump": {
+        "selectLine": "请选择线路",
+        "load": "加载",
+        "tabs": {
+            "ctrl": "控制点及区段",
+            "switch": "道岔",
+            "retarder": "减速器"
+        },
+        "xCoord": "X 坐标",
+        "controlList": "控制点列表",
+        "insert": "插入",
+        "insertAfter": "插入下方",
+        "sectionList": "区段列表",
+        "startID": "起始位置ID",
+        "endID": "结束位置ID",
+        "length": "长度",
+        "curvature": "曲线度",
+        "direction": "曲线方向",
+        "bindingPosition": "绑定位置ID",
+        "bindingSegment": "绑定区段ID",
+        "choosePosition": "请选择位置",
+        "chooseSegment": "请选择区段",
+        "type": "类型",
+        "switchTypes": {
+            "Single": "单开道岔",
+            "Slip": "交分道岔",
+            "Diamond": "菱形交叉",
+            "None": "无",
+            "Unknown": "未知"
+        },
+        "switchDirections": {
+            "Reverse": "逆向",
+            "Forward": "顺向",
+            "None": "无",
+            "Unknown": "未知"
+        },
+        "switchSides": {
+            "Left": "左开",
+            "Right": "右开",
+            "None": "无",
+            "Unknown": "未知"
+        },
+        "curveDirections": {
+            "Left": "左转",
+            "Right": "右转",
+            "None": "无"
+        },
+        "retarder": {
+            "addParam": "添加参数",
+            "confirm": "确定",
+            "cancel": "取消",
+            "add": "+",
+            "index": "序号",
+            "params": "参数"
+        },
+        "id": "ID",
+        "side": "侧边",
+        "sideLabel": "侧边",
+        "calcCondition": {
+            "new": "新建",
+            "save": "保存",
+            "reset": "重置",
+            "sections": {
+                "overview": "概况",
+                "wagonInfo": "车辆信息",
+                "speed": "速度参数",
+                "wind": "风速信息",
+                "environment": "环境参数",
+                "physical": "物理参数",
+                "retarder": "减速机参数"
+            },
+            "labels": {
+                "conditionName": "计算条件名称",
+                "wagonType": "车辆类型",
+                "peakVelocity": "推峰速度",
+                "slopeAvgVelocity": "溜放部分平均速度",
+                "yardAvgVelocity": "调车场平均速度",
+                "windVelocity": "风速",
+                "windDirection": "风向",
+                "airDensity": "空气密度",
+                "temperature": "气温",
+                "gravity": "重力加速度",
+                "retarderActivation": "减速机启动阈值",
+                "retarderOutput": "减速机输出参数"
+            },
+            "placeholders": {
+                "conditionName": "例如：标准计算条件",
+                "chooseWagon": "请选择车辆类型",
+                "jsonExample": "JSON格式，例如：{}"
+            },
+            "options": {
+                "other": "其他",
+                "headwind": "逆风",
+                "tailwind": "顺风"
+            },
+            "messages": {
+                "retarderActivationFormatError": "减速机启动阈值格式错误，请输入有效的JSON",
+                "retarderOutputFormatError": "减速机输出参数格式错误，请输入有效的JSON",
+                "saved": "计算条件已保存",
+                "loaded": "计算条件已加载",
+                "deleted": "计算条件已删除"
+            },
+            "defaults": {
+                "conditionName": "标准计算条件"
+            }
+        },
+        "headway": {
+            "toolbar": {
+                "debugFetch": "Debug获取数据",
+                "newVerification": "新建检算实例",
+                "delete": "删除",
+                "save": "保存",
+                "genVelocityChart": "生成速度-距离曲线",
+                "genTimeChart": "生成时间-距离曲线"
+            },
+            "labels": {
+                "verification": "检算实例",
+                "designScheme": "纵断面方案",
+                "condition": "计算条件"
+            },
+            "placeholders": {
+                "selectVerification": "请选择检算数据",
+                "selectDesign": "请选择设计方案",
+                "selectCondition": "请选择计算条件"
+            },
+            "options": {
+                "verify1": "验证集1",
+                "verify2": "验证集2",
+                "verify3": "验证集3",
+                "scheme1": "方案1",
+                "scheme2": "方案2",
+                "scheme3": "方案3",
+                "condA": "条件A",
+                "condB": "条件B",
+                "condC": "条件C"
+            },
+            "series": {
+                "series1": "系列1",
+                "series2": "系列2"
+            },
+            "messages": {
+                "fetchVelocityFailed": "获取速度曲线数据失败",
+                "fetchTimeFailed": "获取时间曲线数据失败"
+            }
+        }
+    },
+    "humpChart": {
+        "velocityTitle": "速度-距离曲线",
+        "timeTitle": "时间-距离曲线",
+        "fullscreenEnter": "全屏",
+        "fullscreenExit": "退出全屏",
+        "axis": {
+            "distance": "距离 (m)",
+            "velocity": "速度 (m/s)",
+            "time": "时间 (s)"
+        },
+        "placeholderInterval": "间隔数据（占位）+- 默认生成点位"
+    },
+    "humpMain": {
+        "tabs": {
+            "plan": "平面展开图",
+            "vehicle": "计算参数",
+            "profile": "纵断面设计",
+            "release": "车辆溜放检算",
+            "simulation": "车辆溜放仿真"
+        },
+        "headings": {
+            "wagonParams": "车辆参数",
+            "calcCondition": "计算条件"
+        },
+        "lines": {
+            "1": "1 号线",
+            "2": "2 号线",
+            "3": "3 号线"
+        }
+    },
+
+    "wagon": {
+        "new": "新建车型",
+        "type": "车型",
+        "actionsLabel": "操作",
+        "length": "长度 (m)",
+        "netMass": "自重 (t)",
+        "loadingMass": "载重 (t)",
+        "grossMass": "总重量 (t)",
+        "windwardArea": "迎风面积 (m²)",
+        "axleNumber": "轴数",
+        "label": "标签",
+        "chooseLabel": "选择标签",
+        "labelHard": "难行车",
+        "labelMedium": "中行车",
+        "labelEasy": "易行车",
+        "actions": {
+            "edit": "编辑",
+            "save": "保存",
+            "delete": "删除"
+        }
+    },
+    "humpLayoutCtrl": {
+        "horizontalBaseline": "横向基线",
+        "horizontalScale": "横向缩放",
+        "verticalBaseline": "纵向基线"
+    },
+    "humpSlopeDesigner": {
+        "tool": "工具",
+        "longitudinalSectionScheme": "纵断面方案",
+        "selectCalculationCondition": "选择计算条件",
+        "condition1": "条件1",
+        "condition2": "条件2",
+        "condition3": "条件3",
+        "calculationCondition": "计算条件",
+        "initialKineticEnergyLine": "初始动能高线",
+        "resistanceEnergyLine": "阻力能高线",
+        "kineticEnergyLine": "动能高线",
+        "brakingEnergyLine": "制动能高线",
+        "xScale": "X缩放",
+        "yScale": "Y缩放",
+        "data": "数据",
+        "humpVelocity": "推峰速度：",
+        "slopeVelocity": "溜放部分溜放速度：",
+        "yardVelocity": "调车场溜放速度：",
+        "windSpeed": "风速：",
+        "headWind": "逆风",
+        "tailWind": "顺风",
+        "airDensity": "空气密度：",
+        "temperature": "温度：",
+        "positionPoints": "位置点",
+        "positionSegments": "位置区间",
+        "id": "ID",
+        "positionX": "位置X/m",
+        "height": "高度/m",
+        "startPositionID": "起始位置ID",
+        "endPositionID": "结束位置ID",
+        "length": "长度/m",
+        "gradient": "坡度/‰",
+        "wagonType": "车辆类型:",
+        "humpVelocityLabel": "推峰速度:",
+        "slopeVelocityLabel": "溜放速度:",
+        "slopePart": "溜放部分",
+        "yard": "调车场:",
+        "windSpeedLabel": "风速:",
+        "airDensityLabel": "空气密度:",
+        "temperatureLabel": "温度:"
+    }
+}

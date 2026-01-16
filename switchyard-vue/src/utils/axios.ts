@@ -5,6 +5,7 @@ import type {
     AxiosError,
 } from "axios";
 import { ElMessage } from "element-plus";
+import { i18n } from "../i18n";
 import config from "../config.json";
 
 // 配置全局axios默认设置
@@ -53,23 +54,30 @@ axios.interceptors.response.use(
                     }, 2000);
                     break;
                 case 403:
-                    ElMessage.error("没有权限访问该资源");
+                    ElMessage.error(
+                        i18n.global.t("axios.noPermission") as string
+                    );
                     break;
                 case 404:
-                    ElMessage.error("请求的资源不存在");
+                    ElMessage.error(i18n.global.t("axios.notFound") as string);
                     break;
                 case 500:
-                    ElMessage.error("服务器内部错误");
+                    ElMessage.error(
+                        i18n.global.t("axios.serverError") as string
+                    );
                     break;
                 default:
                     ElMessage.error(
-                        (error.response.data as any)?.message || "请求失败"
+                        (error.response.data as any)?.message ||
+                            (i18n.global.t("axios.requestFailed") as string)
                     );
             }
         } else if (error.request) {
-            ElMessage.error("网络错误，请检查网络连接");
+            ElMessage.error(i18n.global.t("axios.networkError") as string);
         } else {
-            ElMessage.error("请求配置错误");
+            ElMessage.error(
+                i18n.global.t("axios.requestConfigError") as string
+            );
         }
 
         return Promise.reject(error);

@@ -2,16 +2,16 @@
     <div style="width:100%;height:100%">
         <div v-if="props.isToolbarDisplay" class="flatlayout-toolbar">
             <div class="flatlayout-toolbar__group">
-                <label for="leftmargin-slider">横向基线</label>
+                <label for="leftmargin-slider">{{ t('humpLayoutCtrl.horizontalBaseline') }}</label>
                 <el-slider id="leftmargin-slider" size="small" v-model="leftMarginSliderValue" :min="-50" :max="500"
                     :step="10" />
             </div>
             <div class="flatlayout-toolbar__group">
-                <label for="scalex-slider">横向缩放</label>
+                <label for="scalex-slider">{{ t('humpLayoutCtrl.horizontalScale') }}</label>
                 <el-slider id="scalex-slider" size="small" v-model="scaleX" :min="0.1" :max="5" :step="0.01" />
             </div>
             <div class="flatlayout-toolbar__group">
-                <label for="baseline-slider">纵向基线</label>
+                <label for="baseline-slider">{{ t('humpLayoutCtrl.verticalBaseline') }}</label>
                 <el-slider id="baseline-slider" size="small" v-model="baseLineY" :min="0" :max="250" :step="1" />
             </div>
         </div>
@@ -96,11 +96,14 @@
 
 <script lang="ts" setup>
 import { ref, onMounted, onBeforeUnmount, watch, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Switch, SwitchTypes, SwitchDirections, SwitchSides, PositionSegment, CurveDirections } from './humplayoutctrl'
-import axios from 'axios'
+import axios from '@/utils/axios'
 
 const emit = defineEmits(['update:flatLayout', 'update:globalCursorX'])
 const props = defineProps<{ flatLayout?: any, isToolbarDisplay?: boolean, isEditable?: boolean, globalScaleX?: number, globalCursorX?: number }>()
+
+const { t } = useI18n()
 
 const svgRef = ref<SVGSVGElement | null>(null)
 

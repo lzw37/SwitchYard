@@ -1,37 +1,39 @@
 <template>
     <div class="user-info-container">
         <div class="card">
-            <h2>用户信息</h2>
+            <h2>{{ t('userInfo.title') }}</h2>
             <el-form :model="user" ref="userFormRef" label-width="100px">
-                <el-form-item label="用户名">
+                <el-form-item :label="t('userInfo.labels.username')">
                     <el-input v-model="user.username" disabled />
                 </el-form-item>
-                <el-form-item label="邮箱">
+                <el-form-item :label="t('userInfo.labels.email')">
                     <el-input v-model="user.email" />
                 </el-form-item>
-                <el-form-item label="角色">
+                <el-form-item :label="t('userInfo.labels.role')">
                     <el-input v-model="user.role" disabled />
                 </el-form-item>
                 <el-form-item>
-                    <el-button type="primary" @click="saveProfile" :loading="saving">保存修改</el-button>
+                    <el-button type="primary" @click="saveProfile" :loading="saving">{{ t('userInfo.save')
+                        }}</el-button>
                 </el-form-item>
             </el-form>
         </div>
 
         <div class="card">
-            <h2>修改密码</h2>
+            <h2>{{ t('userInfo.changePassword.title') }}</h2>
             <el-form :model="pwdForm" ref="pwdFormRef" label-width="120px">
-                <el-form-item label="当前密码">
+                <el-form-item :label="t('userInfo.changePassword.current')">
                     <el-input v-model="pwdForm.currentPassword" type="password" show-password />
                 </el-form-item>
-                <el-form-item label="新密码">
+                <el-form-item :label="t('userInfo.changePassword.new')">
                     <el-input v-model="pwdForm.newPassword" type="password" show-password />
                 </el-form-item>
-                <el-form-item label="确认新密码">
+                <el-form-item :label="t('userInfo.changePassword.confirm')">
                     <el-input v-model="pwdForm.confirmPassword" type="password" show-password />
                 </el-form-item>
                 <el-form-item>
-                    <el-button type="warning" @click="changePassword" :loading="changing">修改密码</el-button>
+                    <el-button type="warning" @click="changePassword" :loading="changing">{{
+                        t('userInfo.changePassword.submit') }}</el-button>
                 </el-form-item>
             </el-form>
         </div>
@@ -40,6 +42,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import axios from '@/utils/axios'
 import { ElMessage } from 'element-plus'
@@ -53,6 +56,7 @@ interface UserInfo {
 }
 
 const router = useRouter()
+const { t } = useI18n()
 const userFormRef = ref()
 const pwdFormRef = ref()
 const saving = ref(false)
@@ -79,7 +83,7 @@ const loadUserInfo = async () => {
         user.role = d.role
         user.createdAt = d.createdAt
     } catch (err) {
-        console.error('获取用户信息失败', err)
+        console.error(t('userInfo.messages.saveFailed'), err)
     }
 }
 
@@ -88,11 +92,11 @@ const saveProfile = async () => {
     try {
         // 假设后端支持 PUT /api/Auth/userinfo 接收 { email }
         await axios.put('/api/Auth/userinfo', { email: user.email })
-        ElMessage.success('用户信息已保存')
+        ElMessage.success(t('userInfo.messages.saveSuccess') as string)
         await loadUserInfo()
     } catch (err: any) {
         console.error(err)
-        ElMessage.error(err?.response?.data?.message || '保存失败')
+        ElMessage.error(err?.response?.data?.message || t('userInfo.messages.saveFailed') as string)
     } finally {
         saving.value = false
     }
@@ -100,11 +104,11 @@ const saveProfile = async () => {
 
 const changePassword = async () => {
     if (!pwdForm.currentPassword || !pwdForm.newPassword) {
-        ElMessage.error('请输入完整的密码信息')
+        ElMessage.error(t('userInfo.messages.passwordIncomplete') as string)
         return
     }
     if (pwdForm.newPassword !== pwdForm.confirmPassword) {
-        ElMessage.error('两次输入的密码不一致')
+        ElMessage.error(t('userInfo.messages.passwordMismatch') as string)
         return
     }
 
@@ -117,7 +121,7 @@ const changePassword = async () => {
             currentPassword: currentHash,
             newPassword: newHash,
         })
-        ElMessage.success('密码修改成功，请重新登录')
+        ElMessage.success(t('userInfo.changePassword.success') as string)
         // 清理本地认证并返回登录页
         localStorage.removeItem('token')
         localStorage.removeItem('tokenType')
@@ -126,7 +130,7 @@ const changePassword = async () => {
         setTimeout(() => router.replace('/login'), 1000)
     } catch (err: any) {
         console.error(err)
-        ElMessage.error(err?.response?.data?.message || '修改密码失败')
+        ElMessage.error(err?.response?.data?.message || t('userInfo.changePassword.failed') as string)
     } finally {
         changing.value = false
         pwdForm.currentPassword = ''

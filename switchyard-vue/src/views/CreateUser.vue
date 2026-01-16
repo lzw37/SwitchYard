@@ -1,45 +1,49 @@
 <template>
     <div class="create-user-container">
         <div class="create-user-box">
-            <h2 class="create-user-title">创建新用户</h2>
+            <h2 class="create-user-title">{{ t('createUser.title') }}</h2>
             <el-form :model="createUserForm" :rules="rules" ref="createUserFormRef" class="create-user-form"
                 label-width="80px">
-                <el-form-item label="用户名" prop="username">
-                    <el-input v-model="createUserForm.username" placeholder="请输入用户名（3-50个字符）" clearable />
+                <el-form-item :label="t('createUser.username')" prop="username">
+                    <el-input v-model="createUserForm.username" :placeholder="t('createUser.placeholder.username')"
+                        clearable />
                 </el-form-item>
 
-                <el-form-item label="密码" prop="password">
-                    <el-input v-model="createUserForm.password" type="password" placeholder="请输入密码（至少6个字符）"
-                        show-password clearable />
+                <el-form-item :label="t('createUser.password')" prop="password">
+                    <el-input v-model="createUserForm.password" type="password"
+                        :placeholder="t('createUser.placeholder.password')" show-password clearable />
                 </el-form-item>
 
-                <el-form-item label="确认密码" prop="confirmPassword">
-                    <el-input v-model="createUserForm.confirmPassword" type="password" placeholder="请再次输入密码"
-                        show-password clearable @keyup.enter="handleCreateUser" />
+                <el-form-item :label="t('createUser.confirmPassword')" prop="confirmPassword">
+                    <el-input v-model="createUserForm.confirmPassword" type="password"
+                        :placeholder="t('createUser.placeholder.confirmPassword')" show-password clearable
+                        @keyup.enter="handleCreateUser" />
                 </el-form-item>
 
-                <el-form-item label="邮箱" prop="email">
-                    <el-input v-model="createUserForm.email" placeholder="请输入邮箱（可选）" clearable />
+                <el-form-item :label="t('createUser.email')" prop="email">
+                    <el-input v-model="createUserForm.email" :placeholder="t('createUser.placeholder.email')"
+                        clearable />
                 </el-form-item>
 
-                <el-form-item label="角色" prop="role">
-                    <el-select v-model="createUserForm.role" placeholder="请选择角色" style="width: 100%">
-                        <el-option label="普通用户" value="User" />
-                        <el-option label="管理员" value="Admin" />
+                <el-form-item :label="t('createUser.role')" prop="role">
+                    <el-select v-model="createUserForm.role" :placeholder="t('createUser.placeholder.selectRole')"
+                        style="width: 100%">
+                        <el-option :label="t('createUser.roles.user')" value="User" />
+                        <el-option :label="t('createUser.roles.admin')" value="Admin" />
                     </el-select>
                 </el-form-item>
 
                 <el-form-item>
                     <el-button type="primary" :loading="loading" @click="handleCreateUser" class="create-button">
-                        创建用户
+                        {{ t('createUser.buttons.create') }}
                     </el-button>
                     <el-button @click="handleCancel" class="cancel-button">
-                        取消
+                        {{ t('createUser.buttons.cancel') }}
                     </el-button>
                 </el-form-item>
 
                 <div class="back-to-login">
-                    <router-link to="/login">返回登录</router-link>
+                    <router-link to="/login">{{ t('createUser.buttons.returnLogin') }}</router-link>
                 </div>
             </el-form>
         </div>
@@ -48,10 +52,11 @@
 
 <script setup lang="ts">
 import { ref, reactive } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
-import axios from 'axios'
+import axios from '@/utils/axios'
 
 // 定义创建用户请求接口
 interface CreateUserRequest {
@@ -72,6 +77,7 @@ interface CreateUserResponse {
 }
 
 const router = useRouter()
+const { t } = useI18n()
 const createUserFormRef = ref<FormInstance>()
 const loading = ref(false)
 
@@ -87,9 +93,9 @@ const createUserForm = reactive({
 // 密码确认验证器
 const validateConfirmPassword = (rule: any, value: any, callback: any) => {
     if (value === '') {
-        callback(new Error('请再次输入密码'))
+        callback(new Error(t('createUser.validation.confirmRequired')))
     } else if (value !== createUserForm.password) {
-        callback(new Error('两次输入的密码不一致'))
+        callback(new Error(t('createUser.validation.confirmMismatch')))
     } else {
         callback()
     }
@@ -98,21 +104,21 @@ const validateConfirmPassword = (rule: any, value: any, callback: any) => {
 // 表单验证规则
 const rules = reactive<FormRules>({
     username: [
-        { required: true, message: '请输入用户名', trigger: 'blur' },
-        { min: 3, max: 50, message: '用户名长度应在 3-50 个字符之间', trigger: 'blur' }
+        { required: true, message: t('createUser.validation.usernameRequired'), trigger: 'blur' },
+        { min: 3, max: 50, message: t('createUser.validation.usernameLength'), trigger: 'blur' }
     ],
     password: [
-        { required: true, message: '请输入密码', trigger: 'blur' },
-        { min: 6, max: 30, message: '密码长度应至少为 6 个字符', trigger: 'blur' }
+        { required: true, message: t('createUser.validation.passwordRequired'), trigger: 'blur' },
+        { min: 6, max: 30, message: t('createUser.validation.passwordLength'), trigger: 'blur' }
     ],
     confirmPassword: [
         { required: true, validator: validateConfirmPassword, trigger: 'blur' }
     ],
     email: [
-        { type: 'email', message: '请输入正确的邮箱地址', trigger: 'blur' }
+        { type: 'email', message: t('createUser.validation.emailInvalid'), trigger: 'blur' }
     ],
     role: [
-        { required: true, message: '请选择角色', trigger: 'change' }
+        { required: true, message: t('createUser.validation.roleRequired'), trigger: 'change' }
     ]
 })
 
@@ -151,9 +157,9 @@ const handleCreateUser = async () => {
                 const response = await axios.post<CreateUserResponse>('/api/Auth/createuser', requestData)
 
                 if (response.data.name) {
-                    ElMessage.success(response.data.message || '用户创建成功')
+                    ElMessage.success(response.data.message || t('createUser.success'))
                 } else {
-                    throw new Error('创建用户响应数据不完整')
+                    throw new Error(t('createUser.failed'))
                 }
 
                 // 创建成功后跳转到登录页
@@ -165,9 +171,9 @@ const handleCreateUser = async () => {
                 if (error.response?.data?.message) {
                     ElMessage.error(error.response.data.message)
                 } else if (!error.response) {
-                    ElMessage.error('网络错误，请稍后重试')
+                    ElMessage.error(t('createUser.networkError'))
                 } else {
-                    ElMessage.error('创建用户失败，请稍后重试')
+                    ElMessage.error(t('createUser.failed'))
                 }
             } finally {
                 loading.value = false

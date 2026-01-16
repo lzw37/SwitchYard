@@ -1,11 +1,11 @@
 <template>
     <section class="hump-layout">
         <div class="plan-top">
-            <el-select v-model="selectedLine" placeholder="请选择线路" clearable style="width:240px">
+            <el-select v-model="selectedLine" :placeholder="t('hump.selectLine')" clearable style="width:240px">
                 <el-option v-for="line in lines" :key="line.id" :label="line.name" :value="line.id" />
             </el-select>
             <div>
-                <el-button type="primary" @click="loadFlatLayout">加载</el-button>
+                <el-button type="primary" @click="loadFlatLayout">{{ t('hump.load') }}</el-button>
             </div>
         </div>
 
@@ -18,52 +18,54 @@
 
         <div class="plan-subtabs">
             <el-tabs v-model="planSubTab" type="border-card">
-                <el-tab-pane label="控制点及区段" name="ctrl">
+                <el-tab-pane :label="t('hump.tabs.ctrl')" name="ctrl">
                     <el-card>
                         <div style="display: flex; justify-content: space-between;">
                             <div style="flex: 1; margin-right: 10px;">
-                                <h3>控制点列表</h3>
+                                <h3>{{ t('hump.controlList') }}</h3>
                                 <el-table :data="flatLayout?.positionList || []" stripe :max-height="250"
                                     style="width: 100%">
-                                    <el-table-column label="ID" width="100">
+                                    <el-table-column :label="t('hump.id')" width="100">
                                         <template #default="scope">
                                             <el-input v-model="scope.row.id" size="small" />
                                         </template>
                                     </el-table-column>
-                                    <el-table-column label="X 坐标" width="150">
+                                    <el-table-column :label="t('hump.xCoord')" width="150">
                                         <template #default="scope">
                                             <el-input v-model="scope.row.x" size="small" type="number"
                                                 @input="onPositionXChange(scope.row)" />
                                         </template>
                                     </el-table-column>
-                                    <el-table-column label="插入" width="120">
+                                    <el-table-column :label="t('hump.insert')" width="120">
                                         <template #default="scope">
                                             <el-button size="small" type="primary"
-                                                @click="insertPositionAfter(scope.$index)">插入下方</el-button>
+                                                @click="insertPositionAfter(scope.$index)">{{ t('hump.insertAfter')
+                                                }}</el-button>
                                         </template>
                                     </el-table-column>
                                 </el-table>
                             </div>
                             <div style="flex: 3; margin-left: 10px;">
-                                <h3>区段列表</h3>
+                                <h3>{{ t('hump.sectionList') }}</h3>
                                 <el-table :data="flatLayout?.positionSegmentList || []" stripe :max-height="250"
                                     style="width: 100%">
-                                    <el-table-column prop="id" label="ID" width="100"></el-table-column>
-                                    <el-table-column prop="startPositionID" label="起始位置ID"
+                                    <el-table-column prop="id" :label="t('hump.id')" width="100"></el-table-column>
+                                    <el-table-column prop="startPositionID" :label="t('hump.startID')"
                                         width="120"></el-table-column>
-                                    <el-table-column prop="endPositionID" label="结束位置ID" width="120"></el-table-column>
-                                    <el-table-column label="长度" width="100">
+                                    <el-table-column prop="endPositionID" :label="t('hump.endID')"
+                                        width="120"></el-table-column>
+                                    <el-table-column :label="t('hump.length')" width="100">
                                         <template #default="scope">
                                             <el-input v-model="scope.row.length" size="small" type="number" disabled />
                                         </template>
                                     </el-table-column>
-                                    <el-table-column label="曲线度" width="100">
+                                    <el-table-column :label="t('hump.curvature')" width="100">
                                         <template #default="scope">
                                             <el-input v-model="scope.row.curveDegree" size="small" type="number"
                                                 @input="onCurveDegreeInput(scope.row, $event)" />
                                         </template>
                                     </el-table-column>
-                                    <el-table-column label="曲线方向" width="100">
+                                    <el-table-column :label="t('hump.direction')" width="100">
                                         <template #default="scope">
                                             <el-select v-model="scope.row.curveDirection"
                                                 :disabled="scope.row.curveDegree === 0" size="small">
@@ -78,13 +80,14 @@
                         </div>
                     </el-card>
                 </el-tab-pane>
-                <el-tab-pane label="道岔" name="switch">
+                <el-tab-pane :label="t('hump.tabs.switch')" name="switch">
                     <el-card>
                         <el-table :data="flatLayout?.switchList || []" stripe :max-height="250" style="width: 100%">
-                            <el-table-column label="绑定位置ID" width="140">
+                            <el-table-column :label="t('hump.bindingPosition')" width="140">
                                 <template #default="scope">
-                                    <el-select v-model="scope.row.bindingPositionID" placeholder="请选择位置" size="small"
-                                        clearable style="width:120px">
+                                    <el-select v-model="scope.row.bindingPositionID"
+                                        :placeholder="t('hump.choosePosition')" size="small" clearable
+                                        style="width:120px">
                                         <el-option v-for="opt in getPositionOptions()" :key="opt.value"
                                             :label="opt.label" :value="opt.value" />
                                     </el-select>
@@ -92,34 +95,38 @@
                             </el-table-column>
                             <el-table-column label="绑定区段ID" width="160">
                                 <template #default="scope">
-                                    <el-select v-model="scope.row.bindingPositionSegmentID" placeholder="请选择区段"
-                                        size="small" clearable style="width:140px">
+                                    <el-select v-model="scope.row.bindingPositionSegmentID"
+                                        :placeholder="t('hump.chooseSegment')" size="small" clearable
+                                        style="width:140px">
                                         <el-option v-for="opt in getPositionSegmentOptions()" :key="opt.value"
                                             :label="opt.label" :value="opt.value" />
                                     </el-select>
                                 </template>
                             </el-table-column>
-                            <el-table-column label="类型" width="120">
+                            <el-table-column :label="t('hump.type')" width="120">
                                 <template #default="scope">
-                                    <el-select v-model="scope.row.type" placeholder="请选择类型" size="small"
+                                    <el-select v-model="scope.row.type"
+                                        :placeholder="t('hump.chooseType') || t('hump.type')" size="small"
                                         style="width:100px">
                                         <el-option v-for="opt in getSwitchTypeOptions()" :key="opt.value"
                                             :label="opt.label" :value="opt.value" />
                                     </el-select>
                                 </template>
                             </el-table-column>
-                            <el-table-column label="方向" width="120">
+                            <el-table-column :label="t('hump.switchDirectionLabel') || t('hump.direction')" width="120">
                                 <template #default="scope">
-                                    <el-select v-model="scope.row.direction" placeholder="请选择方向" size="small"
+                                    <el-select v-model="scope.row.direction"
+                                        :placeholder="t('hump.chooseDirection') || t('hump.direction')" size="small"
                                         style="width:100px">
                                         <el-option v-for="opt in getSwitchDirectionOptions()" :key="opt.value"
                                             :label="opt.label" :value="opt.value" />
                                     </el-select>
                                 </template>
                             </el-table-column>
-                            <el-table-column label="侧边" width="120">
+                            <el-table-column :label="t('hump.sideLabel') || t('hump.side')" width="120">
                                 <template #default="scope">
-                                    <el-select v-model="scope.row.side" placeholder="请选择侧边" size="small"
+                                    <el-select v-model="scope.row.side"
+                                        :placeholder="t('hump.chooseSide') || t('hump.side')" size="small"
                                         style="width:100px">
                                         <el-option v-for="opt in getSwitchSideOptions()" :key="opt.value"
                                             :label="opt.label" :value="opt.value" />
@@ -129,13 +136,13 @@
                         </el-table>
                     </el-card>
                 </el-tab-pane>
-                <el-tab-pane label="减速器" name="retarder">
+                <el-tab-pane :label="t('hump.tabs.retarder')" name="retarder">
                     <el-card>
                         <el-table :data="flatLayout?.retarderList || []" stripe :max-height="250" style="width: 100%">
                             <el-table-column label="序号" width="80">
                                 <template #default="scope">{{ scope.$index + 1 }}</template>
                             </el-table-column>
-                            <el-table-column label="绑定区段ID" width="180">
+                            <el-table-column :label="t('hump.bindingSegment')" width="180">
                                 <template #default="scope">
                                     <el-select v-model="scope.row.bindingPositionSegmentID" placeholder="请选择区段"
                                         size="small" clearable style="width:160px">
@@ -144,22 +151,23 @@
                                     </el-select>
                                 </template>
                             </el-table-column>
-                            <el-table-column label="参数">
+                            <el-table-column :label="t('hump.retarder.params')">
                                 <template #default="scope">
                                     <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
                                         <el-tag v-for="(num, idx) in scope.row.numberArray || []" :key="idx" closable
                                             @close="removeRetarderParam(scope.row, idx)">{{ num }}</el-tag>
                                         <template v-if="!scope.row._showNewRetarderInput">
-                                            <el-button size="small"
-                                                @click="showNewRetarderInput(scope.row)">+</el-button>
+                                            <el-button size="small" @click="showNewRetarderInput(scope.row)">{{
+                                                t('hump.retarder.add') }}</el-button>
                                         </template>
                                         <template v-else>
-                                            <el-input v-model="scope.row._newRetarderParam" placeholder="添加参数"
-                                                size="small" style="width:120px"
-                                                @keyup.enter="addRetarderParam(scope.row)" />
-                                            <el-button size="small" @click="addRetarderParam(scope.row)">确定</el-button>
-                                            <el-button size="small"
-                                                @click="cancelNewRetarderInput(scope.row)">取消</el-button>
+                                            <el-input v-model="scope.row._newRetarderParam"
+                                                :placeholder="t('hump.retarder.addParam')" size="small"
+                                                style="width:120px" @keyup.enter="addRetarderParam(scope.row)" />
+                                            <el-button size="small" @click="addRetarderParam(scope.row)">{{
+                                                t('hump.retarder.confirm') }}</el-button>
+                                            <el-button size="small" @click="cancelNewRetarderInput(scope.row)">{{
+                                                t('hump.retarder.cancel') }}</el-button>
                                         </template>
                                     </div>
                                 </template>
@@ -174,10 +182,11 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import HumpLayoutCtrl from './HumpLayoutCtrl.vue'
 import type { FlatLayout } from './humplayoutctrl'
 import { CurveDirections, SwitchTypes, SwitchDirections, SwitchSides } from './humplayoutctrl'
-import axios from 'axios'
+import axios from '@/utils/axios'
 import config from '../config.json'
 
 const selectedLine = ref<number | null>(null)
@@ -192,45 +201,47 @@ const ctrlRef = ref<InstanceType<typeof HumpLayoutCtrl> | null>(null)
 const flatLayout = ref<FlatLayout | null>(null)
 const globalCursorX = ref<number | undefined>(undefined)
 
-const curveDirectionOptions = [
-    { label: '左转', value: CurveDirections.Left },
-    { label: '右转', value: CurveDirections.Right },
-    { label: '无', value: CurveDirections.None }
-]
+const { t } = useI18n()
+
 
 function updateGlobalCursorX(value: number) {
     globalCursorX.value = value
 }
 
 function getCurveDirectionOptions(degree: number) {
-    return curveDirectionOptions.filter(opt => opt.value !== CurveDirections.None || degree <= 0)
+    const opts = [
+        { label: t('hump.curveDirections.Left'), value: CurveDirections.Left },
+        { label: t('hump.curveDirections.Right'), value: CurveDirections.Right },
+        { label: t('hump.curveDirections.None'), value: CurveDirections.None }
+    ]
+    return opts.filter(opt => opt.value !== CurveDirections.None || degree <= 0)
 }
 
 function getSwitchTypeLabel(type: SwitchTypes): string {
     switch (type) {
-        case SwitchTypes.Single: return '单开道岔';
-        case SwitchTypes.Slip: return '交分道岔';
-        case SwitchTypes.Diamond: return '菱形交叉';
-        case SwitchTypes.None: return '无';
-        default: return '未知';
+        case SwitchTypes.Single: return t('hump.switchTypes.Single') as string;
+        case SwitchTypes.Slip: return t('hump.switchTypes.Slip') as string;
+        case SwitchTypes.Diamond: return t('hump.switchTypes.Diamond') as string;
+        case SwitchTypes.None: return t('hump.switchTypes.None') as string;
+        default: return t('hump.switchTypes.Unknown') as string;
     }
 }
 
 function getSwitchDirectionLabel(direction: SwitchDirections): string {
     switch (direction) {
-        case SwitchDirections.Reverse: return '逆向';
-        case SwitchDirections.Forward: return '顺向';
-        case SwitchDirections.None: return '无';
-        default: return '未知';
+        case SwitchDirections.Reverse: return t('hump.switchDirections.Reverse') as string;
+        case SwitchDirections.Forward: return t('hump.switchDirections.Forward') as string;
+        case SwitchDirections.None: return t('hump.switchDirections.None') as string;
+        default: return t('hump.switchDirections.Unknown') as string;
     }
 }
 
 function getSwitchSideLabel(side: SwitchSides): string {
     switch (side) {
-        case SwitchSides.Left: return '左开';
-        case SwitchSides.Right: return '右开';
-        case SwitchSides.None: return '无';
-        default: return '未知';
+        case SwitchSides.Left: return t('hump.switchSides.Left') as string;
+        case SwitchSides.Right: return t('hump.switchSides.Right') as string;
+        case SwitchSides.None: return t('hump.switchSides.None') as string;
+        default: return t('hump.switchSides.Unknown') as string;
     }
 }
 

@@ -1,0 +1,379 @@
+{
+    "login": {
+        "title": "User Login",
+        "usernamePlaceholder": "Please enter username",
+        "passwordPlaceholder": "Please enter password",
+        "login": "Sign In",
+        "registerPrompt": "Don't have an account?",
+        "registerLink": "Register now",
+        "validation": {
+            "usernameRequired": "Please enter username",
+            "usernameLength": "Username length should be between 3 and 20 characters",
+            "passwordRequired": "Please enter password",
+            "passwordLength": "Password length should be between 6 and 30 characters"
+        },
+        "success": "Login successful",
+        "incompleteResponse": "Login response is incomplete",
+        "failed": "Login failed, please check username and password"
+    },
+    "createUser": {
+        "title": "Create New User",
+        "username": "Username",
+        "password": "Password",
+        "confirmPassword": "Confirm Password",
+        "email": "Email",
+        "role": "Role",
+        "placeholder": {
+            "username": "Please enter username (3-50 chars)",
+            "password": "Please enter password (at least 6 chars)",
+            "confirmPassword": "Please enter password again",
+            "email": "Please enter email (optional)",
+            "selectRole": "Please select a role"
+        },
+        "roles": {
+            "user": "User",
+            "admin": "Administrator"
+        },
+        "buttons": {
+            "create": "Create User",
+            "cancel": "Cancel",
+            "returnLogin": "Back to Login"
+        },
+        "validation": {
+            "usernameRequired": "Please enter username",
+            "usernameLength": "Username length should be between 3 and 50 characters",
+            "passwordRequired": "Please enter password",
+            "passwordLength": "Password must be at least 6 characters",
+            "emailInvalid": "Please enter a valid email address",
+            "roleRequired": "Please select a role",
+            "confirmRequired": "Please enter password again",
+            "confirmMismatch": "The two passwords do not match"
+        },
+        "success": "User created successfully",
+        "failed": "Failed to create user, please try again later",
+        "networkError": "Network error, please try again later"
+    },
+    "userManager": {
+        "searchPlaceholder": "Search username or email",
+        "refresh": "Refresh",
+        "columns": {
+            "username": "Username",
+            "email": "Email",
+            "role": "Role",
+            "active": "Active",
+            "actions": "Actions"
+        },
+        "actions": {
+            "edit": "Edit",
+            "setRole": "Set Role",
+            "delete": "Delete"
+        },
+        "dialogs": {
+            "editTitle": "Edit User",
+            "setRoleTitle": "Set Role",
+            "rolePlaceholder": "Select role"
+        },
+        "buttons": {
+            "cancel": "Cancel",
+            "save": "Save"
+        },
+        "messages": {
+            "loadFailed": "Failed to load users",
+            "saveSuccess": "User info saved",
+            "saveFailed": "Save failed",
+            "roleUpdated": "Role updated",
+            "roleUpdateFailed": "Failed to set role",
+            "statusUpdated": "Status updated",
+            "statusUpdateFailed": "Failed to update status",
+            "deleteConfirm": "Are you sure to delete user {username}? This action cannot be undone.",
+            "deleted": "User deleted",
+            "deleteFailed": "Delete failed"
+        }
+    },
+    "userInfo": {
+        "title": "User Info",
+        "labels": {
+            "username": "Username",
+            "email": "Email",
+            "role": "Role"
+        },
+        "save": "Save Changes",
+        "changePassword": {
+            "title": "Change Password",
+            "current": "Current Password",
+            "new": "New Password",
+            "confirm": "Confirm New Password",
+            "submit": "Change Password",
+            "success": "Password changed successfully, please log in again",
+            "failed": "Failed to change password"
+        },
+        "messages": {
+            "saveSuccess": "User info saved",
+            "saveFailed": "Save failed",
+            "passwordIncomplete": "Please provide complete password information",
+            "passwordMismatch": "The two entered passwords do not match"
+        }
+    },
+    "common": {
+        "networkError": "Network error, please try again later",
+        "confirm": "Confirm"
+    },
+    "axios": {
+        "noPermission": "No permission to access this resource",
+        "notFound": "Requested resource not found",
+        "serverError": "Internal server error",
+        "requestFailed": "Request failed",
+        "networkError": "Network error, please check your connection",
+        "requestConfigError": "Request configuration error"
+    },
+    "units": {
+        "m_s": "m/s",
+        "kg_m3": "kg/m³",
+        "deg_c": "°C",
+        "m_s2": "m/s²"
+    },
+    "hump": {
+        "selectLine": "Please select a line",
+        "load": "Load",
+        "tabs": {
+            "ctrl": "Control Points & Sections",
+            "switch": "Turnouts",
+            "retarder": "Retarder"
+        },
+        "xCoord": "X Coordinate",
+        "controlList": "Control Point List",
+        "insert": "Insert",
+        "insertAfter": "Insert After",
+        "sectionList": "Section List",
+        "startID": "Start Position ID",
+        "endID": "End Position ID",
+        "length": "Length",
+        "curvature": "Curvature",
+        "direction": "Curve Direction",
+        "bindingPosition": "Binding Position ID",
+        "bindingSegment": "Binding Segment ID",
+        "choosePosition": "Please choose position",
+        "chooseSegment": "Please choose segment",
+        "type": "Type",
+        "switchTypes": {
+            "Single": "Single Switch",
+            "Slip": "Slip Switch",
+            "Diamond": "Diamond Crossing",
+            "None": "None",
+            "Unknown": "Unknown"
+        },
+        "switchDirections": {
+            "Reverse": "Reverse",
+            "Forward": "Forward",
+            "None": "None",
+            "Unknown": "Unknown"
+        },
+        "switchSides": {
+            "Left": "Left",
+            "Right": "Right",
+            "None": "None",
+            "Unknown": "Unknown"
+        },
+        "curveDirections": {
+            "Left": "Left",
+            "Right": "Right",
+            "None": "None"
+        },
+        "retarder": {
+            "addParam": "Add param",
+            "confirm": "Confirm",
+            "cancel": "Cancel",
+            "add": "+",
+            "index": "#",
+            "params": "Params"
+        },
+        "id": "ID",
+        "side": "Side",
+        "sideLabel": "Side",
+        "calcCondition": {
+            "new": "New",
+            "save": "Save",
+            "reset": "Reset",
+            "sections": {
+                "overview": "Overview",
+                "wagonInfo": "Wagon Info",
+                "speed": "Speed Parameters",
+                "wind": "Wind Info",
+                "environment": "Environment",
+                "physical": "Physical Parameters",
+                "retarder": "Retarder Parameters"
+            },
+            "labels": {
+                "conditionName": "Condition Name",
+                "wagonType": "Wagon Type",
+                "peakVelocity": "Peak Velocity",
+                "slopeAvgVelocity": "Slope Avg Velocity",
+                "yardAvgVelocity": "Yard Avg Velocity",
+                "windVelocity": "Wind Velocity",
+                "windDirection": "Wind Direction",
+                "airDensity": "Air Density",
+                "temperature": "Temperature",
+                "gravity": "Gravity Acceleration",
+                "retarderActivation": "Retarder Activation",
+                "retarderOutput": "Retarder Output"
+            },
+            "placeholders": {
+                "conditionName": "e.g. Standard Condition",
+                "chooseWagon": "Please choose wagon type",
+                "jsonExample": "JSON, e.g.: {}"
+            },
+            "options": {
+                "other": "Other",
+                "headwind": "Headwind",
+                "tailwind": "Tailwind"
+            },
+            "messages": {
+                "retarderActivationFormatError": "Retarder activation format error, please enter valid JSON",
+                "retarderOutputFormatError": "Retarder output format error, please enter valid JSON",
+                "saved": "Calculation condition saved",
+                "loaded": "Calculation condition loaded",
+                "deleted": "Calculation condition deleted"
+            },
+            "defaults": {
+                "conditionName": "Standard Condition"
+            }
+        },
+        "headway": {
+            "toolbar": {
+                "debugFetch": "Debug Fetch Data",
+                "newVerification": "New Verification",
+                "delete": "Delete",
+                "save": "Save",
+                "genVelocityChart": "Generate Velocity-Distance Chart",
+                "genTimeChart": "Generate Time-Distance Chart"
+            },
+            "labels": {
+                "verification": "Verification",
+                "designScheme": "Design Scheme",
+                "condition": "Condition"
+            },
+            "placeholders": {
+                "selectVerification": "Select verification data",
+                "selectDesign": "Select design scheme",
+                "selectCondition": "Select condition"
+            },
+            "options": {
+                "verify1": "Verify Set 1",
+                "verify2": "Verify Set 2",
+                "verify3": "Verify Set 3",
+                "scheme1": "Scheme 1",
+                "scheme2": "Scheme 2",
+                "scheme3": "Scheme 3",
+                "condA": "Condition A",
+                "condB": "Condition B",
+                "condC": "Condition C"
+            },
+            "series": {
+                "series1": "Series 1",
+                "series2": "Series 2"
+            },
+            "messages": {
+                "fetchVelocityFailed": "Failed to fetch velocity curve data",
+                "fetchTimeFailed": "Failed to fetch time curve data"
+            }
+        }
+    },
+    "humpChart": {
+        "velocityTitle": "Velocity-Distance Curve",
+        "timeTitle": "Time-Distance Curve",
+        "fullscreenEnter": "Enter Fullscreen",
+        "fullscreenExit": "Exit Fullscreen",
+        "axis": {
+            "distance": "Distance (m)",
+            "velocity": "Velocity (m/s)",
+            "time": "Time (s)"
+        },
+        "placeholderInterval": "Interval data (placeholder) +- default generated points"
+    },
+    "wagon": {
+        "new": "New Wagon Type",
+        "type": "Type",
+        "actionsLabel": "Actions",
+        "length": "Length (m)",
+        "netMass": "Net Mass (t)",
+        "loadingMass": "Loading Mass (t)",
+        "grossMass": "Gross Mass (t)",
+        "windwardArea": "Windward Area (m²)",
+        "axleNumber": "Axles",
+        "label": "Label",
+        "chooseLabel": "Choose label",
+        "labelHard": "Difficult",
+        "labelMedium": "Medium",
+        "labelEasy": "Easy",
+        "actions": {
+            "edit": "Edit",
+            "save": "Save",
+            "delete": "Delete"
+        }
+    },
+
+    "humpMain": {
+        "tabs": {
+            "plan": "Plan View",
+            "vehicle": "Calculation Parameters",
+            "profile": "Profile Design",
+            "release": "Headway Check",
+            "simulation": "Simulation"
+        },
+        "headings": {
+            "wagonParams": "Wagon Parameters",
+            "calcCondition": "Calculation Conditions"
+        },
+        "lines": {
+            "1": "Line 1",
+            "2": "Line 2",
+            "3": "Line 3"
+        }
+    },
+    "humpLayoutCtrl": {
+        "horizontalBaseline": "Horizontal Baseline",
+        "horizontalScale": "Horizontal Scale",
+        "verticalBaseline": "Vertical Baseline"
+    },
+    "humpSlopeDesigner": {
+        "tool": "Tool",
+        "longitudinalSectionScheme": "Longitudinal Section Scheme",
+        "selectCalculationCondition": "Select Calculation Condition",
+        "condition1": "Condition 1",
+        "condition2": "Condition 2",
+        "condition3": "Condition 3",
+        "calculationCondition": "Calculation Condition",
+        "initialKineticEnergyLine": "Initial Kinetic Energy Line",
+        "resistanceEnergyLine": "Resistance Energy Line",
+        "kineticEnergyLine": "Kinetic Energy Line",
+        "brakingEnergyLine": "Braking Energy Line",
+        "xScale": "X Scale",
+        "yScale": "Y Scale",
+        "data": "Data",
+        "humpVelocity": "Hump Velocity:",
+        "slopeVelocity": "Slope Velocity:",
+        "yardVelocity": "Yard Velocity:",
+        "windSpeed": "Wind Speed:",
+        "headWind": "Head Wind",
+        "tailWind": "Tail Wind",
+        "airDensity": "Air Density:",
+        "temperature": "Temperature:",
+        "positionPoints": "Position Points",
+        "positionSegments": "Position Segments",
+        "id": "ID",
+        "positionX": "Position X/m",
+        "height": "Height/m",
+        "startPositionID": "Start Position ID",
+        "endPositionID": "End Position ID",
+        "length": "Length/m",
+        "gradient": "Gradient/‰",
+        "wagonType": "Wagon Type:",
+        "humpVelocityLabel": "Hump Velocity:",
+        "slopeVelocityLabel": "Slope Velocity:",
+        "slopePart": "Slope Part",
+        "yard": "Yard:",
+        "windSpeedLabel": "Wind Speed:",
+        "airDensityLabel": "Air Density:",
+        "temperatureLabel": "Temperature:"
+    }
+}

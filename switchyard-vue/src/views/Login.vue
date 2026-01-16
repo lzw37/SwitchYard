@@ -1,27 +1,27 @@
 <template>
     <div class="login-container">
         <div class="login-box">
-            <h2 class="login-title">用户登录</h2>
+            <h2 class="login-title">{{ t('login.title') }}</h2>
             <el-form :model="loginForm" :rules="rules" ref="loginFormRef" class="login-form">
                 <el-form-item prop="username">
-                    <el-input v-model="loginForm.username" placeholder="请输入用户名" prefix-icon="User" size="large"
-                        clearable />
+                    <el-input v-model="loginForm.username" :placeholder="t('login.usernamePlaceholder')"
+                        prefix-icon="User" size="large" clearable />
                 </el-form-item>
 
                 <el-form-item prop="password">
-                    <el-input v-model="loginForm.password" type="password" placeholder="请输入密码" prefix-icon="Lock"
-                        size="large" show-password @keyup.enter="handleLogin" />
+                    <el-input v-model="loginForm.password" type="password" :placeholder="t('login.passwordPlaceholder')"
+                        prefix-icon="Lock" size="large" show-password @keyup.enter="handleLogin" />
                 </el-form-item>
 
                 <el-form-item>
                     <el-button type="primary" size="large" :loading="loading" @click="handleLogin" class="login-button">
-                        登录
+                        {{ t('login.login') }}
                     </el-button>
                 </el-form-item>
 
                 <div class="register-link">
-                    <span>还没有账号？</span>
-                    <router-link to="/createuser">立即注册</router-link>
+                    <span>{{ t('login.registerPrompt') }}</span>
+                    <router-link to="/createuser">{{ t('login.registerLink') }}</router-link>
                 </div>
             </el-form>
         </div>
@@ -30,10 +30,11 @@
 
 <script setup lang="ts">
 import { ref, reactive } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
-import axios from 'axios'
+import axios from '@/utils/axios'
 
 // 定义登录响应接口
 interface LoginResponse {
@@ -45,6 +46,7 @@ interface LoginResponse {
 }
 
 const router = useRouter()
+const { t } = useI18n()
 const loginFormRef = ref<FormInstance>()
 const loading = ref(false)
 
@@ -57,12 +59,12 @@ const loginForm = reactive({
 // 表单验证规则
 const rules = reactive<FormRules>({
     username: [
-        { required: true, message: '请输入用户名', trigger: 'blur' },
-        { min: 3, max: 20, message: '用户名长度应在 3-20 个字符之间', trigger: 'blur' }
+        { required: true, message: t('login.validation.usernameRequired'), trigger: 'blur' },
+        { min: 3, max: 20, message: t('login.validation.usernameLength'), trigger: 'blur' }
     ],
     password: [
-        { required: true, message: '请输入密码', trigger: 'blur' },
-        { min: 6, max: 30, message: '密码长度应在 6-30 个字符之间', trigger: 'blur' }
+        { required: true, message: t('login.validation.passwordRequired'), trigger: 'blur' },
+        { min: 6, max: 30, message: t('login.validation.passwordLength'), trigger: 'blur' }
     ]
 })
 
@@ -106,9 +108,9 @@ const handleLogin = async () => {
                     localStorage.setItem('username', data.name)
                     localStorage.setItem('role', data.role || 'User')
 
-                    ElMessage.success('登录成功')
+                    ElMessage.success(t('login.success'))
                 } else {
-                    throw new Error('登录响应数据不完整')
+                    throw new Error(t('login.incompleteResponse'))
                 }
 
                 // 跳转到首页
@@ -118,9 +120,9 @@ const handleLogin = async () => {
                 if (error.response?.data?.message) {
                     ElMessage.error(error.response.data.message)
                 } else if (!error.response) {
-                    ElMessage.error('网络错误，请稍后重试')
+                    ElMessage.error(t('common.networkError'))
                 } else {
-                    ElMessage.error('登录失败，请检查用户名和密码')
+                    ElMessage.error(t('login.failed'))
                 }
             } finally {
                 loading.value = false

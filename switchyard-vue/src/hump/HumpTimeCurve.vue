@@ -4,14 +4,14 @@
         'chart-hidden': fullscreenChart === 'velocity'
     }">
         <div class="chart-header">
-            <span>时间-距离曲线</span>
+            <span>{{ t('humpChart.timeTitle') }}</span>
             <div class="chart-tags">
                 <el-tag v-for="tag in timeTabs" :key="tag.name" closable @close="handleRemoveTag(tag.name)">
                     {{ tag.label }}
                 </el-tag>
             </div>
             <el-button size="small" @click="handleToggleFullscreen" class="fullscreen-btn">
-                {{ fullscreenChart === 'time' ? '退出全屏' : '全屏' }}
+                {{ fullscreenChart === 'time' ? t('humpChart.fullscreenExit') : t('humpChart.fullscreenEnter') }}
             </el-button>
         </div>
         <div class="chart-content" id="time-distance-chart" ref="chartContainer">
@@ -31,9 +31,9 @@
                     <line class="y-axis" :x1="marginLeft" :x2="marginLeft" :y1="marginTop"
                         :y2="chartHeight - marginBottom" />
                     <text class="axis-label" :x="marginLeft + (chartWidth - marginRight - marginLeft) / 2"
-                        :y="chartHeight - 5" text-anchor="middle">距离 (m)</text>
+                        :y="chartHeight - 5" text-anchor="middle">{{ t('humpChart.axis.distance') }}</text>
                     <text class="axis-label" :x="15" :y="marginTop + (chartHeight - marginBottom - marginTop) / 2"
-                        text-anchor="middle" transform="rotate(-90, 15, 100)">时间 (s)</text>
+                        text-anchor="middle" transform="rotate(-90, 15, 100)">{{ t('humpChart.axis.time') }}</text>
                 </g>
                 <g class="time-curves">
                     <polyline v-for="curve in timeCurveData" :key="curve.seriesName"
@@ -55,7 +55,7 @@
                         :y2="chartHeight - marginBottom" />
                 </g>
             </svg>
-            <div>间隔数据（占位）+- 默认生成点位</div>
+            <div>{{ t('humpChart.placeholderInterval') }}</div>
             <hump-slope-sketch-block v-model:slope-layout="slopeLayout" v-if="fullscreenChart === 'time'"
                 :global-scale-x="(chartWidth - marginLeft - marginRight) / 300" />
             <hump-layout-ctrl v-model:flat-layout="flatLayout" v-if="fullscreenChart === 'time'"
@@ -66,9 +66,10 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import HumpSlopeSketchBlock from './HumpSlopeSketchBlock.vue'
 import HumpLayoutCtrl from './HumpLayoutCtrl.vue'
-import axios from 'axios'
+import axios from '@/utils/axios'
 import config from '../config.json'
 import { FlatLayout, SlopeLayout, CurveDirections } from './humplayoutctrl';
 
@@ -182,6 +183,8 @@ onMounted(() => {
 defineExpose({
     chartContainer
 })
+
+const { t } = useI18n()
 </script>
 
 <style scoped>

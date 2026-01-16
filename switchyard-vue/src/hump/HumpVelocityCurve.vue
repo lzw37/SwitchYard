@@ -4,14 +4,14 @@
         'chart-hidden': fullscreenChart === 'time'
     }">
         <div class="chart-header">
-            <span>速度-距离曲线</span>
+            <span>{{ t('humpChart.velocityTitle') }}</span>
             <div class="chart-tags">
                 <el-tag v-for="tag in velocityTabs" :key="tag.name" closable @close="handleRemoveTag(tag.name)">
                     {{ tag.label }}
                 </el-tag>
             </div>
             <el-button size="small" @click="handleToggleFullscreen" class="fullscreen-btn">
-                {{ fullscreenChart === 'velocity' ? '退出全屏' : '全屏' }}
+                {{ fullscreenChart === 'velocity' ? t('humpChart.fullscreenExit') : t('humpChart.fullscreenEnter') }}
             </el-button>
         </div>
         <div class="chart-content" id="velocity-distance-chart" ref="chartContainer">
@@ -31,9 +31,9 @@
                     <line class="y-axis" :x1="marginLeft" :x2="marginLeft" :y1="marginTop"
                         :y2="chartHeight - marginBottom" />
                     <text class="axis-label" :x="marginLeft + (chartWidth - marginRight - marginLeft) / 2"
-                        :y="chartHeight - 5" text-anchor="middle">距离 (m)</text>
+                        :y="chartHeight - 5" text-anchor="middle">{{ t('humpChart.axis.distance') }}</text>
                     <text class="axis-label" :x="15" :y="marginTop + (chartHeight - marginBottom - marginTop) / 2"
-                        text-anchor="middle" transform="rotate(-90, 15, 100)">速度 (m/s)</text>
+                        text-anchor="middle" transform="rotate(-90, 15, 100)">{{ t('humpChart.axis.velocity') }}</text>
                 </g>
                 <g class="velocity-curves">
                     <polyline v-for="curve in velocityCurveData" :key="curve.seriesName"
@@ -61,6 +61,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 interface VelocityPoint {
     x: number
@@ -136,6 +137,8 @@ const handleToggleFullscreen = () => {
 defineExpose({
     chartContainer
 })
+
+const { t } = useI18n()
 </script>
 
 <style scoped>

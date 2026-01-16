@@ -1,7 +1,5 @@
 // TypeScript equivalents of backend classes from Position.cs
 
-import type { s } from "vue-router/dist/router-CWoNjPRp.mjs";
-
 export enum SwitchTypes {
     Single = 0,
     Slip = 1,

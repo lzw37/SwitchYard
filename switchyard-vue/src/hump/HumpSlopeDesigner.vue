@@ -2,64 +2,71 @@
     <div class="container">
         <div class="side-menu-top">
             <div class="left-section">
-                <el-button @click="toggleLeft" size="small" type="primary">工具</el-button>
+                <el-button @click="toggleLeft" size="small" type="primary">{{ t('humpSlopeDesigner.tool') }}</el-button>
             </div>
             <div class="center-section">
                 <div class="control-group">
-                    <span>纵断面方案</span>
-                    <el-select v-model="selectedCondition" placeholder="选择计算条件" size="small" style="width: 150px;">
-                        <el-option label="条件1" value="condition1"></el-option>
-                        <el-option label="条件2" value="condition2"></el-option>
-                        <el-option label="条件3" value="condition3"></el-option>
+                    <span>{{ t('humpSlopeDesigner.longitudinalSectionScheme') }}</span>
+                    <el-select v-model="selectedCondition"
+                        :placeholder="t('humpSlopeDesigner.selectCalculationCondition')" size="small"
+                        style="width: 150px;">
+                        <el-option :label="t('humpSlopeDesigner.condition1')" value="condition1"></el-option>
+                        <el-option :label="t('humpSlopeDesigner.condition2')" value="condition2"></el-option>
+                        <el-option :label="t('humpSlopeDesigner.condition3')" value="condition3"></el-option>
                     </el-select>
                 </div>
                 <div class="control-group">
-                    <span>计算条件</span>
-                    <el-select v-model="selectedCondition" placeholder="选择计算条件" size="small" style="width: 150px;">
-                        <el-option label="条件1" value="condition1"></el-option>
-                        <el-option label="条件2" value="condition2"></el-option>
-                        <el-option label="条件3" value="condition3"></el-option>
+                    <span>{{ t('humpSlopeDesigner.calculationCondition') }}</span>
+                    <el-select v-model="selectedCondition"
+                        :placeholder="t('humpSlopeDesigner.selectCalculationCondition')" size="small"
+                        style="width: 150px;">
+                        <el-option :label="t('humpSlopeDesigner.condition1')" value="condition1"></el-option>
+                        <el-option :label="t('humpSlopeDesigner.condition2')" value="condition2"></el-option>
+                        <el-option :label="t('humpSlopeDesigner.condition3')" value="condition3"></el-option>
                     </el-select>
                 </div>
                 <div class="control-group">
-                    <span>初始动能高线</span>
+                    <span>{{ t('humpSlopeDesigner.initialKineticEnergyLine') }}</span>
                     <el-switch v-model="showInitialKinetic" size="small"></el-switch>
                 </div>
                 <div class="control-group">
-                    <span>阻力能高线</span>
+                    <span>{{ t('humpSlopeDesigner.resistanceEnergyLine') }}</span>
                     <el-switch v-model="showResistance" size="small"></el-switch>
                 </div>
                 <div class="control-group">
-                    <span>动能高线</span>
+                    <span>{{ t('humpSlopeDesigner.kineticEnergyLine') }}</span>
                     <el-switch v-model="showKinetic" size="small"></el-switch>
                 </div>
                 <div class="control-group">
-                    <span>制动能高线</span>
+                    <span>{{ t('humpSlopeDesigner.brakingEnergyLine') }}</span>
                     <el-switch v-model="showBreaking" size="small"></el-switch>
                 </div>
                 <div class="control-group" style="width: 100px;">
-                    <span>X缩放</span>
+                    <span>{{ t('humpSlopeDesigner.xScale') }}</span>
                     <el-slider v-model="globalScaleX" :min="0.1" :max="5" :step="0.01"
                         style="display:inline; width: 150px;"></el-slider>
                 </div>
                 <div class="control-group" style="width: 100px;">
-                    <span>Y缩放</span>
+                    <span>{{ t('humpSlopeDesigner.yScale') }}</span>
                     <el-slider v-model="globalScaleY" :min="5" :max="100" :step="0.1"
                         style="display:inline; width: 150px;"></el-slider>
                 </div>
             </div>
             <div class="right-section">
-                <el-button @click="toggleRight" size="small" type="primary">数据</el-button>
+                <el-button @click="toggleRight" size="small" type="primary">{{ t('humpSlopeDesigner.data')
+                    }}</el-button>
             </div>
         </div>
         <div class="condition-info">
-            <span>推峰速度：{{ currentCalculateCondition.wagonVelocityOnTop }}m/s</span>
-            <span>溜放部分溜放速度：{{ currentCalculateCondition.wagonVelocityOnSlop }}m/s</span>
-            <span>调车场溜放速度：{{ currentCalculateCondition.wagonVelocityOnYard }}m/s</span>
-            <span>风速：{{ currentCalculateCondition.windVelocity }}m/s（{{ currentCalculateCondition.isHeadWind ? '逆风' :
-                '顺风' }}）</span>
-            <span>空气密度：{{ currentCalculateCondition.airDensity }}kg/m³</span>
-            <span>温度：{{ currentCalculateCondition.temperature }}°C</span>
+            <span>{{ t('humpSlopeDesigner.humpVelocity') }}{{ currentCalculateCondition.wagonVelocityOnTop }}m/s</span>
+            <span>{{ t('humpSlopeDesigner.slopeVelocity') }}{{ currentCalculateCondition.wagonVelocityOnSlop
+                }}m/s</span>
+            <span>{{ t('humpSlopeDesigner.yardVelocity') }}{{ currentCalculateCondition.wagonVelocityOnYard }}m/s</span>
+            <span>{{ t('humpSlopeDesigner.windSpeed') }}{{ currentCalculateCondition.windVelocity }}m/s（{{
+                currentCalculateCondition.isHeadWind ? t('humpSlopeDesigner.headWind') :
+                    t('humpSlopeDesigner.tailWind') }}）</span>
+            <span>{{ t('humpSlopeDesigner.airDensity') }}{{ currentCalculateCondition.airDensity }}kg/m³</span>
+            <span>{{ t('humpSlopeDesigner.temperature') }}{{ currentCalculateCondition.temperature }}°C</span>
         </div>
         <div class="main-ctrl">
             <HumpSlopeCtrl v-model:slope-layout="slopeLayout"
@@ -79,21 +86,28 @@
         <div class="side-menu-right" v-show="rightVisible">
             <div class="side-menu-container">
                 <el-tabs v-model="activeTab" @tab-click="handleTabClick">
-                    <el-tab-pane label="位置点" name="vposition">
+                    <el-tab-pane :label="t('humpSlopeDesigner.positionPoints')" name="vposition">
                         <el-table :data="slopeLayout?.positionList || []" style="width: 100%">
-                            <el-table-column prop="id" label="ID" width="100"></el-table-column>
-                            <el-table-column prop="x" label="位置X/m" width="100"></el-table-column>
-                            <el-table-column prop="height" label="高度/m" width="120"></el-table-column>
+                            <el-table-column prop="id" :label="t('humpSlopeDesigner.id')" width="100"></el-table-column>
+                            <el-table-column prop="x" :label="t('humpSlopeDesigner.positionX')"
+                                width="100"></el-table-column>
+                            <el-table-column prop="height" :label="t('humpSlopeDesigner.height')"
+                                width="120"></el-table-column>
                         </el-table>
                     </el-tab-pane>
-                    <el-tab-pane label="位置区间" name="vpositionsegment">
+                    <el-tab-pane :label="t('humpSlopeDesigner.positionSegments')" name="vpositionsegment">
                         <el-table :data="slopeLayout?.positionSegmentList || []" style="width: 100%">
-                            <el-table-column prop="id" label="ID" width="100"></el-table-column>
-                            <el-table-column prop="startPositionID" label="起始位置ID" width="120"></el-table-column>
-                            <el-table-column prop="endPositionID" label="结束位置ID" width="120"></el-table-column>
-                            <el-table-column prop="length" label="长度/m" width="100"></el-table-column>
-                            <el-table-column prop="gradient" label="坡度/‰" width="120"></el-table-column>
-                            <el-table-column prop="height" label="高度/m" width="120"></el-table-column>
+                            <el-table-column prop="id" :label="t('humpSlopeDesigner.id')" width="100"></el-table-column>
+                            <el-table-column prop="startPositionID" :label="t('humpSlopeDesigner.startPositionID')"
+                                width="120"></el-table-column>
+                            <el-table-column prop="endPositionID" :label="t('humpSlopeDesigner.endPositionID')"
+                                width="120"></el-table-column>
+                            <el-table-column prop="length" :label="t('humpSlopeDesigner.length')"
+                                width="100"></el-table-column>
+                            <el-table-column prop="gradient" :label="t('humpSlopeDesigner.gradient')"
+                                width="120"></el-table-column>
+                            <el-table-column prop="height" :label="t('humpSlopeDesigner.height')"
+                                width="120"></el-table-column>
                         </el-table>
                     </el-tab-pane>
                 </el-tabs>
@@ -106,8 +120,9 @@
 import HumpSlopeCtrl from './HumpSlopeCtrl.vue';
 import HumpSlopeSketchBlock from './HumpSlopeSketchBlock.vue';
 import { computed, onMounted, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n'
 import HumpLayoutCtrl from './HumpLayoutCtrl.vue';
-import axios from 'axios';
+import axios from '@/utils/axios';
 import config from '../config.json';
 import { FlatLayout, SlopeLayout, CurveDirections } from './humplayoutctrl';
 
@@ -116,6 +131,8 @@ const flatLayout = ref<FlatLayout | null>(null);
 const activeTab = ref('vposition');
 const leftVisible = ref(false);
 const rightVisible = ref(false);
+
+const { t } = useI18n()
 
 const globalLeftMargin = ref(0);
 
@@ -152,7 +169,7 @@ const currentCalculateCondition = ref({
 
 const currentCalculateConditionText = computed(() => {
     const c = currentCalculateCondition.value;
-    return `车辆类型: ${c.wagonTypeName}\t推峰速度: ${c.wagonVelocityOnTop} m/s\t溜放速度:【溜放部分${c.wagonVelocityOnSlop} m/s, 调车场: ${c.wagonVelocityOnYard} m/s】\t风速: ${c.windVelocity} m/s（${c.isHeadWind ? '逆风' : '顺风'}）\t空气密度: ${c.airDensity} kg/m³\t温度: ${c.temperature} °C`;
+    return `${t('humpSlopeDesigner.wagonType')} ${c.wagonTypeName}\t${t('humpSlopeDesigner.humpVelocityLabel')} ${c.wagonVelocityOnTop} m/s\t${t('humpSlopeDesigner.slopeVelocityLabel')}【${t('humpSlopeDesigner.slopePart')}${c.wagonVelocityOnSlop} m/s, ${t('humpSlopeDesigner.yard')}${c.wagonVelocityOnYard} m/s】\t${t('humpSlopeDesigner.windSpeedLabel')} ${c.windVelocity} m/s（${c.isHeadWind ? t('humpSlopeDesigner.headWind') : t('humpSlopeDesigner.tailWind')}）\t${t('humpSlopeDesigner.airDensityLabel')} ${c.airDensity} kg/m³\t${t('humpSlopeDesigner.temperatureLabel')} ${c.temperature} °C`;
 });
 
 watch(showInitialKinetic, (newVal) => {
