@@ -3,6 +3,7 @@ using SwitchYard.Service.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
+using SwitchYard.Service.Utils;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -31,6 +32,7 @@ builder.Services.AddCors(options =>
 // 注册JWT服务
 builder.Services.AddSingleton<JwtTokenService>();
 builder.Services.AddScoped<UserService>();
+builder.Services.AddSingleton<SnowflakeIdGenerator>();
 
 // 配置JWT认证
 var jwtSettings = builder.Configuration.GetSection("Jwt");

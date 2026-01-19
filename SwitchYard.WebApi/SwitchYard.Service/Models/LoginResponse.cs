@@ -21,6 +21,11 @@ namespace SwitchYard.Service.Models
         public int ExpiresIn { get; set; }
 
         /// <summary>
+        /// 用户ID
+        /// </summary>
+        public string UserID { get; set; } = string.Empty;
+
+        /// <summary>
         /// 用户名
         /// </summary>
         public string Name { get; set; } = string.Empty;

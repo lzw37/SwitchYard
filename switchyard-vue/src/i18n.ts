@@ -8,11 +8,11 @@ const messages = {
 };
 
 function getDefaultLocale() {
-    // const saved = localStorage.getItem("locale");
-    // if (saved) return saved;
-    // const nav = navigator.language || "en";
-    // if (nav.startsWith("zh")) return "zh";
-    return "zh";
+    const saved = localStorage.getItem("locale");
+    if (saved) return saved;
+    const nav = navigator.language || "en";
+    if (nav.startsWith("zh")) return "zh";
+    return "en";
 }
 
 const i18n = createI18n({

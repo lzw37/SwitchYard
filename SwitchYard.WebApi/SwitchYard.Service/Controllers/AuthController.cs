@@ -52,6 +52,7 @@ namespace SwitchYard.Service.Controllers
                     TokenType = "Bearer",
                     ExpiresIn = _jwtTokenService.GetExpirationSeconds(),
                     Name = user.Name,
+                    UserID = user.Id,
                     Role = user.Role
                 };
 

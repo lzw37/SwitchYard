@@ -185,7 +185,6 @@ const { t } = useI18n()
     padding: 16px;
     overflow: auto;
     display: flex;
-    align-items: center;
     justify-content: center;
     color: #9ca3af;
     font-size: 12px;

@@ -296,6 +296,18 @@
             "wagonParams": "车辆参数",
             "calcCondition": "计算条件"
         },
+        "buttons": {
+            "instanceManager": "计算实例管理"
+        },
+        "placeholders": {
+            "selectInstance": "选择实例"
+        },
+        "dialogs": {
+            "instanceManagerTitle": "驼峰实例管理"
+        },
+        "messages": {
+            "loadInstancesError": "加载实例列表失败"
+        },
         "lines": {
             "1": "1 号线",
             "2": "2 号线",
@@ -369,5 +381,50 @@
         "windSpeedLabel": "风速:",
         "airDensityLabel": "空气密度:",
         "temperatureLabel": "温度:"
+    },
+    "humpInstance": {
+        "buttons": {
+            "create": "新建实例",
+            "edit": "编辑",
+            "delete": "删除",
+            "refresh": "刷新",
+            "save": "保存",
+            "cancel": "取消",
+            "confirm": "确定"
+        },
+        "columns": {
+            "name": "实例名称",
+            "owner": "所有者",
+            "createdDate": "创建时间",
+            "isActive": "状态",
+            "actions": "操作"
+        },
+        "status": {
+            "active": "生效",
+            "inactive": "未生效"
+        },
+        "dialogs": {
+            "createTitle": "新建驼峰实例",
+            "editTitle": "编辑驼峰实例",
+            "deleteTitle": "删除确认"
+        },
+        "placeholder": {
+            "name": "请输入实例名称"
+        },
+        "validation": {
+            "nameRequired": "请输入实例名称",
+            "nameLength": "实例名称长度应在2-100个字符之间"
+        },
+        "messages": {
+            "loadSuccess": "加载成功",
+            "loadError": "加载实例列表失败",
+            "createSuccess": "创建实例成功",
+            "createError": "创建实例失败",
+            "editSuccess": "编辑实例成功",
+            "editError": "编辑实例失败",
+            "deleteSuccess": "删除实例成功",
+            "deleteError": "删除实例失败",
+            "deleteConfirm": "确定要删除实例 {name} 吗？此操作不可恢复。"
+        }
     }
 }

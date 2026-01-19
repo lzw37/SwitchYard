@@ -324,6 +324,18 @@
             "wagonParams": "Wagon Parameters",
             "calcCondition": "Calculation Conditions"
         },
+        "buttons": {
+            "instanceManager": "Instance Management"
+        },
+        "placeholders": {
+            "selectInstance": "Select Instance"
+        },
+        "dialogs": {
+            "instanceManagerTitle": "Hump Instance Management"
+        },
+        "messages": {
+            "loadInstancesError": "Failed to load instance list"
+        },
         "lines": {
             "1": "Line 1",
             "2": "Line 2",
@@ -375,5 +387,50 @@
         "windSpeedLabel": "Wind Speed:",
         "airDensityLabel": "Air Density:",
         "temperatureLabel": "Temperature:"
+    },
+    "humpInstance": {
+        "buttons": {
+            "create": "Create Instance",
+            "edit": "Edit",
+            "delete": "Delete",
+            "refresh": "Refresh",
+            "save": "Save",
+            "cancel": "Cancel",
+            "confirm": "Confirm"
+        },
+        "columns": {
+            "name": "Instance Name",
+            "owner": "Owner",
+            "createdDate": "Created Date",
+            "isActive": "Status",
+            "actions": "Actions"
+        },
+        "status": {
+            "active": "Active",
+            "inactive": "Inactive"
+        },
+        "dialogs": {
+            "createTitle": "Create Hump Instance",
+            "editTitle": "Edit Hump Instance",
+            "deleteTitle": "Delete Confirmation"
+        },
+        "placeholder": {
+            "name": "Please enter instance name"
+        },
+        "validation": {
+            "nameRequired": "Please enter instance name",
+            "nameLength": "Instance name length should be between 2 and 100 characters"
+        },
+        "messages": {
+            "loadSuccess": "Loaded successfully",
+            "loadError": "Failed to load instance list",
+            "createSuccess": "Instance created successfully",
+            "createError": "Failed to create instance",
+            "editSuccess": "Instance updated successfully",
+            "editError": "Failed to update instance",
+            "deleteSuccess": "Instance deleted successfully",
+            "deleteError": "Failed to delete instance",
+            "deleteConfirm": "Are you sure you want to delete instance {name}? This action cannot be undone."
+        }
     }
 }

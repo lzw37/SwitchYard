@@ -5,6 +5,7 @@ using System.Data.Common;
 using System.Net;
 using System.Runtime.CompilerServices;
 using Microsoft.AspNetCore.Authorization;
+using SwitchYard.Service.Utils;
 
 namespace SwitchYard.Service.Controllers
 {
@@ -15,42 +16,143 @@ namespace SwitchYard.Service.Controllers
     {
         IConfiguration _config;
         ILogger<HumpController> _logger;
+        SnowflakeIdGenerator _snowflakeIdGenerator;
 
-        public HumpController(ILogger<HumpController> logger, IConfiguration configuration)
+        public HumpController(ILogger<HumpController> logger, IConfiguration configuration, SnowflakeIdGenerator snowflakeIdGenerator)
         {
             _logger = logger;
             _config = configuration;
+            _snowflakeIdGenerator = snowflakeIdGenerator;
         }
 
+        [HttpGet(Name = "GetInstances")]
         public IActionResult GetInstances()
         {
             try
             {
+                var username = User.Identity.Name;
+
                 DBConnector dbConnector = DBConnector.GetDBConnector();
-                var instanceList = dbConnector.Query<SwitchYard.Service.Models.Instance>("SELECT * FROM instance");
+                var instanceList = dbConnector.Query<HumpInstance>("SELECT * FROM humpinstance WHERE Owner = @username", new { username });
+                _logger.LogInformation("Retrieved {InstanceCount} HumpInstances for user {Username}.", instanceList?.Count ?? 0, username);
+                return Ok(instanceList);
             }
-            catch (Exception ex) 
+            catch (Exception ex)
             {
-
+                _logger.LogError(ex, "Error getting HumpInstance.");
+                return StatusCode(500, "Internal server error while getting HumpInstance.");
             }
         }
 
-
-        public IActionResult GetSlopeLines()
+        [HttpPost(Name = "CreateInstance")]
+        public IActionResult CreateInstance(HumpInstance instance)
         {
-
+            try
+            {
+                var username = User.Identity.Name;
+                instance.Owner = username;
+                instance.CreatedDate = DateTime.Now;
+                instance.IsActive = 1;
+                DBConnector dbConnector = DBConnector.GetDBConnector();
+                instance.ID = _snowflakeIdGenerator.NextIdString();
+                var result = dbConnector.ExecuteNonQuery("INSERT INTO humpinstance (ID, Name, Owner, CreatedDate, IsActive) VALUES (@ID, @Name, @Owner, @CreatedDate, @IsActive)",
+                    instance);
+                if (result > 0)
+                {
+                    _logger.LogInformation("Created HumpInstance with ID {InstanceID} for user {Username}.", instance.ID, username);
+                    return Ok(instance);
+                }
+                else
+                {
+                    _logger.LogWarning("Failed to create HumpInstance for user {Username}.", username);
+                    return StatusCode(500, "Failed to create instance.");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error creating HumpInstance.");
+                return StatusCode(500, "Internal server error while creating HumpInstance.");
+            }
         }
+
+        [HttpPut(Name = "EditInstance")]
+        public IActionResult EditInstance(HumpInstance instance)
+        {
+            try
+            {
+                var username = User.Identity.Name;
+                if (instance.Owner != username)
+                {
+                    return Unauthorized("Cannot edit instance owned by another user.");
+                }
+                DBConnector dbConnector = DBConnector.GetDBConnector();
+                var result = dbConnector.ExecuteNonQuery("UPDATE humpinstance SET Name = @Name, IsActive = @IsActive WHERE ID = @ID AND Owner = @Owner",
+                    new { instance.Name, instance.IsActive, instance.ID, instance.Owner });
+                if (result > 0)
+                {
+                    _logger.LogInformation("Updated HumpInstance with ID {InstanceID} for user {Username}.", instance.ID, username);
+                    return Ok("Instance updated successfully.");
+                }
+                else
+                {
+                    _logger.LogWarning("Failed to update HumpInstance for user {Username}.", username);
+                    return StatusCode(500, "Failed to update instance.");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating HumpInstance.");
+                return StatusCode(500, "Internal server error while updating HumpInstance.");
+            }
+        }
+
+        [HttpDelete(Name = "DeleteInstance")]
+        public IActionResult DeleteInstance(string id)
+        {
+            try
+            {
+                var username = User.Identity.Name;
+                DBConnector dbConnector = DBConnector.GetDBConnector();
+                var instances = dbConnector.Query<HumpInstance>("SELECT * FROM humpinstance WHERE ID = @id AND Owner = @username", new { id, username });
+                if (instances == null || instances.Count == 0)
+                {
+                    return NotFound("Instance not found or not owned by user.");
+                }
+                var result = dbConnector.ExecuteNonQuery("DELETE FROM humpinstance WHERE ID = @id AND Owner = @username", new { id, username });
+                if (result > 0)
+                {
+                    _logger.LogInformation("Deleted HumpInstance with ID {InstanceID} for user {Username}.", id, username);
+                    return Ok("Instance deleted successfully.");
+                }
+                else
+                {
+                    _logger.LogWarning("Failed to delete HumpInstance for user {Username}.", username);
+                    return StatusCode(500, "Failed to delete instance.");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error deleting HumpInstance.");
+                return StatusCode(500, "Internal server error while deleting HumpInstance.");
+            }
+        }
+
+        
+        //public IActionResult GetSlopeLines()
+        //{
+
+        //}
 
         /// <summary>
         /// 获取驼峰溜放部分的平面布置图
         /// </summary>
         /// <returns></returns>
         [HttpGet(Name = "GetFlatLayout")]
-        public IActionResult GetFlatLayout(string instanceID, string slopeLineID)
+        public IActionResult GetFlatLayout()
         {
             try
             {
-                var flatLayout = LoadFlatLayout(instanceID, slopeLineID);
+                var flatLayout = LoadFlatLayout("","");
 
                 return Ok(flatLayout);
             }
@@ -188,7 +290,7 @@ namespace SwitchYard.Service.Controllers
         {
             try
             {
-                var flatLayout = LoadFlatLayout();
+                var flatLayout = LoadFlatLayout("","");
                 var slopeLayout = LoadSlopeLayout();
                 var wagonConceptList = LoadWagonConcept();
 
@@ -221,7 +323,7 @@ namespace SwitchYard.Service.Controllers
         {
             try
             {
-                var flatLayout = LoadFlatLayout();
+                var flatLayout = LoadFlatLayout("","");
                 var slopeLayout = LoadSlopeLayout();
                 var wagonConceptList = LoadWagonConcept();
 
@@ -265,7 +367,7 @@ namespace SwitchYard.Service.Controllers
         {
             try
             {
-                var flatLayout = LoadFlatLayout();
+                var flatLayout = LoadFlatLayout("","");
                 var slopeLayout = LoadSlopeLayout();
                 var wagonConceptList = LoadWagonConcept();
 
@@ -291,7 +393,7 @@ namespace SwitchYard.Service.Controllers
         {
             var stepSize = 10;
 
-            var flatLayout = LoadFlatLayout();
+            var flatLayout = LoadFlatLayout("","");
             var slopeLayout = LoadSlopeLayout();
             var wagonConceptList = LoadWagonConcept();
 

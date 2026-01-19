@@ -14,7 +14,7 @@ namespace SwitchYard.Hump
         /// <summary>
         /// 实例ID
         /// </summary>
-        public string ID { get; set; }
+        public string ID { get; set; } = string.Empty;
 
         /// <summary>
         /// 实例名称
@@ -24,12 +24,12 @@ namespace SwitchYard.Hump
         /// <summary>
         /// 所有者用户ID
         /// </summary>
-        public string OwnerID { get; set; }
+        public string Owner { get; set; } = string.Empty;
 
         /// <summary>
         /// 创建时间
         /// </summary>
-        public DateTime CreatedDate { get; set; }
+        public DateTime? CreatedDate { get; set; }
 
         /// <summary>
         /// 是否生效
