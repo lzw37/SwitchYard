@@ -15,7 +15,12 @@ namespace SwitchYard.Hump
         /// <summary>
         /// 溜放线ID
         /// </summary>
-        public string ID { get; set; }
+        public string ID { get; set; } = string.Empty;
+
+        /// <summary>
+        /// 所属实例ID
+        /// </summary>
+        public string InstanceID { get; set; }
 
         /// <summary>
         /// 溜放线名称
@@ -33,6 +38,16 @@ namespace SwitchYard.Hump
     /// </summary>
     public class FlatLayout
     {
+        /// <summary>
+        /// 实例ID
+        /// </summary>
+        public string InstanceID { get; set; }
+
+        /// <summary>
+        /// 溜放线ID
+        /// </summary>
+        public string SlopeLineID { get; set; }
+
         /// <summary>
         /// 位置点列表
         /// </summary>

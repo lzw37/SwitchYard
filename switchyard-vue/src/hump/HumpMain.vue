@@ -25,7 +25,7 @@
         </div>
         <el-tabs v-model="activeTab" class="hump-tabs">
             <el-tab-pane :label="t('humpMain.tabs.plan')" name="plan">
-                <HumpLayout />
+                <HumpLayout :selectedInstanceId="selectedLine" />
             </el-tab-pane>
             <el-tab-pane :label="t('humpMain.tabs.vehicle')" name="vehicle">
                 <el-card class="param-card" shadow="hover">
@@ -47,8 +47,6 @@
                 <HumpSim />
             </el-tab-pane>
         </el-tabs>
-
-        <!-- 实例管理对话框 -->
         <el-dialog v-model="showInstanceManager" :title="t('humpMain.dialogs.instanceManagerTitle')" width="90%"
             :close-on-click-modal="false" :before-close="handleCloseInstanceManager">
             <HumpInstanceManager />

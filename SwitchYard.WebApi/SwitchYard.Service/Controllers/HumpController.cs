@@ -137,22 +137,154 @@ namespace SwitchYard.Service.Controllers
             }
         }
 
-        
-        //public IActionResult GetSlopeLines()
-        //{
 
-        //}
+        [HttpGet(Name = "GetSlopeLines")]
+        public IActionResult GetSlopeLines(string instanceID)
+        {
+            try
+            {
+                var username = User.Identity.Name;
+                DBConnector dbConnector = DBConnector.GetDBConnector();
+                var instance = dbConnector.Query<HumpInstance>("SELECT * FROM humpinstance WHERE ID = @instanceID", new { instanceID }).FirstOrDefault();
+                if (instance == null || instance.Owner != username)
+                {
+                    return Unauthorized("Instance not found or not owned by user.");
+                }
+                var slopeLines = dbConnector.Query<SwitchYard.Hump.SlopeLine>("SELECT * FROM slopeline WHERE instanceID = @instanceID", new { instanceID });
+                _logger.LogInformation("Retrieved {SlopeLineCount} SlopeLines for instance {InstanceID} by user {Username}.", slopeLines?.Count ?? 0, instanceID, username);
+                return Ok(slopeLines);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting SlopeLines for instance {InstanceID}.", instanceID);
+                return StatusCode(500, "Internal server error while getting SlopeLines.");
+            }
+        }
+
+        [HttpPost(Name = "CreateSlopeLine")]
+        public IActionResult CreateSlopeLine(SlopeLine slopeLine)
+        {
+            try
+            {
+                var username = User.Identity.Name;
+                DBConnector dbConnector = DBConnector.GetDBConnector();
+                var instance = dbConnector.Query<HumpInstance>("SELECT * FROM humpinstance WHERE ID = @instanceID", new { instanceID = slopeLine.InstanceID }).FirstOrDefault();
+                if (instance == null || instance.Owner != username)
+                {
+                    return Unauthorized("Instance not found or not owned by user.");
+                }
+                slopeLine.ID = _snowflakeIdGenerator.NextIdString();
+                var result = dbConnector.ExecuteNonQuery("INSERT INTO slopeline (ID, InstanceID, Name) VALUES (@ID, @InstanceID, @Name)",
+                    new { slopeLine.ID, slopeLine.InstanceID, slopeLine.Name });
+                if (result > 0)
+                {
+                    _logger.LogInformation("Created SlopeLine with ID {SlopeLineID} for instance {InstanceID} by user {Username}.", slopeLine.ID, slopeLine.InstanceID, username);
+                    return Ok(slopeLine);
+                }
+                else
+                {
+                    _logger.LogWarning("Failed to create SlopeLine for instance {InstanceID} by user {Username}.", slopeLine.InstanceID, username);
+                    return StatusCode(500, "Failed to create slope line.");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error creating SlopeLine.");
+                return StatusCode(500, "Internal server error while creating SlopeLine.");
+            }
+        }
+
+        [HttpPut(Name = "EditSlopeLine")]
+        public IActionResult EditSlopeLine(SlopeLine slopeLine)
+        {
+            try
+            {
+                var username = User.Identity.Name;
+                DBConnector dbConnector = DBConnector.GetDBConnector();
+                var existing = dbConnector.Query<SlopeLine>("SELECT * FROM slopeline WHERE ID = @id", new { id = slopeLine.ID }).FirstOrDefault();
+                if (existing == null)
+                {
+                    return NotFound("SlopeLine not found.");
+                }
+                var instance = dbConnector.Query<HumpInstance>("SELECT * FROM humpinstance WHERE ID = @instanceID", new { instanceID = existing.InstanceID }).FirstOrDefault();
+                if (instance == null || instance.Owner != username)
+                {
+                    return Unauthorized("Instance not found or not owned by user.");
+                }
+                var result = dbConnector.ExecuteNonQuery("UPDATE slopeline SET Name = @Name WHERE ID = @ID",
+                    new { slopeLine.Name, slopeLine.ID });
+                if (result > 0)
+                {
+                    _logger.LogInformation("Updated SlopeLine with ID {SlopeLineID} for instance {InstanceID} by user {Username}.", slopeLine.ID, existing.InstanceID, username);
+                    return Ok("SlopeLine updated successfully.");
+                }
+                else
+                {
+                    _logger.LogWarning("Failed to update SlopeLine for instance {InstanceID} by user {Username}.", existing.InstanceID, username);
+                    return StatusCode(500, "Failed to update slope line.");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating SlopeLine.");
+                return StatusCode(500, "Internal server error while updating SlopeLine.");
+            }
+        }
+
+        [HttpDelete(Name = "DeleteSlopeLine")]
+        public IActionResult DeleteSlopeLine(string id)
+        {
+            try
+            {
+                var username = User.Identity.Name;
+                DBConnector dbConnector = DBConnector.GetDBConnector();
+                var slopeLine = dbConnector.Query<SlopeLine>("SELECT * FROM slopeline WHERE ID = @id", new { id }).FirstOrDefault();
+                if (slopeLine == null)
+                {
+                    return NotFound("SlopeLine not found.");
+                }
+                var instance = dbConnector.Query<HumpInstance>("SELECT * FROM humpinstance WHERE ID = @instanceID", new { instanceID = slopeLine.InstanceID }).FirstOrDefault();
+                if (instance == null || instance.Owner != username)
+                {
+                    return Unauthorized("Instance not found or not owned by user.");
+                }
+                var result = dbConnector.ExecuteNonQuery("DELETE FROM slopeline WHERE ID = @id", new { id });
+                if (result > 0)
+                {
+                    _logger.LogInformation("Deleted SlopeLine with ID {SlopeLineID} for instance {InstanceID} by user {Username}.", id, slopeLine.InstanceID, username);
+                    return Ok("SlopeLine deleted successfully.");
+                }
+                else
+                {
+                    _logger.LogWarning("Failed to delete SlopeLine for instance {InstanceID} by user {Username}.", slopeLine.InstanceID, username);
+                    return StatusCode(500, "Failed to delete slope line.");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error deleting SlopeLine.");
+                return StatusCode(500, "Internal server error while deleting SlopeLine.");
+            }
+        }
 
         /// <summary>
         /// 获取驼峰溜放部分的平面布置图
         /// </summary>
         /// <returns></returns>
         [HttpGet(Name = "GetFlatLayout")]
-        public IActionResult GetFlatLayout()
+        public IActionResult GetFlatLayout(string instanceID, string slopeLineID)
         {
             try
             {
-                var flatLayout = LoadFlatLayout("","");
+                var username = User.Identity.Name;
+                DBConnector dbConnector = DBConnector.GetDBConnector();
+                var instance = dbConnector.Query<HumpInstance>("SELECT * FROM humpinstance WHERE ID = @instanceID", new { instanceID }).FirstOrDefault();
+                if (instance == null || instance.Owner != username)
+                {
+                    return Unauthorized("Instance not found or not owned by user.");
+                }
+
+                var flatLayout = LoadFlatLayout(instanceID, slopeLineID);
 
                 return Ok(flatLayout);
             }
@@ -170,37 +302,49 @@ namespace SwitchYard.Service.Controllers
         private Hump.FlatLayout LoadFlatLayout(string instanceID, string slopeLineID)
         {
             var flatLayout = new SwitchYard.Hump.FlatLayout();
+            flatLayout.InstanceID = instanceID;
+            flatLayout.SlopeLineID = slopeLineID;
 
             DBConnector dbConnector = DBConnector.GetDBConnector();
-            flatLayout.PositionList = dbConnector.Query<SwitchYard.Hump.HPosition>("SELECT * FROM position");
-            flatLayout.PositionSegmentList = dbConnector.Query<SwitchYard.Hump.HPositionSegment>("SELECT * FROM positionsegment");
-            flatLayout.SwitchList = dbConnector.Query<SwitchYard.Hump.Switch>("SELECT * FROM switch");
-            flatLayout.RetarderList = dbConnector.Query<SwitchYard.Hump.Retarder>("SELECT * FROM retarder");
-
-            foreach (var seg in flatLayout.PositionSegmentList)
+            try
             {
-                seg.StartPosition = flatLayout.PositionList.Find(p => p.ID == seg.StartPositionID);
-                seg.EndPosition = flatLayout.PositionList.Find(p => p.ID == seg.EndPositionID);
-            }
+                dbConnector.BeginTransaction();
+                flatLayout.PositionList = dbConnector.Query<SwitchYard.Hump.HPosition>("SELECT * FROM position WHERE InstanceID = @instanceID AND SlopeLineID = @slopeLineID", new { instanceID, slopeLineID });
+                flatLayout.PositionSegmentList = dbConnector.Query<SwitchYard.Hump.HPositionSegment>("SELECT * FROM positionsegment WHERE InstanceID = @instanceID AND SlopeLineID = @slopeLineID", new { instanceID, slopeLineID });
+                flatLayout.SwitchList = dbConnector.Query<SwitchYard.Hump.Switch>("SELECT * FROM switch WHERE InstanceID = @instanceID AND SlopeLineID = @slopeLineID", new { instanceID, slopeLineID });
+                flatLayout.RetarderList = dbConnector.Query<SwitchYard.Hump.Retarder>("SELECT * FROM retarder WHERE InstanceID = @instanceID AND SlopeLineID = @slopeLineID", new { instanceID, slopeLineID });
+                dbConnector.Commit();
 
-            foreach (var sw in flatLayout.SwitchList)
+                foreach (var seg in flatLayout.PositionSegmentList)
+                {
+                    seg.StartPosition = flatLayout.PositionList.Find(p => p.ID == seg.StartPositionID);
+                    seg.EndPosition = flatLayout.PositionList.Find(p => p.ID == seg.EndPositionID);
+                }
+
+                foreach (var sw in flatLayout.SwitchList)
+                {
+                    sw.BindingPosition = flatLayout.PositionList.Find(p => p.ID == sw.BindingPositionID);
+                    sw.BindingPositionSegment = flatLayout.PositionSegmentList.Find(s => s.ID == sw.BindingPositionSegmentID);
+                }
+
+                foreach (var retarder in flatLayout.RetarderList)
+                {
+                    retarder.BindingPositionSegment = flatLayout.PositionSegmentList.Find(s => s.ID == retarder.BindingPositionSegmentID);
+                }
+
+                _logger.LogInformation("FlatLayout retrieved with {PositionCount} positions, {SegmentCount} segments, {SwitchCount} switches, and {RetarderCount} retarders.",
+                    flatLayout.PositionList?.Count ?? 0,
+                    flatLayout.PositionSegmentList?.Count ?? 0,
+                    flatLayout.SwitchList?.Count ?? 0,
+                    flatLayout.RetarderList?.Count ?? 0);
+
+                return flatLayout;
+            }
+            catch (Exception ex) 
             {
-                sw.BindingPosition = flatLayout.PositionList.Find(p => p.ID == sw.BindingPositionID);
-                sw.BindingPositionSegment = flatLayout.PositionSegmentList.Find(s => s.ID == sw.BindingPositionSegmentID);
+                _logger.LogError(ex, "Error getting FlatLayout.");
+                return null;
             }
-
-            foreach (var retarder in flatLayout.RetarderList)
-            {
-                retarder.BindingPositionSegment = flatLayout.PositionSegmentList.Find(s => s.ID == retarder.BindingPositionSegmentID);
-            }
-
-            _logger.LogInformation("FlatLayout retrieved with {PositionCount} positions, {SegmentCount} segments, {SwitchCount} switches, and {RetarderCount} retarders.",
-                flatLayout.PositionList?.Count ?? 0,
-                flatLayout.PositionSegmentList?.Count ?? 0,
-                flatLayout.SwitchList?.Count ?? 0,
-                flatLayout.RetarderList?.Count ?? 0);
-
-            return flatLayout;
         }
 
         /// <summary>
@@ -208,11 +352,105 @@ namespace SwitchYard.Service.Controllers
         /// </summary>
         /// <param name="flatLayout"></param>
         /// <returns></returns>
-        [HttpPost(Name = "SaveFlatLayout")]
-        public IActionResult SaveFlatLayout(SwitchYard.Hump.FlatLayout flatLayout)
+        [HttpPut(Name = "EditFlatLayout")]
+        public IActionResult EditFlatLayout(SwitchYard.Hump.FlatLayout flatLayout)
         {
-            Console.WriteLine("FlatLayout saved: " + flatLayout.ToString());
-            return Ok("FlatLayout saved successfully.");
+            DBConnector dbConnector = DBConnector.GetDBConnector();
+
+            try
+            {
+                var username = User.Identity.Name;
+                var instance = dbConnector.Query<HumpInstance>("SELECT * FROM humpinstance WHERE ID = @instanceID", new { instanceID = flatLayout.InstanceID }).FirstOrDefault();
+                if (instance == null || instance.Owner != username)
+                {
+                    return Unauthorized("Instance not found or not owned by user.");
+                }
+
+                // Delete existing records
+                dbConnector.BeginTransaction();
+                dbConnector.ExecuteNonQuery("DELETE FROM retarder WHERE InstanceID = @instanceID AND SlopeLineID = @slopeLineID", new { instanceID = flatLayout.InstanceID, slopeLineID = flatLayout.SlopeLineID });
+                dbConnector.ExecuteNonQuery("DELETE FROM switch WHERE InstanceID = @instanceID AND SlopeLineID = @slopeLineID", new { instanceID = flatLayout.InstanceID, slopeLineID = flatLayout.SlopeLineID });
+                dbConnector.ExecuteNonQuery("DELETE FROM positionsegment WHERE InstanceID = @instanceID AND SlopeLineID = @slopeLineID", new { instanceID = flatLayout.InstanceID, slopeLineID = flatLayout.SlopeLineID });
+                dbConnector.ExecuteNonQuery("DELETE FROM position WHERE InstanceID = @instanceID AND SlopeLineID = @slopeLineID", new { instanceID = flatLayout.InstanceID, slopeLineID = flatLayout.SlopeLineID });
+                
+                // Insert positions
+                foreach (var position in flatLayout.PositionList)
+                {
+                    if (string.IsNullOrEmpty(position.ID))
+                    {
+                        position.ID = _snowflakeIdGenerator.NextIdString();
+                    }
+                    dbConnector.ExecuteNonQuery("INSERT INTO position (ID, InstanceID, SlopeLineID, X, Height) VALUES (@ID, @InstanceID, @SlopeLineID, @X, @Height)",
+                        new { ID = position.ID, InstanceID = flatLayout.InstanceID, SlopeLineID = flatLayout.SlopeLineID, X = position.X, Height = position.Height });
+                }
+
+                // Insert position segments
+                foreach (var segment in flatLayout.PositionSegmentList)
+                {
+                    if (string.IsNullOrEmpty(segment.ID))
+                    {
+                        segment.ID = _snowflakeIdGenerator.NextIdString();
+                    }
+                    dbConnector.ExecuteNonQuery("INSERT INTO positionsegment (ID, InstanceID, SlopeLineID, StartPositionID, EndPositionID, Length, CurveDegree, CurveDirection, LocationParam) VALUES (@ID, @InstanceID, @SlopeLineID, @StartPositionID, @EndPositionID, @Length, @CurveDegree, @CurveDirection, @LocationParam)",
+                        new { ID = segment.ID, InstanceID = flatLayout.InstanceID, SlopeLineID = flatLayout.SlopeLineID, StartPositionID = segment.StartPositionID, EndPositionID = segment.EndPositionID, Length = segment.Length, CurveDegree = ((HPositionSegment)segment).CurveDegree, CurveDirection = ((HPositionSegment)segment).CurveDirection, LocationParam = ((HPositionSegment)segment).LocationParam });
+                }
+
+                // Insert switches
+                foreach (var sw in flatLayout.SwitchList)
+                {
+                    var id = _snowflakeIdGenerator.NextIdString();
+                    dbConnector.ExecuteNonQuery("INSERT INTO switch (ID, InstanceID, SlopeLineID, BindingPositionID, BindingPositionSegmentID, CurveDegree, Type, Direction, Side) VALUES (@ID, @InstanceID, @SlopeLineID, @BindingPositionID, @BindingPositionSegmentID, @CurveDegree, @Type, @Direction, @Side)",
+                        new { ID = id, InstanceID = flatLayout.InstanceID, SlopeLineID = flatLayout.SlopeLineID, BindingPositionID = sw.BindingPositionID, BindingPositionSegmentID = sw.BindingPositionSegmentID, CurveDegree = sw.CurveDegree, Type = sw.Type, Direction = sw.Direction, Side = sw.Side });
+                }
+
+                // Insert retarders
+                foreach (var retarder in flatLayout.RetarderList)
+                {
+                    var id = _snowflakeIdGenerator.NextIdString();
+                    dbConnector.ExecuteNonQuery("INSERT INTO retarder (ID, InstanceID, SlopeLineID, BindingPositionSegmentID, Numbers) VALUES (@ID, @InstanceID, @SlopeLineID, @BindingPositionSegmentID, @Numbers)",
+                        new { ID = id, InstanceID = flatLayout.InstanceID, SlopeLineID = flatLayout.SlopeLineID, BindingPositionSegmentID = retarder.BindingPositionSegmentID, Numbers = retarder.Numbers });
+                }
+                dbConnector.Commit();
+                _logger.LogInformation("Updated FlatLayout for instance {InstanceID}, slope line {SlopeLineID} by user {Username}.", flatLayout.InstanceID, flatLayout.SlopeLineID, username);
+                return Ok("FlatLayout updated successfully.");
+            }
+            catch (Exception ex)
+            {
+                dbConnector.Rollback();
+                _logger.LogError(ex, "Error updating FlatLayout.");
+                return StatusCode(500, "Internal server error while updating FlatLayout.");
+            }
+        }
+
+        [HttpDelete(Name = "DeleteFlatLayout")]
+        public IActionResult DeleteFlatLayout(SwitchYard.Hump.FlatLayout flatLayout)
+        {
+            DBConnector dbConnector = DBConnector.GetDBConnector();
+            try
+            {
+                var username = User.Identity.Name;
+                var instance = dbConnector.Query<HumpInstance>("SELECT * FROM humpinstance WHERE ID = @instanceID", new { instanceID = flatLayout.InstanceID }).FirstOrDefault();
+                if (instance == null || instance.Owner != username)
+                {
+                    return Unauthorized("Instance not found or not owned by user.");
+                }
+
+                // Delete existing records
+                dbConnector.BeginTransaction();
+                dbConnector.ExecuteNonQuery("DELETE FROM retarder WHERE InstanceID = @instanceID AND SlopeLineID = @slopeLineID", new { instanceID = flatLayout.InstanceID, slopeLineID = flatLayout.SlopeLineID });
+                dbConnector.ExecuteNonQuery("DELETE FROM switch WHERE InstanceID = @instanceID AND SlopeLineID = @slopeLineID", new { instanceID = flatLayout.InstanceID, slopeLineID = flatLayout.SlopeLineID });
+                dbConnector.ExecuteNonQuery("DELETE FROM positionsegment WHERE InstanceID = @instanceID AND SlopeLineID = @slopeLineID", new { instanceID = flatLayout.InstanceID, slopeLineID = flatLayout.SlopeLineID });
+                dbConnector.ExecuteNonQuery("DELETE FROM position WHERE InstanceID = @instanceID AND SlopeLineID = @slopeLineID", new { instanceID = flatLayout.InstanceID, slopeLineID = flatLayout.SlopeLineID });
+                dbConnector.Commit();
+                _logger.LogInformation("Deleted FlatLayout for instance {InstanceID}, slope line {SlopeLineID} by user {Username}.", flatLayout.InstanceID, flatLayout.SlopeLineID, username);
+                return Ok("FlatLayout deleted successfully.");
+            }
+            catch (Exception ex)
+            {
+                dbConnector.Rollback();
+                _logger.LogError(ex, "Error deleting FlatLayout.");
+                return StatusCode(500, "Internal server error while deleting FlatLayout.");
+            }
         }
 
         /// <summary>

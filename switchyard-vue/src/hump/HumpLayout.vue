@@ -6,6 +6,8 @@
             </el-select>
             <div>
                 <el-button type="primary" @click="loadFlatLayout">{{ t('hump.load') }}</el-button>
+                <el-button type="primary" @click="createNewLayout">{{ t('hump.new') }}</el-button>
+                <el-button type="danger" @click="deleteSlopeLine">{{ t('hump.delete') }}</el-button>
             </div>
         </div>
 
@@ -22,7 +24,12 @@
                     <el-card>
                         <div style="display: flex; justify-content: space-between;">
                             <div style="flex: 1; margin-right: 10px;">
-                                <h3>{{ t('hump.controlList') }}</h3>
+                                <div style="display:flex; align-items: center; justify-content:left;">
+                                    <h3>{{ t('hump.controlList') }}</h3>
+                                    <el-button :disabled="!flatLayout" type="primary" size="small"
+                                        style="margin-left:20px;" @click="addPosition">{{ t('hump.buttons.add')
+                                        }}</el-button>
+                                </div>
                                 <el-table :data="flatLayout?.positionList || []" stripe :max-height="250"
                                     style="width: 100%">
                                     <el-table-column :label="t('hump.id')" width="100">
@@ -41,12 +48,19 @@
                                             <el-button size="small" type="primary"
                                                 @click="insertPositionAfter(scope.$index)">{{ t('hump.insertAfter')
                                                 }}</el-button>
+                                            <el-button size="small" type="danger" style="margin-left:8px"
+                                                @click="confirmRemovePosition(scope.$index)">×</el-button>
                                         </template>
                                     </el-table-column>
                                 </el-table>
                             </div>
                             <div style="flex: 3; margin-left: 10px;">
-                                <h3>{{ t('hump.sectionList') }}</h3>
+                                <div style="display: flex; justify-content: left; align-items: center;">
+                                    <h3>{{ t('hump.sectionList') }}</h3>
+                                    <el-button :disabled="!isPositionListDirty" type="primary" size="small"
+                                        @click="updatePositionSegmentList" style="margin-left:20px">{{ t('hump.update')
+                                        }}</el-button>
+                                </div>
                                 <el-table :data="flatLayout?.positionSegmentList || []" stripe :max-height="250"
                                     style="width: 100%">
                                     <el-table-column prop="id" :label="t('hump.id')" width="100"></el-table-column>
@@ -93,7 +107,7 @@
                                     </el-select>
                                 </template>
                             </el-table-column>
-                            <el-table-column label="绑定区段ID" width="160">
+                            <el-table-column :label="t('hump.bindingSegment')" width="160">
                                 <template #default="scope">
                                     <el-select v-model="scope.row.bindingPositionSegmentID"
                                         :placeholder="t('hump.chooseSegment')" size="small" clearable
@@ -139,13 +153,14 @@
                 <el-tab-pane :label="t('hump.tabs.retarder')" name="retarder">
                     <el-card>
                         <el-table :data="flatLayout?.retarderList || []" stripe :max-height="250" style="width: 100%">
-                            <el-table-column label="序号" width="80">
+                            <el-table-column :label="t('hump.retarder.index')" width="80">
                                 <template #default="scope">{{ scope.$index + 1 }}</template>
                             </el-table-column>
                             <el-table-column :label="t('hump.bindingSegment')" width="180">
                                 <template #default="scope">
-                                    <el-select v-model="scope.row.bindingPositionSegmentID" placeholder="请选择区段"
-                                        size="small" clearable style="width:160px">
+                                    <el-select v-model="scope.row.bindingPositionSegmentID"
+                                        :placeholder="t('hump.chooseSegment')" size="small" clearable
+                                        style="width:160px">
                                         <el-option v-for="opt in getPositionSegmentOptions()" :key="opt.value"
                                             :label="opt.label" :value="opt.value" />
                                     </el-select>
@@ -181,28 +196,75 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import HumpLayoutCtrl from './HumpLayoutCtrl.vue'
 import type { FlatLayout } from './humplayoutctrl'
 import { CurveDirections, SwitchTypes, SwitchDirections, SwitchSides } from './humplayoutctrl'
 import axios from '@/utils/axios'
 import config from '../config.json'
+import { ElMessage, ElMessageBox } from 'element-plus'
 
-const selectedLine = ref<number | null>(null)
-const lines = ref([
-    { id: 1, name: '1 号线' },
-    { id: 2, name: '2 号线' },
-    { id: 3, name: '3 号线' }
-])
+interface SlopeLine {
+    id: string
+    instanceID: string
+    name: string
+}
+
+interface Props {
+    selectedInstanceId?: string | null
+}
+
+const props = withDefaults(defineProps<Props>(), {
+    selectedInstanceId: null
+})
+
+const { t } = useI18n()
+const selectedLine = ref<string | null>(null)
+const lines = ref<SlopeLine[]>([])
 const planSubTab = ref('ctrl')
 
 const ctrlRef = ref<InstanceType<typeof HumpLayoutCtrl> | null>(null)
 const flatLayout = ref<FlatLayout | null>(null)
 const globalCursorX = ref<number | undefined>(undefined)
+const originalPositionListJson = ref<string>('')
+const isPositionListDirty = computed(() => {
+    if (!flatLayout.value) return false
+    try {
+        return JSON.stringify(flatLayout.value.positionList || []) !== originalPositionListJson.value
+    } catch (e) {
+        return false
+    }
+})
 
-const { t } = useI18n()
+// 加载溜放线列表
+async function loadSlopeLines() {
+    if (!props.selectedInstanceId) {
+        lines.value = []
+        return
+    }
 
+    try {
+        const response = await axios.get('/Hump/GetSlopeLines', {
+            params: { instanceID: props.selectedInstanceId }
+        })
+        lines.value = response.data || []
+    } catch (error: any) {
+        console.error('Failed to load slope lines:', error)
+        ElMessage.error(t('hump.messages.loadSlopeLinesError'))
+        lines.value = []
+    }
+}
+
+// 监听selectedInstanceId变化，自动加载溜放线列表
+watch(() => props.selectedInstanceId, (newValue) => {
+    if (newValue) {
+        loadSlopeLines()
+    } else {
+        lines.value = []
+        selectedLine.value = null
+    }
+}, { immediate: true })
 
 function updateGlobalCursorX(value: number) {
     globalCursorX.value = value
@@ -343,21 +405,154 @@ function onPositionXChange(position: any) {
     })
 }
 
-function insertPositionAfter(index: number) {
-    if (!flatLayout.value) return
+async function insertPositionAfter(index: number) {
+    try {
+        await ElMessageBox.confirm(
+            t('hump.messages.insertPositionConfirm'),
+            t('hump.messages.insertPositionConfirmTitle'),
+            {
+                confirmButtonText: t('hump.buttons.confirm'),
+                cancelButtonText: t('hump.buttons.cancel'),
+                type: 'warning'
+            }
+        )
+
+        if (!flatLayout.value) return
+        const list = flatLayout.value.positionList
+        const current = list[index]
+        const next = list[index + 1]
+        const newId = list.length > 0 ? current?.id + "_" : "P1"
+        const currentX = Number(current?.x ?? 0)
+        const nextX = next !== undefined ? Number(next.x) : currentX + 1
+        const newX = next !== undefined ? (currentX + nextX) / 2 : nextX
+        list.splice(index + 1, 0, { id: newId, x: newX, height: 0 })
+    } catch (error) {
+        // 用户取消操作，不执行任何操作
+    }
+}
+
+function addPosition() {
+    if (!flatLayout.value) {
+        ElMessage.warning(t('hump.messages.loadFlatLayoutFirst'))
+        return
+    }
     const list = flatLayout.value.positionList
-    const current = list[index]
-    const next = list[index + 1]
-    const newId = list.length > 0 ? (Math.max(...list.map(p => parseInt(p.id))) + 1).toString() : "1"
-    const currentX = Number(current?.x ?? 0)
-    const nextX = next !== undefined ? Number(next.x) : currentX + 1
-    const newX = next !== undefined ? (currentX + nextX) / 2 : nextX
-    list.splice(index + 1, 0, { id: newId, x: newX, height: 0 })
+    let newX = 10
+    if (list.length > 0) {
+        const lastPosition = list[list.length - 1]
+        const currentX = lastPosition?.x ?? 0
+        newX = Number(currentX) + 10
+    }
+    list.push({ id: 'P', x: newX, height: 0 })
+}
+
+async function confirmRemovePosition(index: number) {
+    if (!flatLayout.value) return
+    try {
+        await ElMessageBox.confirm(
+            t('hump.messages.deletePositionConfirm'),
+            t('hump.messages.deletePositionConfirmTitle'),
+            {
+                confirmButtonText: t('hump.buttons.confirm'),
+                cancelButtonText: t('hump.buttons.cancel'),
+                type: 'warning'
+            }
+        )
+
+        // 获取要删除的position ID
+        const deletedPosition = flatLayout.value.positionList[index]
+        if (deletedPosition === undefined) return
+        const deletedId = deletedPosition.id.toString()
+
+        // 删除控制点
+        flatLayout.value.positionList.splice(index, 1)
+
+        // 删除引用该控制点的区段
+        if (flatLayout.value.positionSegmentList) {
+            flatLayout.value.positionSegmentList = flatLayout.value.positionSegmentList.filter(
+                seg => seg.startPositionID !== deletedId && seg.endPositionID !== deletedId
+            )
+        }
+    } catch (error) {
+        // 用户取消，不做操作
+    }
+}
+
+function updatePositionSegmentList() {
+    // 根据最新的positionList更新positionSegmentList
+    if (!flatLayout.value?.positionList || !flatLayout.value?.positionSegmentList) return
+
+    // 检查positionList中的元素id是否有重复？如果有，则弹出对话框提示，然后返回
+    const idSet = new Set<string>()
+    for (const pos of flatLayout.value.positionList) {
+        if (idSet.has(pos.id)) {
+            ElMessageBox.alert(
+                t('hump.messages.duplicatePositionID', { id: pos.id }),
+                t('hump.messages.duplicatePositionIDTitle'),
+                {
+                    confirmButtonText: t('hump.buttons.confirm'),
+                    type: 'warning'
+                }
+            )
+            return
+        }
+        idSet.add(pos.id)
+    }
+
+    const newPositionSegmentList = [] as any[]
+
+    for (var i = 0; i < flatLayout.value.positionList.length - 1; i++) {
+        const startPos = flatLayout?.value?.positionList[i]
+        const endPos = flatLayout?.value?.positionList[i + 1]
+
+        if (!startPos || !endPos) continue;
+
+        let seg = flatLayout.value.positionSegmentList.find(s => s.startPositionID === startPos.id.toString() && s.endPositionID === endPos.id.toString())
+        if (!seg) {
+            // 不存在则创建新的区段
+            seg = {
+                id: `${startPos.id}${endPos.id}`,
+                startPositionID: startPos.id.toString(),
+                endPositionID: endPos.id.toString(),
+                length: Math.abs(endPos.x - startPos.x),
+                curveDegree: 0,
+                curveDirection: CurveDirections.None,
+                locationParam: 1.0
+            }
+            newPositionSegmentList.push(seg)
+        }
+        else {
+            // 存在则保留原有区段对象，但更新长度
+            seg.length = Math.abs(endPos.x - startPos.x)
+            newPositionSegmentList.push(seg)
+        }
+    }
+
+    // 更新区段列表并重置加载快照（认为列表已更新）
+    flatLayout.value.positionSegmentList = newPositionSegmentList
+    originalPositionListJson.value = JSON.stringify(flatLayout.value.positionList || [])
 }
 
 function loadFlatLayout() {
-    axios.get(`${config.serverurl}/hump/getflatlayout`).then(response => {
+    if (!props.selectedInstanceId) {
+        ElMessage.warning(t('hump.messages.selectInstanceFirst'))
+        return
+    }
+
+    if (!selectedLine.value) {
+        ElMessage.warning(t('hump.messages.selectSlopeLineFirst'))
+        return
+    }
+
+    axios.get(`${config.serverurl}/hump/getflatlayout`, {
+        params: {
+            instanceID: props.selectedInstanceId,
+            slopeLineID: selectedLine.value
+        }
+    }).then(response => {
         flatLayout.value = response.data
+        // 保存加载时的 positionList 快照，用于判断是否发生更改
+        originalPositionListJson.value = JSON.stringify(flatLayout.value?.positionList || [])
         if (flatLayout.value?.positionSegmentList) {
             flatLayout.value.positionSegmentList.forEach(seg => {
                 if (seg.curveDegree === 0) {
@@ -366,10 +561,106 @@ function loadFlatLayout() {
             })
         }
         console.log('Flat layout data loaded:', flatLayout.value)
+        ElMessage.success(t('hump.messages.flatLayoutLoaded'))
         // child will react to flatLayout prop change and load data
     }).catch(error => {
         console.error('Error fetching flat layout data:', error)
+        ElMessage.error(t('hump.messages.loadFlatLayoutError'))
     })
+}
+
+async function createNewLayout() {
+    if (!props.selectedInstanceId) {
+        ElMessage.warning(t('hump.messages.selectInstanceFirst'))
+        return
+    }
+
+    try {
+        // 生成默认的溜放线名称
+        const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-')
+        const defaultName = `溜放线_${timestamp}`
+
+        // 弹出对话框让用户输入名称
+        const slopeLineName = await ElMessageBox.prompt(
+            t('hump.messages.enterSlopeLineName'),
+            t('hump.messages.createSlopeLineTitle'),
+            {
+                confirmButtonText: t('hump.buttons.confirm'),
+                cancelButtonText: t('hump.buttons.cancel'),
+                inputPattern: /.+/,
+                inputErrorMessage: t('hump.messages.nameRequired'),
+                inputValue: defaultName
+            }
+        ).then(({ value }) => value).catch(() => null)
+
+        // 用户取消输入
+        if (!slopeLineName) {
+            return
+        }
+
+        const slopeLineData = {
+            InstanceID: props.selectedInstanceId,
+            Name: slopeLineName
+        }
+
+        const response = await axios.post('/Hump/CreateSlopeLine', slopeLineData)
+
+        if (response.data) {
+            ElMessage.success(t('hump.messages.slopeLineCreated'))
+            // 刷新溜放线列表
+            await loadSlopeLines()
+            // 自动选中新创建的溜放线
+            selectedLine.value = response.data.id
+            console.log('Created slope line:', response.data)
+        }
+    } catch (error: any) {
+        console.error('Failed to create slope line:', error)
+        ElMessage.error(t('hump.messages.createSlopeLineError'))
+    }
+}
+
+async function deleteSlopeLine() {
+    if (!selectedLine.value) {
+        ElMessage.warning(t('hump.messages.selectSlopeLineFirst'))
+        return
+    }
+
+    // 获取当前选中溜放线的名称
+    const currentLine = lines.value.find(line => line.id === selectedLine.value)
+    const lineName = currentLine?.name || selectedLine.value
+
+    try {
+        // 弹出确认对话框
+        await ElMessageBox.confirm(
+            t('hump.messages.deleteSlopeLineConfirm', { name: lineName }),
+            t('hump.messages.deleteSlopeLineTitle'),
+            {
+                confirmButtonText: t('hump.buttons.confirm'),
+                cancelButtonText: t('hump.buttons.cancel'),
+                type: 'warning'
+            }
+        )
+
+        // 调用删除API
+        await axios.delete('/Hump/DeleteSlopeLine', {
+            params: { id: selectedLine.value }
+        })
+
+        ElMessage.success(t('hump.messages.slopeLineDeleted'))
+
+        // 清空当前选中
+        selectedLine.value = null
+
+        // 刷新溜放线列表
+        await loadSlopeLines()
+
+    } catch (error: any) {
+        // 用户取消操作不显示错误
+        if (error !== 'cancel') {
+            console.error('Failed to delete slope line:', error)
+            ElMessage.error(t('hump.messages.deleteSlopeLineError'))
+        }
+    }
 }
 
 function saveFlatLayout() {
