@@ -107,6 +107,7 @@ export class Switch {
     type: SwitchTypes;
     direction: SwitchDirections;
     side: SwitchSides;
+    curveDegree: number;
 
     constructor(opts: Partial<Switch> = {}) {
         this.id = opts.id ?? "";
@@ -115,6 +116,7 @@ export class Switch {
         this.type = opts.type ?? SwitchTypes.Single;
         this.direction = opts.direction ?? SwitchDirections.Forward;
         this.side = opts.side ?? SwitchSides.Left;
+        this.curveDegree = opts.curveDegree ?? 0;
     }
 }
 

@@ -177,7 +177,9 @@
             "HumpSection": "溜放部分",
             "YardSection": "调车场"
         },
-        "location": "位置类型",
+        "location": "溜放位置",
+        "curveRadius": "导曲线转角",
+        "switchDirectionLabel": "道岔方向",
         "retarder": {
             "addParam": "添加参数",
             "confirm": "确定",
@@ -189,12 +191,17 @@
         "id": "ID",
         "side": "侧边",
         "sideLabel": "侧边",
+        "switchList": "道岔列表",
+        "retarderList": "减速器列表",
+        "operation": "操作",
         "new": "新建",
         "delete": "删除",
         "buttons": {
             "confirm": "确定",
             "cancel": "取消",
-            "add": "添加"
+            "add": "添加",
+            "save": "保存",
+            "delete": "删除"
         },
         "update": "更新",
         "messages": {
@@ -217,6 +224,10 @@
             "insertPositionConfirmTitle": "警告",
             "deletePositionConfirm": "删除当前控制点将改变平面展开图结构，可能会使绑定在控制点区段上的减速器等设备失效，是否继续删除？",
             "deletePositionConfirmTitle": "删除确认",
+            "deleteSwitchConfirm": "确定要删除当前道岔吗？",
+            "deleteSwitchConfirmTitle": "删除确认",
+            "deleteRetarderConfirm": "确定要删除当前减速器吗？",
+            "deleteRetarderConfirmTitle": "删除确认",
             "duplicatePositionID": "控制点ID不能重复，请修改重复的ID（{id}）后再更新区段列表。",
             "duplicatePositionIDTitle": "警告"
         },

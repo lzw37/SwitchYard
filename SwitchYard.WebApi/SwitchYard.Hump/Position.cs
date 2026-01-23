@@ -293,6 +293,11 @@ namespace SwitchYard.Hump
     public class Switch
     {
         /// <summary>
+        /// 道岔ID
+        /// </summary>
+        public string ID { get; set; }
+
+        /// <summary>
         /// 道岔所在位置点
         /// </summary>
         [JsonIgnore]
@@ -334,6 +339,11 @@ namespace SwitchYard.Hump
     /// </summary>
     public class Retarder
     {
+        /// <summary>
+        /// 减速器ID
+        /// </summary>
+        public string ID { get; set; }
+
         /// <summary>
         /// 减速器所在的位置区间
         /// </summary>

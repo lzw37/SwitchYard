@@ -5,9 +5,16 @@
                 <el-option v-for="line in lines" :key="line.id" :label="line.name" :value="line.id" />
             </el-select>
             <div>
-                <el-button type="primary" @click="loadFlatLayout">{{ t('hump.load') }}</el-button>
-                <el-button type="primary" @click="createNewLayout">{{ t('hump.new') }}</el-button>
-                <el-button type="danger" @click="deleteSlopeLine">{{ t('hump.delete') }}</el-button>
+                <el-button-group>
+                    <el-button type="plain" @click="loadFlatLayout">{{ t('hump.load') }}</el-button>
+                    <el-button type="primary" @click="createNewLayout">{{ t('hump.buttons.save') }}</el-button>
+                </el-button-group>
+
+                <el-button-group style="margin-left: 20px;">
+                    <el-button type="primary" @click="createNewLayout">{{ t('hump.new') }}</el-button>
+                    <el-button type="danger" @click="deleteSlopeLine">{{ t('hump.delete') }}</el-button>
+                </el-button-group>
+
             </div>
         </div>
 
@@ -93,9 +100,8 @@
                                     <el-table-column :label="t('hump.location')" width="120">
                                         <template #default="scope">
                                             <el-select v-model="scope.row.locationParam" size="small">
-                                                <el-option
-                                                    v-for="opt in locationParamOptions"
-                                                    :key="opt.value" :label="opt.label" :value="opt.value" />
+                                                <el-option v-for="opt in locationParamOptions" :key="opt.value"
+                                                    :label="opt.label" :value="opt.value" />
                                             </el-select>
                                         </template>
                                     </el-table-column>
@@ -106,7 +112,18 @@
                 </el-tab-pane>
                 <el-tab-pane :label="t('hump.tabs.switch')" name="switch">
                     <el-card>
+                        <div style="display:flex; align-items: center; justify-content:left; margin-bottom: 10px;">
+                            <h3>{{ t('hump.switchList') }}</h3>
+                            <el-button :disabled="!flatLayout" type="primary" size="small" style="margin-left:20px;"
+                                @click="addSwitch">{{ t('hump.buttons.add')
+                                }}</el-button>
+                        </div>
                         <el-table :data="flatLayout?.switchList || []" stripe :max-height="250" style="width: 100%">
+                            <el-table-column :label="t('hump.id')" width="100">
+                                <template #default="scope">
+                                    {{ scope.row.id }}
+                                </template>
+                            </el-table-column>
                             <el-table-column :label="t('hump.bindingPosition')" width="140">
                                 <template #default="scope">
                                     <el-select v-model="scope.row.bindingPositionID"
@@ -157,14 +174,31 @@
                                     </el-select>
                                 </template>
                             </el-table-column>
+                            <el-table-column :label="t('hump.curveRadius')" width="120">
+                                <template #default="scope">
+                                    <el-input v-model="scope.row.curveDegree" size="small" type="number" />
+                                </template>
+                            </el-table-column>
+                            <el-table-column :label="t('hump.operation')" width="100">
+                                <template #default="scope">
+                                    <el-button size="small" type="danger" @click="confirmRemoveSwitch(scope.$index)">{{
+                                        t('hump.buttons.delete') }}</el-button>
+                                </template>
+                            </el-table-column>
                         </el-table>
                     </el-card>
                 </el-tab-pane>
                 <el-tab-pane :label="t('hump.tabs.retarder')" name="retarder">
                     <el-card>
+                        <div style="display:flex; align-items: center; justify-content:left; margin-bottom: 10px;">
+                            <h3>{{ t('hump.retarderList') }}</h3>
+                            <el-button :disabled="!flatLayout" type="primary" size="small" style="margin-left:20px;"
+                                @click="addRetarder">{{ t('hump.buttons.add')
+                                }}</el-button>
+                        </div>
                         <el-table :data="flatLayout?.retarderList || []" stripe :max-height="250" style="width: 100%">
                             <el-table-column :label="t('hump.retarder.index')" width="80">
-                                <template #default="scope">{{ scope.$index + 1 }}</template>
+                                <template #default="scope">{{ scope.row.id }}</template>
                             </el-table-column>
                             <el-table-column :label="t('hump.bindingSegment')" width="180">
                                 <template #default="scope">
@@ -176,7 +210,7 @@
                                     </el-select>
                                 </template>
                             </el-table-column>
-                            <el-table-column :label="t('hump.retarder.params')">
+                            <el-table-column :label="t('hump.retarder.params')" width="400">
                                 <template #default="scope">
                                     <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
                                         <el-tag v-for="(num, idx) in scope.row.numberArray || []" :key="idx" closable
@@ -195,6 +229,13 @@
                                                 t('hump.retarder.cancel') }}</el-button>
                                         </template>
                                     </div>
+                                </template>
+                            </el-table-column>
+                            <el-table-column :label="t('hump.operation')" width="100">
+                                <template #default="scope">
+                                    <el-button size="small" type="danger"
+                                        @click="confirmRemoveRetarder(scope.$index)">{{ t('hump.buttons.delete')
+                                        }}</el-button>
                                 </template>
                             </el-table-column>
                         </el-table>
@@ -466,6 +507,96 @@ function addPosition() {
         newX = Number(currentX) + 10
     }
     list.push({ id: 'P', x: newX, height: 0 })
+}
+
+function addSwitch() {
+    if (!flatLayout.value) {
+        ElMessage.warning(t('hump.messages.loadFlatLayoutFirst'))
+        return
+    }
+    if (!flatLayout.value.switchList) {
+        flatLayout.value.switchList = []
+    }
+
+    // 生成自增ID，从1开始
+    const existingIds = flatLayout.value.switchList
+        .map(s => parseInt(s.id))
+        .filter(id => !isNaN(id))
+    const maxId = existingIds.length > 0 ? Math.max(...existingIds) : 0
+    const newId = (maxId + 1).toString()
+
+    flatLayout.value.switchList.push({
+        id: newId,
+        bindingPositionID: '',
+        bindingPositionSegmentID: '',
+        type: SwitchTypes.Single,
+        direction: SwitchDirections.Forward,
+        side: SwitchSides.Left,
+        curveDegree: 0
+    })
+}
+
+async function confirmRemoveSwitch(index: number) {
+    if (!flatLayout.value) return
+    try {
+        await ElMessageBox.confirm(
+            t('hump.messages.deleteSwitchConfirm'),
+            t('hump.messages.deleteSwitchConfirmTitle'),
+            {
+                confirmButtonText: t('hump.buttons.confirm'),
+                cancelButtonText: t('hump.buttons.cancel'),
+                type: 'warning'
+            }
+        )
+
+        flatLayout.value.switchList?.splice(index, 1)
+    } catch (error) {
+        // 用户取消，不做操作
+    }
+}
+
+function addRetarder() {
+    if (!flatLayout.value) {
+        ElMessage.warning(t('hump.messages.loadFlatLayoutFirst'))
+        return
+    }
+    if (!flatLayout.value.retarderList) {
+        flatLayout.value.retarderList = []
+    }
+
+    // 生成自增ID，从1开始
+    const existingIds = flatLayout.value.retarderList
+        .map(r => parseInt(r.id))
+        .filter(id => !isNaN(id))
+    const maxId = existingIds.length > 0 ? Math.max(...existingIds) : 0
+    const newId = (maxId + 1).toString()
+
+    flatLayout.value.retarderList.push({
+        id: newId,
+        numberArray: [],
+        bindingPositionSegmentID: '',
+        _showNewRetarderInput: false,
+        _newRetarderParam: ''
+    } as any)
+}
+
+async function confirmRemoveRetarder(index: number) {
+    if (!flatLayout.value) return
+    try {
+        await ElMessageBox.confirm(
+            t('hump.messages.deleteRetarderConfirm'),
+            t('hump.messages.deleteRetarderConfirmTitle'),
+            {
+                confirmButtonText: t('hump.buttons.confirm'),
+                cancelButtonText: t('hump.buttons.cancel'),
+                type: 'warning'
+            }
+        )
+
+        flatLayout.value.retarderList?.splice(index, 1)
+    } catch (error) {
+        // 用户取消，不做操作
+    }
 }
 
 async function confirmRemovePosition(index: number) {
