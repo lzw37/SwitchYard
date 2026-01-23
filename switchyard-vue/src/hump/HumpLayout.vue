@@ -34,7 +34,8 @@
                                     style="width: 100%">
                                     <el-table-column :label="t('hump.id')" width="100">
                                         <template #default="scope">
-                                            <el-input v-model="scope.row.id" size="small" />
+                                            <el-input v-model="scope.row.id" size="small"
+                                                @blur="onPositionIdBlur(scope.row)" />
                                         </template>
                                     </el-table-column>
                                     <el-table-column :label="t('hump.xCoord')" width="150">
@@ -85,6 +86,15 @@
                                                 :disabled="scope.row.curveDegree === 0" size="small">
                                                 <el-option
                                                     v-for="opt in getCurveDirectionOptions(scope.row.curveDegree)"
+                                                    :key="opt.value" :label="opt.label" :value="opt.value" />
+                                            </el-select>
+                                        </template>
+                                    </el-table-column>
+                                    <el-table-column :label="t('hump.location')" width="120">
+                                        <template #default="scope">
+                                            <el-select v-model="scope.row.locationParam" size="small">
+                                                <el-option
+                                                    v-for="opt in locationParamOptions"
                                                     :key="opt.value" :label="opt.label" :value="opt.value" />
                                             </el-select>
                                         </template>
@@ -200,7 +210,7 @@ import { ref, watch, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import HumpLayoutCtrl from './HumpLayoutCtrl.vue'
 import type { FlatLayout } from './humplayoutctrl'
-import { CurveDirections, SwitchTypes, SwitchDirections, SwitchSides } from './humplayoutctrl'
+import { CurveDirections, SwitchTypes, SwitchDirections, SwitchSides, LocationParam } from './humplayoutctrl'
 import axios from '@/utils/axios'
 import config from '../config.json'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -278,6 +288,11 @@ function getCurveDirectionOptions(degree: number) {
     ]
     return opts.filter(opt => opt.value !== CurveDirections.None || degree <= 0)
 }
+
+const locationParamOptions = computed(() => [
+    { label: t('hump.locationParams.HumpSection'), value: LocationParam.HumpSection },
+    { label: t('hump.locationParams.YardSection'), value: LocationParam.YardSection }
+])
 
 function getSwitchTypeLabel(type: SwitchTypes): string {
     switch (type) {
@@ -405,6 +420,13 @@ function onPositionXChange(position: any) {
     })
 }
 
+function onPositionIdBlur(position: any) {
+    // 当position ID输入框失去焦点时，检查ID是否发生变化
+    if (ctrlRef.value) {
+        ctrlRef.value.checkPositionIdChange(position.id.toString())
+    }
+}
+
 async function insertPositionAfter(index: number) {
     try {
         await ElMessageBox.confirm(
@@ -424,7 +446,7 @@ async function insertPositionAfter(index: number) {
         const newId = list.length > 0 ? current?.id + "_" : "P1"
         const currentX = Number(current?.x ?? 0)
         const nextX = next !== undefined ? Number(next.x) : currentX + 1
-        const newX = next !== undefined ? (currentX + nextX) / 2 : nextX
+        const newX = next !== undefined ? Math.round(((currentX + nextX) / 2) * 1000) / 1000 : Math.round(nextX * 1000) / 1000
         list.splice(index + 1, 0, { id: newId, x: newX, height: 0 })
     } catch (error) {
         // 用户取消操作，不执行任何操作
@@ -514,16 +536,16 @@ function updatePositionSegmentList() {
                 id: `${startPos.id}${endPos.id}`,
                 startPositionID: startPos.id.toString(),
                 endPositionID: endPos.id.toString(),
-                length: Math.abs(endPos.x - startPos.x),
+                length: Math.round(Math.abs(endPos.x - startPos.x) * 1000) / 1000,
                 curveDegree: 0,
                 curveDirection: CurveDirections.None,
-                locationParam: 1.0
+                locationParam: LocationParam.HumpSection
             }
             newPositionSegmentList.push(seg)
         }
         else {
             // 存在则保留原有区段对象，但更新长度
-            seg.length = Math.abs(endPos.x - startPos.x)
+            seg.length = Math.round(Math.abs(endPos.x - startPos.x) * 1000) / 1000
             newPositionSegmentList.push(seg)
         }
     }

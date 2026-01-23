@@ -173,6 +173,11 @@
             "Right": "右转",
             "None": "无"
         },
+        "locationParams": {
+            "HumpSection": "溜放部分",
+            "YardSection": "调车场"
+        },
+        "location": "位置类型",
         "retarder": {
             "addParam": "添加参数",
             "confirm": "确定",

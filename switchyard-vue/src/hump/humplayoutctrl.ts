@@ -25,6 +25,11 @@ export enum CurveDirections {
     None = 2,
 }
 
+export enum LocationParam {
+    HumpSection = 0, // 溜放部分
+    YardSection = 1, // 调车场
+}
+
 export class Position {
     id: string;
     x: number;
@@ -52,7 +57,7 @@ export class PositionSegment {
     length: number;
     curveDegree: number;
     curveDirection: CurveDirections;
-    locationParam: number;
+    locationParam: LocationParam;
 
     constructor(
         id = "",
@@ -60,8 +65,8 @@ export class PositionSegment {
         endPositionID = "",
         length = 0,
         curveDegree = 0,
-        locationParam = 0,
-        curveDirection = CurveDirections.None
+        locationParam = LocationParam.YardSection,
+        curveDirection = CurveDirections.None,
     ) {
         this.id = id;
         this.startPositionID = startPositionID;
@@ -87,7 +92,7 @@ export class VPositionSegment extends PositionSegment {
         endPositionID = "",
         length = 0,
         gradient = 0,
-        height = 0
+        height = 0,
     ) {
         super(id, startPositionID, endPositionID, length);
         this.gradient = gradient;
@@ -120,7 +125,7 @@ export class Retarder {
 
     constructor(
         bindingPositionSegment?: PositionSegment,
-        numberArray: number[] = []
+        numberArray: number[] = [],
     ) {
         this.id = "";
         this.bindingPositionSegment = bindingPositionSegment;
@@ -150,7 +155,7 @@ export class SwitchCount {
         reverseCount = 0,
         forwardCount = 0,
         slipCount = 0,
-        diamondCount = 0
+        diamondCount = 0,
     ) {
         this.reverseCount = reverseCount;
         this.forwardCount = forwardCount;

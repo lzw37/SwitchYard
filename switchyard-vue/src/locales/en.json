@@ -179,6 +179,11 @@
             "Right": "Right",
             "None": "None"
         },
+        "locationParams": {
+            "HumpSection": "Hump Section",
+            "YardSection": "Yard Section"
+        },
+        "location": "Location Type",
         "retarder": {
             "addParam": "Add param",
             "confirm": "Confirm",

@@ -99,6 +99,7 @@ import { ref, onMounted, onBeforeUnmount, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Switch, SwitchTypes, SwitchDirections, SwitchSides, PositionSegment, CurveDirections } from './humplayoutctrl'
 import axios from '@/utils/axios'
+import { ElMessageBox } from 'element-plus'
 
 const emit = defineEmits(['update:flatLayout', 'update:globalCursorX'])
 const props = defineProps<{ flatLayout?: any, isToolbarDisplay?: boolean, isEditable?: boolean, globalScaleX?: number, globalCursorX?: number }>()
@@ -106,6 +107,9 @@ const props = defineProps<{ flatLayout?: any, isToolbarDisplay?: boolean, isEdit
 const { t } = useI18n()
 
 const svgRef = ref<SVGSVGElement | null>(null)
+
+// 存储原始position列表的JSON字符串，用于检测ID变化
+const originalPositionMap = ref<Map<string, string>>(new Map())
 
 const localScaleX = ref(3.5) // 本地的x轴横向缩放比例，当全局scaleX不设置时使用这个
 // x轴横向缩放比例
@@ -196,16 +200,22 @@ const lengthTextPositions = computed(() => {
     const textWidth = 30; // 假设文本宽度为30px
     const lineHeight = 15; // 行高
     const sorted = segments.slice().sort((a: any, b: any) => {
-        const ax = (getX(getPositionBySegmentID(a.id)?.startPosition.x) + getX(getPositionBySegmentID(a.id)?.endPosition.x)) / 2;
-        const bx = (getX(getPositionBySegmentID(b.id)?.startPosition.x) + getX(getPositionBySegmentID(b.id)?.endPosition.x)) / 2;
+        const segA = getPositionBySegmentID(a.id);
+        const segB = getPositionBySegmentID(b.id);
+        if (!segA?.startPosition || !segA?.endPosition) return 1;
+        if (!segB?.startPosition || !segB?.endPosition) return -1;
+        const ax = (getX(segA.startPosition.x) + getX(segA.endPosition.x)) / 2;
+        const bx = (getX(segB.startPosition.x) + getX(segB.endPosition.x)) / 2;
         return ax - bx;
     });
     const result: { id: string; x: number; y: number }[] = [];
     let currentY = baseLineY.value - 10;
     let lastX = -Infinity;
     for (const seg of sorted) {
-        const startX = getX(getPositionBySegmentID(seg.id)?.startPosition.x);
-        const endX = getX(getPositionBySegmentID(seg.id)?.endPosition.x);
+        const positions = getPositionBySegmentID(seg.id);
+        if (!positions?.startPosition || !positions?.endPosition) continue;
+        const startX = getX(positions.startPosition.x);
+        const endX = getX(positions.endPosition.x);
         const x = (startX + endX) / 2;
         if (x - lastX < textWidth + 5) {
             currentY -= lineHeight; // 往上移动
@@ -223,16 +233,22 @@ const curveDegreePositions = computed(() => {
     const textWidth = 50; // 假设文本宽度为30px
     const lineHeight = 15; // 行高
     const sorted = segments.slice().sort((a: any, b: any) => {
-        const ax = (getX(getPositionBySegmentID(a.id)?.startPosition.x) + getX(getPositionBySegmentID(a.id)?.endPosition.x)) / 2;
-        const bx = (getX(getPositionBySegmentID(b.id)?.startPosition.x) + getX(getPositionBySegmentID(b.id)?.endPosition.x)) / 2;
+        const segA = getPositionBySegmentID(a.id);
+        const segB = getPositionBySegmentID(b.id);
+        if (!segA?.startPosition || !segA?.endPosition) return 1;
+        if (!segB?.startPosition || !segB?.endPosition) return -1;
+        const ax = (getX(segA.startPosition.x) + getX(segA.endPosition.x)) / 2;
+        const bx = (getX(segB.startPosition.x) + getX(segB.endPosition.x)) / 2;
         return ax - bx;
     });
     const result: { id: string; y: number }[] = [];
     let currentY = baseLineY.value + 15;
     let lastX = -Infinity;
     for (const seg of sorted) {
-        const startX = getX(getPositionBySegmentID(seg.id)?.startPosition.x);
-        const endX = getX(getPositionBySegmentID(seg.id)?.endPosition.x);
+        const positions = getPositionBySegmentID(seg.id);
+        if (!positions?.startPosition || !positions?.endPosition) continue;
+        const startX = getX(positions.startPosition.x);
+        const endX = getX(positions.endPosition.x);
         const x = (startX + endX) / 2;
         if (x - lastX < textWidth + 5) {
             currentY += lineHeight; // 往下移动
@@ -295,18 +311,130 @@ function getLengthById(id: string) {
     return props.flatLayout?.positionSegmentList.find((s: any) => s.id === id)?.length || '';
 }
 
+/**
+ * 检查position ID是否发生变化，如有变化则弹出确认对话框
+ * @param positionId 修改的position的ID
+ */
+async function checkPositionIdChange(positionId: string) {
+    const newPositionList = props.flatLayout?.positionList
+    if (!newPositionList) return
+
+    // 如果originalPositionMap为空，初始化它
+    if (originalPositionMap.value.size === 0) {
+        originalPositionMap.value = new Map(
+            newPositionList.map((p: any) => [p.id.toString(), JSON.stringify(p)])
+        )
+        return
+    }
+
+    const newPos = newPositionList.find((p: any) => p.id.toString() === positionId)
+    if (!newPos) return
+
+    // 检测ID变化
+    const newId = newPos.id.toString()
+    let oldId: string | null = null
+
+    // 查找是否有position的其他属性匹配但ID不同
+    for (const [origId, oldPosJson] of originalPositionMap.value.entries()) {
+        const oldPos = JSON.parse(oldPosJson)
+        // 如果x坐标相同但ID不同，认为是ID被修改了
+        if (oldPos.x === newPos.x && origId !== newId) {
+            // 检查新ID是否在旧列表中存在
+            const newIdExistedBefore = originalPositionMap.value.has(newId)
+            if (!newIdExistedBefore) {
+                oldId = origId
+                break
+            }
+        }
+    }
+
+    // 如果检测到ID变化，弹出确认对话框
+    if (oldId) {
+        try {
+            const affectedSegments: string[] = []
+            // 查找所有受影响的区段
+            const segments = props.flatLayout?.positionSegmentList?.filter((seg: any) =>
+                seg.startPositionID === oldId || seg.endPositionID === oldId
+            ) || []
+            affectedSegments.push(...segments.map((s: any) => s.id))
+
+            const message = affectedSegments.length > 0
+                ? `检测到Position ID变化，这将影响 ${affectedSegments.length} 个区段。是否删除受影响的区段？`
+                : '检测到Position ID变化，是否继续？'
+
+            await ElMessageBox.confirm(
+                message,
+                '警告',
+                {
+                    confirmButtonText: '确定',
+                    cancelButtonText: '取消',
+                    type: 'warning',
+                }
+            )
+
+            // 用户确定，删除受影响的区段
+            if (affectedSegments.length > 0 && props.flatLayout?.positionSegmentList) {
+                const updatedLayout = {
+                    ...props.flatLayout,
+                    positionSegmentList: props.flatLayout.positionSegmentList.filter(
+                        (seg: any) => !affectedSegments.includes(seg.id)
+                    )
+                }
+                emit('update:flatLayout', updatedLayout)
+            }
+
+            // 更新原始position映射
+            originalPositionMap.value = new Map(
+                newPositionList.map((p: any) => [p.id.toString(), JSON.stringify(p)])
+            )
+        } catch (error) {
+            // 用户取消，恢复原来的ID
+            const restoredPositionList = newPositionList.map((pos: any) => {
+                if (pos.id.toString() === newId && pos.x === newPos.x) {
+                    return { ...pos, id: oldId }
+                }
+                return pos
+            })
+
+            const updatedLayout = {
+                ...props.flatLayout,
+                positionList: restoredPositionList
+            }
+            emit('update:flatLayout', updatedLayout)
+        }
+    } else {
+        // 没有ID变化，更新原始position映射中的该position
+        originalPositionMap.value.set(newId, JSON.stringify(newPos))
+    }
+}
+
+/**
+ * 初始化原始position映射
+ */
+function initializePositionMap() {
+    if (props.flatLayout?.positionList) {
+        originalPositionMap.value = new Map(
+            props.flatLayout.positionList.map((p: any) => [p.id.toString(), JSON.stringify(p)])
+        )
+    }
+}
+
 onMounted(() => {
     document.addEventListener('keydown', handleKeyDown)
+    initializePositionMap()
 })
 
 onBeforeUnmount(() => {
     document.removeEventListener('keydown', handleKeyDown)
 })
 
+// 监听flatLayout变化，初始化position映射
 watch(
     () => props.flatLayout,
-    newVal => {
-
+    () => {
+        if (originalPositionMap.value.size === 0) {
+            initializePositionMap()
+        }
     }
 )
 
@@ -699,7 +827,9 @@ function selectObjectsInRect(rect: { x: number; y: number; width: number; height
 }
 
 // expose methods to parent component
-defineExpose({})
+defineExpose({
+    checkPositionIdChange
+})
 </script>
 
 <style lang="css">
