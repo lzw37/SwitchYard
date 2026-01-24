@@ -14,7 +14,7 @@
                 </el-form-item>
                 <el-form-item>
                     <el-button type="primary" @click="saveProfile" :loading="saving">{{ t('userInfo.save')
-                        }}</el-button>
+                    }}</el-button>
                 </el-form-item>
             </el-form>
         </div>
@@ -46,6 +46,7 @@ import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import axios from '@/utils/axios'
 import { ElMessage } from 'element-plus'
+import CryptoJS from 'crypto-js'
 
 interface UserInfo {
     id?: string
@@ -65,12 +66,9 @@ const changing = ref(false)
 const user = reactive<UserInfo>({ username: '', email: '', role: '' })
 const pwdForm = reactive({ currentPassword: '', newPassword: '', confirmPassword: '' })
 
-const hashPassword = async (password: string): Promise<string> => {
-    const encoder = new TextEncoder()
-    const data = encoder.encode(password)
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data)
-    const hashArray = Array.from(new Uint8Array(hashBuffer))
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
+const hashPassword = (password: string): string => {
+    // 使用 crypto-js 进行 SHA-256 哈希
+    return CryptoJS.SHA256(password).toString()
 }
 
 const loadUserInfo = async () => {
@@ -114,8 +112,8 @@ const changePassword = async () => {
 
     changing.value = true
     try {
-        const currentHash = await hashPassword(pwdForm.currentPassword)
-        const newHash = await hashPassword(pwdForm.newPassword)
+        const currentHash = hashPassword(pwdForm.currentPassword)
+        const newHash = hashPassword(pwdForm.newPassword)
         // 假设后端提供 POST /api/Auth/changepassword 接口
         await axios.post('/api/Auth/changepassword', {
             currentPassword: currentHash,

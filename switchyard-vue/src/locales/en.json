@@ -123,6 +123,7 @@
         "notFound": "Requested resource not found",
         "serverError": "Internal server error",
         "requestFailed": "Request failed",
+        "requestError": "Request error",
         "networkError": "Network error, please check your connection",
         "requestConfigError": "Request configuration error"
     },

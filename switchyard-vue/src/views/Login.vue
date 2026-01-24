@@ -35,6 +35,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import axios from '@/utils/axios'
+import CryptoJS from 'crypto-js'
 
 // 定义登录响应接口
 interface LoginResponse {
@@ -69,19 +70,9 @@ const rules = reactive<FormRules>({
 })
 
 // SHA-256 哈希函数
-const hashPassword = async (password: string): Promise<string> => {
-    // 将密码转换为 Uint8Array
-    const encoder = new TextEncoder()
-    const data = encoder.encode(password)
-
-    // 使用 Web Crypto API 进行 SHA-256 哈希
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data)
-
-    // 将 ArrayBuffer 转换为十六进制字符串
-    const hashArray = Array.from(new Uint8Array(hashBuffer))
-    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
-
-    return hashHex
+const hashPassword = (password: string): string => {
+    // 使用 crypto-js 进行 SHA-256 哈希
+    return CryptoJS.SHA256(password).toString()
 }
 
 // 处理登录
@@ -93,7 +84,7 @@ const handleLogin = async () => {
             loading.value = true
             try {
                 // 对密码进行 SHA-256 哈希
-                const hashedPassword = await hashPassword(loginForm.password)
+                const hashedPassword = hashPassword(loginForm.password)
 
                 const response = await axios.post<LoginResponse>('/api/Auth/login', {
                     username: loginForm.username,

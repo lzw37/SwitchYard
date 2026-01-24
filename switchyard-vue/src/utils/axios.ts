@@ -28,7 +28,7 @@ axios.interceptors.request.use(
         return config;
     },
     (error: AxiosError) => {
-        console.error("请求错误:", error);
+        console.error(i18n.global.t('axios.requestError'), error);
         return Promise.reject(error);
     }
 );

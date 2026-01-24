@@ -57,6 +57,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import axios from '@/utils/axios'
+import CryptoJS from 'crypto-js'
 
 // 定义创建用户请求接口
 interface CreateUserRequest {
@@ -123,13 +124,9 @@ const rules = reactive<FormRules>({
 })
 
 // SHA-256 哈希函数
-const hashPassword = async (password: string): Promise<string> => {
-    const encoder = new TextEncoder()
-    const data = encoder.encode(password)
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data)
-    const hashArray = Array.from(new Uint8Array(hashBuffer))
-    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
-    return hashHex
+const hashPassword = (password: string): string => {
+    // 使用 crypto-js 进行 SHA-256 哈希
+    return CryptoJS.SHA256(password).toString()
 }
 
 // 处理创建用户
@@ -141,7 +138,7 @@ const handleCreateUser = async () => {
             loading.value = true
             try {
                 // 对密码进行 SHA-256 哈希
-                const hashedPassword = await hashPassword(createUserForm.password)
+                const hashedPassword = hashPassword(createUserForm.password)
 
                 const requestData: CreateUserRequest = {
                     username: createUserForm.username,
