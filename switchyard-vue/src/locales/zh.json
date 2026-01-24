@@ -218,6 +218,7 @@
             "deleteSlopeLineError": "删除溜放线失败",
             "loadSlopeLinesError": "加载溜放线列表失败",
             "flatLayoutLoaded": "平面布局加载成功",
+            "flatLayoutSaved": "平面布置图保存成功！",
             "loadFlatLayoutError": "加载平面布局失败",
             "loadFlatLayoutFirst": "请先加载溜放线的平面布局！",
             "insertPositionConfirm": "在原有控制点序列中插入新控制点将改变平面展开图结构，可能会使绑定在原区段上的减速器等设备失效",

@@ -224,6 +224,7 @@
             "deleteSlopeLineError": "Failed to delete slope line",
             "loadSlopeLinesError": "Failed to load slope lines",
             "flatLayoutLoaded": "Flat layout loaded successfully",
+            "flatLayoutSaved": "Flat layout saved successfully!",
             "loadFlatLayoutError": "Failed to load flat layout",
             "loadFlatLayoutFirst": "Please load the flat layout first!",
             "insertPositionConfirm": "Inserting a new control point into the existing sequence will change the flat layout structure and may invalidate devices (e.g., retarders) bound to segments.",

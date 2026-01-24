@@ -7,7 +7,7 @@
             <div>
                 <el-button-group>
                     <el-button type="plain" @click="loadFlatLayout">{{ t('hump.load') }}</el-button>
-                    <el-button type="primary" @click="createNewLayout">{{ t('hump.buttons.save') }}</el-button>
+                    <el-button type="primary" @click="saveFlatLayout">{{ t('hump.buttons.save') }}</el-button>
                 </el-button-group>
 
                 <el-button-group style="margin-left: 20px;">
@@ -311,10 +311,17 @@ async function loadSlopeLines() {
 watch(() => props.selectedInstanceId, (newValue) => {
     if (newValue) {
         loadSlopeLines()
+        selectedLine.value = null
+        flatLayout.value = null
     } else {
         lines.value = []
         selectedLine.value = null
     }
+}, { immediate: true })
+
+// 选中溜放线变化时，清空平面布局数据
+watch(selectedLine, (newValue) => {
+    flatLayout.value = null
 }, { immediate: true })
 
 function updateGlobalCursorX(value: number) {
@@ -804,6 +811,9 @@ async function deleteSlopeLine() {
         // 清空当前选中
         selectedLine.value = null
 
+        // 清空平面布局数据
+        flatLayout.value = null
+
         // 刷新溜放线列表
         await loadSlopeLines()
 
@@ -821,10 +831,12 @@ function saveFlatLayout() {
         console.warn('No flat layout data to save.')
         return
     }
-    axios.post('https://localhost:7297/hump/saveflatlayout', flatLayout.value).then(response => {
+    axios.put('/hump/editflatlayout', flatLayout.value).then(response => {
+        ElMessage.success(t('hump.messages.flatLayoutSaved'))
         console.log('Flat layout data saved successfully.')
     }).catch(error => {
         console.error('Error saving flat layout data:', error)
+        ElMessage.error(t('hump.messages.saveFlatLayoutError'))
     })
 }
 

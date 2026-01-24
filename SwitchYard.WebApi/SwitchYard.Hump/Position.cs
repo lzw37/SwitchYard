@@ -226,13 +226,13 @@ namespace SwitchYard.Hump
         /// 起始位置点
         /// </summary>
         [JsonIgnore]
-        public Position StartPosition { get; set; }
+        public Position? StartPosition { get; set; }
 
         /// <summary>
         /// 终止位置点
         /// </summary>
         [JsonIgnore]
-        public Position EndPosition { get; set; }
+        public Position? EndPosition { get; set; }
 
         /// <summary>
         /// 起始位置点ID
@@ -301,17 +301,17 @@ namespace SwitchYard.Hump
         /// 道岔所在位置点
         /// </summary>
         [JsonIgnore]
-        public HPosition BindingPosition { get; set; }
+        public HPosition? BindingPosition { get; set; }
 
-        public string BindingPositionID { get; set; }
+        public string? BindingPositionID { get; set; }
 
         /// <summary>
         /// 道岔所在位置区间（仅对菱形交叉生效）
         /// </summary>
         [JsonIgnore]
-        public HPositionSegment BindingPositionSegment { get; set; }
+        public HPositionSegment? BindingPositionSegment { get; set; }
 
-        public string BindingPositionSegmentID { get; set; }
+        public string? BindingPositionSegmentID { get; set; }
 
         /// <summary>
         /// 曲线转角（车辆溜放方向）/°
@@ -348,7 +348,7 @@ namespace SwitchYard.Hump
         /// 减速器所在的位置区间
         /// </summary>
         [JsonIgnore]
-        public HPositionSegment BindingPositionSegment { get; set; }
+        public HPositionSegment? BindingPositionSegment { get; set; }
 
         public string BindingPositionSegmentID { get; set; }
 
@@ -366,8 +366,15 @@ namespace SwitchYard.Hump
             }
             set
             {
-                var strArray = value.Split('+');
-                NumberArray = strArray.Select(s => int.Parse(s)).ToArray();
+                if (string.IsNullOrEmpty(value))
+                {
+                    NumberArray = Array.Empty<int>();
+                }
+                else
+                {
+                    var strArray = value.Split('+');
+                    NumberArray = strArray.Select(s => int.Parse(s)).ToArray();
+                }
             }
         }
 

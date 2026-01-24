@@ -396,19 +396,31 @@ namespace SwitchYard.Service.Controllers
                 }
 
                 // Insert switches
+                var swIDSet = flatLayout.SwitchList.Select(sw => sw.ID).ToHashSet();
+                if(swIDSet.Count < flatLayout.SwitchList.Count)
+                {
+                    throw new ApplicationException("Switch ID Duplicated!");
+                }
+
                 foreach (var sw in flatLayout.SwitchList)
                 {
-                    var id = _snowflakeIdGenerator.NextIdString();
+                    //var id = _snowflakeIdGenerator.NextIdString();
                     dbConnector.ExecuteNonQuery("INSERT INTO switch (ID, InstanceID, SlopeLineID, BindingPositionID, BindingPositionSegmentID, CurveDegree, Type, Direction, Side) VALUES (@ID, @InstanceID, @SlopeLineID, @BindingPositionID, @BindingPositionSegmentID, @CurveDegree, @Type, @Direction, @Side)",
-                        new { ID = id, InstanceID = flatLayout.InstanceID, SlopeLineID = flatLayout.SlopeLineID, BindingPositionID = sw.BindingPositionID, BindingPositionSegmentID = sw.BindingPositionSegmentID, CurveDegree = sw.CurveDegree, Type = sw.Type, Direction = sw.Direction, Side = sw.Side });
+                        new { ID = sw.ID, InstanceID = flatLayout.InstanceID, SlopeLineID = flatLayout.SlopeLineID, BindingPositionID = sw.BindingPositionID, BindingPositionSegmentID = sw.BindingPositionSegmentID, CurveDegree = sw.CurveDegree, Type = sw.Type, Direction = sw.Direction, Side = sw.Side });
                 }
 
                 // Insert retarders
+                var retarderIDSet = flatLayout.RetarderList.Select(r => r.ID).ToHashSet();
+                if (retarderIDSet.Count < flatLayout.RetarderList.Count)
+                {
+                    throw new ApplicationException("Retarder ID Duplicated!");
+                }
+
                 foreach (var retarder in flatLayout.RetarderList)
                 {
-                    var id = _snowflakeIdGenerator.NextIdString();
+                    //var id = _snowflakeIdGenerator.NextIdString();
                     dbConnector.ExecuteNonQuery("INSERT INTO retarder (ID, InstanceID, SlopeLineID, BindingPositionSegmentID, Numbers) VALUES (@ID, @InstanceID, @SlopeLineID, @BindingPositionSegmentID, @Numbers)",
-                        new { ID = id, InstanceID = flatLayout.InstanceID, SlopeLineID = flatLayout.SlopeLineID, BindingPositionSegmentID = retarder.BindingPositionSegmentID, Numbers = retarder.Numbers });
+                        new { ID = retarder.ID, InstanceID = flatLayout.InstanceID, SlopeLineID = flatLayout.SlopeLineID, BindingPositionSegmentID = retarder.BindingPositionSegmentID, Numbers = retarder.Numbers });
                 }
                 dbConnector.Commit();
                 _logger.LogInformation("Updated FlatLayout for instance {InstanceID}, slope line {SlopeLineID} by user {Username}.", flatLayout.InstanceID, flatLayout.SlopeLineID, username);
