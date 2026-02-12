@@ -7,6 +7,7 @@ import CourseMain from './course/CourseMain.vue'
 const route = useRoute()
 const isHumpRoute = () => route.path === '/hump' || route.path.startsWith('/hump/')
 const isCourseMainRoute = () => route.path === '/courses' || route.path.startsWith('/courses/')
+const isIndex = () => route.path === '/'
 </script>
 
 <template>
@@ -15,6 +16,10 @@ const isCourseMainRoute = () => route.path === '/courses' || route.path.startsWi
     </template>
     <template v-else-if="isCourseMainRoute()">
         <CourseMain />
+    </template>
+
+    <template v-else-if="isIndex()">
+        <HelloWorld />
     </template>
 
     <template v-else>

@@ -363,6 +363,138 @@
             "3": "3 号线"
         }
     },
+    "home": {
+        "brand": "SwitchYard",
+        "nav": {
+            "home": "首页",
+            "features": "核心功能",
+            "tech": "技术栈",
+            "about": "关于",
+            "contact": "联系我们"
+        },
+        "lang": {
+            "en": "英文/EN",
+            "zh": "中文/CN",
+            "switchToZh": "切换到中文",
+            "switchToEn": "Switch to English"
+        },
+        "hero": {
+            "subtitle": "铁路站场与枢纽教学工具包",
+            "description": "提供驼峰作业计算、列车溜放仿真、站场布局设计等功能",
+            "btnHump": "驼峰纵断面",
+            "btnSource": "查看源码"
+        },
+        "features": {
+            "title": "核心功能",
+            "subtitle": "专业的铁路站场教学与仿真平台",
+            "cards": {
+                "layout": {
+                    "title": "站场布局",
+                    "desc": "可视化站场平纵断面图，直观展示驼峰站场结构"
+                },
+                "slope": {
+                    "title": "坡度设计",
+                    "desc": "驼峰坡度设计与优化，科学计算坡度参数"
+                },
+                "sim": {
+                    "title": "溜放仿真",
+                    "desc": "车辆溜放过程动态模拟，实时观察车辆运行"
+                },
+                "velocity": {
+                    "title": "速度曲线",
+                    "desc": "车辆速度-时间曲线计算与分析展示"
+                },
+                "time": {
+                    "title": "时间曲线",
+                    "desc": "车辆位移-时间曲线分析，精确计算运行时间"
+                },
+                "energy": {
+                    "title": "能量计算",
+                    "desc": "阻力能耗高度、动能高度精确计算"
+                },
+                "wagon": {
+                    "title": "车辆参数",
+                    "desc": "车辆概念及参数设置，灵活配置车辆信息"
+                },
+                "safety": {
+                    "title": "安全检验",
+                    "desc": "追踪间隔时间安全检验，确保作业安全"
+                }
+            }
+        },
+        "tech": {
+            "title": "技术栈",
+            "subtitle": "现代化的前后端分离架构",
+            "frontend": {
+                "title": "前端技术",
+                "framework": "框架",
+                "build": "构建工具",
+                "ui": "UI 框架",
+                "router": "路由",
+                "http": "HTTP 客户端"
+            },
+            "backend": {
+                "title": "后端技术",
+                "framework": "框架",
+                "language": "语言",
+                "auth": "认证",
+                "database": "数据库",
+                "security": "安全"
+            }
+        },
+        "security": {
+            "title": "安全特性",
+            "cards": {
+                "password": {
+                    "title": "双重密码保护",
+                    "p1": "前端 SHA-256 哈希传输",
+                    "p2": "后端 Argon2 加密存储"
+                },
+                "jwt": {
+                    "title": "JWT 认证",
+                    "p1": "Token 过期时间可配置",
+                    "p2": "自动刷新机制"
+                },
+                "https": {
+                    "title": "HTTPS 支持",
+                    "p1": "生产环境强制 HTTPS",
+                    "p2": "安全的数据传输"
+                }
+            }
+        },
+        "about": {
+            "title": "关于项目",
+            "professional": {
+                "title": "专业的教学工具",
+                "p": "SwitchYard 是一个专为铁路站场与枢纽教学设计的综合工具包。采用现代化的前后端分离架构，为教师和学生提供直观、高效的教学和学习平台。"
+            },
+            "modules": {
+                "title": "丰富的功能模块",
+                "p": "系统涵盖驼峰作业计算、列车溜放仿真、站场布局设计等核心功能，支持完整的驼峰作业流程模拟和分析。"
+            },
+            "open": {
+                "title": "开源与协作",
+                "p": "项目采用开源方式发布，欢迎广大开发者和铁路专业人士参与贡献，共同完善这个教学工具平台。"
+            }
+        },
+        "contact": {
+            "title": "联系我们",
+            "maintainer": {
+                "title": "项目维护者",
+                "organization": "北京交通大学交通运输学院",
+                "authors": "廖正文 等"
+            },
+            "links": {
+                "title": "项目链接",
+                "github": "GitHub 仓库",
+                "gitee": "Gitee 仓库"
+            }
+        },
+        "footer": {
+            "copy": "© 2026 SwitchYard. All rights reserved.",
+            "tagline": "铁路站场与枢纽教学工具包"
+        }
+    },
 
     "wagon": {
         "new": "新建车型",

@@ -391,6 +391,138 @@
             "3": "Line 3"
         }
     },
+    "home": {
+        "brand": "SwitchYard",
+        "nav": {
+            "home": "Home",
+            "features": "Features",
+            "tech": "Tech Stack",
+            "about": "About",
+            "contact": "Contact"
+        },
+        "lang": {
+            "en": "EN/英文",
+            "zh": "CN/中文",
+            "switchToZh": "Switch to 中文",
+            "switchToEn": "Switch to English"
+        },
+        "hero": {
+            "subtitle": "Rail yard & hub teaching toolkit",
+            "description": "Provides hump calculations, car release simulations, yard layout design and more",
+            "btnHump": "Hump Profile",
+            "btnSource": "View Source"
+        },
+        "features": {
+            "title": "Core Features",
+            "subtitle": "A professional teaching and simulation platform for rail yards",
+            "cards": {
+                "layout": {
+                    "title": "Yard Layout",
+                    "desc": "Visual plan/profile views for hump yards"
+                },
+                "slope": {
+                    "title": "Slope Design",
+                    "desc": "Design and optimize hump slopes with scientific calculations"
+                },
+                "sim": {
+                    "title": "Release Simulation",
+                    "desc": "Dynamic simulation of car releases with real-time observation"
+                },
+                "velocity": {
+                    "title": "Velocity Curves",
+                    "desc": "Compute and analyze vehicle velocity-distance curves"
+                },
+                "time": {
+                    "title": "Time Curves",
+                    "desc": "Analyze displacement-time curves and compute runtimes"
+                },
+                "energy": {
+                    "title": "Energy Calculations",
+                    "desc": "Accurate resistance and kinetic energy computations"
+                },
+                "wagon": {
+                    "title": "Wagon Parameters",
+                    "desc": "Configure vehicle parameters flexibly"
+                },
+                "safety": {
+                    "title": "Safety Checks",
+                    "desc": "Interval and safety checks to ensure operations safety"
+                }
+            }
+        },
+        "tech": {
+            "title": "Tech Stack",
+            "subtitle": "Modern frontend-backend separated architecture",
+            "frontend": {
+                "title": "Frontend",
+                "framework": "Framework",
+                "build": "Build Tool",
+                "ui": "UI Framework",
+                "router": "Router",
+                "http": "HTTP Client"
+            },
+            "backend": {
+                "title": "Backend",
+                "framework": "Framework",
+                "language": "Language",
+                "auth": "Auth",
+                "database": "Database",
+                "security": "Security"
+            }
+        },
+        "security": {
+            "title": "Security Features",
+            "cards": {
+                "password": {
+                    "title": "Double-hash Password",
+                    "p1": "Front-end SHA-256 hashing in transit",
+                    "p2": "Back-end Argon2 encrypted storage"
+                },
+                "jwt": {
+                    "title": "JWT Authentication",
+                    "p1": "Configurable token expiry",
+                    "p2": "Auto refresh mechanism"
+                },
+                "https": {
+                    "title": "HTTPS Support",
+                    "p1": "Enforce HTTPS in production",
+                    "p2": "Secure data transmission"
+                }
+            }
+        },
+        "about": {
+            "title": "About the Project",
+            "professional": {
+                "title": "Professional Teaching Tool",
+                "p": "SwitchYard is a comprehensive toolkit designed for teaching rail yards and hubs. It uses modern frontend-backend separation to provide an intuitive and efficient platform for teachers and students."
+            },
+            "modules": {
+                "title": "Rich Modules",
+                "p": "Covers hump calculations, car release simulation, yard layout design and more, supporting full workflow simulation and analysis."
+            },
+            "open": {
+                "title": "Open Source & Collaboration",
+                "p": "The project is open source — contributions from developers and rail professionals are welcome."
+            }
+        },
+        "contact": {
+            "title": "Contact",
+            "maintainer": {
+                "title": "Maintainers",
+                "organization": "School of Transportation, Beijing Jiaotong University",
+                "authors": "Liao Zhengwen et al."
+            },
+            "links": {
+                "title": "Project Links",
+                "github": "GitHub Repo",
+                "gitee": "Gitee Repo"
+            }
+        },
+        "footer": {
+            "copy": "© 2026 SwitchYard. All rights reserved.",
+            "tagline": "Rail yard & hub teaching toolkit"
+        }
+    },
     "humpLayoutCtrl": {
         "horizontalBaseline": "Horizontal Baseline",
         "horizontalScale": "Horizontal Scale",
