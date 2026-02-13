@@ -244,7 +244,7 @@
                 "wind": "风速信息",
                 "environment": "环境参数",
                 "physical": "物理参数",
-                "retarder": "减速机参数"
+                "retarder": "减速器参数"
             },
             "labels": {
                 "conditionName": "计算条件名称",
@@ -257,8 +257,8 @@
                 "airDensity": "空气密度",
                 "temperature": "气温",
                 "gravity": "重力加速度",
-                "retarderActivation": "减速机启动阈值",
-                "retarderOutput": "减速机输出参数"
+                "retarderActivation": "减速器启动阈值",
+                "retarderOutput": "减速器输出参数"
             },
             "placeholders": {
                 "conditionName": "例如：标准计算条件",
@@ -271,8 +271,8 @@
                 "tailwind": "顺风"
             },
             "messages": {
-                "retarderActivationFormatError": "减速机启动阈值格式错误，请输入有效的JSON",
-                "retarderOutputFormatError": "减速机输出参数格式错误，请输入有效的JSON",
+                "retarderActivationFormatError": "减速器启动阈值格式错误，请输入有效的JSON",
+                "retarderOutputFormatError": "减速器输出参数格式错误，请输入有效的JSON",
                 "saved": "计算条件已保存",
                 "loaded": "计算条件已加载",
                 "deleted": "计算条件已删除"

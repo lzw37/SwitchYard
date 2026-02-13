@@ -61,7 +61,7 @@
                     <el-button v-if="scope.row.isEditing" @click="saveRow(scope.$index)" size="small" type="primary">{{
                         t('wagon.actions.save') }}</el-button>
                     <el-button @click="deleteRow(scope.$index)" size="small" type="danger">{{ t('wagon.actions.delete')
-                    }}</el-button>
+                        }}</el-button>
                 </template>
             </el-table-column>
         </el-table>
@@ -126,7 +126,7 @@ const deleteRow = (index: number) => {
 
 // 加载车辆概念数据
 function loadWagonConcept() {
-    axios.get(`${config.serverurl}/hump/getwagonconcept`).then(response => {
+    axios.get(`${config.serverurl}/hump/getwagonconcept`, { params: { instanceID: '001' } }).then(response => {
         wagonData.value = response.data.map((item: any) => ({
             ...item,
             isEditing: false
