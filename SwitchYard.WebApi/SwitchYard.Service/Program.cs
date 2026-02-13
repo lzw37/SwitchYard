@@ -32,6 +32,7 @@ builder.Services.AddCors(options =>
 // 注册JWT服务
 builder.Services.AddSingleton<JwtTokenService>();
 builder.Services.AddScoped<UserService>();
+builder.Services.AddScoped<InstanceAuthorizationService>();
 builder.Services.AddSingleton<SnowflakeIdGenerator>();
 
 // 配置JWT认证

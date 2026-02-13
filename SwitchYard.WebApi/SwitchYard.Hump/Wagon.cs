@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 
 namespace SwitchYard.Hump
@@ -70,6 +71,30 @@ namespace SwitchYard.Hump
                         throw new ApplicationException("车辆标签有误：" + Label);
                 }
             } 
+        }
+
+        /// <summary>
+        /// 自由落体重力加速度/(m/s²)
+        /// </summary>
+        public double g { get; set; } = 9.8;
+
+        /// <summary>
+        /// 考虑了车轮转动惯量的重力加速度/(m/s²)
+        /// </summary>
+        [JsonIgnore]
+        public double g_
+        {
+            get
+            {
+                if (this == null)
+                {
+                    return this.g;
+                }
+                else
+                {
+                    return (this.g / (1 + 0.42 * this.AxleNumber / this.GrossMass));
+                }
+            }
         }
     }
 }

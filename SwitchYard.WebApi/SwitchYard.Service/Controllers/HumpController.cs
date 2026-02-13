@@ -6,6 +6,7 @@ using System.Net;
 using System.Runtime.CompilerServices;
 using Microsoft.AspNetCore.Authorization;
 using SwitchYard.Service.Utils;
+using SwitchYard.Service.Services;
 
 namespace SwitchYard.Service.Controllers
 {
@@ -17,12 +18,38 @@ namespace SwitchYard.Service.Controllers
         IConfiguration _config;
         ILogger<HumpController> _logger;
         SnowflakeIdGenerator _snowflakeIdGenerator;
+        InstanceAuthorizationService _authService;
 
-        public HumpController(ILogger<HumpController> logger, IConfiguration configuration, SnowflakeIdGenerator snowflakeIdGenerator)
+        public HumpController(ILogger<HumpController> logger, IConfiguration configuration, SnowflakeIdGenerator snowflakeIdGenerator, InstanceAuthorizationService authService)
         {
             _logger = logger;
             _config = configuration;
             _snowflakeIdGenerator = snowflakeIdGenerator;
+            _authService = authService;
+        }
+
+        /// <summary>
+        /// 验证实例所有权并返回相应的ActionResult
+        /// </summary>
+        private IActionResult? ValidateInstanceOwnershipOrFail(string instanceID)
+        {
+            var username = User.Identity?.Name;
+            var result = _authService.ValidateInstanceOwnership(instanceID, username);
+            
+            if (!result.IsAuthorized)
+            {
+                if (result.IsNotFound)
+                {
+                    return NotFound(result.ErrorMessage);
+                }
+                if (result.IsError)
+                {
+                    return StatusCode(500, result.ErrorMessage);
+                }
+                return Unauthorized(result.ErrorMessage ?? "Instance not found or not owned by user.");
+            }
+            
+            return null; // 验证通过
         }
 
         [HttpGet(Name = "GetInstances")]
@@ -80,14 +107,13 @@ namespace SwitchYard.Service.Controllers
         {
             try
             {
-                var username = User.Identity.Name;
-                if (instance.Owner != username)
-                {
-                    return Unauthorized("Cannot edit instance owned by another user.");
-                }
+                var authResult = ValidateInstanceOwnershipOrFail(instance.ID);
+                if (authResult != null) return authResult;
+
+                var username = User.Identity?.Name;
                 DBConnector dbConnector = DBConnector.GetDBConnector();
                 var result = dbConnector.ExecuteNonQuery("UPDATE humpinstance SET Name = @Name, IsActive = @IsActive WHERE ID = @ID AND Owner = @Owner",
-                    new { instance.Name, instance.IsActive, instance.ID, instance.Owner });
+                    new { instance.Name, instance.IsActive, instance.ID, Owner = username });
                 if (result > 0)
                 {
                     _logger.LogInformation("Updated HumpInstance with ID {InstanceID} for user {Username}.", instance.ID, username);
@@ -111,13 +137,11 @@ namespace SwitchYard.Service.Controllers
         {
             try
             {
-                var username = User.Identity.Name;
+                var authResult = ValidateInstanceOwnershipOrFail(id);
+                if (authResult != null) return authResult;
+
+                var username = User.Identity?.Name;
                 DBConnector dbConnector = DBConnector.GetDBConnector();
-                var instances = dbConnector.Query<HumpInstance>("SELECT * FROM humpinstance WHERE ID = @id AND Owner = @username", new { id, username });
-                if (instances == null || instances.Count == 0)
-                {
-                    return NotFound("Instance not found or not owned by user.");
-                }
                 var result = dbConnector.ExecuteNonQuery("DELETE FROM humpinstance WHERE ID = @id AND Owner = @username", new { id, username });
                 if (result > 0)
                 {
@@ -143,13 +167,11 @@ namespace SwitchYard.Service.Controllers
         {
             try
             {
-                var username = User.Identity.Name;
+                var authResult = ValidateInstanceOwnershipOrFail(instanceID);
+                if (authResult != null) return authResult;
+
+                var username = User.Identity?.Name;
                 DBConnector dbConnector = DBConnector.GetDBConnector();
-                var instance = dbConnector.Query<HumpInstance>("SELECT * FROM humpinstance WHERE ID = @instanceID", new { instanceID }).FirstOrDefault();
-                if (instance == null || instance.Owner != username)
-                {
-                    return Unauthorized("Instance not found or not owned by user.");
-                }
                 var slopeLines = dbConnector.Query<SwitchYard.Hump.SlopeLine>("SELECT * FROM slopeline WHERE instanceID = @instanceID", new { instanceID });
                 _logger.LogInformation("Retrieved {SlopeLineCount} SlopeLines for instance {InstanceID} by user {Username}.", slopeLines?.Count ?? 0, instanceID, username);
                 return Ok(slopeLines);
@@ -166,13 +188,11 @@ namespace SwitchYard.Service.Controllers
         {
             try
             {
-                var username = User.Identity.Name;
+                var authResult = ValidateInstanceOwnershipOrFail(slopeLine.InstanceID);
+                if (authResult != null) return authResult;
+
+                var username = User.Identity?.Name;
                 DBConnector dbConnector = DBConnector.GetDBConnector();
-                var instance = dbConnector.Query<HumpInstance>("SELECT * FROM humpinstance WHERE ID = @instanceID", new { instanceID = slopeLine.InstanceID }).FirstOrDefault();
-                if (instance == null || instance.Owner != username)
-                {
-                    return Unauthorized("Instance not found or not owned by user.");
-                }
                 slopeLine.ID = _snowflakeIdGenerator.NextIdString();
                 var result = dbConnector.ExecuteNonQuery("INSERT INTO slopeline (ID, InstanceID, Name) VALUES (@ID, @InstanceID, @Name)",
                     new { slopeLine.ID, slopeLine.InstanceID, slopeLine.Name });
@@ -199,18 +219,17 @@ namespace SwitchYard.Service.Controllers
         {
             try
             {
-                var username = User.Identity.Name;
+                var username = User.Identity?.Name;
                 DBConnector dbConnector = DBConnector.GetDBConnector();
                 var existing = dbConnector.Query<SlopeLine>("SELECT * FROM slopeline WHERE ID = @id", new { id = slopeLine.ID }).FirstOrDefault();
                 if (existing == null)
                 {
                     return NotFound("SlopeLine not found.");
                 }
-                var instance = dbConnector.Query<HumpInstance>("SELECT * FROM humpinstance WHERE ID = @instanceID", new { instanceID = existing.InstanceID }).FirstOrDefault();
-                if (instance == null || instance.Owner != username)
-                {
-                    return Unauthorized("Instance not found or not owned by user.");
-                }
+
+                var authResult = ValidateInstanceOwnershipOrFail(existing.InstanceID);
+                if (authResult != null) return authResult;
+
                 var result = dbConnector.ExecuteNonQuery("UPDATE slopeline SET Name = @Name WHERE ID = @ID",
                     new { slopeLine.Name, slopeLine.ID });
                 if (result > 0)
@@ -236,18 +255,17 @@ namespace SwitchYard.Service.Controllers
         {
             try
             {
-                var username = User.Identity.Name;
+                var username = User.Identity?.Name;
                 DBConnector dbConnector = DBConnector.GetDBConnector();
                 var slopeLine = dbConnector.Query<SlopeLine>("SELECT * FROM slopeline WHERE ID = @id", new { id }).FirstOrDefault();
                 if (slopeLine == null)
                 {
                     return NotFound("SlopeLine not found.");
                 }
-                var instance = dbConnector.Query<HumpInstance>("SELECT * FROM humpinstance WHERE ID = @instanceID", new { instanceID = slopeLine.InstanceID }).FirstOrDefault();
-                if (instance == null || instance.Owner != username)
-                {
-                    return Unauthorized("Instance not found or not owned by user.");
-                }
+
+                var authResult = ValidateInstanceOwnershipOrFail(slopeLine.InstanceID);
+                if (authResult != null) return authResult;
+
                 var result = dbConnector.ExecuteNonQuery("DELETE FROM slopeline WHERE ID = @id", new { id });
                 if (result > 0)
                 {
@@ -276,13 +294,8 @@ namespace SwitchYard.Service.Controllers
         {
             try
             {
-                var username = User.Identity.Name;
-                DBConnector dbConnector = DBConnector.GetDBConnector();
-                var instance = dbConnector.Query<HumpInstance>("SELECT * FROM humpinstance WHERE ID = @instanceID", new { instanceID }).FirstOrDefault();
-                if (instance == null || instance.Owner != username)
-                {
-                    return Unauthorized("Instance not found or not owned by user.");
-                }
+                var authResult = ValidateInstanceOwnershipOrFail(instanceID);
+                if (authResult != null) return authResult;
 
                 var flatLayout = LoadFlatLayout(instanceID, slopeLineID);
 
@@ -359,12 +372,10 @@ namespace SwitchYard.Service.Controllers
 
             try
             {
-                var username = User.Identity.Name;
-                var instance = dbConnector.Query<HumpInstance>("SELECT * FROM humpinstance WHERE ID = @instanceID", new { instanceID = flatLayout.InstanceID }).FirstOrDefault();
-                if (instance == null || instance.Owner != username)
-                {
-                    return Unauthorized("Instance not found or not owned by user.");
-                }
+                var authResult = ValidateInstanceOwnershipOrFail(flatLayout.InstanceID);
+                if (authResult != null) return authResult;
+
+                var username = User.Identity?.Name;
 
                 // Delete existing records
                 dbConnector.BeginTransaction();
@@ -440,12 +451,10 @@ namespace SwitchYard.Service.Controllers
             DBConnector dbConnector = DBConnector.GetDBConnector();
             try
             {
-                var username = User.Identity.Name;
-                var instance = dbConnector.Query<HumpInstance>("SELECT * FROM humpinstance WHERE ID = @instanceID", new { instanceID = flatLayout.InstanceID }).FirstOrDefault();
-                if (instance == null || instance.Owner != username)
-                {
-                    return Unauthorized("Instance not found or not owned by user.");
-                }
+                var authResult = ValidateInstanceOwnershipOrFail(flatLayout.InstanceID);
+                if (authResult != null) return authResult;
+
+                var username = User.Identity?.Name;
 
                 // Delete existing records
                 dbConnector.BeginTransaction();
@@ -470,12 +479,11 @@ namespace SwitchYard.Service.Controllers
         /// </summary>
         /// <returns></returns>
         [HttpGet(Name = "GetWagonConcept")]
-        public IActionResult GetWagonConcept()
+        public IActionResult GetWagonConcept(string instanceID)
         {
             try
             {
-                DBConnector dbConnector = DBConnector.GetDBConnector();
-                var wagonConceptList = LoadWagonConcept();
+                var wagonConceptList = LoadWagonConcept(instanceID);
                 _logger.LogInformation("WagonConcept retrieved with {WagonConceptCount} entries.", wagonConceptList?.Count ?? 0);
                 return Ok(wagonConceptList);
             }
@@ -486,11 +494,186 @@ namespace SwitchYard.Service.Controllers
             }
         }
 
-        private List<WagonConcept> LoadWagonConcept()
+        private List<WagonConcept>? LoadWagonConcept(string instanceID)
         {
             DBConnector dbConnector = DBConnector.GetDBConnector();
-            var wagonConceptList = dbConnector.Query<SwitchYard.Hump.WagonConcept>("SELECT * FROM wagonconcept");
+            var wagonConceptList = dbConnector.Query<SwitchYard.Hump.WagonConcept>("SELECT * FROM wagonconcept WHERE InstanceID = @instanceID",
+                new { instanceID = instanceID});
             return wagonConceptList;
+        }
+
+        /// <summary>
+        /// 获取运行条件列表
+        /// </summary>
+        [HttpGet(Name = "GetOperationConditions")]
+        public IActionResult GetOperationConditions(string instanceID)
+        {
+            try
+            {
+                var authResult = ValidateInstanceOwnershipOrFail(instanceID);
+                if (authResult != null) return authResult;
+
+                DBConnector dbConnector = DBConnector.GetDBConnector();
+
+                var list = dbConnector.Query<OperationCondition>("SELECT * FROM operationcondition WHERE InstanceID = @instanceID", new { instanceID });
+                _logger.LogInformation("Retrieved {Count} OperationConditions for instance {InstanceID}.", list?.Count ?? 0, instanceID);
+                return Ok(list);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting OperationConditions for instance {InstanceID}.", instanceID);
+                return StatusCode(500, "Internal server error while getting OperationConditions.");
+            }
+        }
+
+        /// <summary>
+        /// 创建运行条件
+        /// </summary>
+        [HttpPost(Name = "CreateOperationCondition")]
+        public IActionResult CreateOperationCondition(OperationCondition condition)
+        {
+            try
+            {
+                if (condition == null || string.IsNullOrEmpty(condition.InstanceID))
+                {
+                    return BadRequest("Invalid OperationCondition or missing InstanceID.");
+                }
+
+                var authResult = ValidateInstanceOwnershipOrFail(condition.InstanceID);
+                if (authResult != null) return authResult;
+
+                DBConnector dbConnector = DBConnector.GetDBConnector();
+
+                if (string.IsNullOrEmpty(condition.ID))
+                {
+                    condition.ID = _snowflakeIdGenerator.NextIdString();
+                }
+
+                var result = dbConnector.ExecuteNonQuery(
+                    "INSERT INTO operationcondition (InstanceID, ID, WagonVelocityOnTop, WagonVelocityOnSlope, WagonVelocityOnYard, WindVelocity, IsHeadWind, AirDensity, Temperature, Name) VALUES (@InstanceID, @ID, @WagonVelocityOnTop, @WagonVelocityOnSlope, @WagonVelocityOnYard, @WindVelocity, @IsHeadWind, @AirDensity, @Temperature, @Name)",
+                    new
+                    {
+                        condition.InstanceID,
+                        condition.ID,
+                        condition.WagonVelocityOnTop,
+                        condition.WagonVelocityOnSlope,
+                        condition.WagonVelocityOnYard,
+                        condition.WindVelocity,
+                        condition.IsHeadWind,
+                        condition.AirDensity,
+                        condition.Temperature,
+                        condition.Name
+                    });
+
+                if (result > 0)
+                {
+                    _logger.LogInformation("Created OperationCondition {ID} for instance {InstanceID}.", condition.ID, condition.InstanceID);
+                    return Ok(condition);
+                }
+                else
+                {
+                    _logger.LogWarning("Failed to create OperationCondition for instance {InstanceID}.", condition.InstanceID);
+                    return StatusCode(500, "Failed to create OperationCondition.");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error creating OperationCondition.");
+                return StatusCode(500, "Internal server error while creating OperationCondition.");
+            }
+        }
+
+        /// <summary>
+        /// 更新运行条件
+        /// </summary>
+        [HttpPut(Name = "EditOperationCondition")]
+        public IActionResult EditOperationCondition(OperationCondition condition)
+        {
+            try
+            {
+                if (condition == null || string.IsNullOrEmpty(condition.ID))
+                {
+                    return BadRequest("Invalid OperationCondition or missing ID.");
+                }
+
+                DBConnector dbConnector = DBConnector.GetDBConnector();
+                var existing = dbConnector.Query<OperationCondition>("SELECT * FROM operationcondition WHERE ID = @id", new { id = condition.ID }).FirstOrDefault();
+                if (existing == null)
+                {
+                    return NotFound("OperationCondition not found.");
+                }
+
+                var authResult = ValidateInstanceOwnershipOrFail(existing.InstanceID);
+                if (authResult != null) return authResult;
+
+                var result = dbConnector.ExecuteNonQuery(
+                    "UPDATE operationcondition SET WagonVelocityOnTop = @WagonVelocityOnTop, WagonVelocityOnSlope = @WagonVelocityOnSlope, WagonVelocityOnYard = @WagonVelocityOnYard, WindVelocity = @WindVelocity, IsHeadWind = @IsHeadWind, AirDensity = @AirDensity, Temperature = @Temperature, Name = @Name WHERE ID = @ID",
+                    new
+                    {
+                        condition.WagonVelocityOnTop,
+                        condition.WagonVelocityOnSlope,
+                        condition.WagonVelocityOnYard,
+                        condition.WindVelocity,
+                        condition.IsHeadWind,
+                        condition.AirDensity,
+                        condition.Temperature,
+                        condition.Name,
+                        ID = condition.ID
+                    });
+
+                if (result > 0)
+                {
+                    _logger.LogInformation("Updated OperationCondition {ID} for instance {InstanceID}.", condition.ID, existing.InstanceID);
+                    return Ok("OperationCondition updated successfully.");
+                }
+                else
+                {
+                    _logger.LogWarning("Failed to update OperationCondition {ID} for instance {InstanceID}.", condition.ID, existing.InstanceID);
+                    return StatusCode(500, "Failed to update OperationCondition.");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating OperationCondition.");
+                return StatusCode(500, "Internal server error while updating OperationCondition.");
+            }
+        }
+
+        /// <summary>
+        /// 删除运行条件
+        /// </summary>
+        [HttpDelete(Name = "DeleteOperationCondition")]
+        public IActionResult DeleteOperationCondition(string id)
+        {
+            try
+            {
+                DBConnector dbConnector = DBConnector.GetDBConnector();
+                var existing = dbConnector.Query<OperationCondition>("SELECT * FROM operationcondition WHERE ID = @id", new { id }).FirstOrDefault();
+                if (existing == null)
+                {
+                    return NotFound("OperationCondition not found.");
+                }
+
+                var authResult = ValidateInstanceOwnershipOrFail(existing.InstanceID);
+                if (authResult != null) return authResult;
+
+                var result = dbConnector.ExecuteNonQuery("DELETE FROM operationcondition WHERE ID = @id", new { id });
+                if (result > 0)
+                {
+                    _logger.LogInformation("Deleted OperationCondition {ID} for instance {InstanceID}.", id, existing.InstanceID);
+                    return Ok("OperationCondition deleted successfully.");
+                }
+                else
+                {
+                    _logger.LogWarning("Failed to delete OperationCondition {ID} for instance {InstanceID}.", id, existing.InstanceID);
+                    return StatusCode(500, "Failed to delete OperationCondition.");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error deleting OperationCondition.");
+                return StatusCode(500, "Internal server error while deleting OperationCondition.");
+            }
         }
 
         /// <summary>
@@ -542,9 +725,9 @@ namespace SwitchYard.Service.Controllers
             {
                 var flatLayout = LoadFlatLayout("","");
                 var slopeLayout = LoadSlopeLayout();
-                var wagonConceptList = LoadWagonConcept();
+                var wagonConceptList = LoadWagonConcept("");
 
-                parameters.Wagon = wagonConceptList.Find(w => w.TypeName == parameters.WagonTypeName);
+                parameters.Wagon = wagonConceptList.Find(w => w.TypeName == parameters.Wagon.TypeName);
 
                 var kineticEnergyHeightList = new List<object>();
 
@@ -575,9 +758,9 @@ namespace SwitchYard.Service.Controllers
             {
                 var flatLayout = LoadFlatLayout("","");
                 var slopeLayout = LoadSlopeLayout();
-                var wagonConceptList = LoadWagonConcept();
+                var wagonConceptList = LoadWagonConcept("");
 
-                parameters.Wagon = wagonConceptList.Find(w => w.TypeName == parameters.WagonTypeName);
+                parameters.Wagon = wagonConceptList.Find(w => w.TypeName == parameters.Wagon.TypeName);
 
                 var resistanceEnergyHeightList = new List<object>();
 
@@ -619,9 +802,9 @@ namespace SwitchYard.Service.Controllers
             {
                 var flatLayout = LoadFlatLayout("","");
                 var slopeLayout = LoadSlopeLayout();
-                var wagonConceptList = LoadWagonConcept();
+                var wagonConceptList = LoadWagonConcept("");
 
-                parameters.Wagon = wagonConceptList.Find(w => w.TypeName == parameters.WagonTypeName);
+                parameters.Wagon = wagonConceptList.Find(w => w.TypeName == parameters.Wagon.TypeName);
 
                 var breakingEnergyHeightDict = new Dictionary<double, double>();
                 foreach (var p in slopeLayout.PositionList)
@@ -645,9 +828,9 @@ namespace SwitchYard.Service.Controllers
 
             var flatLayout = LoadFlatLayout("","");
             var slopeLayout = LoadSlopeLayout();
-            var wagonConceptList = LoadWagonConcept();
+            var wagonConceptList = LoadWagonConcept("");
 
-            parameters.Wagon = wagonConceptList.Find(w => w.TypeName == parameters.WagonTypeName);
+            parameters.Wagon = wagonConceptList.Find(w => w.TypeName == parameters.Wagon.TypeName);
 
             var velocityList = new List<object>();
 
@@ -731,5 +914,6 @@ namespace SwitchYard.Service.Controllers
                 return StatusCode(500, "Internal server error while calculating Time.");
             }
         }
+
     }
 }
