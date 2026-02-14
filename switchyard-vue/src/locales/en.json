@@ -116,7 +116,8 @@
     },
     "common": {
         "networkError": "Network error, please try again later",
-        "confirm": "Confirm"
+        "confirm": "Confirm",
+        "cancel": "Cancel"
     },
     "axios": {
         "noPermission": "No permission to access this resource",
@@ -242,7 +243,11 @@
         "calcCondition": {
             "new": "New",
             "save": "Save",
+            "update": "Update",
             "reset": "Reset",
+            "delete": "Delete",
+            "warning": "Warning",
+            "confirmDelete": "Are you sure you want to delete this operation condition? This action cannot be undone.",
             "sections": {
                 "overview": "Overview",
                 "wagonInfo": "Wagon Info",
@@ -253,6 +258,8 @@
                 "retarder": "Retarder Parameters"
             },
             "labels": {
+                "instance": "Instance",
+                "condition": "Operation Condition",
                 "conditionName": "Condition Name",
                 "wagonType": "Wagon Type",
                 "peakVelocity": "Peak Velocity",
@@ -267,6 +274,8 @@
                 "retarderOutput": "Retarder Output"
             },
             "placeholders": {
+                "chooseInstance": "Please choose instance",
+                "chooseCondition": "Please choose operation condition",
                 "conditionName": "e.g. Standard Condition",
                 "chooseWagon": "Please choose wagon type",
                 "jsonExample": "JSON, e.g.: {}"
@@ -280,8 +289,19 @@
                 "retarderActivationFormatError": "Retarder activation format error, please enter valid JSON",
                 "retarderOutputFormatError": "Retarder output format error, please enter valid JSON",
                 "saved": "Calculation condition saved",
+                "created": "Operation condition created successfully",
+                "updated": "Operation condition updated",
                 "loaded": "Calculation condition loaded",
-                "deleted": "Calculation condition deleted"
+                "deleted": "Calculation condition deleted",
+                "newCondition": "Please fill in new condition information"
+            },
+            "errors": {
+                "loadInstances": "Failed to load instances",
+                "loadConditions": "Failed to load operation conditions",
+                "noInstance": "Please select an instance first",
+                "noCondition": "Please select an operation condition to delete first",
+                "save": "Failed to save operation condition",
+                "delete": "Failed to delete operation condition"
             },
             "defaults": {
                 "conditionName": "Standard Condition"
@@ -341,6 +361,7 @@
     },
     "wagon": {
         "new": "New Wagon Type",
+        "typeName": "Type Name",
         "type": "Type",
         "actionsLabel": "Actions",
         "length": "Length (m)",
@@ -349,6 +370,7 @@
         "grossMass": "Gross Mass (t)",
         "windwardArea": "Windward Area (m²)",
         "axleNumber": "Axles",
+        "gravity": "Gravity (m/s²)",
         "label": "Label",
         "chooseLabel": "Choose label",
         "labelHard": "Difficult",
@@ -357,7 +379,28 @@
         "actions": {
             "edit": "Edit",
             "save": "Save",
+            "cancel": "Cancel",
             "delete": "Delete"
+        },
+        "validation": {
+            "typeNameRequired": "Type name is required",
+            "typeNameExists": "Type name already exists",
+            "lengthRequired": "Length must be greater than 0",
+            "netMassRequired": "Net mass must be greater than 0",
+            "windwardAreaRequired": "Windward area must be greater than 0",
+            "axleNumberRequired": "Axle number must be greater than 0",
+            "gravityRequired": "Gravity must be greater than 0"
+        },
+        "messages": {
+            "noInstanceSelected": "Please select an instance first",
+            "created": "Wagon type created successfully",
+            "updated": "Wagon type updated successfully",
+            "deleted": "Wagon type deleted successfully",
+            "saveFailed": "Save failed",
+            "deleteFailed": "Delete failed",
+            "loadFailed": "Failed to load wagon data",
+            "confirmDelete": "Are you sure you want to delete wagon type {typeName}?",
+            "warning": "Warning"
         }
     },
 

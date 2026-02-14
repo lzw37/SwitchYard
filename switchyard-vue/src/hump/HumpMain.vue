@@ -30,11 +30,11 @@
             <el-tab-pane :label="t('humpMain.tabs.vehicle')" name="vehicle">
                 <el-card class="param-card" shadow="hover">
                     <h3>{{ t('humpMain.headings.wagonParams') }}</h3>
-                    <Wagon />
+                    <Wagon :selectedInstanceId="selectedLine" />
                 </el-card>
                 <el-card class="param-card" shadow="hover">
                     <h3>{{ t('humpMain.headings.calcCondition') }}</h3>
-                    <HumpCalculationCondition />
+                    <HumpCalculationCondition :selectedInstanceId="selectedLine" />
                 </el-card>
             </el-tab-pane>
             <el-tab-pane :label="t('humpMain.tabs.profile')" name="profile">

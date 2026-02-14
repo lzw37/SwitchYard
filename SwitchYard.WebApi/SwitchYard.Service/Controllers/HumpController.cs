@@ -483,6 +483,9 @@ namespace SwitchYard.Service.Controllers
         {
             try
             {
+                var authResult = ValidateInstanceOwnershipOrFail(instanceID);
+                if (authResult != null) return authResult;
+
                 var wagonConceptList = LoadWagonConcept(instanceID);
                 _logger.LogInformation("WagonConcept retrieved with {WagonConceptCount} entries.", wagonConceptList?.Count ?? 0);
                 return Ok(wagonConceptList);
@@ -491,6 +494,153 @@ namespace SwitchYard.Service.Controllers
             {
                 _logger.LogError(ex, "Error retrieving WagonConcept.");
                 return StatusCode(500, "Internal server error while retrieving WagonConcept.");
+            }
+        }
+
+        /// <summary>
+        /// 创建车辆概念
+        /// </summary>
+        [HttpPost(Name = "CreateWagonConcept")]
+        public IActionResult CreateWagonConcept(WagonConcept wagonConcept)
+        {
+            try
+            {
+                if (wagonConcept == null || string.IsNullOrEmpty(wagonConcept.InstanceID))
+                {
+                    return BadRequest("Invalid WagonConcept or missing InstanceID.");
+                }
+
+                var authResult = ValidateInstanceOwnershipOrFail(wagonConcept.InstanceID);
+                if (authResult != null) return authResult;
+
+                var username = User.Identity?.Name;
+                DBConnector dbConnector = DBConnector.GetDBConnector();
+
+                var result = dbConnector.ExecuteNonQuery(
+                    "INSERT INTO wagonconcept (InstanceID, TypeName, Length, NetMass, LoadingMass, WindwardArea, AxleNumber, Label, g) VALUES (@InstanceID, @TypeName, @Length, @NetMass, @LoadingMass, @WindwardArea, @AxleNumber, @Label, @g)",
+                    new
+                    {
+                        wagonConcept.InstanceID,
+                        wagonConcept.TypeName,
+                        wagonConcept.Length,
+                        wagonConcept.NetMass,
+                        wagonConcept.LoadingMass,
+                        wagonConcept.WindwardArea,
+                        wagonConcept.AxleNumber,
+                        wagonConcept.Label,
+                        wagonConcept.g
+                    });
+
+                if (result > 0)
+                {
+                    _logger.LogInformation("Created WagonConcept {TypeName} for instance {InstanceID} by user {Username}.", wagonConcept.TypeName, wagonConcept.InstanceID, username);
+                    return Ok(wagonConcept);
+                }
+                else
+                {
+                    _logger.LogWarning("Failed to create WagonConcept for instance {InstanceID} by user {Username}.", wagonConcept.InstanceID, username);
+                    return StatusCode(500, "Failed to create WagonConcept.");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error creating WagonConcept.");
+                return StatusCode(500, "Internal server error while creating WagonConcept.");
+            }
+        }
+
+        /// <summary>
+        /// 更新车辆概念
+        /// </summary>
+        [HttpPut(Name = "EditWagonConcept")]
+        public IActionResult EditWagonConcept(WagonConcept wagonConcept)
+        {
+            try
+            {
+                if (wagonConcept == null || string.IsNullOrEmpty(wagonConcept.TypeName))
+                {
+                    return BadRequest("Invalid WagonConcept or missing TypeName.");
+                }
+
+                var username = User.Identity?.Name;
+                DBConnector dbConnector = DBConnector.GetDBConnector();
+                var existing = dbConnector.Query<WagonConcept>("SELECT * FROM wagonconcept WHERE TypeName = @typeName", new { typeName = wagonConcept.TypeName }).FirstOrDefault();
+                if (existing == null)
+                {
+                    return NotFound("WagonConcept not found.");
+                }
+
+                var authResult = ValidateInstanceOwnershipOrFail(existing.InstanceID);
+                if (authResult != null) return authResult;
+
+                var result = dbConnector.ExecuteNonQuery(
+                    "UPDATE wagonconcept SET Length = @Length, NetMass = @NetMass, LoadingMass = @LoadingMass, WindwardArea = @WindwardArea, AxleNumber = @AxleNumber, Label = @Label, g = @g WHERE TypeName = @TypeName AND InstanceID = @InstanceID",
+                    new
+                    {
+                        wagonConcept.Length,
+                        wagonConcept.NetMass,
+                        wagonConcept.LoadingMass,
+                        wagonConcept.WindwardArea,
+                        wagonConcept.AxleNumber,
+                        wagonConcept.Label,
+                        wagonConcept.g,
+                        wagonConcept.TypeName,
+                        InstanceID = existing.InstanceID
+                    });
+
+                if (result > 0)
+                {
+                    _logger.LogInformation("Updated WagonConcept {TypeName} for instance {InstanceID} by user {Username}.", wagonConcept.TypeName, existing.InstanceID, username);
+                    return Ok("WagonConcept updated successfully.");
+                }
+                else
+                {
+                    _logger.LogWarning("Failed to update WagonConcept {TypeName} for instance {InstanceID} by user {Username}.", wagonConcept.TypeName, existing.InstanceID, username);
+                    return StatusCode(500, "Failed to update WagonConcept.");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating WagonConcept.");
+                return StatusCode(500, "Internal server error while updating WagonConcept.");
+            }
+        }
+
+        /// <summary>
+        /// 删除车辆概念
+        /// </summary>
+        [HttpDelete(Name = "DeleteWagonConcept")]
+        public IActionResult DeleteWagonConcept(string typeName)
+        {
+            try
+            {
+                var username = User.Identity?.Name;
+                DBConnector dbConnector = DBConnector.GetDBConnector();
+                var existing = dbConnector.Query<WagonConcept>("SELECT * FROM wagonconcept WHERE TypeName = @typeName", new { typeName }).FirstOrDefault();
+                if (existing == null)
+                {
+                    return NotFound("WagonConcept not found.");
+                }
+
+                var authResult = ValidateInstanceOwnershipOrFail(existing.InstanceID);
+                if (authResult != null) return authResult;
+
+                var result = dbConnector.ExecuteNonQuery("DELETE FROM wagonconcept WHERE TypeName = @typeName", new { typeName });
+                if (result > 0)
+                {
+                    _logger.LogInformation("Deleted WagonConcept {TypeName} for instance {InstanceID} by user {Username}.", typeName, existing.InstanceID, username);
+                    return Ok("WagonConcept deleted successfully.");
+                }
+                else
+                {
+                    _logger.LogWarning("Failed to delete WagonConcept {TypeName} for instance {InstanceID} by user {Username}.", typeName, existing.InstanceID, username);
+                    return StatusCode(500, "Failed to delete WagonConcept.");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error deleting WagonConcept.");
+                return StatusCode(500, "Internal server error while deleting WagonConcept.");
             }
         }
 

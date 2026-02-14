@@ -3,21 +3,29 @@
         <el-card class="condition-card">
             <template #header>
                 <div class="card-header">
-                    <div>
-                        <span style="width: 100px"></span>
-                        <el-select style="width: 300px"></el-select>
-                        <el-button type="primary" size="small" @click="saveCondition">{{
-                            t("hump.calcCondition.new")
-                            }}</el-button>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="font-weight: bold; min-width: 80px;">{{ t('hump.calcCondition.labels.condition')
+                            }}:</span>
+                        <el-select v-model="currentConditionId" style="width: 250px" @change="onConditionChange"
+                            :placeholder="t('hump.calcCondition.placeholders.chooseCondition')" clearable>
+                            <el-option v-for="condition in conditionsList" :key="condition.id" :label="condition.name"
+                                :value="condition.id" />
+                        </el-select>
+                        <el-button type="primary" size="small" @click="createNewCondition">
+                            {{ t("hump.calcCondition.new") }}
+                        </el-button>
                     </div>
 
                     <div class="header-buttons">
-                        <el-button type="primary" size="small" @click="saveCondition">{{
-                            t("hump.calcCondition.save")
-                            }}</el-button>
-                        <el-button size="small" @click="resetForm">{{
-                            t("hump.calcCondition.reset")
-                            }}</el-button>
+                        <el-button type="primary" size="small" @click="saveCondition" :disabled="!currentInstanceId">
+                            {{ currentConditionId ? t("hump.calcCondition.update") : t("hump.calcCondition.save") }}
+                        </el-button>
+                        <el-button size="small" @click="resetForm">
+                            {{ t("hump.calcCondition.reset") }}
+                        </el-button>
+                        <el-button type="danger" size="small" @click="deleteCondition" :disabled="!currentConditionId">
+                            {{ t("hump.calcCondition.delete") }}
+                        </el-button>
                     </div>
                 </div>
             </template>
@@ -29,29 +37,11 @@
                         <el-divider content-position="left">{{
                             t("hump.calcCondition.sections.overview")
                             }}</el-divider>
-                        <el-form-item :label="t('hump.calcCondition.labels.conditionName')" prop="conditionName">
-                            <el-input v-model="formData.conditionName" :placeholder="t('hump.calcCondition.placeholders.conditionName')
-                                " style="width: 300px" />
+                        <el-form-item :label="t('hump.calcCondition.labels.conditionName')" prop="name">
+                            <el-input v-model="formData.name"
+                                :placeholder="t('hump.calcCondition.placeholders.conditionName')"
+                                style="width: 300px" />
                         </el-form-item>
-
-                        <el-divider content-position="left">{{
-                            t("hump.calcCondition.sections.wagonInfo")
-                            }}</el-divider>
-                        <el-form-item :label="t('hump.calcCondition.labels.wagonType')" prop="wagonTypeName">
-                            <el-select v-model="formData.wagonTypeName" :placeholder="t('hump.calcCondition.placeholders.chooseWagon')
-                                " style="width: 300px" filterable allow-create default-first-option>
-                                <el-option label="P70H" value="P70H" />
-                                <el-option label="C70H" value="C70H" />
-                                <el-option label="C80B" value="C80B" />
-                                <el-option label="C80H" value="C80H" />
-                                <el-option label="C64K" value="C64K" />
-                                <el-option label="C62A" value="C62A" />
-                                <el-option label="C60" value="C60" />
-                                <el-option label="C50" value="C50" />
-                                <el-option :label="t('hump.calcCondition.options.other')" value="其他" />
-                            </el-select>
-                        </el-form-item>
-
                         <el-divider content-position="left">{{
                             t("hump.calcCondition.sections.speed")
                             }}</el-divider>
@@ -63,9 +53,9 @@
                             </div>
                         </el-form-item>
                         <el-form-item :label="t('hump.calcCondition.labels.slopeAvgVelocity')"
-                            prop="wagonVelocityOnSlop">
+                            prop="wagonVelocityOnSlope">
                             <div style="display: flex; align-items: center">
-                                <el-input-number v-model="formData.wagonVelocityOnSlop" :min="0" :step="0.1"
+                                <el-input-number v-model="formData.wagonVelocityOnSlope" :min="0" :step="0.1"
                                     :precision="2" style="width: 300px" />
                                 <span style="margin-left: 8px; color: #666; font-size: 14px">{{ t("units.m_s") }}</span>
                             </div>
@@ -118,34 +108,6 @@
                                     }}</span>
                             </div>
                         </el-form-item>
-
-                        <el-divider content-position="left">{{
-                            t("hump.calcCondition.sections.physical")
-                            }}</el-divider>
-                        <el-form-item :label="t('hump.calcCondition.labels.gravity')" prop="g">
-                            <div style="display: flex; align-items: center">
-                                <el-input-number v-model="formData.g" :min="0" :step="0.01" :precision="2"
-                                    style="width: 300px" />
-                                <span style="margin-left: 8px; color: #666; font-size: 14px">{{ t("units.m_s2")
-                                    }}</span>
-                            </div>
-                        </el-form-item>
-                    </div>
-
-                    <!-- 第3列: 减速机参数 -->
-                    <div class="form-column">
-                        <el-divider content-position="left">{{
-                            t("hump.calcCondition.sections.retarder")
-                            }}</el-divider>
-                        <el-form-item :label="t('hump.calcCondition.labels.retarderActivation')"
-                            prop="retarderActivation">
-                            <el-input v-model="retarderActivationText" :placeholder="t('hump.calcCondition.placeholders.jsonExample')
-                                " style="width: 100%" rows="3" type="textarea" @input="updateRetarderActivation" />
-                        </el-form-item>
-                        <el-form-item :label="t('hump.calcCondition.labels.retarderOutput')" prop="retarderOutput">
-                            <el-input v-model="retarderOutputText" :placeholder="t('hump.calcCondition.placeholders.jsonExample')
-                                " style="width: 100%" rows="3" type="textarea" @input="updateRetarderOutput" />
-                        </el-form-item>
                     </div>
                 </div>
             </el-form>
@@ -154,32 +116,65 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from "vue";
-import { ElMessage } from "element-plus";
+import { ref, computed, onMounted, watch } from "vue";
+import { ElMessage, ElMessageBox } from "element-plus";
 import { useI18n } from "vue-i18n";
+import axios from "../utils/axios";
 
-interface CalculationCondition {
-    conditionName?: string;
-    wagonTypeName: string;
+interface Props {
+    selectedInstanceId?: string | null
+}
+
+const props = withDefaults(defineProps<Props>(), {
+    selectedInstanceId: null
+})
+
+// API模型接口
+interface OperationCondition {
+    instanceID?: string;
+    id?: string;
+    name: string;
     wagonVelocityOnTop: number;
-    wagonVelocityOnSlop: number;
+    wagonVelocityOnSlope: number;
     wagonVelocityOnYard: number;
     windVelocity: number;
     isHeadWind: number;
     airDensity: number;
     temperature: number;
+}
+
+// 扩展的本地表单数据接口
+interface CalculationCondition extends OperationCondition {
+    wagonTypeName: string;
     g: number;
     retarderActivation: Record<string, any>;
     retarderOutput: Record<string, any>;
 }
 
+interface HumpInstance {
+    ID: string;
+    Name: string;
+    Owner: string;
+    CreatedDate: string;
+    IsActive: number;
+}
+
 const formRef = ref();
 const { t } = useI18n();
+
+// 状态管理
+// const instanceList = ref<HumpInstance[]>([]);
+const conditionsList = ref<OperationCondition[]>([]);
+const currentInstanceId = ref<string>("");
+const currentConditionId = ref<string>("");
+const loading = ref(false);
+
+// 表单数据
 const formData = ref<CalculationCondition>({
-    conditionName: t("hump.calcCondition.defaults.conditionName"),
+    name: t("hump.calcCondition.defaults.conditionName"),
     wagonTypeName: "P70H",
     wagonVelocityOnTop: 1.4,
-    wagonVelocityOnSlop: 5.2,
+    wagonVelocityOnSlope: 5.2,
     wagonVelocityOnYard: 2.2,
     windVelocity: 5,
     isHeadWind: 1,
@@ -189,8 +184,6 @@ const formData = ref<CalculationCondition>({
     retarderActivation: {},
     retarderOutput: {},
 });
-
-const conditionsList = ref<CalculationCondition[]>([]);
 
 // 计算属性：将对象转换为JSON字符串用于textarea显示
 const retarderActivationText = computed({
@@ -234,23 +227,108 @@ function updateRetarderOutput(value: string) {
     }
 }
 
-// 保存条件
-function saveCondition() {
-    const conditions = localStorage.getItem("calculationConditions") || "[]";
-    const list: CalculationCondition[] = JSON.parse(conditions);
-    list.push({ ...formData.value });
-    localStorage.setItem("calculationConditions", JSON.stringify(list));
-    conditionsList.value = list;
-    ElMessage.success(t("hump.calcCondition.messages.saved"));
+async function fetchConditions(instanceID: string) {
+    if (!instanceID) return;
+
+    try {
+        loading.value = true;
+        const response = await axios.get(`/Hump/GetOperationConditions?instanceID=${instanceID}`);
+        conditionsList.value = response.data || [];
+    } catch (error) {
+        console.error('Failed to fetch conditions:', error);
+        ElMessage.error(t('hump.calcCondition.errors.loadConditions'));
+    } finally {
+        loading.value = false;
+    }
 }
 
-// 重置表单
+async function saveCondition() {
+    if (!currentInstanceId.value) {
+        ElMessage.warning(t('hump.calcCondition.errors.noInstance'));
+        return;
+    }
+
+    try {
+        loading.value = true;
+
+        // 准备API数据
+        const conditionData: OperationCondition = {
+            instanceID: currentInstanceId.value,
+            id: currentConditionId.value,
+            name: formData.value.name,
+            wagonVelocityOnTop: formData.value.wagonVelocityOnTop,
+            wagonVelocityOnSlope: formData.value.wagonVelocityOnSlope,
+            wagonVelocityOnYard: formData.value.wagonVelocityOnYard,
+            windVelocity: formData.value.windVelocity,
+            isHeadWind: formData.value.isHeadWind,
+            airDensity: formData.value.airDensity,
+            temperature: formData.value.temperature,
+        };
+
+        if (currentConditionId.value) {
+            // 更新现有条件
+            await axios.put('/Hump/EditOperationCondition', conditionData);
+            ElMessage.success(t('hump.calcCondition.messages.updated'));
+        } else {
+            // 创建新条件
+            const response = await axios.post('/Hump/CreateOperationCondition', conditionData);
+            currentConditionId.value = response.data.id;
+            ElMessage.success(t('hump.calcCondition.messages.created'));
+        }
+
+        // 重新加载条件列表
+        await fetchConditions(currentInstanceId.value);
+    } catch (error) {
+        console.error('Failed to save condition:', error);
+        ElMessage.error(t('hump.calcCondition.errors.save'));
+    } finally {
+        loading.value = false;
+    }
+}
+
+async function deleteCondition() {
+    if (!currentConditionId.value) {
+        ElMessage.warning(t('hump.calcCondition.errors.noCondition'));
+        return;
+    }
+
+    try {
+        await ElMessageBox.confirm(
+            t('hump.calcCondition.confirmDelete'),
+            t('hump.calcCondition.warning'),
+            {
+                confirmButtonText: t('common.confirm'),
+                cancelButtonText: t('common.cancel'),
+                type: 'warning',
+            }
+        );
+
+        loading.value = true;
+        await axios.delete(`/Hump/DeleteOperationCondition?id=${currentConditionId.value}`);
+        ElMessage.success(t('hump.calcCondition.messages.deleted'));
+
+        // 重置表单和当前选择
+        resetForm();
+        currentConditionId.value = "";
+
+        // 重新加载条件列表
+        await fetchConditions(currentInstanceId.value);
+    } catch (error: any) {
+        if (error !== 'cancel') {
+            console.error('Failed to delete condition:', error);
+            ElMessage.error(t('hump.calcCondition.errors.delete'));
+        }
+    } finally {
+        loading.value = false;
+    }
+}
+
 function resetForm() {
     formData.value = {
-        conditionName: "标准计算条件",
+        name: t("hump.calcCondition.defaults.conditionName"),
         wagonTypeName: "P70H",
         wagonVelocityOnTop: 1.4,
-        wagonVelocityOnSlop: 5.2,
+        wagonVelocityOnSlope: 5.2,
         wagonVelocityOnYard: 2.2,
         windVelocity: 5,
         isHeadWind: 1,
@@ -260,34 +338,77 @@ function resetForm() {
         retarderActivation: {},
         retarderOutput: {},
     };
-    // 重置textarea的值
-    retarderActivationText.value = "{}";
-    retarderOutputText.value = "{}";
+    currentConditionId.value = "";
 }
 
-// 加载条件
-function loadCondition(index: number) {
-    const condition = conditionsList.value[index];
-    if (condition) {
-        formData.value = { ...condition };
-        ElMessage.success(t("hump.calcCondition.messages.loaded"));
+function createNewCondition() {
+    resetForm();
+    currentConditionId.value = "";
+    ElMessage.info(t('hump.calcCondition.messages.newCondition'));
+}
+
+async function onInstanceChange() {
+    conditionsList.value = [];
+    currentConditionId.value = "";
+    resetForm();
+
+    if (currentInstanceId.value) {
+        await fetchConditions(currentInstanceId.value);
     }
 }
 
-// 删除条件
-function deleteCondition(index: number) {
-    conditionsList.value.splice(index, 1);
-    localStorage.setItem("calculationConditions", JSON.stringify(conditionsList.value));
-    ElMessage.success(t("hump.calcCondition.messages.deleted"));
+function onConditionChange() {
+    if (!currentConditionId.value) {
+        resetForm();
+        return;
+    }
+
+    const condition = conditionsList.value.find(c => c.id === currentConditionId.value);
+    if (condition) {
+        // 加载选中的条件到表单
+        formData.value = {
+            ...formData.value, // 保留本地字段 (wagonTypeName, g, retarders)
+            name: condition.name,
+            wagonVelocityOnTop: condition.wagonVelocityOnTop,
+            wagonVelocityOnSlope: condition.wagonVelocityOnSlope,
+            wagonVelocityOnYard: condition.wagonVelocityOnYard,
+            windVelocity: condition.windVelocity,
+            isHeadWind: condition.isHeadWind,
+            airDensity: condition.airDensity,
+            temperature: condition.temperature,
+        };
+        ElMessage.success(t('hump.calcCondition.messages.loaded'));
+    }
 }
 
-// 初始化加载保存的条件
-function initConditions() {
-    const conditions = localStorage.getItem("calculationConditions") || "[]";
-    conditionsList.value = JSON.parse(conditions);
-}
+// 组件初始化
+onMounted(() => {
+    // fetchInstances();
+    // 初始化时同步 selectedInstanceId 到 currentInstanceId
+    if (props.selectedInstanceId) {
+        currentInstanceId.value = props.selectedInstanceId;
+    }
+});
 
-initConditions();
+// 监听 props.selectedInstanceId 的变化，同步到 currentInstanceId
+watch(() => props.selectedInstanceId, (newInstanceId) => {
+    // 只要 newInstanceId 与当前 currentInstanceId 不同就更新
+    if (newInstanceId !== currentInstanceId.value) {
+        currentInstanceId.value = newInstanceId || "";
+    }
+}, { immediate: true });
+
+// 监听 currentInstanceId 的变化，重新执行 fetchConditions  
+watch(currentInstanceId, async (newInstanceId) => {
+    if (newInstanceId) {
+        await onInstanceChange();
+    } else {
+        // 清空条件列表和当前选择
+        conditionsList.value = [];
+        currentConditionId.value = "";
+        resetForm();
+    }
+});
 </script>
 
 <style scoped lang="css">

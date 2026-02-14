@@ -12,6 +12,8 @@ namespace SwitchYard.Hump
     /// </summary>
     public class WagonConcept
     {
+        public string InstanceID { get; set; }
+
         /// <summary>
         /// 车型
         /// </summary>

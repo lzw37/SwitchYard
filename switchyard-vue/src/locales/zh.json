@@ -116,7 +116,8 @@
     },
     "common": {
         "networkError": "网络错误，请稍后重试",
-        "confirm": "请确认"
+        "confirm": "确认",
+        "cancel": "取消"
     },
     "axios": {
         "noPermission": "没有权限访问该资源",
@@ -236,7 +237,11 @@
         "calcCondition": {
             "new": "新建",
             "save": "保存",
+            "update": "更新",
             "reset": "重置",
+            "delete": "删除",
+            "warning": "警告",
+            "confirmDelete": "确定要删除此运行条件吗？此操作不可撤销。",
             "sections": {
                 "overview": "概况",
                 "wagonInfo": "车辆信息",
@@ -247,6 +252,8 @@
                 "retarder": "减速器参数"
             },
             "labels": {
+                "instance": "计算实例",
+                "condition": "运行条件",
                 "conditionName": "计算条件名称",
                 "wagonType": "车辆类型",
                 "peakVelocity": "推峰速度",
@@ -261,6 +268,8 @@
                 "retarderOutput": "减速器输出参数"
             },
             "placeholders": {
+                "chooseInstance": "请选择计算实例",
+                "chooseCondition": "请选择运行条件",
                 "conditionName": "例如：标准计算条件",
                 "chooseWagon": "请选择车辆类型",
                 "jsonExample": "JSON格式，例如：{}"
@@ -274,8 +283,19 @@
                 "retarderActivationFormatError": "减速器启动阈值格式错误，请输入有效的JSON",
                 "retarderOutputFormatError": "减速器输出参数格式错误，请输入有效的JSON",
                 "saved": "计算条件已保存",
+                "created": "运行条件创建成功",
+                "updated": "运行条件已更新",
                 "loaded": "计算条件已加载",
-                "deleted": "计算条件已删除"
+                "deleted": "计算条件已删除",
+                "newCondition": "请填写新条件信息"
+            },
+            "errors": {
+                "loadInstances": "加载实例失败",
+                "loadConditions": "加载运行条件失败",
+                "noInstance": "请先选择计算实例",
+                "noCondition": "请先选择要删除的运行条件",
+                "save": "保存运行条件失败",
+                "delete": "删除运行条件失败"
             },
             "defaults": {
                 "conditionName": "标准计算条件"
@@ -498,6 +518,7 @@
 
     "wagon": {
         "new": "新建车型",
+        "typeName": "车型",
         "type": "车型",
         "actionsLabel": "操作",
         "length": "长度 (m)",
@@ -506,6 +527,7 @@
         "grossMass": "总重量 (t)",
         "windwardArea": "迎风面积 (m²)",
         "axleNumber": "轴数",
+        "gravity": "重力加速度 (m/s²)",
         "label": "标签",
         "chooseLabel": "选择标签",
         "labelHard": "难行车",
@@ -514,7 +536,28 @@
         "actions": {
             "edit": "编辑",
             "save": "保存",
+            "cancel": "取消",
             "delete": "删除"
+        },
+        "validation": {
+            "typeNameRequired": "车型名称不能为空",
+            "typeNameExists": "车型名称已存在",
+            "lengthRequired": "长度必须大于0",
+            "netMassRequired": "自重必须大于0",
+            "windwardAreaRequired": "迎风面积必须大于0",
+            "axleNumberRequired": "轴数必须大于0",
+            "gravityRequired": "重力加速度必须大于0"
+        },
+        "messages": {
+            "noInstanceSelected": "请先选择一个实例",
+            "created": "车型创建成功",
+            "updated": "车型更新成功",
+            "deleted": "车型删除成功",
+            "saveFailed": "保存失败",
+            "deleteFailed": "删除失败",
+            "loadFailed": "加载车型数据失败",
+            "confirmDelete": "确定要删除车型 {typeName} 吗？",
+            "warning": "警告"
         }
     },
     "humpLayoutCtrl": {
