@@ -40,12 +40,15 @@ namespace SwitchYard.Service.Controllers
             {
                 if (result.IsNotFound)
                 {
+                    _logger.LogWarning(result.ErrorMessage);
                     return NotFound(result.ErrorMessage);
                 }
                 if (result.IsError)
                 {
+                    _logger.LogWarning(500, result.ErrorMessage);
                     return StatusCode(500, result.ErrorMessage);
                 }
+                _logger.LogWarning(result.ErrorMessage);
                 return Unauthorized(result.ErrorMessage ?? "Instance not found or not owned by user.");
             }
             
@@ -831,11 +834,14 @@ namespace SwitchYard.Service.Controllers
         /// </summary>
         /// <returns></returns>
         [HttpGet(Name = "GetSlopeLayout")]
-        public IActionResult GetSlopeLayout()
+        public IActionResult GetSlopeLayout(string instanceID, string humpSchemeID)
         {
             try
             {
-                var slopeLayout = LoadSlopeLayout();
+                var authResult = ValidateInstanceOwnershipOrFail(instanceID);
+                if (authResult != null) return authResult;
+
+                var slopeLayout = LoadSlopeLayout(instanceID, humpSchemeID);
 
                 _logger.LogInformation("SlopeLayout retrieved with {PositionCount} positions and {SegmentCount} segments.",
                     slopeLayout.PositionList?.Count ?? 0,
@@ -849,12 +855,12 @@ namespace SwitchYard.Service.Controllers
             }
         }
 
-        private SlopeLayout LoadSlopeLayout()
+        private SlopeLayout LoadSlopeLayout(string instanceID, string humpSchemeID)
         {
             var slopeLayout = new SwitchYard.Hump.SlopeLayout();
             DBConnector dbConnector = DBConnector.GetDBConnector();
-            slopeLayout.PositionList = dbConnector.Query<SwitchYard.Hump.VPosition>("SELECT * FROM vposition");
-            slopeLayout.PositionSegmentList = dbConnector.Query<SwitchYard.Hump.VPositionSegment>("SELECT * FROM vpositionsegment");
+            slopeLayout.PositionList = dbConnector.Query<SwitchYard.Hump.VPosition>("SELECT * FROM vposition WHERE InstanceID = @instanceID AND HumpSchemeID = @humpSchemeID;", new { instanceID = instanceID, humpSchemeID = humpSchemeID });
+            slopeLayout.PositionSegmentList = dbConnector.Query<SwitchYard.Hump.VPositionSegment>("SELECT * FROM vpositionsegment WHERE InstanceID = @instanceID AND HumpSchemeID = @humpSchemeID", new { instanceID = instanceID, humpSchemeID = humpSchemeID });
             foreach (var seg in slopeLayout.PositionSegmentList)
             {
                 seg.StartPosition = slopeLayout.PositionList.Find(p => p.ID == seg.StartPositionID);
@@ -874,7 +880,7 @@ namespace SwitchYard.Service.Controllers
             try
             {
                 var flatLayout = LoadFlatLayout("","");
-                var slopeLayout = LoadSlopeLayout();
+                var slopeLayout = LoadSlopeLayout("","");
                 var wagonConceptList = LoadWagonConcept("");
 
                 parameters.Wagon = wagonConceptList.Find(w => w.TypeName == parameters.Wagon.TypeName);
@@ -907,7 +913,7 @@ namespace SwitchYard.Service.Controllers
             try
             {
                 var flatLayout = LoadFlatLayout("","");
-                var slopeLayout = LoadSlopeLayout();
+                var slopeLayout = LoadSlopeLayout("","");
                 var wagonConceptList = LoadWagonConcept("");
 
                 parameters.Wagon = wagonConceptList.Find(w => w.TypeName == parameters.Wagon.TypeName);
@@ -951,7 +957,7 @@ namespace SwitchYard.Service.Controllers
             try
             {
                 var flatLayout = LoadFlatLayout("","");
-                var slopeLayout = LoadSlopeLayout();
+                var slopeLayout = LoadSlopeLayout("", "");
                 var wagonConceptList = LoadWagonConcept("");
 
                 parameters.Wagon = wagonConceptList.Find(w => w.TypeName == parameters.Wagon.TypeName);
@@ -977,7 +983,7 @@ namespace SwitchYard.Service.Controllers
             var stepSize = 10;
 
             var flatLayout = LoadFlatLayout("","");
-            var slopeLayout = LoadSlopeLayout();
+            var slopeLayout = LoadSlopeLayout("", "");
             var wagonConceptList = LoadWagonConcept("");
 
             parameters.Wagon = wagonConceptList.Find(w => w.TypeName == parameters.Wagon.TypeName);
@@ -1065,5 +1071,152 @@ namespace SwitchYard.Service.Controllers
             }
         }
 
+        /// <summary>
+        /// 获取驼峰方案列表
+        /// </summary>
+        [HttpGet(Name = "GetHumpSchemes")]
+        public IActionResult GetHumpSchemes(string instanceID)
+        {
+            try
+            {
+                var authResult = ValidateInstanceOwnershipOrFail(instanceID);
+                if (authResult != null) return authResult;
+
+                var username = User.Identity?.Name;
+                DBConnector dbConnector = DBConnector.GetDBConnector();
+                var humpSchemes = dbConnector.Query<HumpScheme>("SELECT * FROM humpscheme WHERE InstanceID = @instanceID", new { instanceID });
+                _logger.LogInformation("Retrieved {HumpSchemeCount} HumpSchemes for instance {InstanceID} by user {Username}.", humpSchemes?.Count ?? 0, instanceID, username);
+                return Ok(humpSchemes);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting HumpSchemes for instance {InstanceID}.", instanceID);
+                return StatusCode(500, "Internal server error while getting HumpSchemes.");
+            }
+        }
+
+        /// <summary>
+        /// 创建驼峰方案
+        /// </summary>
+        [HttpPost(Name = "CreateHumpScheme")]
+        public IActionResult CreateHumpScheme(HumpScheme humpScheme)
+        {
+            try
+            {
+                if (humpScheme == null || string.IsNullOrEmpty(humpScheme.InstanceID))
+                {
+                    _logger.LogWarning("Invalid HumpScheme or missing InstanceID.");
+                    return BadRequest("Invalid HumpScheme or missing InstanceID.");
+                }
+
+                var authResult = ValidateInstanceOwnershipOrFail(humpScheme.InstanceID);
+                if (authResult != null) return authResult;
+
+                var username = User.Identity?.Name;
+                DBConnector dbConnector = DBConnector.GetDBConnector();
+                humpScheme.ID = _snowflakeIdGenerator.NextIdString();
+                var result = dbConnector.ExecuteNonQuery("INSERT INTO humpscheme (InstanceID, ID, Name) VALUES (@InstanceID, @ID, @Name)",
+                    new { humpScheme.InstanceID, humpScheme.ID, humpScheme.Name });
+                if (result > 0)
+                {
+                    _logger.LogInformation("Created HumpScheme with ID {HumpSchemeID} for instance {InstanceID} by user {Username}.", humpScheme.ID, humpScheme.InstanceID, username);
+                    return Ok(humpScheme);
+                }
+                else
+                {
+                    _logger.LogWarning("Failed to create HumpScheme for instance {InstanceID} by user {Username}.", humpScheme.InstanceID, username);
+                    return StatusCode(500, "Failed to create HumpScheme.");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error creating HumpScheme.");
+                return StatusCode(500, "Internal server error while creating HumpScheme.");
+            }
+        }
+
+        /// <summary>
+        /// 更新驼峰方案
+        /// </summary>
+        [HttpPut(Name = "EditHumpScheme")]
+        public IActionResult EditHumpScheme(HumpScheme humpScheme)
+        {
+            try
+            {
+                if (humpScheme == null || string.IsNullOrEmpty(humpScheme.ID))
+                {
+                    return BadRequest("Invalid HumpScheme or missing ID.");
+                }
+
+                var username = User.Identity?.Name;
+                DBConnector dbConnector = DBConnector.GetDBConnector();
+                var existing = dbConnector.Query<HumpScheme>("SELECT * FROM humpscheme WHERE ID = @id", new { id = humpScheme.ID }).FirstOrDefault();
+                if (existing == null)
+                {
+                    _logger.LogWarning("HumpScheme {HumpSchemeID} not found.", humpScheme.ID);
+                    return NotFound("HumpScheme not found.");
+                }
+
+                var authResult = ValidateInstanceOwnershipOrFail(existing.InstanceID);
+                if (authResult != null) return authResult;
+
+                var result = dbConnector.ExecuteNonQuery("UPDATE humpscheme SET Name = @Name WHERE ID = @ID",
+                    new { humpScheme.Name, humpScheme.ID });
+                if (result > 0)
+                {
+                    _logger.LogInformation("Updated HumpScheme with ID {HumpSchemeID} for instance {InstanceID} by user {Username}.", humpScheme.ID, existing.InstanceID, username);
+                    return Ok("HumpScheme updated successfully.");
+                }
+                else
+                {
+                    _logger.LogWarning("Failed to update HumpScheme for instance {InstanceID} by user {Username}.", existing.InstanceID, username);
+                    return StatusCode(500, "Failed to update HumpScheme.");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating HumpScheme.");
+                return StatusCode(500, "Internal server error while updating HumpScheme.");
+            }
+        }
+
+        /// <summary>
+        /// 删除驼峰方案
+        /// </summary>
+        [HttpDelete(Name = "DeleteHumpScheme")]
+        public IActionResult DeleteHumpScheme(string id)
+        {
+            try
+            {
+                var username = User.Identity?.Name;
+                DBConnector dbConnector = DBConnector.GetDBConnector();
+                var humpScheme = dbConnector.Query<HumpScheme>("SELECT * FROM humpscheme WHERE ID = @id", new { id }).FirstOrDefault();
+                if (humpScheme == null)
+                {
+                    _logger.LogWarning("HumpScheme {HumpSchemeID} not found.", id);
+                    return NotFound("HumpScheme not found.");
+                }
+
+                var authResult = ValidateInstanceOwnershipOrFail(humpScheme.InstanceID);
+                if (authResult != null) return authResult;
+
+                var result = dbConnector.ExecuteNonQuery("DELETE FROM humpscheme WHERE ID = @id", new { id });
+                if (result > 0)
+                {
+                    _logger.LogInformation("Deleted HumpScheme with ID {HumpSchemeID} for instance {InstanceID} by user {Username}.", id, humpScheme.InstanceID, username);
+                    return Ok("HumpScheme deleted successfully.");
+                }
+                else
+                {
+                    _logger.LogWarning("Failed to delete HumpScheme for instance {InstanceID} by user {Username}.", humpScheme.InstanceID, username);
+                    return StatusCode(500, "Failed to delete HumpScheme.");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error deleting HumpScheme.");
+                return StatusCode(500, "Internal server error while deleting HumpScheme.");
+            }
+        }
     }
 }

@@ -180,6 +180,8 @@ namespace SwitchYard.Hump
     /// </summary>
     public abstract class Position
     {
+        public string InstanceID { get; set; }
+
         /// <summary>
         /// 位置点ID
         /// </summary>
@@ -209,6 +211,7 @@ namespace SwitchYard.Hump
     /// </summary>
     public class VPosition : Position
     {
+        public string HumpSchemeID { get; set; }
 
     }
 
@@ -217,6 +220,8 @@ namespace SwitchYard.Hump
     /// </summary>
     public abstract class PositionSegment
     {
+        public string InstanceID { get; set; }
+
         /// <summary>
         /// 位置区间ID
         /// </summary>
@@ -276,6 +281,8 @@ namespace SwitchYard.Hump
     /// </summary>
     public class VPositionSegment : PositionSegment
     {
+        public string HumpSchemeID{ get; set; }
+
         /// <summary>
         /// 坡度/‰
         /// </summary>

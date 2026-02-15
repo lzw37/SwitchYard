@@ -7,12 +7,10 @@
             <div class="center-section">
                 <div class="control-group">
                     <span>{{ t('humpSlopeDesigner.longitudinalSectionScheme') }}</span>
-                    <el-select v-model="selectedCondition"
-                        :placeholder="t('humpSlopeDesigner.selectCalculationCondition')" size="small"
-                        style="width: 150px;">
-                        <el-option :label="t('humpSlopeDesigner.condition1')" value="condition1"></el-option>
-                        <el-option :label="t('humpSlopeDesigner.condition2')" value="condition2"></el-option>
-                        <el-option :label="t('humpSlopeDesigner.condition3')" value="condition3"></el-option>
+                    <el-select v-model="currentHumpSchemeID" :placeholder="t('humpSlopeDesigner.selectHumpScheme')"
+                        size="small" style="width: 150px;">
+                        <el-option v-for="scheme in humpSchemes" :key="scheme.id" :label="scheme.name"
+                            :value="scheme.id" />
                     </el-select>
                 </div>
                 <div class="control-group">
@@ -126,6 +124,24 @@ import axios from '@/utils/axios';
 import config from '../config.json';
 import { FlatLayout, SlopeLayout, CurveDirections } from './humplayoutctrl';
 
+// 定义 props
+interface Props {
+    selectedInstanceId?: string | null
+}
+const props = withDefaults(defineProps<Props>(), {
+    selectedInstanceId: null
+})
+
+// HumpScheme 接口
+interface HumpScheme {
+    id: string
+    instanceID: string
+    name: string
+}
+
+const humpSchemes = ref<HumpScheme[]>([])
+const currentHumpSchemeID = ref("");
+
 const slopeLayout = ref<SlopeLayout | null>(null);
 const flatLayout = ref<FlatLayout | null>(null);
 const activeTab = ref('vposition');
@@ -206,14 +222,27 @@ const elementVisibility = computed(() => {
 });
 
 // 加载纵断面设计数据
-function loadSlopeLayout() {
-    axios.get(`${config.serverurl}/hump/getslopelayout`).then(response => {
+const loadSlopeLayout = async () => {
+    if (!props.selectedInstanceId || !currentHumpSchemeID.value) {
+        slopeLayout.value = null
+        return
+    }
+
+    try {
+        const response = await axios.get('/Hump/GetSlopeLayout', {
+            params: {
+                instanceID: props.selectedInstanceId,
+                humpSchemeID: currentHumpSchemeID.value
+            }
+        })
         if (response.data) {
-            slopeLayout.value = response.data as SlopeLayout;
+            slopeLayout.value = response.data as SlopeLayout
+            console.log('Slope layout loaded:', slopeLayout.value)
         }
-    }).catch(error => {
-        console.error("加载纵断面设计数据失败:", error);
-    });
+    } catch (error) {
+        console.error('加载纵断面设计数据失败:', error)
+        slopeLayout.value = null
+    }
 }
 
 // 加载阻力能高线数据
@@ -268,22 +297,93 @@ function loadBreakingEnergyHeight() {
 
 }
 
-function loadFlatLayout() {
-    axios.get(`${config.serverurl}/hump/getflatlayout`).then(response => {
-        if (response.data) {
-            flatLayout.value = response.data
-            if (flatLayout.value?.positionSegmentList) {
-                flatLayout.value.positionSegmentList.forEach(seg => {
-                    if (seg.curveDegree === 0) {
-                        seg.curveDirection = CurveDirections.None
-                    }
-                })
-            }
-            console.log('Flat layout data loaded:', flatLayout.value)
+// 加载驼峰方案数据
+const loadHumpSchemes = async () => {
+    if (!props.selectedInstanceId) {
+        humpSchemes.value = []
+        currentHumpSchemeID.value = ""
+        return
+    }
+
+    try {
+        const response = await axios.get('/Hump/GetHumpSchemes', {
+            params: { instanceID: props.selectedInstanceId }
+        })
+        humpSchemes.value = response.data || []
+
+        // 如果有方案数据，默认选择第一个
+        if (humpSchemes.value.length > 0 && humpSchemes.value[0]) {
+            currentHumpSchemeID.value = humpSchemes.value[0].id
+        } else {
+            currentHumpSchemeID.value = ""
         }
-    }).catch(error => {
-        console.error("加载平面展开图数据失败:", error);
-    });
+
+        console.log('Hump schemes loaded:', humpSchemes.value)
+    } catch (error) {
+        console.error('加载驼峰方案失败:', error)
+        humpSchemes.value = []
+        currentHumpSchemeID.value = ""
+    }
+}
+
+// 监听 selectedInstanceId 变化
+watch(() => props.selectedInstanceId, (newInstanceId) => {
+    console.log('Selected instance changed:', newInstanceId)
+    loadHumpSchemes()
+}, { immediate: true })
+
+// 监听 currentHumpSchemeID 变化
+watch(currentHumpSchemeID, (newSchemeId, oldSchemeId) => {
+    console.log('Current hump scheme changed from', oldSchemeId, 'to', newSchemeId)
+    if (newSchemeId && props.selectedInstanceId) {
+        loadSlopeLayout()
+        loadFlatLayout()
+    }
+})
+
+// 加载平面布置图数据 
+const loadFlatLayout = async () => {
+    if (!props.selectedInstanceId) {
+        flatLayout.value = null
+        return
+    }
+
+    try {
+        // 首先获取该实例的所有溜放线
+        const slopeLinesResponse = await axios.get('/Hump/GetSlopeLines', {
+            params: { instanceID: props.selectedInstanceId }
+        })
+        const slopeLines = slopeLinesResponse.data || []
+
+        // 如果有溜放线，使用第一条线获取平面图
+        if (slopeLines.length > 0) {
+            const slopeLineID = slopeLines[0].id
+            const response = await axios.get('/Hump/GetFlatLayout', {
+                params: {
+                    instanceID: props.selectedInstanceId,
+                    slopeLineID: slopeLineID
+                }
+            })
+
+            if (response.data) {
+                flatLayout.value = response.data
+                if (flatLayout.value?.positionSegmentList) {
+                    flatLayout.value.positionSegmentList.forEach(seg => {
+                        if (seg.curveDegree === 0) {
+                            seg.curveDirection = CurveDirections.None
+                        }
+                    })
+                }
+                console.log('Flat layout loaded:', flatLayout.value)
+            }
+        } else {
+            console.warn('No slope lines found for instance:', props.selectedInstanceId)
+            flatLayout.value = null
+        }
+    } catch (error) {
+        console.error('加载平面展开图数据失败:', error)
+        flatLayout.value = null
+    }
 }
 
 function handleTabClick(tab: any) {
@@ -301,6 +401,7 @@ function toggleRight() {
 onMounted(() => {
     loadSlopeLayout();
     loadFlatLayout();
+    loadHumpSchemes();
 });
 
 </script>
