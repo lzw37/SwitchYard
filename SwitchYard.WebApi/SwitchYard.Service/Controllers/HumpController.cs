@@ -1218,5 +1218,196 @@ namespace SwitchYard.Service.Controllers
                 return StatusCode(500, "Internal server error while deleting HumpScheme.");
             }
         }
+
+        /// <summary>
+        /// 获取驼峰计算列表
+        /// </summary>
+        [HttpGet(Name = "GetHumpCalculations")]
+        public IActionResult GetHumpCalculations(string instanceID, string humpSchemeID)
+        {
+            try
+            {
+                var authResult = ValidateInstanceOwnershipOrFail(instanceID);
+                if (authResult != null) return authResult;
+
+                var username = User.Identity?.Name;
+                DBConnector dbConnector = DBConnector.GetDBConnector();
+                var humpCalculations = dbConnector.Query<HumpCalculation>("SELECT * FROM humpcalculation WHERE InstanceID = @instanceID AND HumpSchemeID = @humpSchemeID", new { instanceID = instanceID, humpSchemeID = humpSchemeID });
+                _logger.LogInformation("Retrieved {HumpCalculationCount} HumpCalculations for instance {InstanceID} by user {Username}.", humpCalculations?.Count ?? 0, instanceID, username);
+                return Ok(humpCalculations);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting HumpCalculations for instance {InstanceID}.", instanceID);
+                return StatusCode(500, "Internal server error while getting HumpCalculations.");
+            }
+        }
+
+        /// <summary>
+        /// 创建驼峰计算
+        /// </summary>
+        [HttpPost(Name = "CreateHumpCalculation")]
+        public IActionResult CreateHumpCalculation(HumpCalculation humpCalculation)
+        {
+            try
+            {
+                if (humpCalculation == null || string.IsNullOrEmpty(humpCalculation.InstanceID))
+                {
+                    return BadRequest("Invalid HumpCalculation or missing InstanceID.");
+                }
+
+                var authResult = ValidateInstanceOwnershipOrFail(humpCalculation.InstanceID);
+                if (authResult != null) return authResult;
+
+                var username = User.Identity?.Name;
+                DBConnector dbConnector = DBConnector.GetDBConnector();
+                humpCalculation.ID = _snowflakeIdGenerator.NextIdString();
+                var result = dbConnector.ExecuteNonQuery(
+                    "INSERT INTO humpcalculation (InstanceID, HumpSchemeID, ID, WagonType, OperationConditionID, SlopeLineID) VALUES (@InstanceID, @HumpSchemeID, @ID, @WagonType, @OperationConditionID, @SlopeLineID)",
+                    new
+                    {
+                        humpCalculation.InstanceID,
+                        humpCalculation.HumpSchemeID,
+                        humpCalculation.ID,
+                        humpCalculation.WagonType,
+                        humpCalculation.OperationConditionID,
+                        humpCalculation.SlopeLineID
+                    });
+                if (result > 0)
+                {
+                    _logger.LogInformation("Created HumpCalculation with ID {HumpCalculationID} for instance {InstanceID} by user {Username}.", humpCalculation.ID, humpCalculation.InstanceID, username);
+                    return Ok(humpCalculation);
+                }
+                else
+                {
+                    _logger.LogWarning("Failed to create HumpCalculation for instance {InstanceID} by user {Username}.", humpCalculation.InstanceID, username);
+                    return StatusCode(500, "Failed to create HumpCalculation.");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error creating HumpCalculation.");
+                return StatusCode(500, "Internal server error while creating HumpCalculation.");
+            }
+        }
+
+        /// <summary>
+        /// 更新驼峰计算
+        /// </summary>
+        [HttpPut(Name = "EditHumpCalculation")]
+        public IActionResult EditHumpCalculation(HumpCalculation humpCalculation)
+        {
+            try
+            {
+                if (humpCalculation == null || string.IsNullOrEmpty(humpCalculation.ID))
+                {
+                    return BadRequest("Invalid HumpCalculation or missing ID.");
+                }
+
+                var username = User.Identity?.Name;
+                DBConnector dbConnector = DBConnector.GetDBConnector();
+                var existing = dbConnector.Query<HumpCalculation>("SELECT * FROM humpcalculation WHERE ID = @id", new { id = humpCalculation.ID }).FirstOrDefault();
+                if (existing == null)
+                {
+                    return NotFound("HumpCalculation not found.");
+                }
+
+                var authResult = ValidateInstanceOwnershipOrFail(existing.InstanceID);
+                if (authResult != null) return authResult;
+
+                var result = dbConnector.ExecuteNonQuery(
+                    "UPDATE humpcalculation SET HumpSchemeID = @HumpSchemeID, WagonType = @WagonType, OperationConditionID = @OperationConditionID, SlopeLineID = @SlopeLineID WHERE ID = @ID",
+                    new
+                    {
+                        humpCalculation.HumpSchemeID,
+                        humpCalculation.WagonType,
+                        humpCalculation.OperationConditionID,
+                        humpCalculation.SlopeLineID,
+                        humpCalculation.ID
+                    });
+                if (result > 0)
+                {
+                    _logger.LogInformation("Updated HumpCalculation with ID {HumpCalculationID} for instance {InstanceID} by user {Username}.", humpCalculation.ID, existing.InstanceID, username);
+                    return Ok("HumpCalculation updated successfully.");
+                }
+                else
+                {
+                    _logger.LogWarning("Failed to update HumpCalculation for instance {InstanceID} by user {Username}.", existing.InstanceID, username);
+                    return StatusCode(500, "Failed to update HumpCalculation.");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating HumpCalculation.");
+                return StatusCode(500, "Internal server error while updating HumpCalculation.");
+            }
+        }
+
+        /// <summary>
+        /// 删除驼峰计算
+        /// </summary>
+        [HttpDelete(Name = "DeleteHumpCalculation")]
+        public IActionResult DeleteHumpCalculation(string instanceID, string humpSchemeID, string id)
+        {
+            try
+            {
+                var username = User.Identity?.Name;
+                DBConnector dbConnector = DBConnector.GetDBConnector();
+                var humpCalculation = dbConnector.Query<HumpCalculation>("SELECT * FROM humpcalculation WHERE InstanceID = @instanceID AND HumpSchemeID = @humpSchemeID AND ID = @id", new { instanceID = instanceID, humpSchemeID = humpSchemeID, id = id }).FirstOrDefault();
+                if (humpCalculation == null)
+                {
+                    return NotFound("HumpCalculation not found.");
+                }
+
+                var authResult = ValidateInstanceOwnershipOrFail(humpCalculation.InstanceID);
+                if (authResult != null) return authResult;
+
+                var result = dbConnector.ExecuteNonQuery("DELETE FROM humpcalculation WHERE ID = @id", new { id });
+                if (result > 0)
+                {
+                    _logger.LogInformation("Deleted HumpCalculation with ID {HumpCalculationID} for instance {InstanceID} by user {Username}.", id, humpCalculation.InstanceID, username);
+                    return Ok("HumpCalculation deleted successfully.");
+                }
+                else
+                {
+                    _logger.LogWarning("Failed to delete HumpCalculation for instance {InstanceID} by user {Username}.", humpCalculation.InstanceID, username);
+                    return StatusCode(500, "Failed to delete HumpCalculation.");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error deleting HumpCalculation.");
+                return StatusCode(500, "Internal server error while deleting HumpCalculation.");
+            }
+        }
+
+        /// <summary>
+        /// 根据ID获取单个驼峰计算
+        /// </summary>
+        [HttpGet(Name = "GetHumpCalculationById")]
+        public IActionResult GetHumpCalculationById(string id)
+        {
+            try
+            {
+                var username = User.Identity?.Name;
+                DBConnector dbConnector = DBConnector.GetDBConnector();
+                var humpCalculation = dbConnector.Query<HumpCalculation>("SELECT * FROM humpcalculation WHERE ID = @id", new { id }).FirstOrDefault();
+                if (humpCalculation == null)
+                {
+                    return NotFound("HumpCalculation not found.");
+                }
+
+                var authResult = ValidateInstanceOwnershipOrFail(humpCalculation.InstanceID);
+                if (authResult != null) return authResult;
+
+                _logger.LogInformation("Retrieved HumpCalculation with ID {HumpCalculationID} for instance {InstanceID} by user {Username}.", id, humpCalculation.InstanceID, username);
+                return Ok(humpCalculation);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting HumpCalculation with ID {HumpCalculationID}.", id);
+                return StatusCode(500, "Internal server error while getting HumpCalculation.");
+            }
+        }
     }
 }

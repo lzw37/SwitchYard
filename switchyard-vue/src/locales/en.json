@@ -610,7 +610,42 @@
         "yard": "Yard:",
         "windSpeedLabel": "Wind Speed:",
         "airDensityLabel": "Air Density:",
-        "temperatureLabel": "Temperature:"
+        "temperatureLabel": "Temperature:",
+        "dialog": {
+            "schemeManagement": "Scheme Management",
+            "conditionManagement": "Calculation Condition Management",
+            "close": "Close"
+        },
+        "buttons": {
+            "addScheme": "Add Scheme",
+            "addCondition": "Add Condition",
+            "save": "Save",
+            "cancel": "Cancel",
+            "edit": "Edit",
+            "delete": "Delete",
+            "confirm": "Confirm",
+            "deleteConfirm": "Delete Confirmation"
+        },
+        "table": {
+            "schemeId": "Scheme ID",
+            "schemeName": "Scheme Name",
+            "instanceId": "Instance ID",
+            "operation": "Operation",
+            "wagonType": "Wagon Type",
+            "operationCondition": "Operation Condition",
+            "slopeLine": "Slope Line", 
+            "humpScheme": "Hump Scheme"
+        },
+        "placeholder": {
+            "selectWagonType": "Select Wagon Type",
+            "selectOperationCondition": "Select Operation Condition",
+            "selectSlopeLine": "Select Slope Line",
+            "selectHumpScheme": "Select Hump Scheme"
+        },
+        "messages": {
+            "deleteSchemeConfirm": "Are you sure you want to delete scheme \"{name}\"?",
+            "deleteConditionConfirm": "Are you sure you want to delete calculation condition \"{name}\"?"
+        }
     },
     "humpInstance": {
         "buttons": {

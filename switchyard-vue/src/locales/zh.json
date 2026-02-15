@@ -604,7 +604,42 @@
         "yard": "调车场:",
         "windSpeedLabel": "风速:",
         "airDensityLabel": "空气密度:",
-        "temperatureLabel": "温度:"
+        "temperatureLabel": "温度:",
+        "dialog": {
+            "schemeManagement": "驼峰方案管理",
+            "conditionManagement": "计算条件管理",
+            "close": "关闭"
+        },
+        "buttons": {
+            "addScheme": "新增方案",
+            "addCondition": "新增计算条件",
+            "save": "保存",
+            "cancel": "取消",
+            "edit": "编辑",
+            "delete": "删除",
+            "confirm": "确定",
+            "deleteConfirm": "删除确认"
+        },
+        "table": {
+            "schemeId": "方案ID",
+            "schemeName": "方案名称",
+            "instanceId": "实例ID",
+            "operation": "操作",
+            "wagonType": "车辆类型",
+            "operationCondition": "运行条件",
+            "slopeLine": "溜放线",
+            "humpScheme": "驼峰方案"
+        },
+        "placeholder": {
+            "selectWagonType": "选择车辆类型",
+            "selectOperationCondition": "选择运行条件",
+            "selectSlopeLine": "选择溜放线",
+            "selectHumpScheme": "选择驼峰方案"
+        },
+        "messages": {
+            "deleteSchemeConfirm": "确定要删除方案 \"{name}\" 吗？",
+            "deleteConditionConfirm": "确定要删除计算条件 \"{name}\" 吗？"
+        }
     },
     "humpInstance": {
         "buttons": {
