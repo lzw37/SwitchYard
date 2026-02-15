@@ -621,6 +621,7 @@
             "deleteConfirm": "删除确认"
         },
         "table": {
+            "calculationConditionID": "计算条件ID",
             "schemeId": "方案ID",
             "schemeName": "方案名称",
             "instanceId": "实例ID",

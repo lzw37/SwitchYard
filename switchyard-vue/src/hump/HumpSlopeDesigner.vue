@@ -7,8 +7,9 @@
             <div class="center-section">
                 <div class="control-group">
                     <span>{{ t('humpSlopeDesigner.longitudinalSectionScheme') }}</span>
-                    <el-select v-model="currentHumpSchemeID" :placeholder="t('humpSlopeDesigner.selectHumpScheme')"
-                        size="small" style="width: 150px;">
+                    <el-select v-model="currentHumpSchemeID"
+                        :placeholder="t('humpSlopeDesigner.placeholder.selectHumpScheme')" size="small"
+                        style="width: 150px;">
                         <el-option v-for="scheme in humpSchemes" :key="scheme.id" :label="scheme.name"
                             :value="scheme.id" />
                     </el-select>
@@ -53,13 +54,13 @@
             </div>
             <div class="right-section">
                 <el-button @click="toggleRight" size="small" type="primary">{{ t('humpSlopeDesigner.data')
-                }}</el-button>
+                    }}</el-button>
             </div>
         </div>
         <div class="condition-info">
             <span>{{ t('humpSlopeDesigner.humpVelocity') }}{{ currentCalculateCondition.wagonVelocityOnTop }}m/s</span>
             <span>{{ t('humpSlopeDesigner.slopeVelocity') }}{{ currentCalculateCondition.wagonVelocityOnSlop
-            }}m/s</span>
+                }}m/s</span>
             <span>{{ t('humpSlopeDesigner.yardVelocity') }}{{ currentCalculateCondition.wagonVelocityOnYard }}m/s</span>
             <span>{{ t('humpSlopeDesigner.windSpeed') }}{{ currentCalculateCondition.windVelocity }}m/s（{{
                 currentCalculateCondition.isHeadWind ? t('humpSlopeDesigner.headWind') :
@@ -87,7 +88,8 @@
                 <el-tabs v-model="activeTab" @tab-click="handleTabClick">
                     <el-tab-pane :label="t('humpSlopeDesigner.positionPoints')" name="vposition">
                         <el-table :data="slopeLayout?.positionList || []" style="width: 100%">
-                            <el-table-column prop="id" :label="t('humpSlopeDesigner.id')" width="100"></el-table-column>
+                            <el-table-column prop="id" :label="t('humpSlopeDesigner.table.calculationConditionID')"
+                                width="100"></el-table-column>
                             <el-table-column prop="x" :label="t('humpSlopeDesigner.positionX')"
                                 width="100"></el-table-column>
                             <el-table-column prop="height" :label="t('humpSlopeDesigner.height')"
@@ -96,7 +98,8 @@
                     </el-tab-pane>
                     <el-tab-pane :label="t('humpSlopeDesigner.positionSegments')" name="vpositionsegment">
                         <el-table :data="slopeLayout?.positionSegmentList || []" style="width: 100%">
-                            <el-table-column prop="id" :label="t('humpSlopeDesigner.id')" width="100"></el-table-column>
+                            <el-table-column prop="id" :label="t('humpSlopeDesigner.table.operationConditionID')"
+                                width="100"></el-table-column>
                             <el-table-column prop="startPositionID" :label="t('humpSlopeDesigner.startPositionID')"
                                 width="120"></el-table-column>
                             <el-table-column prop="endPositionID" :label="t('humpSlopeDesigner.endPositionID')"
@@ -115,9 +118,11 @@
         <div class="side-menu-bottom">BOTTOM MENU</div>
 
         <!-- 驼峰方案管理对话框 -->
-        <el-dialog v-model="showSchemeManager" :title="t('humpSlopeDesigner.dialog.schemeManagement')" width="80%" :close-on-click-modal="false">
+        <el-dialog v-model="showSchemeManager" :title="t('humpSlopeDesigner.dialog.schemeManagement')" width="80%"
+            :close-on-click-modal="false">
             <div style="margin-bottom: 16px;">
-                <el-button type="primary" @click="handleAddScheme">{{ t('humpSlopeDesigner.buttons.addScheme') }}</el-button>
+                <el-button type="primary" @click="handleAddScheme">{{ t('humpSlopeDesigner.buttons.addScheme')
+                    }}</el-button>
             </div>
             <el-table :data="humpSchemes" style="width: 100%" v-loading="tableLoading">
                 <el-table-column prop="id" :label="t('humpSlopeDesigner.table.schemeId')" width="200"></el-table-column>
@@ -127,17 +132,22 @@
                         <span v-else>{{ row.name }}</span>
                     </template>
                 </el-table-column>
-                <el-table-column prop="instanceID" :label="t('humpSlopeDesigner.table.instanceId')" width="200"></el-table-column>
+                <el-table-column prop="instanceID" :label="t('humpSlopeDesigner.table.instanceId')"
+                    width="200"></el-table-column>
                 <el-table-column :label="t('humpSlopeDesigner.table.operation')" width="200">
                     <template #default="{ row, $index }">
                         <div v-if="editingIndex === $index">
-                            <el-button type="success" size="small" @click="handleSaveScheme">{{ t('humpSlopeDesigner.buttons.save') }}</el-button>
-                            <el-button size="small" @click="handleCancelEdit">{{ t('humpSlopeDesigner.buttons.cancel') }}</el-button>
+                            <el-button type="success" size="small" @click="handleSaveScheme">{{
+                                t('humpSlopeDesigner.buttons.save') }}</el-button>
+                            <el-button size="small" @click="handleCancelEdit">{{ t('humpSlopeDesigner.buttons.cancel')
+                                }}</el-button>
                         </div>
                         <div v-else>
-                            <el-button type="primary" size="small" @click="handleEditScheme(row, $index)">{{ t('humpSlopeDesigner.buttons.edit') }}</el-button>
+                            <el-button type="primary" size="small" @click="handleEditScheme(row, $index)">{{
+                                t('humpSlopeDesigner.buttons.edit') }}</el-button>
                             <el-button type="danger" size="small" @click="handleDeleteScheme(row)"
-                                :disabled="humpSchemes.length <= 1">{{ t('humpSlopeDesigner.buttons.delete') }}</el-button>
+                                :disabled="humpSchemes.length <= 1">{{ t('humpSlopeDesigner.buttons.delete')
+                                }}</el-button>
                         </div>
                     </template>
                 </el-table-column>
@@ -149,13 +159,15 @@
         </el-dialog>
 
         <!-- 计算条件管理对话框 -->
-        <el-dialog v-model="showConditionManager" :title="t('humpSlopeDesigner.dialog.conditionManagement')" width="90%" :close-on-click-modal="false"
-            @open="loadDropdownData">
+        <el-dialog v-model="showConditionManager" :title="t('humpSlopeDesigner.dialog.conditionManagement')" width="90%"
+            :close-on-click-modal="false" @open="loadDropdownData">
             <div style="margin-bottom: 16px;">
-                <el-button type="primary" @click="handleAddCalculation">{{ t('humpSlopeDesigner.buttons.addCondition') }}</el-button>
+                <el-button type="primary" @click="handleAddCalculation">{{ t('humpSlopeDesigner.buttons.addCondition')
+                    }}</el-button>
             </div>
             <el-table :data="humpCalculations" style="width: 100%" v-loading="calculationTableLoading">
-                <el-table-column prop="id" :label="t('humpSlopeDesigner.table.id')" width="180"></el-table-column>
+                <el-table-column prop="id" :label="t('humpSlopeDesigner.table.calculationConditionID')"
+                    width="180"></el-table-column>
                 <el-table-column prop="wagonType" :label="t('humpSlopeDesigner.table.wagonType')" width="120">
                     <template #default="{ row, $index }">
                         <el-select v-if="editingCalculationIndex === $index" v-model="editingCalculation.wagonType"
@@ -166,10 +178,12 @@
                         <span v-else>{{ row.wagonType }}</span>
                     </template>
                 </el-table-column>
-                <el-table-column prop="operationConditionID" :label="t('humpSlopeDesigner.table.operationCondition')" width="150">
+                <el-table-column prop="operationConditionID" :label="t('humpSlopeDesigner.table.operationCondition')"
+                    width="150">
                     <template #default="{ row, $index }">
                         <el-select v-if="editingCalculationIndex === $index"
-                            v-model="editingCalculation.operationConditionID" size="small" :placeholder="t('humpSlopeDesigner.placeholder.selectOperationCondition')">
+                            v-model="editingCalculation.operationConditionID" size="small"
+                            :placeholder="t('humpSlopeDesigner.placeholder.selectOperationCondition')">
                             <el-option v-for="condition in operationConditions" :key="condition.id"
                                 :label="condition.name || condition.id" :value="condition.id" />
                         </el-select>
@@ -185,7 +199,7 @@
                                 :label="slopeLine.name || slopeLine.id" :value="slopeLine.id" />
                         </el-select>
                         <span v-else>{{slopeLines.find(s => s.id === row.slopeLineID)?.name || row.slopeLineID
-                        }}</span>
+                            }}</span>
                     </template>
                 </el-table-column>
                 <el-table-column prop="humpSchemeID" :label="t('humpSlopeDesigner.table.humpScheme')" width="180">
@@ -196,19 +210,22 @@
                                 :value="scheme.id" />
                         </el-select>
                         <span v-else>{{humpSchemes.find(s => s.id === row.humpSchemeID)?.name || row.humpSchemeID
-                            }}</span>
+                        }}</span>
                     </template>
                 </el-table-column>
                 <el-table-column :label="t('humpSlopeDesigner.table.operation')" width="200">
                     <template #default="{ row, $index }">
                         <div v-if="editingCalculationIndex === $index">
-                            <el-button type="success" size="small" @click="handleSaveCalculation">{{ t('humpSlopeDesigner.buttons.save') }}</el-button>
-                            <el-button size="small" @click="handleCancelCalculationEdit">{{ t('humpSlopeDesigner.buttons.cancel') }}</el-button>
+                            <el-button type="success" size="small" @click="handleSaveCalculation">{{
+                                t('humpSlopeDesigner.buttons.save') }}</el-button>
+                            <el-button size="small" @click="handleCancelCalculationEdit">{{
+                                t('humpSlopeDesigner.buttons.cancel') }}</el-button>
                         </div>
                         <div v-else>
-                            <el-button type="primary" size="small"
-                                @click="handleEditCalculation(row, $index)">{{ t('humpSlopeDesigner.buttons.edit') }}</el-button>
-                            <el-button type="danger" size="small" @click="handleDeleteCalculation(row)">{{ t('humpSlopeDesigner.buttons.delete') }}</el-button>
+                            <el-button type="primary" size="small" @click="handleEditCalculation(row, $index)">{{
+                                t('humpSlopeDesigner.buttons.edit') }}</el-button>
+                            <el-button type="danger" size="small" @click="handleDeleteCalculation(row)">{{
+                                t('humpSlopeDesigner.buttons.delete') }}</el-button>
                         </div>
                     </template>
                 </el-table-column>

@@ -627,13 +627,14 @@
             "deleteConfirm": "Delete Confirmation"
         },
         "table": {
+            "calculationConditionID": "Op. Condition ID",
             "schemeId": "Scheme ID",
             "schemeName": "Scheme Name",
             "instanceId": "Instance ID",
             "operation": "Operation",
             "wagonType": "Wagon Type",
             "operationCondition": "Operation Condition",
-            "slopeLine": "Slope Line", 
+            "slopeLine": "Slope Line",
             "humpScheme": "Hump Scheme"
         },
         "placeholder": {
