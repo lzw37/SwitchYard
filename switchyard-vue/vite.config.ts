@@ -19,21 +19,18 @@ export default defineConfig(({ mode }) => {
         },
         // 生产环境构建优化
         build: {
-            // 生产构建时移除console.log
-            terserOptions:
-                mode === "production"
-                    ? {
-                          compress: {
-                              drop_console: true,
-                              drop_debugger: true,
-                          },
-                      }
-                    : undefined,
             // 构建输出目录
             outDir: "dist",
             // 确保资源文件路径正确
             assetsDir: "assets",
         },
+        // 生产构建时移除console.log
+        esbuild:
+            mode === "production"
+                ? {
+                      drop: ["console", "debugger"],
+                  }
+                : undefined,
         // 开发服务器配置
         server: {
             host: "0.0.0.0",
@@ -43,7 +40,7 @@ export default defineConfig(({ mode }) => {
                 mode === "development"
                     ? {
                           "/api": {
-                              target: "http://localhost:5000",
+                              target: "https://localhost:7297",
                               changeOrigin: true,
                               secure: false,
                           },

@@ -34,11 +34,13 @@ export class Position {
     id: string;
     x: number;
     height: number;
+    instanceID: string; // 可选的实例ID，用于区分不同布局中的同一位置
 
-    constructor(id = "", x = 0, height = 0) {
+    constructor(id = "", x = 0, height = 0, instanceID = "") {
         this.id = id;
         this.x = x;
         this.height = height;
+        this.instanceID = instanceID;
     }
 }
 
@@ -48,9 +50,21 @@ export class HPosition extends Position {
 
 export class VPosition extends Position {
     // 垂直位置点，继承 Position
+    humpSchemeID: string; // 可选的溜放方案ID，用于关联溜放方案中的位置点
+    constructor(
+        id = "",
+        x = 0,
+        height = 0,
+        instanceID = "",
+        humpSchemeID = "",
+    ) {
+        super(id, x, height, instanceID);
+        this.humpSchemeID = humpSchemeID;
+    }
 }
 
 export class PositionSegment {
+    instanceID: string = ""; // 可选的实例ID，用于区分不同布局中的同一位置区间
     id: string = "";
     startPositionID: string;
     endPositionID: string;
@@ -85,18 +99,32 @@ export class HPositionSegment extends PositionSegment {
 export class VPositionSegment extends PositionSegment {
     gradient: number; // 坡度/‰
     height: number; // 高度/m
+    humpSchemeID: string; // 可选的溜放方案ID，用于关联溜放方案中的位置区间
 
     constructor(
         id = "",
         startPositionID = "",
         endPositionID = "",
         length = 0,
+        curveDegree = 0,
+        locationParam = LocationParam.YardSection,
+        curveDirection = CurveDirections.None,
         gradient = 0,
         height = 0,
+        humpSchemeID = "",
     ) {
-        super(id, startPositionID, endPositionID, length);
+        super(
+            id,
+            startPositionID,
+            endPositionID,
+            length,
+            curveDegree,
+            locationParam,
+            curveDirection,
+        );
         this.gradient = gradient;
         this.height = height;
+        this.humpSchemeID = humpSchemeID;
     }
 }
 

@@ -70,7 +70,6 @@ import { useI18n } from 'vue-i18n'
 import HumpSlopeSketchBlock from './HumpSlopeSketchBlock.vue'
 import HumpLayoutCtrl from './HumpLayoutCtrl.vue'
 import axios from '@/utils/axios'
-import config from '../config.json'
 import { FlatLayout, SlopeLayout, CurveDirections } from './humplayoutctrl';
 
 const slopeLayout = ref<SlopeLayout | null>(null);
@@ -147,7 +146,7 @@ const handleToggleFullscreen = () => {
 }
 
 function loadSlopeLayout() {
-    axios.get(`${config.serverurl}/hump/getslopelayout`).then(response => {
+    axios.get(`/hump/getslopelayout`).then(response => {
         if (response.data) {
             slopeLayout.value = response.data as SlopeLayout;
         }
@@ -157,7 +156,7 @@ function loadSlopeLayout() {
 }
 
 function loadFlatLayout() {
-    axios.get(`${config.serverurl}/hump/getflatlayout`).then(response => {
+    axios.get(`/hump/getflatlayout`).then(response => {
         if (response.data) {
             flatLayout.value = response.data
             if (flatLayout.value?.positionSegmentList) {

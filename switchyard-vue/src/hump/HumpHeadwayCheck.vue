@@ -68,7 +68,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import axios from '@/utils/axios'
-import config from '../config.json'
 import HumpVelocityCurve from './HumpVelocityCurve.vue'
 import HumpTimeCurve from './HumpTimeCurve.vue'
 import { useI18n } from 'vue-i18n'
@@ -173,7 +172,7 @@ const timeCurveData = ref<TimeCurveData[]>([])
 // 从后端获取数据
 const fetchVelocityCurve = async () => {
     try {
-        const response = await axios.post(`${config.serverurl}/hump/GetVelocityCurve`, {
+        const response = await axios.post(`/hump/GetVelocityCurve`, {
             wagonTypeName: "P70H",
             wagonVelocityOnTop: 1.4,
             wagonVelocityOnSlop: 5.2,
@@ -220,7 +219,7 @@ const fetchVelocityCurve = async () => {
 
 const fetchTimeCurve = async () => {
     try {
-        const response = await axios.post(`${config.serverurl}/hump/GetTimeCurve`, {
+        const response = await axios.post(`/hump/GetTimeCurve`, {
             wagonTypeName: "P70H",
             wagonVelocityOnTop: 1.4,
             wagonVelocityOnSlop: 5.2,

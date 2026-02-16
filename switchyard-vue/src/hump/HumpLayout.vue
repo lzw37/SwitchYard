@@ -253,7 +253,6 @@ import HumpLayoutCtrl from './HumpLayoutCtrl.vue'
 import type { FlatLayout } from './humplayoutctrl'
 import { CurveDirections, SwitchTypes, SwitchDirections, SwitchSides, LocationParam } from './humplayoutctrl'
 import axios from '@/utils/axios'
-import config from '../config.json'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 interface SlopeLine {
@@ -495,7 +494,7 @@ async function insertPositionAfter(index: number) {
         const currentX = Number(current?.x ?? 0)
         const nextX = next !== undefined ? Number(next.x) : currentX + 1
         const newX = next !== undefined ? Math.round(((currentX + nextX) / 2) * 1000) / 1000 : Math.round(nextX * 1000) / 1000
-        list.splice(index + 1, 0, { id: newId, x: newX, height: 0 })
+        list.splice(index + 1, 0, { id: newId, x: newX, height: 0, instanceID: props.selectedInstanceId ?? '' })
     } catch (error) {
         // 用户取消操作，不执行任何操作
     }
@@ -513,7 +512,7 @@ function addPosition() {
         const currentX = lastPosition?.x ?? 0
         newX = Number(currentX) + 10
     }
-    list.push({ id: 'P', x: newX, height: 0 })
+    list.push({ id: 'P', x: newX, height: 0, instanceID: props.selectedInstanceId ?? '' })
 }
 
 function addSwitch() {
@@ -671,6 +670,7 @@ function updatePositionSegmentList() {
         if (!seg) {
             // 不存在则创建新的区段
             seg = {
+                instanceID: props.selectedInstanceId ?? '',
                 id: `${startPos.id}${endPos.id}`,
                 startPositionID: startPos.id.toString(),
                 endPositionID: endPos.id.toString(),
@@ -704,7 +704,7 @@ function loadFlatLayout() {
         return
     }
 
-    axios.get(`${config.serverurl}/hump/getflatlayout`, {
+    axios.get(`/hump/getflatlayout`, {
         params: {
             instanceID: props.selectedInstanceId,
             slopeLineID: selectedLine.value

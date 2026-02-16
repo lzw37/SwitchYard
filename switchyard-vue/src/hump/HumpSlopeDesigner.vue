@@ -59,7 +59,7 @@
             </div>
             <div class="right-section">
                 <el-button @click="toggleRight" size="small" type="primary">{{ t('humpSlopeDesigner.data')
-                    }}</el-button>
+                }}</el-button>
             </div>
         </div>
         <div class="condition-info">
@@ -67,7 +67,7 @@
             <span>{{ t('humpSlopeDesigner.slopeLine') }}{{ currentCalculateCondition.slopeLineName }}</span>
             <span>{{ t('humpSlopeDesigner.humpVelocity') }}{{ currentCalculateCondition.wagonVelocityOnTop }}m/s</span>
             <span>{{ t('humpSlopeDesigner.slopeVelocity') }}{{ currentCalculateCondition.wagonVelocityOnSlope
-                }}m/s</span>
+            }}m/s</span>
             <span>{{ t('humpSlopeDesigner.yardVelocity') }}{{ currentCalculateCondition.wagonVelocityOnYard }}m/s</span>
             <span>{{ t('humpSlopeDesigner.windSpeed') }}{{ currentCalculateCondition.windVelocity }}m/s（{{
                 currentCalculateCondition.isHeadWind ? t('humpSlopeDesigner.headWind') :
@@ -129,7 +129,7 @@
             :close-on-click-modal="false">
             <div style="margin-bottom: 16px;">
                 <el-button type="primary" @click="handleAddScheme">{{ t('humpSlopeDesigner.buttons.addScheme')
-                    }}</el-button>
+                }}</el-button>
             </div>
             <el-table :data="humpSchemes" style="width: 100%" v-loading="tableLoading">
                 <el-table-column prop="id" :label="t('humpSlopeDesigner.table.schemeId')" width="200"></el-table-column>
@@ -147,7 +147,7 @@
                             <el-button type="success" size="small" @click="handleSaveScheme">{{
                                 t('humpSlopeDesigner.buttons.save') }}</el-button>
                             <el-button size="small" @click="handleCancelEdit">{{ t('humpSlopeDesigner.buttons.cancel')
-                                }}</el-button>
+                            }}</el-button>
                         </div>
                         <div v-else>
                             <el-button type="primary" size="small" @click="handleEditScheme(row, $index)">{{
@@ -170,7 +170,7 @@
             :close-on-click-modal="false" @open="loadDropdownData">
             <div style="margin-bottom: 16px;">
                 <el-button type="primary" @click="handleAddCalculation">{{ t('humpSlopeDesigner.buttons.addCondition')
-                    }}</el-button>
+                }}</el-button>
             </div>
             <el-table :data="humpCalculations" style="width: 100%" v-loading="calculationTableLoading">
                 <el-table-column prop="id" :label="t('humpSlopeDesigner.table.calculationConditionID')"
@@ -206,7 +206,7 @@
                                 :label="slopeLine.name || slopeLine.id" :value="slopeLine.id" />
                         </el-select>
                         <span v-else>{{slopeLines.find(s => s.id === row.slopeLineID)?.name || row.slopeLineID
-                            }}</span>
+                        }}</span>
                     </template>
                 </el-table-column>
                 <el-table-column prop="humpSchemeID" :label="t('humpSlopeDesigner.table.humpScheme')" width="180">
@@ -217,7 +217,7 @@
                                 :value="scheme.id" />
                         </el-select>
                         <span v-else>{{humpSchemes.find(s => s.id === row.humpSchemeID)?.name || row.humpSchemeID
-                        }}</span>
+                            }}</span>
                     </template>
                 </el-table-column>
                 <el-table-column :label="t('humpSlopeDesigner.table.operation')" width="200">
@@ -252,7 +252,6 @@ import { useI18n } from 'vue-i18n'
 import { ElMessageBox } from 'element-plus'
 import HumpLayoutCtrl from './HumpLayoutCtrl.vue';
 import axios from '@/utils/axios';
-import config from '../config.json';
 import { FlatLayout, SlopeLayout, CurveDirections } from './humplayoutctrl';
 
 // 定义 props
@@ -447,7 +446,7 @@ function loadResistanceEnergyHeight() {
         }
     };
 
-    axios.post(`${config.serverurl}/hump/getresistanceenergyheight`, params)
+    axios.post(`/hump/getresistanceenergyheight`, params)
         .then(response => {
             if (response.data) {
                 console.log('Resistance energy height data loaded:', response.data);
@@ -485,7 +484,7 @@ function loadKineticEnergyHeight() {
         }
     };
 
-    axios.post(`${config.serverurl}/hump/getkineticenergyheight`, params)
+    axios.post(`/hump/getkineticenergyheight`, params)
         .then(response => {
             if (response.data) {
                 console.log('Kinetic energy height data loaded:', response.data);
