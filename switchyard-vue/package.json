@@ -1,38 +1,42 @@
 {
-  "name": "switchyard-vue",
-  "version": "0.0.0",
-  "private": true,
-  "type": "module",
-  "engines": {
-    "node": "^20.19.0 || >=22.12.0"
-  },
-  "scripts": {
-    "dev": "vite",
-    "build": "run-p type-check \"build-only {@}\" --",
-    "preview": "vite preview",
-    "build-only": "vite build",
-    "type-check": "vue-tsc --build"
-  },
-  "dependencies": {
-    "axios": "^1.13.2",
-    "crypto-js": "^4.2.0",
-    "element-plus": "^2.13.0",
-    "jquery": "^3.7.1",
-    "vue": "^3.5.25",
-    "vue-i18n": "^11.2.8",
-    "vue-router": "^4.6.3"
-  },
-  "devDependencies": {
-    "@tsconfig/node24": "^24.0.3",
-    "@types/crypto-js": "^4.2.2",
-    "@types/jquery": "^3.5.33",
-    "@types/node": "^24.10.1",
-    "@vitejs/plugin-vue": "^6.0.2",
-    "@vue/tsconfig": "^0.8.1",
-    "npm-run-all2": "^8.0.4",
-    "typescript": "~5.9.0",
-    "vite": "^7.2.4",
-    "vite-plugin-vue-devtools": "^8.0.5",
-    "vue-tsc": "^3.1.5"
-  }
+    "name": "switchyard-vue",
+    "version": "0.0.0",
+    "private": true,
+    "type": "module",
+    "engines": {
+        "node": "^20.19.0 || >=22.12.0"
+    },
+    "scripts": {
+        "dev": "vite --mode development",
+        "dev:prod": "vite --mode production",
+        "build": "run-p type-check \"build-only {@}\" --",
+        "build:dev": "run-p type-check \"build-only --mode development {@}\" --",
+        "build:prod": "run-p type-check \"build-only --mode production {@}\" --",
+        "preview": "vite preview",
+        "preview:prod": "vite preview --mode production",
+        "build-only": "vite build",
+        "type-check": "vue-tsc --build"
+    },
+    "dependencies": {
+        "axios": "^1.13.2",
+        "crypto-js": "^4.2.0",
+        "element-plus": "^2.13.0",
+        "jquery": "^3.7.1",
+        "vue": "^3.5.25",
+        "vue-i18n": "^11.2.8",
+        "vue-router": "^4.6.3"
+    },
+    "devDependencies": {
+        "@tsconfig/node24": "^24.0.3",
+        "@types/crypto-js": "^4.2.2",
+        "@types/jquery": "^3.5.33",
+        "@types/node": "^24.10.1",
+        "@vitejs/plugin-vue": "^6.0.2",
+        "@vue/tsconfig": "^0.8.1",
+        "npm-run-all2": "^8.0.4",
+        "typescript": "~5.9.0",
+        "vite": "^7.2.4",
+        "vite-plugin-vue-devtools": "^8.0.5",
+        "vue-tsc": "^3.1.5"
+    }
 }

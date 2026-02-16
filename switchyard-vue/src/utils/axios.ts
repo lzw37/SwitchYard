@@ -6,7 +6,7 @@ import type {
 } from "axios";
 import { ElMessage } from "element-plus";
 import { i18n } from "../i18n";
-import config from "../config.json";
+import config from "../config";
 
 // 配置全局axios默认设置
 axios.defaults.baseURL = config.serverurl;
@@ -28,9 +28,9 @@ axios.interceptors.request.use(
         return config;
     },
     (error: AxiosError) => {
-        console.error(i18n.global.t('axios.requestError'), error);
+        console.error(i18n.global.t("axios.requestError"), error);
         return Promise.reject(error);
-    }
+    },
 );
 
 // 响应拦截器：统一处理响应和错误
@@ -55,7 +55,7 @@ axios.interceptors.response.use(
                     break;
                 case 403:
                     ElMessage.error(
-                        i18n.global.t("axios.noPermission") as string
+                        i18n.global.t("axios.noPermission") as string,
                     );
                     break;
                 case 404:
@@ -63,25 +63,25 @@ axios.interceptors.response.use(
                     break;
                 case 500:
                     ElMessage.error(
-                        i18n.global.t("axios.serverError") as string
+                        i18n.global.t("axios.serverError") as string,
                     );
                     break;
                 default:
                     ElMessage.error(
                         (error.response.data as any)?.message ||
-                            (i18n.global.t("axios.requestFailed") as string)
+                            (i18n.global.t("axios.requestFailed") as string),
                     );
             }
         } else if (error.request) {
             ElMessage.error(i18n.global.t("axios.networkError") as string);
         } else {
             ElMessage.error(
-                i18n.global.t("axios.requestConfigError") as string
+                i18n.global.t("axios.requestConfigError") as string,
             );
         }
 
         return Promise.reject(error);
-    }
+    },
 );
 
 export default axios;
