@@ -586,6 +586,8 @@
         "xScale": "X Scale",
         "yScale": "Y Scale",
         "data": "Data",
+        "wagonType": "Wagon Type:",
+        "slopeLine": "Slope Line:",
         "humpVelocity": "Hump Velocity:",
         "slopeVelocity": "Slope Velocity:",
         "yardVelocity": "Yard Velocity:",
@@ -645,7 +647,35 @@
         },
         "messages": {
             "deleteSchemeConfirm": "Are you sure you want to delete scheme \"{name}\"?",
-            "deleteConditionConfirm": "Are you sure you want to delete calculation condition \"{name}\"?"
+            "deleteConditionConfirm": "Are you sure you want to delete calculation condition \"{name}\"?",
+            "selectInstanceSchemeCondition": "Please select instance, scheme and calculation condition",
+            "calculationConditionNotFound": "Selected calculation condition not found",
+            "calculationCompleted": "Hump energy height calculation completed! Results have been saved.",
+            "calculationCompletedTitle": "Calculation Completed",
+            "calculationFailed": "Calculation Failed",
+            "calculationUnknownError": "Unknown error occurred during calculation",
+            "tip": "Tip",
+            "error": "Error"
+        },
+        "calculation": {
+            "executeButton": "Calculate and Save Results",
+            "executing": "Calculating..."
+        },
+        "scheme": {
+            "newSchemeName": "New Scheme",
+            "schemeNameRequired": "Scheme name is required",
+            "createSuccess": "Scheme created successfully",
+            "updateSuccess": "Scheme updated successfully",
+            "deleteSuccess": "Scheme deleted successfully"
+        },
+        "condition": {
+            "wagonTypeRequired": "Wagon type cannot be empty",
+            "createSuccess": "Calculation condition created successfully",
+            "updateSuccess": "Calculation condition updated successfully",
+            "deleteSuccess": "Calculation condition deleted successfully"
+        },
+        "common": {
+            "cancelDelete": "Delete cancelled"
         }
     },
     "humpInstance": {

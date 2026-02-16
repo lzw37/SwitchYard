@@ -580,6 +580,7 @@
         "xScale": "X缩放",
         "yScale": "Y缩放",
         "data": "数据",
+        "slopeLine": "溜放线:",
         "humpVelocity": "推峰速度：",
         "slopeVelocity": "溜放部分溜放速度：",
         "yardVelocity": "调车场溜放速度：",
@@ -639,7 +640,35 @@
         },
         "messages": {
             "deleteSchemeConfirm": "确定要删除方案 \"{name}\" 吗？",
-            "deleteConditionConfirm": "确定要删除计算条件 \"{name}\" 吗？"
+            "deleteConditionConfirm": "确定要删除计算条件 \"{name}\" 吗？",
+            "selectInstanceSchemeCondition": "请选择实例、方案和计算条件",
+            "calculationConditionNotFound": "未找到选择的计算条件",
+            "calculationCompleted": "驼峰能高线计算完成！计算结果已保存。",
+            "calculationCompletedTitle": "计算完成",
+            "calculationFailed": "计算失败",
+            "calculationUnknownError": "计算过程中发生未知错误",
+            "tip": "提示",
+            "error": "错误"
+        },
+        "calculation": {
+            "executeButton": "计算并保存结果",
+            "executing": "计算中..."
+        },
+        "scheme": {
+            "newSchemeName": "新方案",
+            "schemeNameRequired": "方案名称不能为空",
+            "createSuccess": "方案创建成功",
+            "updateSuccess": "方案更新成功",
+            "deleteSuccess": "方案删除成功"
+        },
+        "condition": {
+            "wagonTypeRequired": "车辆类型不能为空",
+            "createSuccess": "计算条件创建成功",
+            "updateSuccess": "计算条件更新成功",
+            "deleteSuccess": "计算条件删除成功"
+        },
+        "common": {
+            "cancelDelete": "取消删除"
         }
     },
     "humpInstance": {

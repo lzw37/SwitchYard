@@ -180,6 +180,41 @@ namespace SwitchYard.Hump
     public class EnergyCalculationParams
     {
         /// <summary>
+        /// 实例ID
+        /// </summary>
+        public string InstanceID { get; set; }
+
+        /// <summary>
+        /// 驼峰方案ID
+        /// </summary>
+        public string HumpSchemeID { get; set; }
+
+        /// <summary>
+        /// 计算ID
+        /// </summary>
+        public string ID { get; set; }
+
+        /// <summary>
+        /// 溜放线ID
+        /// </summary>
+        public string? SlopeLineID { get; set; }
+
+        /// <summary>
+        /// 车辆类型
+        /// </summary>
+        public string? WagonTypeName { get; set; }
+
+        /// <summary>
+        /// 溜车条件ID
+        /// </summary>
+        public string? OperationConditionID { get; set; }
+
+        /// <summary>
+        /// 减速器工作状态ID
+        /// </summary>
+        public string? RetarderStatusID { get; set; }
+
+        /// <summary>
         /// 溜放线
         /// </summary>
         [JsonIgnore]

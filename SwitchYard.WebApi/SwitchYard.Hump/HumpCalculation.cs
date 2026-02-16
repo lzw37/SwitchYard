@@ -20,11 +20,27 @@ namespace SwitchYard.Hump
 
         public string SlopeLineID { get; set; }
 
-        public HumpCalculationData? Data { get; set; }
+        public List<HumpCalculationData>? Data { get; set; }
     }
 
     public class HumpCalculationData
     {
+        public string InstanceID { get; set; }
 
+        public string HumpSchemeID { get; set; }
+
+        public string HumpCalculationID { get; set; }
+
+        public double X { get; set; }
+
+        public double? GravityEnergyHeight { get;set; }
+
+        public double? ResistanceEnergyHeight { get; set; }
+
+        public double? KineticEnergyHeight { get; set; }
+
+        public double? BreakingEnergyHeight { get; set; }
+
+        public double? InitTotalEnergyHeight { get; set; }
     }
 }

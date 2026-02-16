@@ -25,6 +25,11 @@
                     </el-select>
                     <el-button type="primary" size="small" @click="showConditionManager = true">...</el-button>
                 </div>
+                <el-button type="primary" size="small" @click="executeCalculation" :loading="calculationExecuting"
+                    :disabled="calculationExecuting">
+                    {{ calculationExecuting ? t('humpSlopeDesigner.calculation.executing') :
+                        t('humpSlopeDesigner.calculation.executeButton') }}
+                </el-button>
                 <div class="control-group">
                     <span>{{ t('humpSlopeDesigner.initialKineticEnergyLine') }}</span>
                     <el-switch v-model="showInitialKinetic" size="small"></el-switch>
@@ -58,8 +63,10 @@
             </div>
         </div>
         <div class="condition-info">
+            <span>{{ t('humpSlopeDesigner.wagonType') }}{{ currentCalculateCondition.wagonTypeName }}</span>
+            <span>{{ t('humpSlopeDesigner.slopeLine') }}{{ currentCalculateCondition.slopeLineName }}</span>
             <span>{{ t('humpSlopeDesigner.humpVelocity') }}{{ currentCalculateCondition.wagonVelocityOnTop }}m/s</span>
-            <span>{{ t('humpSlopeDesigner.slopeVelocity') }}{{ currentCalculateCondition.wagonVelocityOnSlop
+            <span>{{ t('humpSlopeDesigner.slopeVelocity') }}{{ currentCalculateCondition.wagonVelocityOnSlope
                 }}m/s</span>
             <span>{{ t('humpSlopeDesigner.yardVelocity') }}{{ currentCalculateCondition.wagonVelocityOnYard }}m/s</span>
             <span>{{ t('humpSlopeDesigner.windSpeed') }}{{ currentCalculateCondition.windVelocity }}m/s（{{
@@ -302,6 +309,7 @@ const editingScheme = ref<HumpScheme>({ id: '', instanceID: '', name: '' })
 
 // 计算条件管理相关状态
 const calculationTableLoading = ref(false)
+const calculationExecuting = ref(false)
 const editingCalculationIndex = ref(-1)
 const editingCalculation = ref<HumpCalculation>({
     id: '',
@@ -341,23 +349,19 @@ const showKinetic = ref(false);
 const showBreaking = ref(false);
 
 const currentCalculateCondition = ref({
-    wagonTypeName: "P70H",
-    wagonVelocityOnTop: 1.4,
-    wagonVelocityOnSlop: 5.2,
-    wagonVelocityOnYard: 2.2,
-    windVelocity: 5,
-    isHeadWind: 1,
-    airDensity: 0.063,
-    temperature: -10,
-    g: 9.8,
+    wagonTypeName: "--",
+    slopeLineName: "--",
+    wagonVelocityOnTop: "--",
+    wagonVelocityOnSlope: "--",
+    wagonVelocityOnYard: "--",
+    windVelocity: "--",
+    isHeadWind: "--",
+    airDensity: "--",
+    temperature: "--",
+    g: "--",
     retarderActivation: {},
     retarderOutput: {}
 })
-
-const currentCalculateConditionText = computed(() => {
-    const c = currentCalculateCondition.value;
-    return `${t('humpSlopeDesigner.wagonType')} ${c.wagonTypeName}\t${t('humpSlopeDesigner.humpVelocityLabel')} ${c.wagonVelocityOnTop} m/s\t${t('humpSlopeDesigner.slopeVelocityLabel')}【${t('humpSlopeDesigner.slopePart')}${c.wagonVelocityOnSlop} m/s, ${t('humpSlopeDesigner.yard')}${c.wagonVelocityOnYard} m/s】\t${t('humpSlopeDesigner.windSpeedLabel')} ${c.windVelocity} m/s（${c.isHeadWind ? t('humpSlopeDesigner.headWind') : t('humpSlopeDesigner.tailWind')}）\t${t('humpSlopeDesigner.airDensityLabel')} ${c.airDensity} kg/m³\t${t('humpSlopeDesigner.temperatureLabel')} ${c.temperature} °C`;
-});
 
 watch(showInitialKinetic, (newVal) => {
     if (newVal === true) {
@@ -418,50 +422,78 @@ const loadSlopeLayout = async () => {
 
 // 加载阻力能高线数据
 function loadResistanceEnergyHeight() {
-    axios.post(`${config.serverurl}/hump/getresistanceenergyheight`, {
-        wagonTypeName: "P70H",
-        wagonVelocityOnTop: 1.4,
-        wagonVelocityOnSlop: 5.2,
-        wagonVelocityOnYard: 2.2,
-        windVelocity: 5,
-        isHeadWind: 1,
-        airDensity: 0.063,
-        temperature: -10,
-        g: 9.8,
-        retarderActivation: {},
-        retarderOutput: {}
-    }).then(response => {
-        if (response.data) {
-            console.log('kinetic energy height data loaded:', response.data);
-            resistanceEnergyHeightData.value = response.data as { x: number, height: number }[];
+    if (!props.selectedInstanceId || !currentHumpSchemeID.value || !currentHumpCalculationID.value) {
+        resistanceEnergyHeightData.value = null;
+        return;
+    }
+
+    // 根据当前选择的计算条件ID获取完整的计算条件信息
+    const currentCalculation = humpCalculations.value.find(calc => calc.id === currentHumpCalculationID.value);
+    if (!currentCalculation) {
+        console.error("未找到当前选择的计算条件");
+        return;
+    }
+
+    const params = {
+        instanceID: props.selectedInstanceId,
+        humpSchemeID: currentHumpSchemeID.value,
+        id: currentCalculation.id,
+        slopeLineID: currentCalculation.slopeLineID,
+        wagonTypeName: currentCalculation.wagonType,
+        operationConditionID: currentCalculation.operationConditionID,
+        retarderStatusID: null, // 如果需要减速器状态，可以从计算条件中获取
+        wagon: {
+            typeName: currentCalculation.wagonType
         }
-    }).catch(error => {
-        console.error("加载动能高度数据失败:", error);
-    });
+    };
+
+    axios.post(`${config.serverurl}/hump/getresistanceenergyheight`, params)
+        .then(response => {
+            if (response.data) {
+                console.log('Resistance energy height data loaded:', response.data);
+                resistanceEnergyHeightData.value = response.data as { x: number, height: number }[];
+            }
+        }).catch(error => {
+            console.error("加载阻力能高度数据失败:", error);
+        });
 }
 
 // 加载动能高线
 function loadKineticEnergyHeight() {
-    axios.post(`${config.serverurl}/hump/getkineticenergyheight`, {
-        wagonTypeName: "P70H",
-        wagonVelocityOnTop: 1.4,
-        wagonVelocityOnSlop: 5.2,
-        wagonVelocityOnYard: 2.2,
-        windVelocity: 5,
-        isHeadWind: 1,
-        airDensity: 0.063,
-        temperature: -10,
-        g: 9.8,
-        retarderActivation: {},
-        retarderOutput: {}
-    }).then(response => {
-        if (response.data) {
-            console.log('Resistance energy height data loaded:', response.data);
-            kineticEnergyHeightData.value = response.data as { x: number, result: any }[];
+    if (!props.selectedInstanceId || !currentHumpSchemeID.value || !currentHumpCalculationID.value) {
+        kineticEnergyHeightData.value = null;
+        return;
+    }
+
+    // 根据当前选择的计算条件ID获取完整的计算条件信息
+    const currentCalculation = humpCalculations.value.find(calc => calc.id === currentHumpCalculationID.value);
+    if (!currentCalculation) {
+        console.error("未找到当前选择的计算条件");
+        return;
+    }
+
+    const params = {
+        instanceID: props.selectedInstanceId,
+        humpSchemeID: currentHumpSchemeID.value,
+        id: currentCalculation.id,
+        slopeLineID: currentCalculation.slopeLineID,
+        wagonTypeName: currentCalculation.wagonType,
+        operationConditionID: currentCalculation.operationConditionID,
+        retarderStatusID: null, // 如果需要减速器状态，可以从计算条件中获取
+        wagon: {
+            typeName: currentCalculation.wagonType
         }
-    }).catch(error => {
-        console.error("加载阻力能高度数据失败:", error);
-    });
+    };
+
+    axios.post(`${config.serverurl}/hump/getkineticenergyheight`, params)
+        .then(response => {
+            if (response.data) {
+                console.log('Kinetic energy height data loaded:', response.data);
+                kineticEnergyHeightData.value = response.data as { x: number, result: any }[];
+            }
+        }).catch(error => {
+            console.error("加载动能高度数据失败:", error);
+        });
 }
 
 function loadBreakingEnergyHeight() {
@@ -607,6 +639,60 @@ watch(currentHumpSchemeID, (newSchemeId, oldSchemeId) => {
     }
 })
 
+// 监听 currentHumpCalculationID 变化
+watch(currentHumpCalculationID, (newCalculationId, oldCalculationId) => {
+    console.log('Current hump calculation changed from', oldCalculationId, 'to', newCalculationId)
+    if (newCalculationId && props.selectedInstanceId) {
+        loadFlatLayout()
+        updateCurrentCalculateCondition()
+    }
+})
+
+// 更新当前计算条件信息
+const updateCurrentCalculateCondition = async () => {
+    if (!currentHumpCalculationID.value || !props.selectedInstanceId) {
+        return
+    }
+
+    const currentCalculation = humpCalculations.value.find(calc => calc.id === currentHumpCalculationID.value)
+    if (!currentCalculation) {
+        return
+    }
+
+    // 确保运行条件已加载
+    if (operationConditions.value.length === 0) {
+        await loadOperationConditions()
+    }
+
+    // 从已加载的运行条件列表中查找对应的条件
+    const operationCondition = operationConditions.value.find(
+        condition => condition.id === currentCalculation.operationConditionID
+    )
+
+    if (operationCondition) {
+        // 更新当前计算条件显示信息
+        currentCalculateCondition.value = {
+            slopeLineName: slopeLines.value.find(s => s.id === currentCalculation.slopeLineID)?.name || currentCalculation.slopeLineID || '--',
+            wagonTypeName: currentCalculation.wagonType || '--',
+            wagonVelocityOnTop: operationCondition.wagonVelocityOnTop !== undefined ? operationCondition.wagonVelocityOnTop : '--',
+            wagonVelocityOnSlope: operationCondition.wagonVelocityOnSlope !== undefined ? operationCondition.wagonVelocityOnSlope : '--',
+            wagonVelocityOnYard: operationCondition.wagonVelocityOnYard !== undefined ? operationCondition.wagonVelocityOnYard : '--',
+            windVelocity: operationCondition.windVelocity !== undefined ? operationCondition.windVelocity : '--',
+            isHeadWind: operationCondition.isHeadWind !== undefined ? operationCondition.isHeadWind : '--',
+            airDensity: operationCondition.airDensity !== undefined ? operationCondition.airDensity : '--',
+            temperature: operationCondition.temperature !== undefined ? operationCondition.temperature : '--',
+            g: operationCondition.g || 9.8,
+            retarderActivation: operationCondition.retarderActivation || {},
+            retarderOutput: operationCondition.retarderOutput || {}
+        }
+        console.log('Updated calculation condition:', currentCalculateCondition.value)
+    } else {
+        console.warn('Operation condition not found:', currentCalculation.operationConditionID)
+        // 如果找不到运行条件，至少更新车辆类型
+        currentCalculateCondition.value.wagonTypeName = currentCalculation.wagonType || '--'
+    }
+}
+
 // 加载平面布置图数据 
 const loadFlatLayout = async () => {
     if (!props.selectedInstanceId) {
@@ -621,13 +707,16 @@ const loadFlatLayout = async () => {
         })
         const slopeLines = slopeLinesResponse.data || []
 
+        const currentCal = humpCalculations.value.filter(calc => calc.id === currentHumpCalculationID.value)[0] // 过滤出与第一条溜放线相关的计算条件
+        const currentSlopeLineID = currentCal?.slopeLineID
+
         // 如果有溜放线，使用第一条线获取平面图
         if (slopeLines.length > 0) {
             const slopeLineID = slopeLines[0].id
             const response = await axios.get('/Hump/GetFlatLayout', {
                 params: {
                     instanceID: props.selectedInstanceId,
-                    slopeLineID: slopeLineID
+                    slopeLineID: currentSlopeLineID || slopeLineID // 优先使用与计算条件相关的溜放线ID
                 }
             })
 
@@ -670,6 +759,80 @@ onMounted(() => {
     loadHumpSchemes();
 });
 
+// 驼峰计算方法
+const executeCalculation = async () => {
+    if (!props.selectedInstanceId || !currentHumpSchemeID.value || !currentHumpCalculationID.value) {
+        ElMessageBox.alert(t('humpSlopeDesigner.messages.selectInstanceSchemeCondition'), t('humpSlopeDesigner.messages.tip'), {
+            confirmButtonText: t('humpSlopeDesigner.buttons.confirm'),
+            type: 'warning'
+        })
+        return
+    }
+
+    // 获取当前计算条件的完整信息
+    const currentCalculation = humpCalculations.value.find(calc => calc.id === currentHumpCalculationID.value)
+    if (!currentCalculation) {
+        ElMessageBox.alert(t('humpSlopeDesigner.messages.calculationConditionNotFound'), t('humpSlopeDesigner.messages.error'), {
+            confirmButtonText: t('humpSlopeDesigner.buttons.confirm'),
+            type: 'error'
+        })
+        return
+    }
+
+    try {
+        calculationExecuting.value = true
+
+        const requestData = {
+            ID: currentHumpCalculationID.value,
+            InstanceID: props.selectedInstanceId,
+            HumpSchemeID: currentHumpSchemeID.value,
+            WagonTypeName: currentCalculation.wagonType,
+            OperationConditionID: currentCalculation.operationConditionID,
+            SlopeLineID: currentCalculation.slopeLineID
+        }
+
+        console.log('执行驼峰计算，请求参数:', requestData)
+
+        const response = await axios.post('/Hump/ExecuteEnergyHeightCalculation', requestData)
+
+        if (response.status === 200) {
+            await ElMessageBox.alert(
+                t('humpSlopeDesigner.messages.calculationCompleted'),
+                t('humpSlopeDesigner.messages.calculationCompletedTitle'),
+                {
+                    confirmButtonText: t('humpSlopeDesigner.buttons.confirm'),
+                    type: 'success'
+                }
+            )
+            console.log('驼峰计算完成:', response.data)
+
+            // 重新加载相关数据
+            if (showResistance.value) {
+                loadResistanceEnergyHeight()
+            }
+            if (showKinetic.value || showInitialKinetic.value) {
+                loadKineticEnergyHeight()
+            }
+            if (showBreaking.value) {
+                loadBreakingEnergyHeight()
+            }
+        }
+    } catch (error: any) {
+        console.error('驼峰计算失败:', error)
+        const errorMessage = error.response?.data?.message || error.message || t('humpSlopeDesigner.messages.calculationUnknownError')
+        await ElMessageBox.alert(
+            `${t('humpSlopeDesigner.messages.calculationFailed')}: ${errorMessage}`,
+            t('humpSlopeDesigner.messages.calculationFailed'),
+            {
+                confirmButtonText: t('humpSlopeDesigner.buttons.confirm'),
+                type: 'error'
+            }
+        )
+    } finally {
+        calculationExecuting.value = false
+    }
+}
+
 // 方案管理相关方法
 const handleAddScheme = async () => {
     if (!props.selectedInstanceId) {
@@ -680,7 +843,7 @@ const handleAddScheme = async () => {
     const newScheme: HumpScheme = {
         id: '', // 后端会生成
         instanceID: props.selectedInstanceId,
-        name: '新方案'
+        name: t('humpSlopeDesigner.scheme.newSchemeName')
     }
 
     try {
@@ -688,7 +851,7 @@ const handleAddScheme = async () => {
         const response = await axios.post('/Hump/CreateHumpScheme', newScheme)
         if (response.data) {
             await loadHumpSchemes() // 重新加载列表
-            console.log('方案创建成功')
+            console.log(t('humpSlopeDesigner.scheme.createSuccess'))
         }
     } catch (error) {
         console.error('创建方案失败:', error)
@@ -704,7 +867,7 @@ const handleEditScheme = (scheme: HumpScheme, index: number) => {
 
 const handleSaveScheme = async () => {
     if (!editingScheme.value.name.trim()) {
-        console.error('方案名称不能为空')
+        console.error(t('humpSlopeDesigner.scheme.schemeNameRequired'))
         return
     }
 
@@ -714,7 +877,7 @@ const handleSaveScheme = async () => {
         if (response.status === 200) {
             await loadHumpSchemes() // 重新加载列表
             handleCancelEdit()
-            console.log('方案更新成功')
+            console.log(t('humpSlopeDesigner.scheme.updateSuccess'))
         }
     } catch (error) {
         console.error('更新方案失败:', error)
@@ -744,11 +907,11 @@ const handleDeleteScheme = async (scheme: HumpScheme) => {
         const response = await axios.delete(`/Hump/DeleteHumpScheme?id=${scheme.id}`)
         if (response.status === 200) {
             await loadHumpSchemes() // 重新加载列表
-            console.log('方案删除成功')
+            console.log(t('humpSlopeDesigner.scheme.deleteSuccess'))
         }
     } catch (error) {
         if (error === 'cancel') {
-            console.log('取消删除')
+            console.log(t('humpSlopeDesigner.common.cancelDelete'))
         } else {
             console.error('删除方案失败:', error)
         }
@@ -783,7 +946,7 @@ const handleAddCalculation = async () => {
         wagonType: wagonConcepts.value.length > 0 ? (wagonConcepts.value[0].typeName || 'P70H') : 'P70H',
         operationConditionID: operationConditions.value.length > 0 ? operationConditions.value[0].id : 'default',
         slopeLineID: slopeLines.value.length > 0 ? slopeLines.value[0].id : 'default',
-        data: {} // 提供必需的 Data 字段
+        data: [] // 提供必需的 Data 字段作为数组
     }
 
     try {
@@ -791,7 +954,7 @@ const handleAddCalculation = async () => {
         const response = await axios.post('/Hump/CreateHumpCalculation', newCalculation)
         if (response.data) {
             await loadHumpCalculations() // 重新加载列表
-            console.log('计算条件创建成功')
+            console.log(t('humpSlopeDesigner.condition.createSuccess'))
         }
     } catch (error) {
         console.error('创建计算条件失败:', error)
@@ -814,17 +977,27 @@ const handleEditCalculation = async (calculation: HumpCalculation, index: number
 
 const handleSaveCalculation = async () => {
     if (!editingCalculation.value.wagonType.trim()) {
-        console.error('车辆类型不能为空')
+        console.error(t('humpSlopeDesigner.condition.wagonTypeRequired'))
         return
     }
 
     try {
         calculationTableLoading.value = true
-        const response = await axios.put('/Hump/EditHumpCalculation', editingCalculation.value)
+        // 将字段名转换为Pascal case格式以匹配API期望
+        const apiRequest = {
+            ID: editingCalculation.value.id,
+            InstanceID: editingCalculation.value.instanceID,
+            HumpSchemeID: editingCalculation.value.humpSchemeID,
+            WagonType: editingCalculation.value.wagonType,
+            OperationConditionID: editingCalculation.value.operationConditionID,
+            SlopeLineID: editingCalculation.value.slopeLineID,
+            Data: editingCalculation.value.data
+        }
+        const response = await axios.put('/Hump/EditHumpCalculation', apiRequest)
         if (response.status === 200) {
             await loadHumpCalculations() // 重新加载列表
             handleCancelCalculationEdit()
-            console.log('计算条件更新成功')
+            console.log(t('humpSlopeDesigner.condition.updateSuccess'))
         }
     } catch (error) {
         console.error('更新计算条件失败:', error)
@@ -855,11 +1028,11 @@ const handleDeleteCalculation = async (calculation: HumpCalculation) => {
         })
         if (response.status === 200) {
             await loadHumpCalculations() // 重新加载列表
-            console.log('计算条件删除成功')
+            console.log(t('humpSlopeDesigner.condition.deleteSuccess'))
         }
     } catch (error) {
         if (error === 'cancel') {
-            console.log('取消删除')
+            console.log(t('humpSlopeDesigner.common.cancelDelete'))
         } else {
             console.error('删除计算条件失败:', error)
         }
@@ -886,7 +1059,7 @@ const handleCancelCalculationEdit = () => {
         wagonType: '',
         operationConditionID: '',
         slopeLineID: '',
-        data: {}
+        data: []
     }
 }
 

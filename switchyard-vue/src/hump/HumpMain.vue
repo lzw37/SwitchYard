@@ -158,7 +158,7 @@ onMounted(() => {
 }
 
 .hump-tabs :deep(.el-tabs__header) {
-    padding-left: 350px;
+    padding-left: 450px;
     padding-right: 120px;
 }
 
