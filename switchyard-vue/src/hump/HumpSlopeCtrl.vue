@@ -26,13 +26,27 @@
                 <line class="yaxis" :x1="marginLeft" :x2="marginLeft" :y1="marginTop" :y2="svgHeight - marginBottom">
                 </line>
             </g>
+            <g class="xaxis-addpointbar">
+                <line class="addpointbar" :x1="marginLeft" :x2="marginLeft + sketchWidth"
+                    :y1="svgHeight - marginBottom / 2" :y2="svgHeight - marginBottom / 2">
+                </line>
+                <!-- 跟随光标的圆和+号 -->
+                <g class="cursor-addpoint" v-if="cursorX >= 0 && cursorX <= sketchWidth / scaleX"
+                    @click="addVPosition(cursorX)">
+                    <circle class="addpointhandler" :cx="getX(cursorX)" :cy="svgHeight - marginBottom / 2" r="8"
+                        stroke="#888" stroke-width="2" />
+                    <text :x="getX(cursorX)" :y="svgHeight - marginBottom / 2" text-anchor="middle"
+                        dominant-baseline="middle" font-size="14" fill="white" font-weight="bold"
+                        style="cursor:pointer">+</text>
+                </g>
+            </g>
             <g class="slopelines">
                 <line v-for="seg in slopeLayout?.positionSegmentList || []" class="slope-line"
                     :x1="getX(getPositionX(seg.startPositionID))" :y1="getY(getPositionHeight(seg.startPositionID))"
                     :x2="getX(getPositionX(seg.endPositionID))" :y2="getY(getPositionHeight(seg.endPositionID))" />
             </g>
             <g class="points">
-                <g v-for="pos in slopeLayout?.positionList || []">
+                <g v-for="pos in slopeLayout?.positionList || []" @contextmenu.prevent="openContextMenu(pos, $event)">
                     <circle class="point-circle" :cx="getX(pos.x)" :cy="getY(pos.height)" r="4"
                         @mousedown="startDrag(pos, $event)"></circle>
                     <text class="point-height-text" :x="getX(pos.x)"
@@ -85,10 +99,14 @@
                     :x2="getX(cursorX)"></line>
             </g>
         </svg>
+        <div v-if="contextMenu.visible" class="context-menu"
+            :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }">
+            <div class="context-menu-item" @click.stop="deleteContextPos">删除节点</div>
+        </div>
     </div>
 </template>
 <script setup lang="ts">
-import type { SlopeLayout } from './humplayoutctrl';
+import { CurveDirections, LocationParam, SlopeLayout, VPosition, VPositionSegment } from './humplayoutctrl';
 import { ref, computed, onBeforeUnmount, onMounted } from 'vue';
 
 const props = defineProps<{
@@ -145,6 +163,18 @@ const startX = ref(0);
 const dragMode = ref<'vertical' | 'horizontal'>('vertical');
 const currentX = ref(0);
 const currentHeight = ref(0);
+const contextMenu = ref<{ visible: boolean; x: number; y: number; posId: string }>({ visible: false, x: 0, y: 0, posId: '' });
+
+function openContextMenu(pos: { id: string }, event: MouseEvent) {
+    event.preventDefault();
+    contextMenu.value = { visible: true, x: event.clientX, y: event.clientY, posId: pos.id };
+    window.addEventListener('click', closeContextMenu);
+}
+
+function closeContextMenu() {
+    contextMenu.value = { visible: false, x: 0, y: 0, posId: '' };
+    window.removeEventListener('click', closeContextMenu);
+}
 
 function getX(posX: number): number {
     return posX * scaleX.value + marginLeft.value;
@@ -430,6 +460,90 @@ function addCursorXListener() {
     });
 }
 
+function buildSegments(positions: VPosition[]): VPositionSegment[] {
+    const sorted = [...positions].sort((a, b) => a.x - b.x);
+    const segments: VPositionSegment[] = [];
+    for (let i = 0; i < sorted.length - 1; i++) {
+        const start = sorted[i];
+        const end = sorted[i + 1];
+        if (!start || !end) continue;
+        const length = Math.max(0, Math.round((end.x - start.x) * 1000) / 1000);
+        const gradient = length !== 0 ? Math.round(((end.height - start.height) / length) * 1000) : 0;
+        const seg = new VPositionSegment(
+            `vseg-${i}-${Date.now()}`,
+            start.id,
+            end.id,
+            length,
+            0,
+            LocationParam.YardSection,
+            CurveDirections.None,
+            gradient,
+            end.height,
+        );
+        segments.push(seg);
+    }
+    return segments;
+}
+
+function removePosition(posId: string) {
+    const sl = props.slopeLayout;
+    if (!sl || !Array.isArray(sl.positionList)) return;
+    sl.positionList = sl.positionList.filter(p => p.id !== posId).sort((a, b) => a.x - b.x);
+    sl.positionSegmentList = buildSegments(sl.positionList);
+}
+
+function deleteContextPos() {
+    if (contextMenu.value.posId) {
+        removePosition(contextMenu.value.posId);
+    }
+    closeContextMenu();
+}
+
+function addVPosition(posX: number) {
+    const sl = props.slopeLayout;
+    if (!sl) return;
+    if (!Array.isArray(sl.positionList)) sl.positionList = [];
+
+    const positions = [...sl.positionList].sort((a, b) => a.x - b.x);
+
+    // 已存在同x坐标则不重复添加
+    if (positions.some((p) => Math.abs(p.x - posX) < 1e-6)) return;
+
+    // 少于2个点时，直接插入默认高度2的点
+    if (positions.length === 0) {
+        const newPos1 = new VPosition(`vp-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`, posX, 2);
+        const newPos2 = new VPosition(`vp-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`, posX + 5, 2);
+        const updated = [...positions, newPos1, newPos2].sort((a, b) => a.x - b.x);
+        sl.positionList = updated;
+        sl.positionSegmentList = buildSegments(updated);
+        return;
+    }
+    else if (positions.length === 1) {
+        const newPos1 = new VPosition(`vp-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`, posX, 2);
+        const updated = [...positions, newPos1].sort((a, b) => a.x - b.x);
+        sl.positionList = updated;
+        sl.positionSegmentList = buildSegments(updated);
+        return;
+    }
+
+    const left = positions.filter((p) => p.x <= posX).pop();
+    const right = positions.find((p) => p.x >= posX);
+
+    let height = 0;
+    if (left && right && left !== right) {
+        height = (left.height + right.height) / 2;
+    } else if (left) {
+        height = left.height;
+    } else if (right) {
+        height = right.height;
+    }
+
+    const newPos = new VPosition(`vp-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`, posX, Math.round(height * 1000) / 1000);
+    const updated = [...positions, newPos].sort((a, b) => a.x - b.x);
+    sl.positionList = updated;
+    sl.positionSegmentList = buildSegments(updated);
+}
+
 onMounted(() => {
     addCursorXListener();
 });
@@ -437,6 +551,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
     window.removeEventListener('mousemove', onMouseMove);
     window.removeEventListener('mouseup', endDrag);
+    closeContextMenu();
 });
 </script>
 <style scoped lang="css">
@@ -545,5 +660,48 @@ onBeforeUnmount(() => {
     text-anchor: middle;
     dominant-baseline: middle;
     user-select: none;
+}
+
+.addpointbar {
+    stroke: #888;
+    stroke-width: 1px;
+    stroke-dasharray: 2 2;
+}
+
+.addpointhandler {
+    fill: #888;
+    cursor: pointer;
+}
+
+.cursor-addpoint {
+    cursor: pointer;
+}
+
+.cursor-addpoint:hover .addpointhandler {
+    stroke: red;
+    stroke-width: 3px;
+}
+
+.context-menu {
+    position: fixed;
+    background: #fff;
+    border: 1px solid #ebeef5;
+    border-radius: 6px;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12), 0 3px 6px rgba(0, 0, 0, 0.08);
+    z-index: 1000;
+    min-width: 120px;
+    padding: 4px 0;
+}
+
+.context-menu-item {
+    padding: 8px 14px;
+    font-size: 14px;
+    color: #606266;
+    cursor: pointer;
+}
+
+.context-menu-item:hover {
+    background: #f5f7fa;
+    color: #409eff;
 }
 </style>
