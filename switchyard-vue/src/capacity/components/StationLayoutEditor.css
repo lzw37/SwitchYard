@@ -1,0 +1,161 @@
+#layout-editor-svg {
+    background-color: #31363f;
+    height: 1080px;
+    width: 1920px;
+}
+
+.griddot {
+    fill: #fefded;
+}
+
+.cursor {
+    fill: none;
+    stroke-width: 1px;
+    stroke: #fefded;
+}
+
+.track {
+    stroke-width: 2px;
+    stroke: #fefded;
+}
+
+.track-temp {
+    stroke: #9cafaa;
+}
+
+.track-hit {
+    stroke-width: 4px;
+}
+
+.track-selected {
+    stroke-width: 4px;
+}
+
+.anchor {
+    fill: #97e7e1;
+}
+
+.crosspoint {
+    fill: greenyellow;
+}
+
+.crosspoint.rela1 {
+    fill: red;
+}
+
+.crosspoint.rela2 {
+    fill: green;
+}
+
+.crosspoint.rela3 {
+    fill: azure;
+    stroke: red;
+    stroke-width: 2px;
+}
+
+.crosspoint.rela4 {
+    stroke: blue;
+    stroke-width: 2px;
+    fill: azure;
+}
+
+.signal {
+    stroke-width: 2px;
+}
+
+.signal line {
+    stroke: white;
+}
+.signal circle {
+    stroke: black;
+}
+
+.signal-temp {
+    opacity: 0.5;
+}
+
+.signal-selected line,
+.signal-selected circle {
+    stroke-width: 4px;
+    stroke: yellow;
+}
+
+.signalname{
+    fill:white;
+}
+
+.insulationjoint line {
+    stroke: pink;
+    stroke-width: 3px;
+}
+
+.insulationjoint-selected line {
+    stroke: yellow;
+    stroke-width: 6px;
+}
+
+.insulationjoint-temp line {
+    opacity: 0.5;
+}
+
+.tips {
+    opacity: 0.3;
+}
+
+.node {
+    fill: white;
+    opacity: 0.8;
+}
+
+.node-temp {
+    fill: yellow;
+    opacity: 0.6;
+}
+
+.node-selected {
+    fill: yellow;
+    stroke-width: 2px;
+    stroke: red;
+}
+
+.perpendicular {
+    fill: white;
+}
+
+.switchbranch {
+    stroke: aqua;
+    stroke-width: 5px;
+}
+
+.switch-selected .switchbranch {
+    stroke: yellow;
+}
+
+.switchname{
+    fill:white;
+    font-size: 8px;
+}
+
+.platform-temp {
+    fill: none;
+    stroke: skyblue;
+    stroke-dasharray: 10, 5;
+}
+
+.platform rect,
+.platform line {
+    fill: none;
+    stroke: skyblue;
+}
+
+.platform-selected rect,
+.platform-selected line {
+    stroke-width: 3px;
+}
+
+.platformname{
+    dominant-baseline:middle;
+    text-anchor:middle;
+    fill:white;
+    font-size: 10px;
+}

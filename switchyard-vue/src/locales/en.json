@@ -721,5 +721,77 @@
             "deleteError": "Failed to delete instance",
             "deleteConfirm": "Are you sure you want to delete instance {name}? This action cannot be undone."
         }
+    },
+    "capacityMain": {
+        "buttons": {
+            "instanceManager": "Instance Manager"
+        },
+        "placeholders": {
+            "selectInstance": "Select an instance",
+            "stationLayout": "Station Layout (Coming soon)",
+            "calcParams": "Calculation Parameters (Coming soon)",
+            "operationPlan": "Operation Plan (Coming soon)",
+            "resultAnalysis": "Result Analysis (Coming soon)",
+            "instanceManager": "Instance Manager (Coming soon)",
+            "simulation": "Simulation (Coming soon)"
+        },
+        "tabs": {
+            "stationLayout": "Station Layout",
+            "calcParams": "Calc Params",
+            "operationPlan": "Operation Plan",
+            "resultAnalysis": "Result Analysis",
+            "simulation": "Simulation"
+        },
+        "dialogs": {
+            "instanceManagerTitle": "Capacity Instance Manager"
+        },
+        "messages": {
+            "loadInstancesError": "Failed to load instance list"
+        }
+    },
+    "stationLayout": {
+        "menu": {
+            "file": "File",
+            "loadData": "Load",
+            "saveData": "Save",
+            "gridSnap": "Grid Snap",
+            "objectSnap": "Obj Snap",
+            "undo": "Undo",
+            "redo": "Redo",
+            "clearSelection": "Clear Sel",
+            "deleteSelection": "Delete Sel"
+        },
+        "group": {
+            "mode": "Mode",
+            "drawingObject": "Drawing Object",
+            "tools": "Tools"
+        },
+        "mode": {
+            "select": "Select",
+            "draw": "Draw"
+        },
+        "draw": {
+            "line": "Line",
+            "node": "Node",
+            "signal": "Signal",
+            "switch": "Switch",
+            "insulation": "Insulation",
+            "route": "Route",
+            "buffer": "Buffer",
+            "platform": "Platform"
+        },
+        "tools": {
+            "showCrossPoint": "Show Cross",
+            "hideCrossPoint": "Hide Cross",
+            "snapLine": "Snap Line",
+            "separateLine": "Separate",
+            "generateNode": "Gen Node",
+            "generateSwitch": "Gen Switch"
+        },
+        "messages": {
+            "saveSuccess": "Save successful: ",
+            "saveFailed": "Save failed: ",
+            "loadFailed": "Load failed: "
+        }
     }
 }

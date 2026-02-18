@@ -715,5 +715,77 @@
             "deleteError": "删除实例失败",
             "deleteConfirm": "确定要删除实例 {name} 吗？此操作不可恢复。"
         }
+    },
+    "capacityMain": {
+        "buttons": {
+            "instanceManager": "实例管理"
+        },
+        "placeholders": {
+            "selectInstance": "请选择计算实例",
+            "stationLayout": "车站布置图（待开发）",
+            "calcParams": "计算参数（待开发）",
+            "operationPlan": "作业计划（待开发）",
+            "resultAnalysis": "结果分析（待开发）",
+            "instanceManager": "实例管理功能（待开发）",
+            "simulation": "仿真功能（待开发）"
+        },
+        "tabs": {
+            "stationLayout": "车站布置图",
+            "calcParams": "计算参数",
+            "operationPlan": "作业计划",
+            "resultAnalysis": "结果分析",
+            "simulation": "仿真"
+        },
+        "dialogs": {
+            "instanceManagerTitle": "能力计算实例管理"
+        },
+        "messages": {
+            "loadInstancesError": "加载实例列表失败"
+        }
+    },
+    "stationLayout": {
+        "menu": {
+            "file": "文件",
+            "loadData": "载入数据",
+            "saveData": "保存数据",
+            "gridSnap": "网格追踪",
+            "objectSnap": "对象追踪",
+            "undo": "撤销",
+            "redo": "重做",
+            "clearSelection": "清除选择",
+            "deleteSelection": "删除选择"
+        },
+        "group": {
+            "mode": "模式",
+            "drawingObject": "绘图对象",
+            "tools": "工具"
+        },
+        "mode": {
+            "select": "选择",
+            "draw": "绘图"
+        },
+        "draw": {
+            "line": "线",
+            "node": "节点",
+            "signal": "信号机",
+            "switch": "道岔",
+            "insulation": "钢轨绝缘",
+            "route": "进路",
+            "buffer": "车挡",
+            "platform": "站台"
+        },
+        "tools": {
+            "showCrossPoint": "显示交点",
+            "hideCrossPoint": "隐藏交点",
+            "snapLine": "处理虚接",
+            "separateLine": "线路分段",
+            "generateNode": "节点生成",
+            "generateSwitch": "道岔生成"
+        },
+        "messages": {
+            "saveSuccess": "保存成功：",
+            "saveFailed": "保存失败：",
+            "loadFailed": "获取失败："
+        }
     }
 }

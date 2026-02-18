@@ -47,6 +47,11 @@ const router = createRouter({
             name: "createuser",
             component: () => import("../views/CreateUser.vue"),
         },
+        {
+            path: "/capacity",
+            name: "capacity",
+            component: () => import("../capacity/CapacityMain.vue"),
+        },
     ],
 });
 
