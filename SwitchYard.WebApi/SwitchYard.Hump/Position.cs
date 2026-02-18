@@ -175,11 +175,15 @@ namespace SwitchYard.Hump
             return height;
         }
     }
+
     /// <summary>
     /// 位置点
     /// </summary>
     public abstract class Position
     {
+        /// <summary>
+        /// 实例ID
+        /// </summary>
         public string InstanceID { get; set; }
 
         /// <summary>
@@ -211,6 +215,9 @@ namespace SwitchYard.Hump
     /// </summary>
     public class VPosition : Position
     {
+        /// <summary>
+        /// 驼峰方案ID
+        /// </summary>
         public string HumpSchemeID { get; set; }
 
     }
@@ -220,6 +227,9 @@ namespace SwitchYard.Hump
     /// </summary>
     public abstract class PositionSegment
     {
+        /// <summary>
+        /// 实例ID
+        /// </summary>
         public string InstanceID { get; set; }
 
         /// <summary>
@@ -281,6 +291,9 @@ namespace SwitchYard.Hump
     /// </summary>
     public class VPositionSegment : PositionSegment
     {
+        /// <summary>
+        /// 驼峰方案ID
+        /// </summary>
         public string HumpSchemeID{ get; set; }
 
         /// <summary>

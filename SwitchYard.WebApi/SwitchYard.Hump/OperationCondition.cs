@@ -12,10 +12,19 @@ namespace SwitchYard.Hump
     /// </summary>
     public class OperationCondition
     {
+        /// <summary>
+        /// 实例ID
+        /// </summary>
         public string InstanceID { get; set; }
 
+        /// <summary>
+        /// 车辆溜放条件ID
+        /// </summary>
         public string ID { get; set; }
 
+        /// <summary>
+        /// 车辆溜放条件名称
+        /// </summary>
         public string Name { get; set; }
 
         /// <summary>
