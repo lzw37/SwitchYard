@@ -8,6 +8,7 @@ namespace SwitchYard.Service.Controllers
     [Authorize]
     public class CapacityController : Controller
     {
+        [HttpGet(Name ="Index")]
         public IActionResult Index()
         {
             return View();
