@@ -12,7 +12,7 @@
                         style="width: 150px;">
                         <el-option v-for="scheme in humpSchemes" :key="scheme.id" :label="scheme.name"
                             :value="scheme.id" />
-                    </el-select>
+                    </el-select> <el-button type="primary" size="small" @click="editSlopeLayout">保存</el-button>
                     <el-button type="primary" size="small" @click="showSchemeManager = true">...</el-button>
                 </div>
                 <div class="control-group">
@@ -249,7 +249,7 @@ import HumpSlopeCtrl from './HumpSlopeCtrl.vue';
 import HumpSlopeSketchBlock from './HumpSlopeSketchBlock.vue';
 import { computed, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n'
-import { ElMessageBox } from 'element-plus'
+import { ElMessageBox, ElMessage } from 'element-plus'
 import HumpLayoutCtrl from './HumpLayoutCtrl.vue';
 import axios from '@/utils/axios';
 import { FlatLayout, SlopeLayout, CurveDirections } from './humplayoutctrl';
@@ -416,6 +416,56 @@ const loadSlopeLayout = async () => {
     } catch (error) {
         console.error('加载纵断面设计数据失败:', error)
         slopeLayout.value = null
+    }
+}
+
+// 保存编辑的纵断面数据
+const editSlopeLayout = async () => {
+    if (!props.selectedInstanceId || !currentHumpSchemeID.value) {
+        ElMessage.error({
+            message: '请先选择实例和纵断面方案',
+            duration: 3000
+        })
+        return
+    }
+
+    if (!slopeLayout.value) {
+        ElMessage.error({
+            message: '纵断面数据不存在',
+            duration: 3000
+        })
+        return
+    }
+
+    try {
+        // 后端期望 slopeLayout 对象直接作为请求体（Pascal case属性名）
+        const requestData = {
+            PositionList: slopeLayout.value.positionList,
+            PositionSegmentList: slopeLayout.value.positionSegmentList
+        }
+
+        const response = await axios.put('/Hump/EditSlopeLayout', requestData, {
+            params: {
+                instanceID: props.selectedInstanceId,
+                humpSchemeID: currentHumpSchemeID.value
+            }
+        })
+
+        if (response.status === 200) {
+            ElMessage.success({
+                message: '纵断面保存成功',
+                duration: 3000
+            })
+            // 重新加载数据以确保与后端同步
+            await loadSlopeLayout()
+        }
+    } catch (error: any) {
+        console.error('保存纵断面失败:', error)
+        const errorMessage = error?.response?.data || '保存纵断面失败，请稍后重试'
+        ElMessage.error({
+            message: errorMessage,
+            duration: 3000
+        })
     }
 }
 

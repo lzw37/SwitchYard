@@ -878,6 +878,160 @@ namespace SwitchYard.Service.Controllers
         }
 
         /// <summary>
+        /// 创建新的纵断面
+        /// </summary>
+        /// <param name="slopeLayout"></param>
+        /// <param name="instanceID"></param>
+        /// <param name="humpSchemeID"></param>
+        /// <returns></returns>
+        [HttpPost(Name = "CreateSlopeLayout")]
+        public IActionResult CreateSlopeLayout(SwitchYard.Hump.SlopeLayout slopeLayout, string instanceID, string humpSchemeID)
+        {
+            DBConnector dbConnector = DBConnector.GetDBConnector();
+
+            try
+            {
+                var authResult = ValidateInstanceOwnershipOrFail(instanceID);
+                if (authResult != null) return authResult;
+
+                var username = User.Identity?.Name;
+
+                dbConnector.BeginTransaction();
+
+                // Insert positions
+                foreach (var position in slopeLayout.PositionList)
+                {
+                    if (string.IsNullOrEmpty(position.ID))
+                    {
+                        position.ID = _snowflakeIdGenerator.NextIdString();
+                    }
+                    position.InstanceID = instanceID;
+                    position.HumpSchemeID = humpSchemeID;
+                    dbConnector.ExecuteNonQuery("INSERT INTO vposition (ID, InstanceID, HumpSchemeID, X, Height) VALUES (@ID, @InstanceID, @HumpSchemeID, @X, @Height)",
+                        new { ID = position.ID, InstanceID = instanceID, HumpSchemeID = humpSchemeID, X = position.X, Height = position.Height });
+                }
+
+                // Insert position segments
+                foreach (var segment in slopeLayout.PositionSegmentList)
+                {
+                    if (string.IsNullOrEmpty(segment.ID))
+                    {
+                        segment.ID = _snowflakeIdGenerator.NextIdString();
+                    }
+                    segment.InstanceID = instanceID;
+                    segment.HumpSchemeID = humpSchemeID;
+                    dbConnector.ExecuteNonQuery("INSERT INTO vpositionsegment (ID, InstanceID, HumpSchemeID, StartPositionID, EndPositionID, Length, Gradient, Height) VALUES (@ID, @InstanceID, @HumpSchemeID, @StartPositionID, @EndPositionID, @Length, @Gradient, @Height)",
+                        new { ID = segment.ID, InstanceID = instanceID, HumpSchemeID = humpSchemeID, StartPositionID = segment.StartPositionID, EndPositionID = segment.EndPositionID, Length = segment.Length, Gradient = ((VPositionSegment)segment).Gradient, Height = ((VPositionSegment)segment).Height });
+                }
+
+                dbConnector.Commit();
+                _logger.LogInformation("Created SlopeLayout for instance {InstanceID}, hump scheme {HumpSchemeID} by user {Username}.", instanceID, humpSchemeID, username);
+                return Ok(slopeLayout);
+            }
+            catch (Exception ex)
+            {
+                dbConnector.Rollback();
+                _logger.LogError(ex, "Error creating SlopeLayout.");
+                return StatusCode(500, "Internal server error while creating SlopeLayout.");
+            }
+        }
+
+        /// <summary>
+        /// 保存修改后的纵断面
+        /// </summary>
+        /// <param name="slopeLayout"></param>
+        /// <param name="instanceID"></param>
+        /// <param name="humpSchemeID"></param>
+        /// <returns></returns>
+        [HttpPut(Name = "EditSlopeLayout")]
+        public IActionResult EditSlopeLayout(SwitchYard.Hump.SlopeLayout slopeLayout, string instanceID, string humpSchemeID)
+        {
+            DBConnector dbConnector = DBConnector.GetDBConnector();
+
+            try
+            {
+                var authResult = ValidateInstanceOwnershipOrFail(instanceID);
+                if (authResult != null) return authResult;
+
+                var username = User.Identity?.Name;
+
+                // Delete existing records
+                dbConnector.BeginTransaction();
+                dbConnector.ExecuteNonQuery("DELETE FROM vpositionsegment WHERE InstanceID = @instanceID AND HumpSchemeID = @humpSchemeID", new { instanceID, humpSchemeID });
+                dbConnector.ExecuteNonQuery("DELETE FROM vposition WHERE InstanceID = @instanceID AND HumpSchemeID = @humpSchemeID", new { instanceID, humpSchemeID });
+
+                // Insert positions
+                foreach (var position in slopeLayout.PositionList)
+                {
+                    if (string.IsNullOrEmpty(position.ID))
+                    {
+                        position.ID = _snowflakeIdGenerator.NextIdString();
+                    }
+                    position.InstanceID = instanceID;
+                    position.HumpSchemeID = humpSchemeID;
+                    dbConnector.ExecuteNonQuery("INSERT INTO vposition (ID, InstanceID, HumpSchemeID, X, Height) VALUES (@ID, @InstanceID, @HumpSchemeID, @X, @Height)",
+                        new { ID = position.ID, InstanceID = instanceID, HumpSchemeID = humpSchemeID, X = position.X, Height = position.Height });
+                }
+
+                // Insert position segments
+                foreach (var segment in slopeLayout.PositionSegmentList)
+                {
+                    if (string.IsNullOrEmpty(segment.ID))
+                    {
+                        segment.ID = _snowflakeIdGenerator.NextIdString();
+                    }
+                    segment.InstanceID = instanceID;
+                    segment.HumpSchemeID = humpSchemeID;
+                    dbConnector.ExecuteNonQuery("INSERT INTO vpositionsegment (ID, InstanceID, HumpSchemeID, StartPositionID, EndPositionID, Length, Gradient, Height) VALUES (@ID, @InstanceID, @HumpSchemeID, @StartPositionID, @EndPositionID, @Length, @Gradient, @Height)",
+                        new { ID = segment.ID, InstanceID = instanceID, HumpSchemeID = humpSchemeID, StartPositionID = segment.StartPositionID, EndPositionID = segment.EndPositionID, Length = segment.Length, Gradient = ((VPositionSegment)segment).Gradient, Height = ((VPositionSegment)segment).Height });
+                }
+
+                dbConnector.Commit();
+                _logger.LogInformation("Updated SlopeLayout for instance {InstanceID}, hump scheme {HumpSchemeID} by user {Username}.", instanceID, humpSchemeID, username);
+                return Ok("SlopeLayout updated successfully.");
+            }
+            catch (Exception ex)
+            {
+                dbConnector.Rollback();
+                _logger.LogError(ex, "Error updating SlopeLayout.");
+                return StatusCode(500, "Internal server error while updating SlopeLayout.");
+            }
+        }
+
+        /// <summary>
+        /// 删除纵断面
+        /// </summary>
+        /// <param name="instanceID"></param>
+        /// <param name="humpSchemeID"></param>
+        /// <returns></returns>
+        [HttpDelete(Name = "DeleteSlopeLayout")]
+        public IActionResult DeleteSlopeLayout(string instanceID, string humpSchemeID)
+        {
+            DBConnector dbConnector = DBConnector.GetDBConnector();
+            try
+            {
+                var authResult = ValidateInstanceOwnershipOrFail(instanceID);
+                if (authResult != null) return authResult;
+
+                var username = User.Identity?.Name;
+
+                // Delete existing records
+                dbConnector.BeginTransaction();
+                dbConnector.ExecuteNonQuery("DELETE FROM vpositionsegment WHERE InstanceID = @instanceID AND HumpSchemeID = @humpSchemeID", new { instanceID, humpSchemeID });
+                dbConnector.ExecuteNonQuery("DELETE FROM vposition WHERE InstanceID = @instanceID AND HumpSchemeID = @humpSchemeID", new { instanceID, humpSchemeID });
+                dbConnector.Commit();
+                _logger.LogInformation("Deleted SlopeLayout for instance {InstanceID}, hump scheme {HumpSchemeID} by user {Username}.", instanceID, humpSchemeID, username);
+                return Ok("SlopeLayout deleted successfully.");
+            }
+            catch (Exception ex)
+            {
+                dbConnector.Rollback();
+                _logger.LogError(ex, "Error deleting SlopeLayout.");
+                return StatusCode(500, "Internal server error while deleting SlopeLayout.");
+            }
+        }
+
+        /// <summary>
         /// 执行能高计算
         /// </summary>
         /// <param name="parameters"></param>
