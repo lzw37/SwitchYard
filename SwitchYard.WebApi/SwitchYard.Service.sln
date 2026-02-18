@@ -7,6 +7,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SwitchYard.Hump", "SwitchYa
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SwitchYard.Service", "SwitchYard.Service\SwitchYard.Service.csproj", "{FAFC9616-BAFE-7C50-1991-F7D22A081DA9}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SwitchYard.Capacity", "SwitchYard.Capacity\SwitchYard.Capacity.csproj", "{AAE4DC51-7BF1-4626-8376-CCCEC437060F}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -21,6 +23,10 @@ Global
 		{FAFC9616-BAFE-7C50-1991-F7D22A081DA9}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{FAFC9616-BAFE-7C50-1991-F7D22A081DA9}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{FAFC9616-BAFE-7C50-1991-F7D22A081DA9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{AAE4DC51-7BF1-4626-8376-CCCEC437060F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AAE4DC51-7BF1-4626-8376-CCCEC437060F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AAE4DC51-7BF1-4626-8376-CCCEC437060F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AAE4DC51-7BF1-4626-8376-CCCEC437060F}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

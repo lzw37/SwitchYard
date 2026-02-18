@@ -18,6 +18,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\SwitchYard.Capacity\SwitchYard.Capacity.csproj" />
     <ProjectReference Include="..\SwitchYard.Hump\SwitchYard.Hump.csproj" />
   </ItemGroup>
 
