@@ -5,8 +5,8 @@
                 <el-button type="primary" @click="showInstanceManager = true">
                     {{ t('humpMain.buttons.instanceManager') }}
                 </el-button>
-                <el-select v-model="selectedLine" :placeholder="t('humpMain.placeholders.selectInstance')"
-                    style="margin-left: 12px; width: 200px;">
+                <el-select v-model="selectedLine" class="line-select"
+                    :placeholder="t('humpMain.placeholders.selectInstance')">
                     <el-option v-for="line in lines" :key="line.id" :label="line.name" :value="line.id" />
                 </el-select>
             </div>
@@ -119,10 +119,12 @@ onMounted(() => {
 
 <style scoped lang="css">
 .hump-main {
-    width: 100dvw;
-    height: 100dvh;
+    width: 100%;
+    min-height: 100dvh;
     padding: 24px;
     background-color: white;
+    box-sizing: border-box;
+    overflow: auto;
 }
 
 .hump-tabs-wrapper {
@@ -137,6 +139,11 @@ onMounted(() => {
     display: flex;
     align-items: center;
     height: 40px;
+}
+
+.line-select {
+    margin-left: 12px;
+    width: 200px;
 }
 
 .right-controls {
@@ -160,6 +167,14 @@ onMounted(() => {
 .hump-tabs :deep(.el-tabs__header) {
     padding-left: 450px;
     padding-right: 120px;
+}
+
+.hump-tabs :deep(.el-tabs__nav-wrap) {
+    overflow-x: auto;
+}
+
+.hump-tabs :deep(.el-tabs__nav-scroll) {
+    min-width: max-content;
 }
 
 el-card {
@@ -194,5 +209,48 @@ el-card {
 
 .param-card {
     margin-bottom: 24px;
+}
+
+@media (max-width: 768px) and (orientation: portrait) {
+    .hump-main {
+        padding: 12px;
+    }
+
+    .hump-tabs-wrapper {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .left-controls,
+    .right-controls {
+        position: static;
+        height: auto;
+    }
+
+    .left-controls {
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: stretch;
+    }
+
+    .line-select {
+        margin-left: 0;
+        width: 100%;
+        min-width: 0;
+    }
+
+    .right-controls {
+        justify-content: flex-end;
+    }
+
+    .language-switch {
+        margin-left: 0;
+    }
+
+    .hump-tabs :deep(.el-tabs__header) {
+        padding-left: 0;
+        padding-right: 0;
+    }
 }
 </style>

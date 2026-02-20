@@ -5,7 +5,7 @@
                 <el-button @click="toggleLeft" size="small" type="primary">{{ t('humpSlopeDesigner.tool') }}</el-button>
             </div>
             <div class="center-section">
-                <div class="control-group">
+                <div class="control-group select-group">
                     <span>{{ t('humpSlopeDesigner.longitudinalSectionScheme') }}</span>
                     <el-select v-model="currentHumpSchemeID"
                         :placeholder="t('humpSlopeDesigner.placeholder.selectHumpScheme')" size="small"
@@ -15,7 +15,7 @@
                     </el-select> <el-button type="primary" size="small" @click="editSlopeLayout">保存</el-button>
                     <el-button type="primary" size="small" @click="showSchemeManager = true">...</el-button>
                 </div>
-                <div class="control-group">
+                <div class="control-group select-group">
                     <span>{{ t('humpSlopeDesigner.calculationCondition') }}</span>
                     <el-select v-model="currentHumpCalculationID"
                         :placeholder="t('humpSlopeDesigner.selectCalculationCondition')" size="small"
@@ -25,33 +25,33 @@
                     </el-select>
                     <el-button type="primary" size="small" @click="showConditionManager = true">...</el-button>
                 </div>
-                <el-button type="primary" size="small" @click="executeCalculation" :loading="calculationExecuting"
-                    :disabled="calculationExecuting">
+                <el-button class="execute-btn" type="primary" size="small" @click="executeCalculation"
+                    :loading="calculationExecuting" :disabled="calculationExecuting">
                     {{ calculationExecuting ? t('humpSlopeDesigner.calculation.executing') :
                         t('humpSlopeDesigner.calculation.executeButton') }}
                 </el-button>
-                <div class="control-group">
+                <div class="control-group toggle-group">
                     <span>{{ t('humpSlopeDesigner.initialKineticEnergyLine') }}</span>
                     <el-switch v-model="showInitialKinetic" size="small"></el-switch>
                 </div>
-                <div class="control-group">
+                <div class="control-group toggle-group">
                     <span>{{ t('humpSlopeDesigner.resistanceEnergyLine') }}</span>
                     <el-switch v-model="showResistance" size="small"></el-switch>
                 </div>
-                <div class="control-group">
+                <div class="control-group toggle-group">
                     <span>{{ t('humpSlopeDesigner.kineticEnergyLine') }}</span>
                     <el-switch v-model="showKinetic" size="small"></el-switch>
                 </div>
-                <div class="control-group">
+                <div class="control-group toggle-group">
                     <span>{{ t('humpSlopeDesigner.brakingEnergyLine') }}</span>
                     <el-switch v-model="showBreaking" size="small"></el-switch>
                 </div>
-                <div class="control-group" style="width: 100px;">
+                <div class="control-group slider-group" style="width: 100px;">
                     <span>{{ t('humpSlopeDesigner.xScale') }}</span>
                     <el-slider v-model="globalScaleX" :min="0.1" :max="5" :step="0.01"
                         style="display:inline; width: 150px;"></el-slider>
                 </div>
-                <div class="control-group" style="width: 100px;">
+                <div class="control-group slider-group" style="width: 100px;">
                     <span>{{ t('humpSlopeDesigner.yScale') }}</span>
                     <el-slider v-model="globalScaleY" :min="5" :max="100" :step="0.1"
                         style="display:inline; width: 150px;"></el-slider>
@@ -1116,17 +1116,22 @@ const handleCancelCalculationEdit = () => {
 <style scoped lang="css">
 .container {
     position: relative;
-    height: 100vh;
+    min-height: 100vh;
+    height: auto;
     display: flex;
     flex-direction: column;
+    overflow-y: auto;
+    overflow-x: hidden;
 }
 
 .side-menu-top {
-    height: 40px;
+    height: auto;
     background-color: #f0f0f0;
     display: flex;
     align-items: center;
     justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
     padding: 0 10px;
 }
 
@@ -1136,10 +1141,11 @@ const handleCancelCalculationEdit = () => {
 }
 
 .center-section {
-    flex: 1;
+    flex: 1 1 760px;
     display: flex;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
+    flex-wrap: wrap;
     gap: 12px;
     padding: 8px 16px;
     margin: 0 10px;
@@ -1147,11 +1153,14 @@ const handleCancelCalculationEdit = () => {
     border-radius: 2px;
     background: linear-gradient(135deg, #f8fafc, #eef3ff);
     box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
-    height: 100%;
+    min-height: 40px;
+    height: auto;
+    min-width: 0;
 }
 
 .main-ctrl {
-    flex: 1;
+    flex: 1 1 auto;
+    min-height: 0;
     background-color: #ffffff;
     position: relative;
     /* display: flex; */
@@ -1194,23 +1203,102 @@ const handleCancelCalculationEdit = () => {
 
 .control-group {
     margin-right: 10px;
+    display: inline-flex;
+    align-items: center;
+    min-width: 0;
 }
 
 .control-group span {
     font-size: small;
     font-weight: 600;
     margin-right: 5px;
+    white-space: nowrap;
+}
+
+.slider-group {
+    min-width: 220px;
+}
+
+.slider-group :deep(.el-slider) {
+    width: 150px;
+}
+
+@media (max-width: 1200px) {
+    .center-section {
+        flex-basis: 100%;
+        margin: 0;
+        padding: 8px 10px;
+        gap: 8px;
+    }
+}
+
+@media (max-width: 768px) {
+    .container {
+        overflow-y: auto;
+    }
+
+    .main-ctrl {
+        min-height: 320px;
+        overflow: auto;
+    }
+
+    .center-section {
+        gap: 8px;
+    }
+
+    .select-group {
+        flex: 1 1 260px;
+        margin-right: 0;
+    }
+
+    .select-group :deep(.el-select) {
+        width: 100% !important;
+        max-width: 220px;
+    }
+
+    .execute-btn {
+        flex: 1 1 100%;
+    }
+
+    .toggle-group {
+        flex: 1 1 calc(50% - 8px);
+        margin-right: 0;
+        justify-content: space-between;
+    }
+
+    .slider-group {
+        flex: 1 1 100%;
+        margin-right: 0;
+    }
+
+    .slider-group :deep(.el-slider) {
+        flex: 1;
+        width: auto;
+        min-width: 120px;
+    }
+}
+
+@media (max-width: 480px) {
+    .toggle-group {
+        flex-basis: 100%;
+    }
 }
 
 .condition-info {
-    justify-content: center;
+    justify-content: flex-start;
     margin-top: 5px;
     display: flex;
+    flex-wrap: wrap;
+    gap: 6px 16px;
+    padding: 0 10px;
 }
 
 .condition-info span {
     font-weight: bold;
     color: #666;
-    margin-right: 20px;
+    margin-right: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 </style>

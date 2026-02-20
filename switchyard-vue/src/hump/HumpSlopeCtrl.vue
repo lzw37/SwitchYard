@@ -1,103 +1,108 @@
 <template>
     <div>
-        <svg id="slope" :style="{ height: svgHeight + 'px' }">
-            <defs>
-                <linearGradient id="backgroundGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                    <stop offset="0%" style="stop-color: #ECF4E8; stop-opacity: 0.8" />
-                    <stop offset="100%" style="stop-color: #EFE9E3; stop-opacity: 1" />
-                </linearGradient>
-                <linearGradient id="resistanceShadeGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                    <stop offset="0%" style="stop-color: #C4E1E6; stop-opacity: 0.2" />
-                    <stop offset="100%" style="stop-color: #9ECFD4; stop-opacity: 0.3" />
-                </linearGradient>
-            </defs>
+        <div class="slope-scroll-container">
+            <svg id="slope" :style="{ width: svgWidth + 'px', height: svgHeight + 'px' }">
+                <defs>
+                    <linearGradient id="backgroundGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                        <stop offset="0%" style="stop-color: #ECF4E8; stop-opacity: 0.8" />
+                        <stop offset="100%" style="stop-color: #EFE9E3; stop-opacity: 1" />
+                    </linearGradient>
+                    <linearGradient id="resistanceShadeGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                        <stop offset="0%" style="stop-color: #C4E1E6; stop-opacity: 0.2" />
+                        <stop offset="100%" style="stop-color: #9ECFD4; stop-opacity: 0.3" />
+                    </linearGradient>
+                </defs>
 
-            <g class="background-fill">
-                <polygon :points="polygonPoints" fill="url(#backgroundGradient)" />
-                <polygon v-if="props.elementVisibility?.resistance" :points="shadePoints"
-                    fill="url(#resistanceShadeGradient)"></polygon>
-            </g>
-            <g class="axis">
-                <line class="xaxis" :x1="marginLeft" :x2="marginLeft + sketchWidth" :y1="svgHeight - marginBottom"
-                    :y2="svgHeight - marginBottom">
-                </line>
-                <line class="yaxis" :x1="marginLeft" :x2="marginLeft" :y1="marginTop" :y2="svgHeight - marginBottom">
-                </line>
-            </g>
-            <g class="xaxis-addpointbar">
-                <line class="addpointbar" :x1="marginLeft" :x2="marginLeft + sketchWidth"
-                    :y1="svgHeight - marginBottom / 2" :y2="svgHeight - marginBottom / 2">
-                </line>
-                <!-- 跟随光标的圆和+号 -->
-                <g class="cursor-addpoint" v-if="cursorX >= 0 && cursorX <= sketchWidth / scaleX"
-                    @click="addVPosition(cursorX)">
-                    <circle class="addpointhandler" :cx="getX(cursorX)" :cy="svgHeight - marginBottom / 2" r="8"
-                        stroke="#888" stroke-width="2" />
-                    <text :x="getX(cursorX)" :y="svgHeight - marginBottom / 2" text-anchor="middle"
-                        dominant-baseline="middle" font-size="14" fill="white" font-weight="bold"
-                        style="cursor:pointer">+</text>
+                <g class="background-fill">
+                    <polygon :points="polygonPoints" fill="url(#backgroundGradient)" />
+                    <polygon v-if="props.elementVisibility?.resistance" :points="shadePoints"
+                        fill="url(#resistanceShadeGradient)"></polygon>
                 </g>
-            </g>
-            <g class="slopelines">
-                <line v-for="seg in slopeLayout?.positionSegmentList || []" class="slope-line"
-                    :x1="getX(getPositionX(seg.startPositionID))" :y1="getY(getPositionHeight(seg.startPositionID))"
-                    :x2="getX(getPositionX(seg.endPositionID))" :y2="getY(getPositionHeight(seg.endPositionID))" />
-            </g>
-            <g class="points">
-                <g v-for="pos in slopeLayout?.positionList || []" @contextmenu.prevent="openContextMenu(pos, $event)">
-                    <circle class="point-circle" :cx="getX(pos.x)" :cy="getY(pos.height)" r="4"
-                        :class="{ 'point-circle-longpress': longPressActivatedId === pos.id, 'point-circle-dragging': draggingId === pos.id && dragMode === 'vertical' }"
-                        @mousedown="startDrag(pos, $event)" @touchstart.prevent="startTouchDrag(pos, $event)"></circle>
-                    <text class="point-height-text" :x="getX(pos.x)"
-                        :y="(textPositions.get(pos.id)?.y ?? (getY(pos.height) - 10))">{{ pos.height }}m</text>
-                    <line
-                        v-if="Math.abs(getY(pos.height) - (textPositions.get(pos.id)?.y ?? (getY(pos.height) - 10))) >= 15"
-                        class="point-line" :x1="getX(pos.x)"
-                        :y1="textPositions.get(pos.id)?.barStartY ?? (getY(pos.height) - 10)" :x2="getX(pos.x)"
-                        :y2="(textPositions.get(pos.id)?.barEndY ?? (getY(pos.height) - 10))"></line>
+                <g class="axis">
+                    <line class="xaxis" :x1="marginLeft" :x2="marginLeft + sketchWidth" :y1="svgHeight - marginBottom"
+                        :y2="svgHeight - marginBottom">
+                    </line>
+                    <line class="yaxis" :x1="marginLeft" :x2="marginLeft" :y1="marginTop"
+                        :y2="svgHeight - marginBottom">
+                    </line>
                 </g>
-            </g>
-            <g class="guide-lines" v-if="draggingId">
-                <line v-if="dragMode === 'horizontal'" class="guide-line horizontal" :x1="marginLeft"
-                    :y1="getY(currentHeight)" :x2="marginLeft + sketchWidth" :y2="getY(currentHeight)" />
-                <line v-if="dragMode === 'vertical'" class="guide-line vertical" :x1="getX(currentX)" :y1="marginTop"
-                    :x2="getX(currentX)" :y2="svgHeight - marginBottom" />
-            </g>
-            <g v-if="props.elementVisibility?.resistance" class="resistance-energy-height">
-                <polyline :points="resistancePoints" class="resistance-line" />
-                <g v-for="dataPoint in resistanceEnergyHeightData || []">
-                    <circle class="resistance-circle" :cx="getX(dataPoint.x)"
-                        :cy="getY(orgKineticEnergyY - dataPoint.height)" r="4" />
-                    <text class="resistance-text" :x="getX(dataPoint.x)"
-                        :y="(getY(orgKineticEnergyY - dataPoint.height) + getY(orgKineticEnergyY)) / 2">{{
-                            dataPoint.height
-                        }}m</text>
-                    <line class="resistance-vline" :x1="getX(dataPoint.x)"
-                        :y1="getY(orgKineticEnergyY - dataPoint.height)" :x2="getX(dataPoint.x)"
-                        :y2="getY(orgKineticEnergyY)"></line>
+                <g class="xaxis-addpointbar">
+                    <line class="addpointbar" :x1="marginLeft" :x2="marginLeft + sketchWidth"
+                        :y1="svgHeight - marginBottom / 2" :y2="svgHeight - marginBottom / 2">
+                    </line>
+                    <!-- 跟随光标的圆和+号 -->
+                    <g class="cursor-addpoint" v-if="cursorX >= 0 && cursorX <= sketchWidth / scaleX"
+                        @click="addVPosition(cursorX)">
+                        <circle class="addpointhandler" :cx="getX(cursorX)" :cy="svgHeight - marginBottom / 2" r="8"
+                            stroke="#888" stroke-width="2" />
+                        <text :x="getX(cursorX)" :y="svgHeight - marginBottom / 2" text-anchor="middle"
+                            dominant-baseline="middle" font-size="14" fill="white" font-weight="bold"
+                            style="cursor:pointer">+</text>
+                    </g>
                 </g>
-            </g>
-            <g class="init-kinetic-energy-height"
-                v-if="props.elementVisibility?.initialKinetic && kineticEnergyHeightData && kineticEnergyHeightData.length > 0 && slopeLayout?.positionList && slopeLayout.positionList.length > 0">
-                <line class="init-kinetic-energy-line" :x1="marginLeft" :x2="marginLeft + sketchWidth"
-                    :y1="getY(orgKineticEnergyY)" :y2="getY(orgKineticEnergyY)" />
-            </g>
-            <g class="kinetic-energy-height">
-                <line v-if="props.elementVisibility?.kinetic" class="kinetic-vline" v-for="dataPoint in
-                    kineticEnergyHeightData || []" :x1="getX(dataPoint.x)"
-                    :y1="getY(dataPoint.result.gravitationHeight)" :x2="getX(dataPoint.x)"
-                    :y2="getY(dataPoint.result.gravitationHeight + dataPoint.result.kineticEnergyHeight)"></line>
-                <text v-if="props.elementVisibility?.kinetic" class="kinetic-text" v-for="dataPoint in
-                    kineticEnergyHeightData || []" :x="getX(dataPoint.x)"
-                    :y="kineticTextPositions.get(dataPoint.x) ?? ((getY(dataPoint.result.gravitationHeight) + getY(dataPoint.result.gravitationHeight + dataPoint.result.kineticEnergyHeight)) / 2)">{{
-                        dataPoint.result.kineticEnergyHeight
-                    }}m({{ dataPoint.result.velocity }}m/s)</text>
-            </g>
-            <g class="cursor">
-                <line class="cursor-vline" :y1="marginTop" :y2="svgHeight - marginBottom" :x1="getX(cursorX)"
-                    :x2="getX(cursorX)"></line>
-            </g>
-        </svg>
+                <g class="slopelines">
+                    <line v-for="seg in slopeLayout?.positionSegmentList || []" class="slope-line"
+                        :x1="getX(getPositionX(seg.startPositionID))" :y1="getY(getPositionHeight(seg.startPositionID))"
+                        :x2="getX(getPositionX(seg.endPositionID))" :y2="getY(getPositionHeight(seg.endPositionID))" />
+                </g>
+                <g class="points">
+                    <g v-for="pos in slopeLayout?.positionList || []"
+                        @contextmenu.prevent="openContextMenu(pos, $event)">
+                        <circle class="point-circle" :cx="getX(pos.x)" :cy="getY(pos.height)" r="4"
+                            :class="{ 'point-circle-longpress': longPressActivatedId === pos.id, 'point-circle-dragging': draggingId === pos.id && dragMode === 'vertical' }"
+                            @mousedown="startDrag(pos, $event)" @touchstart.prevent="startTouchDrag(pos, $event)">
+                        </circle>
+                        <text class="point-height-text" :x="getX(pos.x)"
+                            :y="(textPositions.get(pos.id)?.y ?? (getY(pos.height) - 10))">{{ pos.height }}m</text>
+                        <line
+                            v-if="Math.abs(getY(pos.height) - (textPositions.get(pos.id)?.y ?? (getY(pos.height) - 10))) >= 15"
+                            class="point-line" :x1="getX(pos.x)"
+                            :y1="textPositions.get(pos.id)?.barStartY ?? (getY(pos.height) - 10)" :x2="getX(pos.x)"
+                            :y2="(textPositions.get(pos.id)?.barEndY ?? (getY(pos.height) - 10))"></line>
+                    </g>
+                </g>
+                <g class="guide-lines" v-if="draggingId">
+                    <line v-if="dragMode === 'horizontal'" class="guide-line horizontal" :x1="marginLeft"
+                        :y1="getY(currentHeight)" :x2="marginLeft + sketchWidth" :y2="getY(currentHeight)" />
+                    <line v-if="dragMode === 'vertical'" class="guide-line vertical" :x1="getX(currentX)"
+                        :y1="marginTop" :x2="getX(currentX)" :y2="svgHeight - marginBottom" />
+                </g>
+                <g v-if="props.elementVisibility?.resistance" class="resistance-energy-height">
+                    <polyline :points="resistancePoints" class="resistance-line" />
+                    <g v-for="dataPoint in resistanceEnergyHeightData || []">
+                        <circle class="resistance-circle" :cx="getX(dataPoint.x)"
+                            :cy="getY(orgKineticEnergyY - dataPoint.height)" r="4" />
+                        <text class="resistance-text" :x="getX(dataPoint.x)"
+                            :y="(getY(orgKineticEnergyY - dataPoint.height) + getY(orgKineticEnergyY)) / 2">{{
+                                dataPoint.height
+                            }}m</text>
+                        <line class="resistance-vline" :x1="getX(dataPoint.x)"
+                            :y1="getY(orgKineticEnergyY - dataPoint.height)" :x2="getX(dataPoint.x)"
+                            :y2="getY(orgKineticEnergyY)"></line>
+                    </g>
+                </g>
+                <g class="init-kinetic-energy-height"
+                    v-if="props.elementVisibility?.initialKinetic && kineticEnergyHeightData && kineticEnergyHeightData.length > 0 && slopeLayout?.positionList && slopeLayout.positionList.length > 0">
+                    <line class="init-kinetic-energy-line" :x1="marginLeft" :x2="marginLeft + sketchWidth"
+                        :y1="getY(orgKineticEnergyY)" :y2="getY(orgKineticEnergyY)" />
+                </g>
+                <g class="kinetic-energy-height">
+                    <line v-if="props.elementVisibility?.kinetic" class="kinetic-vline" v-for="dataPoint in
+                        kineticEnergyHeightData || []" :x1="getX(dataPoint.x)"
+                        :y1="getY(dataPoint.result.gravitationHeight)" :x2="getX(dataPoint.x)"
+                        :y2="getY(dataPoint.result.gravitationHeight + dataPoint.result.kineticEnergyHeight)"></line>
+                    <text v-if="props.elementVisibility?.kinetic" class="kinetic-text" v-for="dataPoint in
+                        kineticEnergyHeightData || []" :x="getX(dataPoint.x)"
+                        :y="kineticTextPositions.get(dataPoint.x) ?? ((getY(dataPoint.result.gravitationHeight) + getY(dataPoint.result.gravitationHeight + dataPoint.result.kineticEnergyHeight)) / 2)">{{
+                            dataPoint.result.kineticEnergyHeight
+                        }}m({{ dataPoint.result.velocity }}m/s)</text>
+                </g>
+                <g class="cursor">
+                    <line class="cursor-vline" :y1="marginTop" :y2="svgHeight - marginBottom" :x1="getX(cursorX)"
+                        :x2="getX(cursorX)"></line>
+                </g>
+            </svg>
+        </div>
         <div v-if="contextMenu.visible" class="context-menu"
             :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }">
             <div class="context-menu-item" @click.stop="deleteContextPos">删除节点</div>
@@ -128,7 +133,7 @@ const emit = defineEmits<{
     updateGlobalCursorX: [value: number]
 }>()
 
-const svgHeight = ref(400);
+const minSvgHeight = ref(400);
 
 const scaleX = computed(() => props.globalScaleX ?? 3.5);
 const scaleY = computed(() => props.globalScaleY ?? 80);
@@ -152,6 +157,7 @@ const cursorX = computed({
 
 
 const marginLeft = ref(50);
+const marginRight = ref(20);
 const marginBottom = ref(20);
 const marginTop = ref(20);
 const draggingId = ref<string | null>(null);
@@ -370,6 +376,33 @@ const sketchWidth = computed(() => {
     const minX = Math.min(...positions.map(pos => pos.x));
     const maxX = Math.max(...positions.map(pos => pos.x));
     return (maxX - minX) * scaleX.value;
+});
+
+const maxDisplayHeight = computed(() => {
+    const candidates: number[] = [];
+
+    if (props.slopeLayout?.positionList?.length) {
+        candidates.push(...props.slopeLayout.positionList.map(pos => pos.height));
+    }
+
+    if (props.kineticEnergyHeightData?.length) {
+        candidates.push(...props.kineticEnergyHeightData.map(dataPoint => dataPoint.result.gravitationHeight + dataPoint.result.kineticEnergyHeight));
+    }
+
+    if (orgKineticEnergyY.value) {
+        candidates.push(orgKineticEnergyY.value);
+    }
+
+    return Math.max(0, ...candidates);
+});
+
+const svgHeight = computed(() => {
+    const neededHeight = maxDisplayHeight.value * scaleY.value + marginTop.value + marginBottom.value + 20;
+    return Math.max(minSvgHeight.value, neededHeight);
+});
+
+const svgWidth = computed(() => {
+    return marginLeft.value + sketchWidth.value + marginRight.value;
 });
 
 const polygonPoints = computed(() => {
@@ -664,10 +697,15 @@ onBeforeUnmount(() => {
 }
 
 #slope {
-    width: 100%;
-    height: 200px;
-    /* border: 1px solid #ccc; */
+    min-width: 100%;
     background-color: whitesmoke;
+}
+
+.slope-scroll-container {
+    width: 100%;
+    height: 100%;
+    overflow-x: auto;
+    overflow-y: auto;
 }
 
 .xaxis,
