@@ -1,7 +1,5 @@
 <template>
     <div>
-    </div>
-    <div>
         <svg id="slope" :style="{ height: svgHeight + 'px' }">
             <defs>
                 <linearGradient id="backgroundGradient" x1="0%" y1="0%" x2="0%" y2="100%">
@@ -48,7 +46,8 @@
             <g class="points">
                 <g v-for="pos in slopeLayout?.positionList || []" @contextmenu.prevent="openContextMenu(pos, $event)">
                     <circle class="point-circle" :cx="getX(pos.x)" :cy="getY(pos.height)" r="4"
-                        @mousedown="startDrag(pos, $event)"></circle>
+                        :class="{ 'point-circle-longpress': longPressActivatedId === pos.id, 'point-circle-dragging': draggingId === pos.id && dragMode === 'vertical' }"
+                        @mousedown="startDrag(pos, $event)" @touchstart.prevent="startTouchDrag(pos, $event)"></circle>
                     <text class="point-height-text" :x="getX(pos.x)"
                         :y="(textPositions.get(pos.id)?.y ?? (getY(pos.height) - 10))">{{ pos.height }}m</text>
                     <line
@@ -163,7 +162,21 @@ const startX = ref(0);
 const dragMode = ref<'vertical' | 'horizontal'>('vertical');
 const currentX = ref(0);
 const currentHeight = ref(0);
+const touchLongPressTimer = ref<ReturnType<typeof setTimeout> | null>(null);
+const touchStartClientX = ref(0);
+const touchStartClientY = ref(0);
+const touchCurrentClientX = ref(0);
+const touchLongPressDelay = 550;
+const touchMoveThreshold = 8;
+const longPressActivatedId = ref<string | null>(null);
 const contextMenu = ref<{ visible: boolean; x: number; y: number; posId: string }>({ visible: false, x: 0, y: 0, posId: '' });
+
+function clearTouchLongPressTimer() {
+    if (touchLongPressTimer.value) {
+        clearTimeout(touchLongPressTimer.value);
+        touchLongPressTimer.value = null;
+    }
+}
 
 function openContextMenu(pos: { id: string }, event: MouseEvent) {
     event.preventDefault();
@@ -196,20 +209,49 @@ function getPositionHeight(positionID: string): number {
 
 function startDrag(pos: { id: string; height: number; x: number }, event: MouseEvent) {
     event.preventDefault();
+    beginDrag(pos, event.clientX, event.clientY, event.altKey);
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', endDrag);
+}
+
+function startTouchDrag(pos: { id: string; height: number; x: number }, event: TouchEvent) {
+    event.preventDefault();
+    const touch = event.touches[0];
+    if (!touch) return;
+    beginDrag(pos, touch.clientX, touch.clientY, false);
+    longPressActivatedId.value = null;
+    touchStartClientX.value = touch.clientX;
+    touchStartClientY.value = touch.clientY;
+    touchCurrentClientX.value = touch.clientX;
+    clearTouchLongPressTimer();
+    touchLongPressTimer.value = setTimeout(() => {
+        if (!draggingId.value || dragMode.value !== 'vertical') return;
+        const target = props.slopeLayout?.positionList?.find(p => p.id === draggingId.value);
+        if (!target) return;
+        dragMode.value = 'horizontal';
+        longPressActivatedId.value = target.id;
+        startMouseX.value = touchCurrentClientX.value;
+        startX.value = target.x;
+        clearTouchLongPressTimer();
+    }, touchLongPressDelay);
+    window.addEventListener('touchmove', onTouchMove, { passive: false });
+    window.addEventListener('touchend', endTouchDrag);
+    window.addEventListener('touchcancel', endTouchDrag);
+}
+
+function beginDrag(pos: { id: string; height: number; x: number }, clientX: number, clientY: number, isHorizontal: boolean) {
     draggingId.value = pos.id;
     currentX.value = pos.x;
     currentHeight.value = pos.height;
-    if (event.altKey) {
+    if (isHorizontal) {
         dragMode.value = 'horizontal';
-        startMouseX.value = event.clientX;
+        startMouseX.value = clientX;
         startX.value = pos.x;
     } else {
         dragMode.value = 'vertical';
-        startMouseY.value = event.clientY;
+        startMouseY.value = clientY;
         startHeight.value = pos.height;
     }
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', endDrag);
 }
 
 function onMouseMove(event: MouseEvent) {
@@ -239,14 +281,65 @@ function onMouseMove(event: MouseEvent) {
     }
 }
 
+function onTouchMove(event: TouchEvent) {
+    if (!draggingId.value) return;
+    event.preventDefault();
+    const touch = event.touches[0];
+    if (!touch) return;
+    touchCurrentClientX.value = touch.clientX;
+
+    if (dragMode.value === 'vertical' && touchLongPressTimer.value) {
+        const movedX = Math.abs(touch.clientX - touchStartClientX.value);
+        const movedY = Math.abs(touch.clientY - touchStartClientY.value);
+        if (movedX > touchMoveThreshold || movedY > touchMoveThreshold) {
+            clearTouchLongPressTimer();
+        }
+    }
+
+    if (dragMode.value === 'vertical') {
+        const deltaY = touch.clientY - startMouseY.value;
+        const newHeight = startHeight.value - deltaY / scaleY.value;
+        const target = props.slopeLayout?.positionList?.find(p => p.id === draggingId.value);
+        if (!target) return;
+        target.height = Math.round(Math.max(0, newHeight) * 1000) / 1000;
+        currentHeight.value = target.height;
+    } else {
+        const deltaX = touch.clientX - startMouseX.value;
+        const newX = startX.value + deltaX / scaleX.value;
+        const target = props.slopeLayout?.positionList?.find(p => p.id === draggingId.value);
+        if (!target) return;
+        target.x = Math.round(Math.max(0, newX) * 1000) / 1000;
+        currentX.value = target.x;
+    }
+
+    updateKineticEnergyHeights(draggingId.value);
+    const target = props.slopeLayout?.positionList?.find(p => p.id === draggingId.value);
+    if (target?.x === 0 && props.slopeLayout?.positionList) {
+        props.slopeLayout.positionList.forEach(p => {
+            if (p.id !== draggingId.value) {
+                updateKineticEnergyHeights(p.id);
+            }
+        });
+    }
+}
+
 function endDrag() {
     const finishedId = draggingId.value;
     if (!finishedId) return;
 
+    clearTouchLongPressTimer();
+    longPressActivatedId.value = null;
     window.removeEventListener('mousemove', onMouseMove);
     window.removeEventListener('mouseup', endDrag);
+    window.removeEventListener('touchmove', onTouchMove);
+    window.removeEventListener('touchend', endTouchDrag);
+    window.removeEventListener('touchcancel', endTouchDrag);
     // updateKineticEnergyHeights(finishedId);
     draggingId.value = null;
+}
+
+function endTouchDrag() {
+    endDrag();
 }
 
 function updateKineticEnergyHeights(id: string) {
@@ -549,8 +642,12 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+    clearTouchLongPressTimer();
     window.removeEventListener('mousemove', onMouseMove);
     window.removeEventListener('mouseup', endDrag);
+    window.removeEventListener('touchmove', onTouchMove);
+    window.removeEventListener('touchend', endTouchDrag);
+    window.removeEventListener('touchcancel', endTouchDrag);
     closeContextMenu();
 });
 </script>
@@ -584,6 +681,15 @@ onBeforeUnmount(() => {
     fill: white;
     stroke: darkred;
     stroke-width: 2px;
+    touch-action: none;
+    transform-box: fill-box;
+    transform-origin: center;
+    transition: transform 120ms ease;
+}
+
+.points .point-circle.point-circle-longpress,
+.points .point-circle.point-circle-dragging {
+    transform: scale(1.8);
 }
 
 .slope-line {

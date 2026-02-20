@@ -51,7 +51,7 @@ namespace SwitchYard.Hump
             var resistanceHeight = CalculateResistanceEnergyHeight(flatLayout, x, param);
             var breakingHeight = CalculateBreakingEnergyHeight(flatLayout, x, param);
             var kineticEnergyHeight = orgKineticEnergyHeight + (humpHeight- gravitationHeight) - resistanceHeight - breakingHeight;
-            var velocity = Math.Sqrt(2 * param.Wagon.g_ * kineticEnergyHeight);
+            var velocity = Math.Sqrt(2 * param.Wagon.g_ * Math.Max(0,kineticEnergyHeight));
 
             KineticEnergyHeightResult result = new KineticEnergyHeightResult()
             {
