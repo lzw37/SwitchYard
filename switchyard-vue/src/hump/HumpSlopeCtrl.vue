@@ -185,9 +185,11 @@ const touchLongPressTimer = ref<ReturnType<typeof setTimeout> | null>(null);
 const touchStartClientX = ref(0);
 const touchStartClientY = ref(0);
 const touchCurrentClientX = ref(0);
+const touchCurrentClientY = ref(0);
 const touchLongPressDelay = 550;
 const touchMoveThreshold = 8;
 const longPressActivatedId = ref<string | null>(null);
+const touchLongPressTriggered = ref(false);
 const contextMenu = ref<{ visible: boolean; x: number; y: number; posId: string }>({ visible: false, x: 0, y: 0, posId: '' });
 
 function clearTouchLongPressTimer() {
@@ -197,10 +199,14 @@ function clearTouchLongPressTimer() {
     }
 }
 
+function openContextMenuAt(posId: string, x: number, y: number) {
+    contextMenu.value = { visible: true, x, y, posId };
+    window.addEventListener('click', closeContextMenu);
+}
+
 function openContextMenu(pos: { id: string }, event: MouseEvent) {
     event.preventDefault();
-    contextMenu.value = { visible: true, x: event.clientX, y: event.clientY, posId: pos.id };
-    window.addEventListener('click', closeContextMenu);
+    openContextMenuAt(pos.id, event.clientX, event.clientY);
 }
 
 function closeContextMenu() {
@@ -239,9 +245,11 @@ function startTouchDrag(pos: { id: string; height: number; x: number }, event: T
     if (!touch) return;
     beginDrag(pos, touch.clientX, touch.clientY, false);
     longPressActivatedId.value = null;
+    touchLongPressTriggered.value = false;
     touchStartClientX.value = touch.clientX;
     touchStartClientY.value = touch.clientY;
     touchCurrentClientX.value = touch.clientX;
+    touchCurrentClientY.value = touch.clientY;
     clearTouchLongPressTimer();
     touchLongPressTimer.value = setTimeout(() => {
         if (!draggingId.value || dragMode.value !== 'vertical') return;
@@ -249,6 +257,7 @@ function startTouchDrag(pos: { id: string; height: number; x: number }, event: T
         if (!target) return;
         dragMode.value = 'horizontal';
         longPressActivatedId.value = target.id;
+        touchLongPressTriggered.value = true;
         startMouseX.value = touchCurrentClientX.value;
         startX.value = target.x;
         clearTouchLongPressTimer();
@@ -306,6 +315,7 @@ function onTouchMove(event: TouchEvent) {
     const touch = event.touches[0];
     if (!touch) return;
     touchCurrentClientX.value = touch.clientX;
+    touchCurrentClientY.value = touch.clientY;
 
     if (dragMode.value === 'vertical' && touchLongPressTimer.value) {
         const movedX = Math.abs(touch.clientX - touchStartClientX.value);
@@ -357,8 +367,20 @@ function endDrag() {
     draggingId.value = null;
 }
 
-function endTouchDrag() {
+function endTouchDrag(event: TouchEvent) {
+    const shouldOpenContextMenu = touchLongPressTriggered.value;
+    const menuPosId = draggingId.value;
+    const touch = event.changedTouches?.[0];
+    const menuX = touch?.clientX ?? touchCurrentClientX.value;
+    const menuY = touch?.clientY ?? touchCurrentClientY.value;
+
     endDrag();
+
+    if (shouldOpenContextMenu && menuPosId) {
+        openContextMenuAt(menuPosId, menuX, menuY);
+    }
+
+    touchLongPressTriggered.value = false;
 }
 
 function updateKineticEnergyHeights(id: string) {
