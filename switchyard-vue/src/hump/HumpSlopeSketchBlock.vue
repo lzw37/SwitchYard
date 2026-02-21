@@ -1,6 +1,6 @@
 <template>
-    <div>
-        <svg id="slopesketch" :style="{ height: sketchHeight + 10 + 'px' }">
+    <div class="sketch-scroll-container" ref="scrollContainerRef" @scroll.passive="handleHorizontalScroll">
+        <svg id="slopesketch" :style="{ width: svgWidth + 'px', height: sketchHeight + 10 + 'px' }">
             <rect class="slopesketch-frame" :height="sketchHeight" :width="sketchWidth" :x="getX(0)" :y="0"></rect>
             <g v-for="sec in sectors">
                 <line class="slope-line" :x1="getX(sec.startX || 0)"
@@ -18,8 +18,8 @@
             </g>
         </svg>
     </div>
-
 </template>
+
 <script setup lang="ts">
 import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue';
 import type { SlopeLayout } from './humplayoutctrl';
@@ -37,15 +37,20 @@ const props = defineProps<{
     slopeLayout?: SlopeLayout | null
     globalScaleX?: number
     globalCursorX?: number
+    horizontalScrollLeft?: number
 }>()
 
 const emit = defineEmits<{
     updateGlobalCursorX: [value: number]
+    'horizontal-scroll': [scrollLeft: number]
 }>()
+
 const scaleX = computed(() => props.globalScaleX ?? 3.5);
 const marginLeft = ref(50);
-const sketchHeight = ref(40)
+const marginRight = ref(20);
+const sketchHeight = ref(40);
 const fontSize = ref(13);
+const scrollContainerRef = ref<HTMLDivElement | null>(null);
 
 const localCursorX = ref(0);
 const cursorX = computed({
@@ -55,8 +60,7 @@ const cursorX = computed({
     set(newVal: number) {
         if (props.globalCursorX === undefined) {
             localCursorX.value = newVal;
-        }
-        else {
+        } else {
             emit('updateGlobalCursorX', newVal);
         }
     }
@@ -67,25 +71,15 @@ function getX(posX: number): number {
 }
 
 function getStartY(gradient: number): number {
-    if (gradient > 0) {  // 下坡
-        return 0;
-    }
-    else if (gradient === 0) {
-        return sketchHeight.value / 2;
-    }
-    else {  // 上坡
-        return sketchHeight.value;
-    }
+    if (gradient > 0) return 0;
+    if (gradient === 0) return sketchHeight.value / 2;
+    return sketchHeight.value;
 }
 
 function getEndY(gradient: number): number {
-    if (gradient > 0) {  // 下坡
-        return sketchHeight.value;
-    } else if (gradient === 0) {
-        return sketchHeight.value / 2;
-    } else {  // 上坡
-        return 0;
-    }
+    if (gradient > 0) return sketchHeight.value;
+    if (gradient === 0) return sketchHeight.value / 2;
+    return 0;
 }
 
 const sketchWidth = computed(() => {
@@ -95,29 +89,29 @@ const sketchWidth = computed(() => {
     const positions = props.slopeLayout.positionList;
     const minX = Math.min(...positions.map(pos => pos.x));
     const maxX = Math.max(...positions.map(pos => pos.x));
-    return (maxX - minX) * scaleX.value; // 添加一些边距
+    return (maxX - minX) * scaleX.value;
+});
+
+const svgWidth = computed(() => {
+    return marginLeft.value + sketchWidth.value + marginRight.value;
 });
 
 const sectors = computed(() => {
     const sectors = [] as Sector[];
     const length = props.slopeLayout?.positionSegmentList?.length || 0;
-    var cumulativeLength = 0;
-    var startPositionID = props.slopeLayout?.positionSegmentList[0]?.startPositionID || null;
+    let cumulativeLength = 0;
+    let startPositionID = props.slopeLayout?.positionSegmentList?.[0]?.startPositionID || null;
 
-    for (var i = 0; i < length; i++) {
-        const seg = props.slopeLayout?.positionSegmentList[i]
-        const nextSeg = props.slopeLayout?.positionSegmentList[i + 1]
-        if (seg && nextSeg
-            && seg.gradient !== undefined && nextSeg.gradient !== undefined
-            && seg.gradient === nextSeg.gradient) {
-            // 合并坡度相同的段
+    for (let i = 0; i < length; i++) {
+        const seg = props.slopeLayout?.positionSegmentList?.[i];
+        const nextSeg = props.slopeLayout?.positionSegmentList?.[i + 1];
+        if (seg && nextSeg && seg.gradient !== undefined && nextSeg.gradient !== undefined && seg.gradient === nextSeg.gradient) {
             cumulativeLength += seg.length;
-        }
-        else {
+        } else {
             cumulativeLength += seg ? seg.length : 0;
             const mergedSeg = seg ? ({
-                startPositionID: startPositionID,
-                endPositionID: seg?.endPositionID,
+                startPositionID,
+                endPositionID: seg.endPositionID,
                 length: cumulativeLength,
                 gradient: seg.gradient,
                 startX: -1,
@@ -130,14 +124,12 @@ const sectors = computed(() => {
     }
 
     for (const sector of sectors) {
-        if (sector == null) continue;
         sector.startX = props.slopeLayout?.positionList?.find(pos => pos.id === sector.startPositionID)?.x || 0;
         sector.endX = props.slopeLayout?.positionList?.find(pos => pos.id === sector.endPositionID)?.x || 0;
     }
 
-    return sectors || []
-}
-);
+    return sectors;
+});
 
 function addCursorXListener() {
     const svgElement = document.getElementById('slopesketch');
@@ -150,6 +142,21 @@ function addCursorXListener() {
     });
 }
 
+function setScrollLeft(scrollLeft: number) {
+    if (!scrollContainerRef.value) return;
+    scrollContainerRef.value.scrollLeft = scrollLeft;
+}
+
+function handleHorizontalScroll(event: Event) {
+    const target = event.target as HTMLDivElement | null;
+    if (!target) return;
+    emit('horizontal-scroll', target.scrollLeft);
+}
+
+defineExpose({
+    setScrollLeft
+});
+
 onMounted(() => {
     addCursorXListener();
 });
@@ -161,10 +168,8 @@ onBeforeUnmount(() => {
     }
 });
 
-// 监听 props.slopeLayout 的变化，强制更新 sectors
 watch(() => props.slopeLayout, (newVal) => {
     if (newVal && newVal.positionSegmentList && newVal.positionList) {
-        // 重新计算各个 positionSegment 的 gradient
         newVal.positionSegmentList.forEach(seg => {
             const startPos = newVal.positionList.find(p => p.id === seg.startPositionID);
             const endPos = newVal.positionList.find(p => p.id === seg.endPositionID);
@@ -176,10 +181,31 @@ watch(() => props.slopeLayout, (newVal) => {
         });
     }
 }, { deep: true });
+
+watch(() => props.horizontalScrollLeft, (newVal) => {
+    if (typeof newVal !== 'number') return;
+    setScrollLeft(newVal);
+});
 </script>
+
 <style scoped lang="css">
-#slopesketch {
+.sketch-scroll-container {
     width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+
+.sketch-scroll-container::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    display: none;
+}
+
+#slopesketch {
+    min-width: 100%;
+    display: block;
 }
 
 .cursor-vline {

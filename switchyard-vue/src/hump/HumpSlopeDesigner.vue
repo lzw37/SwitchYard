@@ -76,16 +76,17 @@
             <span>{{ t('humpSlopeDesigner.temperature') }}{{ currentCalculateCondition.temperature }}°C</span>
         </div>
         <div class="main-ctrl">
-            <HumpSlopeCtrl v-model:slope-layout="slopeLayout"
+            <HumpSlopeCtrl ref="humpSlopeCtrlRef" v-model:slope-layout="slopeLayout"
                 :resistance-energy-height-data="resistanceEnergyHeightData"
                 :kinetic-energy-height-data="kineticEnergyHeightData" :global-scale-x="globalScaleX"
                 :global-scale-y="globalScaleY" :element-visibility="elementVisibility" :global-cursor-x="globalCursorX"
-                @updateGlobalCursorX="updateGlobalCursorX" />
-            <HumpSlopeSketchBlock v-model:slope-layout="slopeLayout" style="height:auto" :global-scale-x="globalScaleX"
-                :global-cursor-x="globalCursorX" @updateGlobalCursorX="updateGlobalCursorX" />
-            <HumpLayoutCtrl v-model:flat-layout="flatLayout" :is-toolbar-display="false" style="height:auto"
+                @updateGlobalCursorX="updateGlobalCursorX" @horizontal-scroll="syncHorizontalScroll" />
+            <HumpSlopeSketchBlock ref="humpSlopeSketchBlockRef" v-model:slope-layout="slopeLayout" style="height:auto" :global-scale-x="globalScaleX"
+                :global-cursor-x="globalCursorX" :horizontal-scroll-left="horizontalScrollLeft"
+                @updateGlobalCursorX="updateGlobalCursorX" @horizontal-scroll="syncHorizontalScroll" />
+            <HumpLayoutCtrl ref="humpLayoutCtrlRef" v-model:flat-layout="flatLayout" :is-toolbar-display="false" style="height:auto"
                 :global-scale-x="globalScaleX" :global-cursor-x="globalCursorX"
-                @update:global-cursor-x="updateGlobalCursorX" />
+                @update:global-cursor-x="updateGlobalCursorX" @horizontal-scroll="syncHorizontalScroll" />
         </div>
         <div class="side-menu-left" v-show="leftVisible">
             LEFT SIDE MENU
@@ -262,6 +263,10 @@ const props = withDefaults(defineProps<Props>(), {
     selectedInstanceId: null
 })
 
+type HorizontalScrollSyncApi = {
+    setScrollLeft: (scrollLeft: number) => void
+}
+
 // HumpScheme 接口
 interface HumpScheme {
     id: string
@@ -322,6 +327,11 @@ const editingCalculation = ref<HumpCalculation>({
 
 const slopeLayout = ref<SlopeLayout | null>(null);
 const flatLayout = ref<FlatLayout | null>(null);
+const humpSlopeCtrlRef = ref<HorizontalScrollSyncApi | null>(null);
+const humpSlopeSketchBlockRef = ref<HorizontalScrollSyncApi | null>(null);
+const humpLayoutCtrlRef = ref<HorizontalScrollSyncApi | null>(null);
+const syncingHorizontalScroll = ref(false);
+const horizontalScrollLeft = ref(0);
 const activeTab = ref('vposition');
 const leftVisible = ref(false);
 const rightVisible = ref(false);
@@ -332,6 +342,20 @@ const globalLeftMargin = ref(0);
 
 function updateGlobalCursorX(value: number) {
     globalCursorX.value = value;
+}
+
+function syncHorizontalScroll(scrollLeft: number) {
+    if (syncingHorizontalScroll.value) return;
+    syncingHorizontalScroll.value = true;
+    horizontalScrollLeft.value = scrollLeft;
+
+    humpSlopeCtrlRef.value?.setScrollLeft(scrollLeft);
+    humpSlopeSketchBlockRef.value?.setScrollLeft(scrollLeft);
+    humpLayoutCtrlRef.value?.setScrollLeft(scrollLeft);
+
+    requestAnimationFrame(() => {
+        syncingHorizontalScroll.value = false;
+    });
 }
 
 const resistanceEnergyHeightData = ref<{ x: number, height: number }[] | null>(null);

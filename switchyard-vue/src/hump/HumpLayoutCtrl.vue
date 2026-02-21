@@ -15,9 +15,10 @@
                 <el-slider id="baseline-slider" size="small" v-model="baseLineY" :min="0" :max="250" :step="1" />
             </div>
         </div>
-        <svg id="hump-layout-ctrl" ref="svgRef" @mousedown="handleDragStart"
-            @mousemove="(event) => { handleDragMove(event); updateCursorX(event); }" @mouseup="handleDragEnd"
-            @mouseleave="handleDragEnd" @click.self="handleSvgClick">
+        <div class="flatlayout-scroll-container" ref="scrollContainerRef" @scroll.passive="handleHorizontalScroll">
+            <svg id="hump-layout-ctrl" ref="svgRef" :style="{ width: svgWidth + 'px' }" @mousedown="handleDragStart"
+                @mousemove="(event) => { handleDragMove(event); updateCursorX(event); }" @mouseup="handleDragEnd"
+                @mouseleave="handleDragEnd" @click.self="handleSvgClick">
             <g id="baseline-group">
                 <g v-for="seg in props.flatLayout?.positionSegmentList" :key="seg.id"
                     :class="{ 'flatlayout-segment-selected': selectedElements.segments.includes(seg.id) }"
@@ -90,7 +91,8 @@
             <g id="cursor-group">
                 <line class="cursor-vline" :y1="0" :x1="getX(cursorX)" :x2="getX(cursorX)" :y2="500"></line>
             </g>
-        </svg>
+            </svg>
+        </div>
     </div>
 </template>
 
@@ -101,12 +103,13 @@ import { Switch, SwitchTypes, SwitchDirections, SwitchSides, PositionSegment, Cu
 import axios from '@/utils/axios'
 import { ElMessageBox } from 'element-plus'
 
-const emit = defineEmits(['update:flatLayout', 'update:globalCursorX'])
+const emit = defineEmits(['update:flatLayout', 'update:globalCursorX', 'horizontal-scroll'])
 const props = defineProps<{ flatLayout?: any, isToolbarDisplay?: boolean, isEditable?: boolean, globalScaleX?: number, globalCursorX?: number }>()
 
 const { t } = useI18n()
 
 const svgRef = ref<SVGSVGElement | null>(null)
+const scrollContainerRef = ref<HTMLDivElement | null>(null)
 
 // 存储原始position列表的JSON字符串，用于检测ID变化
 const originalPositionMap = ref<Map<string, string>>(new Map())
@@ -138,6 +141,7 @@ const cursorX = computed({
 
 // 左侧边界距离
 const leftMargin = ref(50)
+const rightMargin = ref(20)
 
 const leftMarginSliderValue = computed({
     get: () => -leftMargin.value,
@@ -172,6 +176,16 @@ const curveShiftY = ref(5);
 // 道岔的偏移量
 const switchShift = computed(() => {
     return { x: 50, y: 15 };
+})
+
+const svgWidth = computed(() => {
+    const positions = props.flatLayout?.positionList || [];
+    if (positions.length === 0) {
+        return leftMargin.value + rightMargin.value + 300;
+    }
+    const minX = Math.min(...positions.map((pos: any) => pos.x));
+    const maxX = Math.max(...positions.map((pos: any) => pos.x));
+    return leftMargin.value + (maxX - minX) * scaleX.value + rightMargin.value;
 })
 
 const textPositions = computed(() => {
@@ -826,9 +840,21 @@ function selectObjectsInRect(rect: { x: number; y: number; width: number; height
     console.log('Selected elements after drag:', selectedElements.value);
 }
 
+function setScrollLeft(scrollLeft: number) {
+    if (!scrollContainerRef.value) return;
+    scrollContainerRef.value.scrollLeft = scrollLeft;
+}
+
+function handleHorizontalScroll(event: Event) {
+    const target = event.target as HTMLDivElement | null;
+    if (!target) return;
+    emit('horizontal-scroll', target.scrollLeft);
+}
+
 // expose methods to parent component
 defineExpose({
-    checkPositionIdChange
+    checkPositionIdChange,
+    setScrollLeft
 })
 </script>
 
@@ -851,6 +877,20 @@ defineExpose({
     padding: 5px;
     border-radius: 5px;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.flatlayout-scroll-container {
+    width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+
+.flatlayout-scroll-container::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    display: none;
 }
 
 .flatlayout-toolbar {

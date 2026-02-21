@@ -1,6 +1,6 @@
 <template>
     <div>
-        <div class="slope-scroll-container">
+        <div class="slope-scroll-container" ref="scrollContainerRef" @scroll.passive="handleHorizontalScroll">
             <svg id="slope" :style="{ width: svgWidth + 'px', height: svgHeight + 'px' }">
                 <defs>
                     <linearGradient id="backgroundGradient" x1="0%" y1="0%" x2="0%" y2="100%">
@@ -131,7 +131,20 @@ const props = defineProps<{
 
 const emit = defineEmits<{
     updateGlobalCursorX: [value: number]
+    'horizontal-scroll': [scrollLeft: number]
 }>()
+const scrollContainerRef = ref<HTMLDivElement | null>(null);
+
+function handleHorizontalScroll(event: Event) {
+    const target = event.target as HTMLDivElement | null;
+    if (!target) return;
+    emit('horizontal-scroll', target.scrollLeft);
+}
+
+function setScrollLeft(scrollLeft: number) {
+    if (!scrollContainerRef.value) return;
+    scrollContainerRef.value.scrollLeft = scrollLeft;
+}
 
 const minSvgHeight = ref(400);
 
@@ -682,6 +695,10 @@ onBeforeUnmount(() => {
     window.removeEventListener('touchend', endTouchDrag);
     window.removeEventListener('touchcancel', endTouchDrag);
     closeContextMenu();
+});
+
+defineExpose({
+    setScrollLeft
 });
 </script>
 <style scoped lang="css">
