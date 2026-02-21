@@ -49,7 +49,7 @@
                     <g v-for="pos in slopeLayout?.positionList || []"
                         @contextmenu.prevent="openContextMenu(pos, $event)">
                         <circle class="point-circle" :cx="getX(pos.x)" :cy="getY(pos.height)" r="4"
-                            :class="{ 'point-circle-longpress': longPressActivatedId === pos.id, 'point-circle-dragging': draggingId === pos.id && dragMode === 'vertical' }"
+                            :class="{ 'point-circle-longpress': longPressActivatedId === pos.id, 'point-circle-dragging': draggingId === pos.id }"
                             @mousedown="startDrag(pos, $event)" @touchstart.prevent="startTouchDrag(pos, $event)">
                         </circle>
                         <text class="point-height-text" :x="getX(pos.x)"
