@@ -1688,5 +1688,265 @@ namespace SwitchYard.Service.Controllers
             var humpCalculation = dbConnector.Query<HumpCalculation>("SELECT * FROM humpcalculation WHERE ID = @id AND InstanceID = @instanceID AND HumpSchemeID = @humpSchemeID", new { id = id, instanceID = instanceID, humpSchemeID = humpSchemeID }).FirstOrDefault();
             return humpCalculation;
         }
+
+        /// <summary>
+        /// 获取追踪间隔检算方案列表
+        /// </summary>
+        [HttpGet(Name = "GetHeadwayCheckSchemes")]
+        public IActionResult GetHeadwayCheckSchemes(string instanceID)
+        {
+            try
+            {
+                var authResult = ValidateInstanceOwnershipOrFail(instanceID);
+                if (authResult != null) return authResult;
+
+                var username = User.Identity?.Name;
+                DBConnector dbConnector = DBConnector.GetDBConnector();
+                var schemes = dbConnector.Query<HeadwayCheckScheme>("SELECT * FROM headwaycheckscheme WHERE InstanceID = @instanceID", new { instanceID });
+                
+                _logger.LogInformation("Retrieved {SchemeCount} HeadwayCheckSchemes for instance {InstanceID} by user {Username}.", schemes?.Count ?? 0, instanceID, username);
+                return Ok(schemes);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting HeadwayCheckSchemes for instance {InstanceID}.", instanceID);
+                return StatusCode(500, "Internal server error while getting HeadwayCheckSchemes.");
+            }
+        }
+
+        /// <summary>
+        /// 创建追踪间隔检算方案
+        /// /// </summary>
+        [HttpPost(Name = "CreateHeadwayCheckScheme")]
+        public IActionResult CreateHeadwayCheckScheme(HeadwayCheckScheme scheme)
+        {
+            DBConnector dbConnector = DBConnector.GetDBConnector();
+            try
+            {
+                if (scheme == null || string.IsNullOrEmpty(scheme.InstanceID))
+                {
+                    return BadRequest("Invalid HeadwayCheckScheme or missing InstanceID.");
+                }
+
+                var authResult = ValidateInstanceOwnershipOrFail(scheme.InstanceID);
+                if (authResult != null) return authResult;
+
+                var username = User.Identity?.Name;
+                scheme.ID = _snowflakeIdGenerator.NextIdString();
+                
+                dbConnector.BeginTransaction();
+                
+                var result = dbConnector.ExecuteNonQuery(
+                    "INSERT INTO headwaycheckscheme (InstanceID, ID, Name, HumpSchemeID, WagonVelocityOnTop, SlopeLineID) VALUES (@InstanceID, @ID, @Name, @HumpSchemeID, @WagonVelocityOnTop, @SlopeLineID)",
+                    new
+                    {
+                        scheme.InstanceID,
+                        scheme.ID,
+                        scheme.Name,
+                        scheme.HumpSchemeID,
+                        scheme.WagonVelocityOnTop,
+                        scheme.SlopeLineID
+                    });
+                
+                if (result <= 0)
+                {
+                    dbConnector.Rollback();
+                    _logger.LogWarning("Failed to create HeadwayCheckScheme for instance {InstanceID} by user {Username}.", scheme.InstanceID, username);
+                    return StatusCode(500, "Failed to create HeadwayCheckScheme.");
+                }
+                
+                if (scheme.WagonList != null && scheme.WagonList.Count > 0)
+                {
+                    foreach (var wagon in scheme.WagonList)
+                    {
+                        dbConnector.ExecuteNonQuery(
+                            "INSERT INTO headwaycheckwagon (InstanceID, HeadwayCheckID, Sequence, HumpCalculationID) VALUES (@InstanceID, @HeadwayCheckID, @Sequence, @HumpCalculationID)",
+                            new
+                            {
+                                InstanceID = scheme.InstanceID,
+                                HeadwayCheckID = scheme.ID,
+                                wagon.Sequence,
+                                wagon.HumpCalculationID
+                            });
+                    }
+                }
+                
+                dbConnector.Commit();
+                _logger.LogInformation("Created HeadwayCheckScheme with ID {SchemeID} and {WagonCount} wagons for instance {InstanceID} by user {Username}.", scheme.ID, scheme.WagonList?.Count ?? 0, scheme.InstanceID, username);
+                return Ok(scheme);
+            }
+            catch (Exception ex)
+            {
+                dbConnector.Rollback();
+                _logger.LogError(ex, "Error creating HeadwayCheckScheme.");
+                return StatusCode(500, "Internal server error while creating HeadwayCheckScheme.");
+            }
+        }
+
+        /// <summary>
+        /// 更新追踪间隔检算方案
+        /// </summary>
+        [HttpPut(Name = "EditHeadwayCheckScheme")]
+        public IActionResult EditHeadwayCheckScheme(HeadwayCheckScheme scheme)
+        {
+            DBConnector dbConnector = DBConnector.GetDBConnector();
+            try
+            {
+                if (scheme == null || string.IsNullOrEmpty(scheme.ID))
+                {
+                    return BadRequest("Invalid HeadwayCheckScheme or missing ID.");
+                }
+
+                var username = User.Identity?.Name;
+                var existing = dbConnector.Query<HeadwayCheckScheme>("SELECT * FROM headwaycheckscheme WHERE ID = @id", new { id = scheme.ID }).FirstOrDefault();
+                if (existing == null)
+                {
+                    return NotFound("HeadwayCheckScheme not found.");
+                }
+
+                var authResult = ValidateInstanceOwnershipOrFail(existing.InstanceID);
+                if (authResult != null) return authResult;
+
+                dbConnector.BeginTransaction();
+                
+                var result = dbConnector.ExecuteNonQuery(
+                    "UPDATE headwaycheckscheme SET Name = @Name, HumpSchemeID = @HumpSchemeID, WagonVelocityOnTop = @WagonVelocityOnTop, SlopeLineID = @SlopeLineID WHERE ID = @ID",
+                    new
+                    {
+                        scheme.Name,
+                        scheme.HumpSchemeID,
+                        scheme.WagonVelocityOnTop,
+                        scheme.SlopeLineID,
+                        scheme.ID
+                    });
+                
+                if (result <= 0)
+                {
+                    dbConnector.Rollback();
+                    _logger.LogWarning("Failed to update HeadwayCheckScheme for instance {InstanceID} by user {Username}.", existing.InstanceID, username);
+                    return StatusCode(500, "Failed to update HeadwayCheckScheme.");
+                }
+                
+                dbConnector.ExecuteNonQuery("DELETE FROM headwaycheckwagon WHERE InstanceID = @instanceID AND HeadwayCheckID = @headwayCheckID", 
+                    new { instanceID = existing.InstanceID, headwayCheckID = scheme.ID });
+                
+                if (scheme.WagonList != null && scheme.WagonList.Count > 0)
+                {
+                    foreach (var wagon in scheme.WagonList)
+                    {
+                        dbConnector.ExecuteNonQuery(
+                            "INSERT INTO headwaycheckwagon (InstanceID, HeadwayCheckID, Sequence, HumpCalculationID) VALUES (@InstanceID, @HeadwayCheckID, @Sequence, @HumpCalculationID)",
+                            new
+                            {
+                                InstanceID = existing.InstanceID,
+                                HeadwayCheckID = scheme.ID,
+                                wagon.Sequence,
+                                wagon.HumpCalculationID
+                            });
+                    }
+                }
+                
+                dbConnector.Commit();
+                _logger.LogInformation("Updated HeadwayCheckScheme with ID {SchemeID} and {WagonCount} wagons for instance {InstanceID} by user {Username}.", scheme.ID, scheme.WagonList?.Count ?? 0, existing.InstanceID, username);
+                return Ok("HeadwayCheckScheme updated successfully.");
+            }
+            catch (Exception ex)
+            {
+                dbConnector.Rollback();
+                _logger.LogError(ex, "Error updating HeadwayCheckScheme.");
+                return StatusCode(500, "Internal server error while updating HeadwayCheckScheme.");
+            }
+        }
+
+        /// <summary>
+        /// 删除追踪间隔检算方案
+        /// </summary>
+        [HttpDelete(Name = "DeleteHeadwayCheckScheme")]
+        public IActionResult DeleteHeadwayCheckScheme(string id)
+        {
+            DBConnector dbConnector = DBConnector.GetDBConnector();
+            try
+            {
+                var username = User.Identity?.Name;
+                var scheme = dbConnector.Query<HeadwayCheckScheme>("SELECT * FROM headwaycheckscheme WHERE ID = @id", new { id }).FirstOrDefault();
+                if (scheme == null)
+                {
+                    return NotFound("HeadwayCheckScheme not found.");
+                }
+
+                var authResult = ValidateInstanceOwnershipOrFail(scheme.InstanceID);
+                if (authResult != null) return authResult;
+
+                dbConnector.BeginTransaction();
+                
+                dbConnector.ExecuteNonQuery("DELETE FROM headwaycheckwagon WHERE InstanceID = @instanceID AND HeadwayCheckID = @headwayCheckID", 
+                    new { instanceID = scheme.InstanceID, headwayCheckID = id });
+                
+                var result = dbConnector.ExecuteNonQuery("DELETE FROM headwaycheckscheme WHERE ID = @id", new { id });
+                
+                if (result > 0)
+                {
+                    dbConnector.Commit();
+                    _logger.LogInformation("Deleted HeadwayCheckScheme with ID {SchemeID} for instance {InstanceID} by user {Username}.", id, scheme.InstanceID, username);
+                    return Ok("HeadwayCheckScheme deleted successfully.");
+                }
+                else
+                {
+                    dbConnector.Rollback();
+                    _logger.LogWarning("Failed to delete HeadwayCheckScheme for instance {InstanceID} by user {Username}.", scheme.InstanceID, username);
+                    return StatusCode(500, "Failed to delete HeadwayCheckScheme.");
+                }
+            }
+            catch (Exception ex)
+            {
+                dbConnector.Rollback();
+                _logger.LogError(ex, "Error deleting HeadwayCheckScheme.");
+                return StatusCode(500, "Internal server error while deleting HeadwayCheckScheme.");
+            }
+        }
+
+        /// <summary>
+        /// 加载追踪间隔检算方案（包含车辆列表）
+        /// </summary>
+        private HeadwayCheckScheme LoadHeadwayCheckScheme(string instanceID, string id)
+        {
+            DBConnector dbConnector = DBConnector.GetDBConnector();
+            var scheme = dbConnector.Query<HeadwayCheckScheme>("SELECT * FROM headwaycheckscheme WHERE InstanceID = @instanceID AND ID = @id", new { instanceID, id }).FirstOrDefault();
+            
+            if (scheme != null)
+            {
+                scheme.WagonList = dbConnector.Query<HeadwayCheckWagon>("SELECT * FROM headwaycheckwagon WHERE InstanceID = @instanceID AND HeadwayCheckID = @headwayCheckID ORDER BY Sequence", 
+                    new { instanceID, headwayCheckID = scheme.ID });
+            }
+            
+            return scheme;
+        }
+
+        /// <summary>
+        /// 根据ID获取单个追踪间隔检算方案
+        /// </summary>
+        [HttpGet(Name = "GetHeadwayCheckSchemeById")]
+        public IActionResult GetHeadwayCheckSchemeById(string instanceID, string id)
+        {
+            try
+            {
+                var authResult = ValidateInstanceOwnershipOrFail(instanceID);
+                if (authResult != null) return authResult;
+
+                var scheme = LoadHeadwayCheckScheme(instanceID, id);
+                if (scheme == null)
+                {
+                    return NotFound("HeadwayCheckScheme not found.");
+                }
+                
+                _logger.LogInformation("Retrieved HeadwayCheckScheme with ID {SchemeID} and {WagonCount} wagons for instance {InstanceID}.", id, scheme.WagonList?.Count ?? 0, instanceID);
+                return Ok(scheme);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting HeadwayCheckScheme with ID {SchemeID}.", id);
+                return StatusCode(500, "Internal server error while getting HeadwayCheckScheme.");
+            }
+        }
     }
 }
