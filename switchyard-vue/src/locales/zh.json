@@ -115,9 +115,20 @@
         }
     },
     "common": {
-        "networkError": "网络错误，请稍后重试",
-        "confirm": "确认",
-        "cancel": "取消"
+        "titles": {
+            "tip": "提示",
+            "confirm": "确认",
+            "warning": "警告"
+        },
+        "buttons": {
+            "confirm": "确认",
+            "cancel": "取消",
+            "save": "保存",
+            "close": "关闭",
+            "edit": "编辑",
+            "delete": "删除"
+        },
+        "networkError": "网络错误，请稍后重试"
     },
     "axios": {
         "noPermission": "没有权限访问该资源",
@@ -308,12 +319,22 @@
                 "delete": "删除",
                 "save": "保存",
                 "genVelocityChart": "生成速度-距离曲线",
-                "genTimeChart": "生成时间-距离曲线"
+                "genTimeChart": "生成时间-距离曲线",
+                "execute": "检算",
+                "manage": "..."
             },
             "labels": {
                 "verification": "检算实例",
                 "designScheme": "纵断面方案",
-                "condition": "计算条件"
+                "condition": "计算条件",
+                "slopeLine": "溜放线",
+                "wagonOrder": "溜车顺序",
+                "pushVelocity": "推峰速度",
+                "name": "名称",
+                "pushVelocityUnit": "推峰速度(m/s)",
+                "wagonSequence": "钩车溜放顺序",
+                "operation": "操作",
+                "id": "ID"
             },
             "placeholders": {
                 "selectVerification": "请选择检算数据",
@@ -335,9 +356,47 @@
                 "series1": "系列1",
                 "series2": "系列2"
             },
+            "buttons": {
+                "save": "保存",
+                "cancel": "取消",
+                "close": "关闭",
+                "edit": "编辑",
+                "delete": "删除",
+                "add": "新建实例"
+            },
+            "manager": {
+                "title": "管理检算实例",
+                "defaultName": "检算实例{number}",
+                "toolbar": {
+                    "add": "新建实例"
+                }
+            },
             "messages": {
                 "fetchVelocityFailed": "获取速度曲线数据失败",
-                "fetchTimeFailed": "获取时间曲线数据失败"
+                "fetchTimeFailed": "获取时间曲线数据失败",
+                "selectInstance": "请先选择驼峰实例",
+                "selectVerification": "请选择检算实例",
+                "selectHumpScheme": "请选择纵断面方案",
+                "selectSlopeLine": "请选择溜放线",
+                "nameRequired": "实例名称不能为空",
+                "humpSchemeRequired": "请选择纵断面方案",
+                "slopeLineRequired": "请选择溜放线",
+                "loadFailed": "加载基础数据失败",
+                "loadSchemesFailed": "加载检算基础数据失败",
+                "loadSchemeFailed": "加载检算实例失败",
+                "loadCalculationsFailed": "加载钩车计算数据失败",
+                "loadManagerFailed": "加载检算实例管理列表失败",
+                "createSuccess": "新建检算实例成功",
+                "createFailed": "新建检算实例失败",
+                "updateSuccess": "检算实例已更新",
+                "updateFailed": "更新检算实例失败",
+                "deleteConfirm": "确认删除检算实例\"{name}\"？",
+                "deleteSuccess": "检算实例已删除",
+                "deleteFailed": "删除检算实例失败",
+                "saveConfigSuccess": "已保存当前检算配置",
+                "saveConfigFailed": "保存检算配置失败",
+                "loadConditionsFailed": "加载钩车条件失败",
+                "confirmSlopeConfig": "请先确保纵断面方案和溜放线已配置"
             }
         }
     },

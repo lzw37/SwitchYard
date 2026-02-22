@@ -12,7 +12,7 @@
                 <el-button type="primary" size="small" @click="openHeadwaySchemeManager">...</el-button>
             </div>
             <div class="headway-toolbar__group">
-                <label>纵断面方案</label>
+                <label>{{ t('hump.headway.labels.designScheme') }}</label>
                 <el-select v-model="selectedHumpSchemeID" :placeholder="t('hump.headway.placeholders.selectDesign')"
                     size="small" clearable>
                     <el-option v-for="scheme in humpSchemes" :key="scheme.value" :label="scheme.label"
@@ -20,7 +20,7 @@
                 </el-select>
             </div>
             <div class="headway-toolbar__group">
-                <label>溜放线</label>
+                <label>{{ t('hump.headway.labels.slopeLine') }}</label>
                 <el-select v-model="selectedSlopeLineID" :placeholder="t('hump.headway.placeholders.selectDesign')"
                     size="small" clearable>
                     <el-option v-for="slopeLine in slopeLines" :key="slopeLine.value" :label="slopeLine.label"
@@ -28,7 +28,7 @@
                 </el-select>
             </div>
             <div class="headway-toolbar__group">
-                <label>溜车顺序</label>
+                <label>{{ t('hump.headway.labels.wagonOrder') }}</label>
                 <el-select v-model="selectedHeadwayCheckWagonTokens"
                     :placeholder="t('hump.headway.placeholders.selectDesign')" size="small" multiple filterable
                     collapse-tags-tooltip class="headway-order-select">
@@ -37,13 +37,14 @@
                 </el-select>
             </div>
             <div class="headway-toolbar__group">
-                <label>推峰速度</label>
+                <label>{{ t('hump.headway.labels.pushVelocity') }}</label>
                 <el-input-number v-model="selectedWagonVelocityOnTop" size="small" :min="0" :step="0.1" :precision="3"
                     controls-position="right" />
             </div>
             <div class="headway-toolbar__group">
                 <el-button type="primary" size="small" :loading="headwayCheckExecuting"
-                    :disabled="headwayCheckExecuting" @click="handleExecuteHeadwayCheck">检算</el-button>
+                    :disabled="headwayCheckExecuting" @click="handleExecuteHeadwayCheck">{{
+                        t('hump.headway.toolbar.execute') }}</el-button>
             </div>
         </div>
 
@@ -67,19 +68,21 @@
                 @toggle-fullscreen="toggleFullscreen('time')" />
         </div>
 
-        <el-dialog v-model="showHeadwaySchemeManager" title="管理检算实例" width="90%" :close-on-click-modal="false">
+        <el-dialog v-model="showHeadwaySchemeManager" :title="t('hump.headway.manager.title')" width="90%"
+            :close-on-click-modal="false">
             <div class="manager-toolbar">
-                <el-button type="primary" @click="handleAddHeadwayScheme">新建实例</el-button>
+                <el-button type="primary" @click="handleAddHeadwayScheme">{{ t('hump.headway.buttons.add')
+                }}</el-button>
             </div>
             <el-table :data="headwaySchemeManagerRows" style="width: 100%" v-loading="headwaySchemeManagerLoading">
-                <el-table-column prop="id" label="ID" width="190" />
-                <el-table-column prop="name" label="名称" min-width="160">
+                <el-table-column prop="id" :label="t('hump.headway.labels.id')" width="190" />
+                <el-table-column prop="name" :label="t('hump.headway.labels.name')" min-width="160">
                     <template #default="{ row }">
                         <el-input v-if="editingHeadwaySchemeID === row.id" v-model="row.name" size="small" />
                         <span v-else>{{ row.name }}</span>
                     </template>
                 </el-table-column>
-                <el-table-column prop="humpSchemeID" label="纵断面方案" width="180">
+                <el-table-column prop="humpSchemeID" :label="t('hump.headway.labels.designScheme')" width="180">
                     <template #default="{ row }">
                         <el-select v-if="editingHeadwaySchemeID === row.id" v-model="row.humpSchemeID" size="small"
                             @change="handleManagerHumpSchemeChange(row)">
@@ -89,7 +92,7 @@
                         <span v-else>{{ getOptionLabel(humpSchemes, row.humpSchemeID) }}</span>
                     </template>
                 </el-table-column>
-                <el-table-column prop="slopeLineID" label="溜放线" width="180">
+                <el-table-column prop="slopeLineID" :label="t('hump.headway.labels.slopeLine')" width="180">
                     <template #default="{ row }">
                         <el-select v-if="editingHeadwaySchemeID === row.id" v-model="row.slopeLineID" size="small">
                             <el-option v-for="slopeLine in slopeLines" :key="slopeLine.value" :label="slopeLine.label"
@@ -98,14 +101,15 @@
                         <span v-else>{{ getOptionLabel(slopeLines, row.slopeLineID) }}</span>
                     </template>
                 </el-table-column>
-                <el-table-column prop="wagonVelocityOnTop" label="推峰速度(m/s)" width="170">
+                <el-table-column prop="wagonVelocityOnTop" :label="t('hump.headway.labels.pushVelocityUnit')"
+                    width="170">
                     <template #default="{ row }">
                         <el-input-number v-if="editingHeadwaySchemeID === row.id" v-model="row.wagonVelocityOnTop"
                             size="small" :min="0" :step="0.1" :precision="3" controls-position="right" />
                         <span v-else>{{ row.wagonVelocityOnTop }}</span>
                     </template>
                 </el-table-column>
-                <el-table-column prop="wagonIDs" label="钩车溜放顺序" min-width="260">
+                <el-table-column prop="wagonIDs" :label="t('hump.headway.labels.wagonSequence')" min-width="260">
                     <template #default="{ row }">
                         <el-select v-if="editingHeadwaySchemeID === row.id" v-model="row.wagonTokens" multiple
                             filterable @change="handleManagerWagonTokensChange(row)" collapse-tags collapse-tags-tooltip
@@ -116,21 +120,25 @@
                         <span v-else>{{ formatWagonSummary(row) }}</span>
                     </template>
                 </el-table-column>
-                <el-table-column label="操作" width="200" fixed="right">
+                <el-table-column :label="t('hump.headway.labels.operation')" width="200" fixed="right">
                     <template #default="{ row }">
                         <div v-if="editingHeadwaySchemeID === row.id">
-                            <el-button type="success" size="small" @click="handleSaveHeadwayScheme(row)">保存</el-button>
-                            <el-button size="small" @click="handleCancelHeadwaySchemeEdit">取消</el-button>
+                            <el-button type="success" size="small" @click="handleSaveHeadwayScheme(row)">{{
+                                t('hump.headway.buttons.save') }}</el-button>
+                            <el-button size="small" @click="handleCancelHeadwaySchemeEdit">{{
+                                t('hump.headway.buttons.cancel') }}</el-button>
                         </div>
                         <div v-else>
-                            <el-button type="primary" size="small" @click="handleEditHeadwayScheme(row)">编辑</el-button>
-                            <el-button type="danger" size="small" @click="handleDeleteHeadwayScheme(row)">删除</el-button>
+                            <el-button type="primary" size="small" @click="handleEditHeadwayScheme(row)">{{
+                                t('hump.headway.buttons.edit') }}</el-button>
+                            <el-button type="danger" size="small" @click="handleDeleteHeadwayScheme(row)">{{
+                                t('hump.headway.buttons.delete') }}</el-button>
                         </div>
                     </template>
                 </el-table-column>
             </el-table>
             <template #footer>
-                <el-button @click="showHeadwaySchemeManager = false">关闭</el-button>
+                <el-button @click="showHeadwaySchemeManager = false">{{ t('hump.headway.buttons.close') }}</el-button>
             </template>
         </el-dialog>
     </div>
@@ -151,12 +159,22 @@ type OptionItem = { value: string; label: string }
 interface HumpCalculation {
     id: string
     wagonType: string
+    operationConditionID?: string
+    operationCondition?: {
+        name?: string
+        Name?: string
+    }
+    OperationCondition?: {
+        name?: string
+        Name?: string
+    }
     slopeLineID: string
 }
 
 interface HeadwayCheckWagon {
     sequence: number
     humpCalculationID: string
+    name?: string
 }
 
 interface HeadwayCheckScheme {
@@ -178,6 +196,11 @@ interface HeadwayCheckSchemeManagerRow {
     wagonTokens: string[]
     wagonVelocityOnTop: number
     slopeLineID: string
+}
+
+interface OperationCondition {
+    id: string
+    name: string
 }
 
 const props = withDefaults(defineProps<{
@@ -213,6 +236,7 @@ const selectedWagonVelocityOnTop = ref<number>(1.4)
 const headwayCheckSchemes = ref<OptionItem[]>([])
 const humpSchemes = ref<OptionItem[]>([])
 const slopeLines = ref<OptionItem[]>([])
+const operationConditions = ref<OperationCondition[]>([])
 const humpCalculationsRaw = ref<HumpCalculation[]>([])
 const humpCalculationsByScheme = ref<Record<string, HumpCalculation[]>>({})
 
@@ -270,9 +294,24 @@ const getOptionLabel = (options: OptionItem[], value: string) => {
     return options.find(o => o.value === value)?.label || value || '--'
 }
 
+const getOperationConditionName = (row: HumpCalculation) => {
+    const nested = row.operationCondition?.name
+        || row.operationCondition?.Name
+        || row.OperationCondition?.name
+        || row.OperationCondition?.Name
+    if (nested) return nested
+    const conditionID = row.operationConditionID || ''
+    return operationConditions.value.find(c => c.id === conditionID)?.name || conditionID
+}
+
+const getHumpCalculationName = (row: HumpCalculation) => {
+    const operationConditionName = getOperationConditionName(row)
+    return operationConditionName ? `${row.wagonType}-${operationConditionName}` : row.wagonType
+}
+
 const getManagerHumpCalculationOptions = (humpSchemeID: string): OptionItem[] => {
     const rows = humpCalculationsByScheme.value[humpSchemeID] || []
-    return rows.map(r => ({ value: r.id, label: r.wagonType }))
+    return rows.map(r => ({ value: r.id, label: getHumpCalculationName(r) }))
 }
 
 const buildHeadwayOrderOptions = (tokens: string[], availableOptions: OptionItem[]) => {
@@ -328,7 +367,7 @@ const humpCalculations = computed(() => {
     const filtered = selectedSlopeLineID.value
         ? humpCalculationsRaw.value.filter(c => c.slopeLineID === selectedSlopeLineID.value)
         : humpCalculationsRaw.value
-    return filtered.map(c => ({ value: c.id, label: c.wagonType }))
+    return filtered.map(c => ({ value: c.id, label: getHumpCalculationName(c) }))
 })
 
 const headwayOrderOptions = computed<OptionItem[]>(() => {
@@ -353,6 +392,9 @@ const loadHumpCalculationsForScheme = async (humpSchemeID: string, force = false
     const rows = (response.data || []).map((item: any) => ({
         id: item.id,
         wagonType: item.wagonType,
+        operationConditionID: item.operationConditionID || item.OperationConditionID,
+        operationCondition: item.operationCondition || item.OperationCondition,
+        OperationCondition: item.OperationCondition || item.operationCondition,
         slopeLineID: item.slopeLineID
     }))
     humpCalculationsByScheme.value = {
@@ -368,20 +410,23 @@ const loadBaseData = async () => {
         headwayCheckSchemes.value = []
         humpSchemes.value = []
         slopeLines.value = []
+        operationConditions.value = []
         humpCalculationsByScheme.value = {}
         return
     }
 
     try {
-        const [hcsRes, hsRes, slRes] = await Promise.all([
+        const [hcsRes, hsRes, slRes, ocRes] = await Promise.all([
             axios.get('/Hump/GetHeadwayCheckSchemes', { params: { instanceID: props.selectedInstanceId } }),
             axios.get('/Hump/GetHumpSchemes', { params: { instanceID: props.selectedInstanceId } }),
             axios.get('/Hump/GetSlopeLines', { params: { instanceID: props.selectedInstanceId } }),
+            axios.get('/Hump/GetOperationConditions', { params: { instanceID: props.selectedInstanceId } }),
         ])
 
         headwayCheckSchemes.value = (hcsRes.data || []).map((s: any) => ({ value: s.id, label: s.name }))
         humpSchemes.value = (hsRes.data || []).map((s: any) => ({ value: s.id, label: s.name }))
         slopeLines.value = (slRes.data || []).map((s: any) => ({ value: s.id, label: s.name }))
+        operationConditions.value = (ocRes.data || []).map((s: any) => ({ id: s.id, name: s.name }))
 
         if (selectedHeadwayCheckSchemeID.value && !headwayCheckSchemes.value.some(s => s.value === selectedHeadwayCheckSchemeID.value)) {
             selectedHeadwayCheckSchemeID.value = ''
@@ -394,7 +439,7 @@ const loadBaseData = async () => {
         }
     } catch (error) {
         console.error('加载基础数据失败:', error)
-        ElMessage.error('加载检算基础数据失败')
+        ElMessage.error(t('hump.headway.messages.loadSchemesFailed'))
     }
 }
 
@@ -431,7 +476,7 @@ const applySelectedHeadwayScheme = async () => {
         selectedHeadwayCheckWagonTokens.value = toHeadwayTokens(selectedHeadwayCheckWagons.value)
     } catch (error) {
         console.error('加载检算实例失败:', error)
-        ElMessage.error('加载检算实例失败')
+        ElMessage.error(t('hump.headway.messages.loadSchemeFailed'))
     }
 }
 
@@ -497,7 +542,7 @@ const loadHeadwaySchemeManagerData = async () => {
         editingHeadwaySchemeID.value = ''
     } catch (error) {
         console.error('加载检算实例管理列表失败:', error)
-        ElMessage.error('加载检算实例管理列表失败')
+        ElMessage.error(t('hump.headway.messages.loadManagerFailed'))
     } finally {
         headwaySchemeManagerLoading.value = false
     }
@@ -505,7 +550,7 @@ const loadHeadwaySchemeManagerData = async () => {
 
 const openHeadwaySchemeManager = async () => {
     if (!props.selectedInstanceId) {
-        ElMessage.warning('请先选择驼峰实例')
+        ElMessage.warning(t('hump.headway.messages.selectInstance'))
         return
     }
 
@@ -515,7 +560,7 @@ const openHeadwaySchemeManager = async () => {
 
 const handleAddHeadwayScheme = async () => {
     if (!props.selectedInstanceId) {
-        ElMessage.warning('请先选择驼峰实例')
+        ElMessage.warning(t('hump.headway.messages.selectInstance'))
         return
     }
 
@@ -523,7 +568,7 @@ const handleAddHeadwayScheme = async () => {
         id: '',
         instanceID: props.selectedInstanceId,
         humpSchemeID: getDefaultHumpSchemeID(),
-        name: `检算实例${headwaySchemeManagerRows.value.length + 1}`,
+        name: t('hump.headway.manager.defaultName', { number: headwaySchemeManagerRows.value.length + 1 }),
         wagonVelocityOnTop: 1.4,
         slopeLineID: getDefaultSlopeLineID(),
         wagonIDs: [],
@@ -531,7 +576,7 @@ const handleAddHeadwayScheme = async () => {
     }
 
     if (!newScheme.humpSchemeID || !newScheme.slopeLineID) {
-        ElMessage.warning('请先确保纵断面方案和溜放线已配置')
+        ElMessage.warning(t('hump.headway.messages.confirmSlopeConfig'))
         return
     }
 
@@ -546,10 +591,10 @@ const handleAddHeadwayScheme = async () => {
             selectedHeadwayCheckSchemeID.value = createdID
         }
 
-        ElMessage.success('新建检算实例成功')
+        ElMessage.success(t('hump.headway.messages.createSuccess'))
     } catch (error) {
         console.error('新建检算实例失败:', error)
-        ElMessage.error('新建检算实例失败')
+        ElMessage.error(t('hump.headway.messages.createFailed'))
     } finally {
         headwaySchemeManagerLoading.value = false
     }
@@ -593,15 +638,15 @@ const handleManagerWagonTokensChange = (row: HeadwayCheckSchemeManagerRow) => {
 const handleSaveHeadwayScheme = async (row: HeadwayCheckSchemeManagerRow) => {
     row.wagonIDs = toHeadwayWagonIDsFromTokens(row.wagonTokens || [])
     if (!row.name.trim()) {
-        ElMessage.warning('实例名称不能为空')
+        ElMessage.warning(t('hump.headway.messages.nameRequired'))
         return
     }
     if (!row.humpSchemeID) {
-        ElMessage.warning('请选择纵断面方案')
+        ElMessage.warning(t('hump.headway.messages.humpSchemeRequired'))
         return
     }
     if (!row.slopeLineID) {
-        ElMessage.warning('请选择溜放线')
+        ElMessage.warning(t('hump.headway.messages.slopeLineRequired'))
         return
     }
 
@@ -612,10 +657,10 @@ const handleSaveHeadwayScheme = async (row: HeadwayCheckSchemeManagerRow) => {
         if (selectedHeadwayCheckSchemeID.value === row.id) {
             await applySelectedHeadwayScheme()
         }
-        ElMessage.success('检算实例已更新')
+        ElMessage.success(t('hump.headway.messages.updateSuccess'))
     } catch (error) {
         console.error('更新检算实例失败:', error)
-        ElMessage.error('更新检算实例失败')
+        ElMessage.error(t('hump.headway.messages.updateFailed'))
     } finally {
         headwaySchemeManagerLoading.value = false
     }
@@ -623,9 +668,9 @@ const handleSaveHeadwayScheme = async (row: HeadwayCheckSchemeManagerRow) => {
 
 const handleDeleteHeadwayScheme = async (row: HeadwayCheckSchemeManagerRow) => {
     try {
-        await ElMessageBox.confirm(`确认删除检算实例“${row.name}”？`, '提示', {
-            confirmButtonText: '确认',
-            cancelButtonText: '取消',
+        await ElMessageBox.confirm(t('hump.headway.messages.deleteConfirm', { name: row.name }), t('common.titles.tip'), {
+            confirmButtonText: t('common.buttons.confirm'),
+            cancelButtonText: t('common.buttons.cancel'),
             type: 'warning'
         })
 
@@ -639,11 +684,11 @@ const handleDeleteHeadwayScheme = async (row: HeadwayCheckSchemeManagerRow) => {
         }
 
         await Promise.all([loadBaseData(), loadHeadwaySchemeManagerData()])
-        ElMessage.success('检算实例已删除')
+        ElMessage.success(t('hump.headway.messages.deleteSuccess'))
     } catch (error) {
         if (error !== 'cancel') {
             console.error('删除检算实例失败:', error)
-            ElMessage.error('删除检算实例失败')
+            ElMessage.error(t('hump.headway.messages.deleteFailed'))
         }
     } finally {
         headwaySchemeManagerLoading.value = false
@@ -657,19 +702,19 @@ const handleCancelHeadwaySchemeEdit = () => {
 
 const handleExecuteHeadwayCheck = async () => {
     if (!props.selectedInstanceId) {
-        ElMessage.warning('请先选择驼峰实例')
+        ElMessage.warning(t('hump.headway.messages.selectInstance'))
         return
     }
     if (!selectedHeadwayCheckSchemeID.value) {
-        ElMessage.warning('请选择检算实例')
+        ElMessage.warning(t('hump.headway.messages.selectVerification'))
         return
     }
     if (!selectedHumpSchemeID.value) {
-        ElMessage.warning('请选择纵断面方案')
+        ElMessage.warning(t('hump.headway.messages.selectHumpScheme'))
         return
     }
     if (!selectedSlopeLineID.value) {
-        ElMessage.warning('请选择溜放线')
+        ElMessage.warning(t('hump.headway.messages.selectSlopeLine'))
         return
     }
 
@@ -678,7 +723,7 @@ const handleExecuteHeadwayCheck = async () => {
 
         const existingScheme = await loadHeadwayCheckSchemeByID(selectedHeadwayCheckSchemeID.value)
         if (!existingScheme) {
-            ElMessage.error('未找到检算实例')
+            ElMessage.error(t('hump.headway.messages.loadSchemeFailed'))
             return
         }
 
@@ -699,10 +744,10 @@ const handleExecuteHeadwayCheck = async () => {
             await loadHeadwaySchemeManagerData()
         }
 
-        ElMessage.success('已保存当前检算配置')
+        ElMessage.success(t('hump.headway.messages.saveConfigSuccess'))
     } catch (error) {
         console.error('保存检算配置失败:', error)
-        ElMessage.error('保存检算配置失败')
+        ElMessage.error(t('hump.headway.messages.saveConfigFailed'))
     } finally {
         headwayCheckExecuting.value = false
     }
@@ -720,6 +765,7 @@ watch(() => props.selectedInstanceId, (val) => {
         headwayCheckSchemes.value = []
         humpSchemes.value = []
         slopeLines.value = []
+        operationConditions.value = []
         humpCalculationsRaw.value = []
         humpCalculationsByScheme.value = {}
         headwaySchemeManagerRows.value = []

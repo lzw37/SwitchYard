@@ -115,9 +115,20 @@
         }
     },
     "common": {
-        "networkError": "Network error, please try again later",
-        "confirm": "Confirm",
-        "cancel": "Cancel"
+        "titles": {
+            "tip": "Tip",
+            "confirm": "Confirm",
+            "warning": "Warning"
+        },
+        "buttons": {
+            "confirm": "Confirm",
+            "cancel": "Cancel",
+            "save": "Save",
+            "close": "Close",
+            "edit": "Edit",
+            "delete": "Delete"
+        },
+        "networkError": "Network error, please try again later"
     },
     "axios": {
         "noPermission": "No permission to access this resource",
@@ -314,12 +325,22 @@
                 "delete": "Delete",
                 "save": "Save",
                 "genVelocityChart": "Generate Velocity-Distance Chart",
-                "genTimeChart": "Generate Time-Distance Chart"
+                "genTimeChart": "Generate Time-Distance Chart",
+                "execute": "Execute",
+                "manage": "..."
             },
             "labels": {
                 "verification": "Verification",
-                "designScheme": "Design Scheme",
-                "condition": "Condition"
+                "designScheme": "Hump Profile Scheme",
+                "condition": "Condition",
+                "slopeLine": "Slope Line",
+                "wagonOrder": "Wagon Order",
+                "pushVelocity": "Push Velocity",
+                "name": "Name",
+                "pushVelocityUnit": "Push Velocity (m/s)",
+                "wagonSequence": "Wagon Release Sequence",
+                "operation": "Operations",
+                "id": "ID"
             },
             "placeholders": {
                 "selectVerification": "Select verification data",
@@ -341,9 +362,47 @@
                 "series1": "Series 1",
                 "series2": "Series 2"
             },
+            "buttons": {
+                "save": "Save",
+                "cancel": "Cancel",
+                "close": "Close",
+                "edit": "Edit",
+                "delete": "Delete",
+                "add": "New Instance"
+            },
+            "manager": {
+                "title": "Headway Check Instance Management",
+                "defaultName": "Headway Check Instance {number}",
+                "toolbar": {
+                    "add": "New Instance"
+                }
+            },
             "messages": {
                 "fetchVelocityFailed": "Failed to fetch velocity curve data",
-                "fetchTimeFailed": "Failed to fetch time curve data"
+                "fetchTimeFailed": "Failed to fetch time curve data",
+                "selectInstance": "Please select a hump instance first",
+                "selectVerification": "Please select verification instance",
+                "selectHumpScheme": "Please select hump profile scheme",
+                "selectSlopeLine": "Please select slope line",
+                "nameRequired": "Instance name cannot be empty",
+                "humpSchemeRequired": "Please select hump profile scheme",
+                "slopeLineRequired": "Please select slope line",
+                "loadFailed": "Failed to load basic data",
+                "loadSchemesFailed": "Failed to load headway check basic data",
+                "loadSchemeFailed": "Failed to load headway check instance",
+                "loadCalculationsFailed": "Failed to load wagon calculation data",
+                "loadManagerFailed": "Failed to load headway check instance management list",
+                "createSuccess": "Headway check instance created successfully",
+                "createFailed": "Failed to create headway check instance",
+                "updateSuccess": "Headway check instance updated",
+                "updateFailed": "Failed to update headway check instance",
+                "deleteConfirm": "Confirm delete headway check instance \"{name}\"?",
+                "deleteSuccess": "Headway check instance deleted",
+                "deleteFailed": "Failed to delete headway check instance",
+                "saveConfigSuccess": "Current headway check configuration saved",
+                "saveConfigFailed": "Failed to save headway check configuration",
+                "loadConditionsFailed": "Failed to load wagon conditions",
+                "confirmSlopeConfig": "Please ensure hump profile scheme and slope line are configured first"
             }
         }
     },
