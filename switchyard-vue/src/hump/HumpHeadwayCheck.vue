@@ -72,7 +72,7 @@
             :close-on-click-modal="false">
             <div class="manager-toolbar">
                 <el-button type="primary" @click="handleAddHeadwayScheme">{{ t('hump.headway.buttons.add')
-                }}</el-button>
+                    }}</el-button>
             </div>
             <el-table :data="headwaySchemeManagerRows" style="width: 100%" v-loading="headwaySchemeManagerLoading">
                 <el-table-column prop="id" :label="t('hump.headway.labels.id')" width="190" />
@@ -196,6 +196,17 @@ interface HeadwayCheckSchemeManagerRow {
     wagonTokens: string[]
     wagonVelocityOnTop: number
     slopeLineID: string
+}
+
+interface SpeedProfileWagon {
+    sequence?: number
+    humpCalculationID?: string
+}
+
+interface SpeedProfileResponseItem {
+    wagon?: SpeedProfileWagon
+    positionList?: Array<number | string>
+    speedList?: Array<number | string>
 }
 
 interface OperationCondition {
@@ -455,6 +466,9 @@ const loadHeadwayCheckSchemeByID = async (id: string) => {
 }
 
 const applySelectedHeadwayScheme = async () => {
+    velocityCurveData.value = []
+    velocityTabs.value = []
+
     if (!selectedHeadwayCheckSchemeID.value) {
         selectedHeadwayCheckWagons.value = []
         selectedHeadwayCheckWagonTokens.value = []
@@ -700,6 +714,111 @@ const handleCancelHeadwaySchemeEdit = () => {
     loadHeadwaySchemeManagerData()
 }
 
+const SPEED_PROFILE_SPACE_STEP_SIZE = 10
+const CURVE_COLORS = ['#2563EB', '#16A34A', '#DC2626', '#D97706', '#7C3AED', '#0F766E', '#BE123C', '#4F46E5']
+
+const toNumericList = (list: unknown): number[] => {
+    if (!Array.isArray(list)) return []
+    return list
+        .map(item => Number(item))
+        .filter(item => Number.isFinite(item))
+}
+
+const normalizeSpeedProfileWagon = (wagon: any): SpeedProfileWagon | undefined => {
+    if (!wagon || typeof wagon !== 'object') return undefined
+
+    const sequenceRaw = wagon.sequence ?? wagon.Sequence
+    const sequence = Number.isFinite(Number(sequenceRaw)) ? Number(sequenceRaw) : undefined
+    const humpCalculationIDRaw = wagon.humpCalculationID ?? wagon.HumpCalculationID
+    const humpCalculationID = typeof humpCalculationIDRaw === 'string' ? humpCalculationIDRaw : undefined
+
+    return {
+        sequence,
+        humpCalculationID
+    }
+}
+
+const normalizeSpeedProfileItem = (item: any): SpeedProfileResponseItem => {
+    const positionList = Array.isArray(item?.positionList) ? item.positionList : item?.PositionList
+    const speedList = Array.isArray(item?.speedList) ? item.speedList : item?.SpeedList
+
+    return {
+        wagon: normalizeSpeedProfileWagon(item?.wagon ?? item?.Wagon),
+        positionList: Array.isArray(positionList) ? positionList : [],
+        speedList: Array.isArray(speedList) ? speedList : []
+    }
+}
+
+const getSpeedProfileLabel = (wagon: SpeedProfileWagon | undefined, index: number): string => {
+    const sequence = Number.isFinite(Number(wagon?.sequence)) ? Number(wagon?.sequence) : index + 1
+    const humpCalculationID = wagon?.humpCalculationID || ''
+    const humpCalculation = humpCalculationsRaw.value.find(hc => hc.id === humpCalculationID)
+    if (humpCalculation) {
+        return `${sequence}. ${getHumpCalculationName(humpCalculation)}`
+    }
+    if (humpCalculationID) {
+        return `${sequence}. ${humpCalculationID}`
+    }
+    return `#${sequence}`
+}
+
+const renderSpeedProfiles = (rawProfiles: SpeedProfileResponseItem[]) => {
+    const nextVelocityCurveData: VelocityCurveData[] = []
+    const nextVelocityTabs: CurveTab[] = []
+
+    rawProfiles.forEach((rawProfile, index) => {
+        const positionList = toNumericList(rawProfile.positionList)
+        const speedList = toNumericList(rawProfile.speedList)
+        const pointCount = Math.min(positionList.length, speedList.length)
+
+        if (pointCount <= 0) return
+
+        const data: VelocityPoint[] = []
+        for (let i = 0; i < pointCount; i++) {
+            const x = positionList[i]
+            const velocity = speedList[i]
+            if (x === undefined || velocity === undefined) continue
+            data.push({ x, velocity })
+        }
+        if (data.length <= 0) return
+
+        const seriesName = `series-${index + 1}`
+
+        nextVelocityCurveData.push({
+            seriesName,
+            color: CURVE_COLORS[index % CURVE_COLORS.length] || '#2563EB',
+            data
+        })
+        nextVelocityTabs.push({
+            name: seriesName,
+            label: getSpeedProfileLabel(rawProfile.wagon, index)
+        })
+    })
+
+    velocityCurveData.value = nextVelocityCurveData
+    velocityTabs.value = nextVelocityTabs
+}
+
+const calculateAndRenderSpeedProfiles = async () => {
+    if (!props.selectedInstanceId || !selectedHeadwayCheckSchemeID.value) {
+        velocityCurveData.value = []
+        velocityTabs.value = []
+        return
+    }
+
+    const response = await axios.get('/Hump/CalculateSpeedProfile', {
+        params: {
+            instanceID: props.selectedInstanceId,
+            headwayCheckSchemeID: selectedHeadwayCheckSchemeID.value,
+            spaceStepSize: SPEED_PROFILE_SPACE_STEP_SIZE
+        }
+    })
+
+    const rawProfiles = Array.isArray(response.data) ? response.data : []
+    const profiles = rawProfiles.map(item => normalizeSpeedProfileItem(item))
+    renderSpeedProfiles(profiles)
+}
+
 const handleExecuteHeadwayCheck = async () => {
     if (!props.selectedInstanceId) {
         ElMessage.warning(t('hump.headway.messages.selectInstance'))
@@ -718,6 +837,7 @@ const handleExecuteHeadwayCheck = async () => {
         return
     }
 
+    let configurationSaved = false
     try {
         headwayCheckExecuting.value = true
 
@@ -738,16 +858,26 @@ const handleExecuteHeadwayCheck = async () => {
         }
 
         await axios.put('/Hump/EditHeadwayCheckScheme', payload)
+        configurationSaved = true
         await loadBaseData()
         await applySelectedHeadwayScheme()
         if (showHeadwaySchemeManager.value) {
             await loadHeadwaySchemeManagerData()
         }
+        await calculateAndRenderSpeedProfiles()
 
         ElMessage.success(t('hump.headway.messages.saveConfigSuccess'))
     } catch (error) {
-        console.error('保存检算配置失败:', error)
-        ElMessage.error(t('hump.headway.messages.saveConfigFailed'))
+        if ((error as any)?.config?.url?.includes('/Hump/CalculateSpeedProfile')) {
+            console.error('速度-距离曲线计算失败:', error)
+            ElMessage.error('检算配置已保存，但速度-距离曲线计算失败')
+        } else if (configurationSaved) {
+            console.error('检算配置保存成功，但刷新结果失败:', error)
+            ElMessage.error('检算配置已保存，但结果刷新失败')
+        } else {
+            console.error('保存检算配置失败:', error)
+            ElMessage.error(t('hump.headway.messages.saveConfigFailed'))
+        }
     } finally {
         headwayCheckExecuting.value = false
     }
@@ -789,15 +919,13 @@ watch(selectedHeadwayCheckWagonTokens, (tokens) => {
 })
 
 // 速度-距离曲线tags数据
-const velocityTabs = ref([
-    { name: 'series1', label: t('hump.headway.series.series1') },
-    { name: 'series2', label: t('hump.headway.series.series2') }
+const velocityTabs = ref<CurveTab[]>([
+    // 运行检算后按返回结果动态填充
 ])
 
 // 时间-距离曲线tags数据
-const timeTabs = ref([
-    { name: 'series1', label: t('hump.headway.series.series1') },
-    { name: 'series2', label: t('hump.headway.series.series2') }
+const timeTabs = ref<CurveTab[]>([
+    // 暂不在此处填充，保留时间曲线扩展能力
 ])
 
 // 删除速度-距离曲线的tag
@@ -805,6 +933,7 @@ const handleRemoveVelocityTab = (tagName: string) => {
     const index = velocityTabs.value.findIndex(tab => tab.name === tagName)
     if (index > -1) {
         velocityTabs.value.splice(index, 1)
+        velocityCurveData.value = velocityCurveData.value.filter(curve => curve.seriesName !== tagName)
     }
 }
 
@@ -813,6 +942,7 @@ const handleRemoveTimeTab = (tagName: string) => {
     const index = timeTabs.value.findIndex(tab => tab.name === tagName)
     if (index > -1) {
         timeTabs.value.splice(index, 1)
+        timeCurveData.value = timeCurveData.value.filter(curve => curve.seriesName !== tagName)
     }
 }
 
@@ -858,6 +988,11 @@ interface TimeCurveData {
     seriesName: string
     color: string
     data: TimePoint[]
+}
+
+interface CurveTab {
+    name: string
+    label: string
 }
 
 const velocityCurveData = ref<VelocityCurveData[]>([])

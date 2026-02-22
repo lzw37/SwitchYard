@@ -61,7 +61,7 @@
                                 <p>练习得分</p>
                                 <strong>
                                     <span v-if="currentGrade.graded">{{ currentGrade.correct }}/{{ currentGrade.total
-                                    }}</span>
+                                        }}</span>
                                     <span v-else>待评分</span>
                                 </strong>
                             </div>
@@ -132,7 +132,7 @@
                             <div class="quiz-summary">
                                 <span>已选 {{ answeredCount }} / {{ selectedCourse.quiz.length }} 题</span>
                                 <span v-if="currentGrade.graded">得分：{{ currentGrade.correct }} / {{ currentGrade.total
-                                }}</span>
+                                    }}</span>
                                 <span v-else>提交后显示得分</span>
                             </div>
 
@@ -448,7 +448,7 @@ function isUserWrong(qIdx: number, oIdx: number) {
 </script>
 
 <style scoped>
-@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap");
+/* @import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap"); */
 
 :global(:root) {
     --bg: #0b1021;

@@ -1,12 +1,13 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
+using MySqlX.XDevAPI;
 using SwitchYard.Hump;
+using SwitchYard.Service.Services;
+using SwitchYard.Service.Utils;
 using System.Data.Common;
 using System.Net;
 using System.Runtime.CompilerServices;
-using Microsoft.AspNetCore.Authorization;
-using SwitchYard.Service.Utils;
-using SwitchYard.Service.Services;
 using System.Text;
 
 namespace SwitchYard.Service.Controllers
@@ -680,7 +681,7 @@ namespace SwitchYard.Service.Controllers
             }
         }
 
-        private OperationCondition GetOperationCondition(string instanceID, string id)
+        private OperationCondition LoadOperationCondition(string instanceID, string id)
         {
             DBConnector dbConnector = DBConnector.GetDBConnector();
             var condition = dbConnector.Query<OperationCondition>("SELECT * FROM operationcondition WHERE InstanceID = @instanceID AND ID = @id", new { instanceID = instanceID, id = id }).FirstOrDefault();
@@ -1058,7 +1059,7 @@ namespace SwitchYard.Service.Controllers
 
                 parameters.SlopeLine = slopeLine;
                 parameters.Wagon = wagonConceptList.Find(w => w.TypeName == parameters.WagonTypeName);
-                parameters.OperationCondition = GetOperationCondition(parameters.InstanceID, parameters.OperationConditionID);
+                parameters.OperationCondition = LoadOperationCondition(parameters.InstanceID, parameters.OperationConditionID);
 
                 humpCalculation.Data = new List<HumpCalculationData>();
 
@@ -1142,7 +1143,7 @@ namespace SwitchYard.Service.Controllers
                 
                 
                 parameters.Wagon = wagonConceptList.Find(w => w.TypeName == parameters.WagonTypeName);
-                parameters.OperationCondition = GetOperationCondition(parameters.InstanceID, parameters.OperationConditionID);
+                parameters.OperationCondition = LoadOperationCondition(parameters.InstanceID, parameters.OperationConditionID);
 
                 var kineticEnergyHeightList = new List<object>();
 
@@ -1190,7 +1191,7 @@ namespace SwitchYard.Service.Controllers
 
 
                 parameters.Wagon = wagonConceptList.Find(w => w.TypeName == parameters.WagonTypeName);
-                parameters.OperationCondition = GetOperationCondition(parameters.InstanceID, parameters.OperationConditionID);
+                parameters.OperationCondition = LoadOperationCondition(parameters.InstanceID, parameters.OperationConditionID);
 
                 var resistanceEnergyHeightList = new List<object>();
 
@@ -1918,7 +1919,12 @@ namespace SwitchYard.Service.Controllers
                 scheme.WagonList = dbConnector.Query<HeadwayCheckWagon>("SELECT * FROM headwaycheckwagon WHERE InstanceID = @instanceID AND HeadwayCheckID = @headwayCheckID ORDER BY Sequence", 
                     new { instanceID, headwayCheckID = scheme.ID });
             }
-            
+
+            foreach(var hcWagon in scheme.WagonList)
+            {
+                hcWagon.HumpCalculation = GetHumpCalculation(instanceID, scheme.HumpSchemeID, hcWagon.HumpCalculationID);
+            }
+
             return scheme;
         }
 
@@ -1946,6 +1952,119 @@ namespace SwitchYard.Service.Controllers
             {
                 _logger.LogError(ex, "Error getting HeadwayCheckScheme with ID {SchemeID}.", id);
                 return StatusCode(500, "Internal server error while getting HeadwayCheckScheme.");
+            }
+        }
+
+        /// <summary>
+        /// 计算勾车溜放的速度曲线
+        /// </summary>
+        /// <param name="instanceID"></param>
+        /// <param name="headwayCheckSchemeID"></param>
+        /// <returns></returns>
+        [HttpGet(Name = "CalculateSpeedProfile")]
+        public IActionResult CalculateSpeedProfile(string instanceID, string headwayCheckSchemeID, double spaceStepSize)
+        {
+            try
+            {
+                var authResult = ValidateInstanceOwnershipOrFail(instanceID);
+                if (authResult != null) return authResult;
+
+                SpeedProfileGenerator.SpaceStepSize = spaceStepSize;
+
+                var scheme = LoadHeadwayCheckScheme(instanceID, headwayCheckSchemeID);
+                var flatLayout = LoadFlatLayout(instanceID, scheme.SlopeLineID);
+                var slopeLayout = LoadSlopeLayout(instanceID, scheme.HumpSchemeID);
+                var slopeLine = LoadSlopeLine(instanceID, scheme.SlopeLineID);
+                var wagonConceptList = LoadWagonConcept(instanceID);
+
+                var speedProfileList = new List<HeadwayCheckWagonSpeedProfile>();
+
+                foreach (var hcWagon in scheme.WagonList)  // 分别对每勾车计算速度曲线
+                {
+                    var humpCalc = hcWagon.HumpCalculation;
+                    var operationCondition = LoadOperationCondition(instanceID, humpCalc.OperationConditionID);
+
+                    hcWagon.EnergyCalculationParams = new EnergyCalculationParams
+                    {
+                        InstanceID = instanceID,
+                        HumpSchemeID = scheme.HumpSchemeID,
+                        ID = humpCalc.ID,
+                        SlopeLineID = humpCalc.SlopeLineID,
+                        SlopeLine = slopeLine,
+                        WagonTypeName = humpCalc.WagonType,
+                        Wagon = wagonConceptList?.Find(w => w.TypeName == humpCalc.WagonType),
+                        OperationConditionID = humpCalc.OperationConditionID,
+                        OperationCondition = operationCondition,
+                        RetarderStatus = null // TODO: 如果需要减速器状态，需要从HumpCalculation中获取RetarderStatusID并加载
+                    };
+
+                    var speedProfile = SpeedProfileGenerator.Generate(hcWagon, flatLayout, slopeLayout);
+
+                    speedProfileList.Add(speedProfile);
+                }
+
+                _logger.LogInformation("Calculated speed profile for HeadwayCheckScheme with ID {SchemeID} for instance {InstanceID}.", headwayCheckSchemeID, instanceID);
+                return Ok(speedProfileList);
+            }
+            catch(Exception ex)
+            {
+                _logger.LogError(ex, "Error calculating speed profile for instance {InstanceID} with HeadwayCheckScheme ID {SchemeID}.", instanceID, headwayCheckSchemeID);
+                return StatusCode(500, "Internal server error while calculating speed profile.");
+            }
+        }
+
+        /// <summary>
+        /// 执行驼峰检算
+        /// </summary>
+        /// <param name="instanceID">驼峰计算实例ID</param>
+        /// <param name="headwayCheckSchemeID">驼峰检算方案ID</param>
+        /// <returns></returns>
+        [HttpGet(Name = "ExecuteHeadwayCheck")]
+        public IActionResult ExecuteHeadwayCheck(string instanceID, string headwayCheckSchemeID)
+        {
+            try
+            {
+                var authResult = ValidateInstanceOwnershipOrFail(instanceID);
+                if (authResult != null) return authResult;
+
+                var scheme = LoadHeadwayCheckScheme(instanceID, headwayCheckSchemeID);
+                var flatLayout = LoadFlatLayout(instanceID, scheme.SlopeLineID);
+                var slopeLayout = LoadSlopeLayout(instanceID, scheme.HumpSchemeID);
+
+                var wagonConceptList = LoadWagonConcept(instanceID);
+                var slopeLine = LoadSlopeLine(instanceID, scheme.SlopeLineID);
+
+                foreach (var hcWagon in scheme.WagonList)
+                {
+                    var humpCalc = hcWagon.HumpCalculation;
+                    slopeLine.FlatLayout = flatLayout;
+                    var operationCondition = LoadOperationCondition(instanceID, humpCalc.OperationConditionID);
+
+                    hcWagon.EnergyCalculationParams = new EnergyCalculationParams
+                    {
+                        InstanceID = instanceID,
+                        HumpSchemeID = scheme.HumpSchemeID,
+                        ID = humpCalc.ID,
+                        SlopeLineID = humpCalc.SlopeLineID,
+                        SlopeLine = slopeLine,
+                        WagonTypeName = humpCalc.WagonType,
+                        Wagon = wagonConceptList?.Find(w => w.TypeName == humpCalc.WagonType),
+                        OperationConditionID = humpCalc.OperationConditionID,
+                        OperationCondition = operationCondition,
+                        RetarderStatus = null // TODO: 如果需要减速器状态，需要从HumpCalculation中获取RetarderStatusID并加载
+                    };
+                }
+
+                var hcData = HeadwayChecker.GetHeadwayCheckData(scheme, flatLayout, slopeLayout);
+                //var hcResult = HeadwayChecker.GetHeadwayCheckResult(hcData, flatLayout);
+
+                _logger.LogInformation("HeadwayCheck with ID {SchemeID} for instance {InstanceID} has been excuted.", headwayCheckSchemeID, instanceID);
+                return Ok(hcData);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error executing HeadwayCheck for instance {InstanceID} with ID {SchemeID}.", instanceID, instanceID);
+                return StatusCode(500, "Internal server error while executing HeadwayCheck.");
             }
         }
     }
