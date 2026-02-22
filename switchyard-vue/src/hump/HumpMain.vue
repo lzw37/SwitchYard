@@ -40,7 +40,7 @@
                     <HumpSlopeDesigner :selectedInstanceId="selectedLine" />
                 </el-tab-pane>
                 <el-tab-pane :label="t('humpMain.tabs.release')" name="release">
-                    <HumpHeadwayCheck />
+                    <HumpHeadwayCheck :selectedInstanceId="selectedLine" />
                 </el-tab-pane>
                 <el-tab-pane :label="t('humpMain.tabs.simulation')" name="simulation">
                     <HumpSim />
