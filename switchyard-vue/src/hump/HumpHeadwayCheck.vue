@@ -578,20 +578,31 @@ const handleAddHeadwayScheme = async () => {
         return
     }
 
+    let humpSchemeID = getDefaultHumpSchemeID()
+    let slopeLineID = getDefaultSlopeLineID()
+
+    if (!humpSchemeID || !slopeLineID) {
+        await loadBaseData()
+        humpSchemeID = humpSchemeID || getDefaultHumpSchemeID()
+        slopeLineID = slopeLineID || getDefaultSlopeLineID()
+    }
+
+    if (!selectedHumpSchemeID.value && humpSchemeID) {
+        selectedHumpSchemeID.value = humpSchemeID
+    }
+    if (!selectedSlopeLineID.value && slopeLineID) {
+        selectedSlopeLineID.value = slopeLineID
+    }
+
     const newScheme: HeadwayCheckSchemeManagerRow = {
         id: '',
         instanceID: props.selectedInstanceId,
-        humpSchemeID: getDefaultHumpSchemeID(),
+        humpSchemeID,
         name: t('hump.headway.manager.defaultName', { number: headwaySchemeManagerRows.value.length + 1 }),
         wagonVelocityOnTop: 1.4,
-        slopeLineID: getDefaultSlopeLineID(),
+        slopeLineID,
         wagonIDs: [],
         wagonTokens: []
-    }
-
-    if (!newScheme.humpSchemeID || !newScheme.slopeLineID) {
-        ElMessage.warning(t('hump.headway.messages.confirmSlopeConfig'))
-        return
     }
 
     try {
