@@ -1,6 +1,7 @@
 <template>
     <div>
-        <div class="slope-scroll-container" ref="scrollContainerRef" @scroll.passive="handleHorizontalScroll">
+        <div class="slope-scroll-container" ref="scrollContainerRef" @scroll.passive="handleHorizontalScroll"
+            @wheel.prevent="handleScaleXWheel">
             <svg id="slope" :style="{ width: svgWidth + 'px', height: svgHeight + 'px' }">
                 <defs>
                     <linearGradient id="backgroundGradient" x1="0%" y1="0%" x2="0%" y2="100%">
@@ -132,8 +133,11 @@ const props = defineProps<{
 const emit = defineEmits<{
     updateGlobalCursorX: [value: number]
     'horizontal-scroll': [scrollLeft: number]
+    'wheel-scale-x': [payload: { scaleX: number, scrollLeft: number }]
 }>()
 const scrollContainerRef = ref<HTMLDivElement | null>(null);
+const minScaleX = 0.1;
+const maxScaleX = 5;
 
 function handleHorizontalScroll(event: Event) {
     const target = event.target as HTMLDivElement | null;
@@ -144,6 +148,30 @@ function handleHorizontalScroll(event: Event) {
 function setScrollLeft(scrollLeft: number) {
     if (!scrollContainerRef.value) return;
     scrollContainerRef.value.scrollLeft = scrollLeft;
+}
+
+function clampScaleX(scaleX: number) {
+    return Math.min(maxScaleX, Math.max(minScaleX, scaleX));
+}
+
+function handleScaleXWheel(event: WheelEvent) {
+    const container = scrollContainerRef.value;
+    if (!container) return;
+
+    const oldScale = scaleX.value;
+    const zoomFactor = event.deltaY < 0 ? 1.1 : 0.9;
+    const nextScale = clampScaleX(Math.round(oldScale * zoomFactor * 1000) / 1000);
+    if (Math.abs(nextScale - oldScale) < 1e-6) return;
+
+    const rect = container.getBoundingClientRect();
+    const localX = event.clientX - rect.left;
+    const anchorDataX = (container.scrollLeft + localX - marginLeft.value) / oldScale;
+    const nextScrollLeft = Math.max(0, marginLeft.value + anchorDataX * nextScale - localX);
+
+    emit('wheel-scale-x', {
+        scaleX: nextScale,
+        scrollLeft: nextScrollLeft
+    });
 }
 
 const minSvgHeight = ref(400);

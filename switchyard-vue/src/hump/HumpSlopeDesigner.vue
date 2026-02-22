@@ -80,7 +80,8 @@
                 :resistance-energy-height-data="resistanceEnergyHeightData"
                 :kinetic-energy-height-data="kineticEnergyHeightData" :global-scale-x="globalScaleX"
                 :global-scale-y="globalScaleY" :element-visibility="elementVisibility" :global-cursor-x="globalCursorX"
-                @updateGlobalCursorX="updateGlobalCursorX" @horizontal-scroll="syncHorizontalScroll" />
+                @updateGlobalCursorX="updateGlobalCursorX" @horizontal-scroll="syncHorizontalScroll"
+                @wheel-scale-x="handleWheelScaleX" />
             <HumpSlopeSketchBlock ref="humpSlopeSketchBlockRef" v-model:slope-layout="slopeLayout" style="height:auto" :global-scale-x="globalScaleX"
                 :global-cursor-x="globalCursorX" :horizontal-scroll-left="horizontalScrollLeft"
                 @updateGlobalCursorX="updateGlobalCursorX" @horizontal-scroll="syncHorizontalScroll" />
@@ -356,6 +357,11 @@ function syncHorizontalScroll(scrollLeft: number) {
     requestAnimationFrame(() => {
         syncingHorizontalScroll.value = false;
     });
+}
+
+function handleWheelScaleX(payload: { scaleX: number, scrollLeft: number }) {
+    globalScaleX.value = payload.scaleX;
+    syncHorizontalScroll(payload.scrollLeft);
 }
 
 const resistanceEnergyHeightData = ref<{ x: number, height: number }[] | null>(null);
