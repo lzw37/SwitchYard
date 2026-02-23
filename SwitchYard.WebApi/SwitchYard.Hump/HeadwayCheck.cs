@@ -81,12 +81,7 @@ namespace SwitchYard.Hump
     /// </summary>
     public static class HeadwayChecker
     {
-        /// <summary>
-        /// 生成驼峰检算数据
-        /// </summary>
-        /// <param name="scheme"></param>
-        /// <returns></returns>
-        public static HeadwayCheckData GetHeadwayCheckData(HeadwayCheckScheme scheme, FlatLayout flatLayout, SlopeLayout slopeLayout)
+        private static List<HeadwayCheckPoint> GenerateCheckPointList(FlatLayout flatLayout)
         {
             var checkPointList = new List<HeadwayCheckPoint>();
             // 生成检算点
@@ -122,24 +117,74 @@ namespace SwitchYard.Hump
                 };
                 checkPointList.Add(retarderCheckPoint);
             }
+            return checkPointList;
+        }
 
-            var data = new HeadwayCheckData()
+        /// <summary>
+        /// 生成驼峰检算运行时间数据
+        /// </summary>
+        /// <param name="scheme"></param>
+        /// <returns></returns>
+        public static HeadwayCheckRunningTime CalculateRunningTime(HeadwayCheckScheme scheme, FlatLayout flatLayout, SlopeLayout slopeLayout)
+        {
+            // 生成检算点列表
+            var checkPointList = GenerateCheckPointList(flatLayout);
+
+            var data = new HeadwayCheckRunningTime()
             {
                 InstanceID = scheme.InstanceID,
                 HeadwayCheckSchemeID = scheme.ID,
                 HeadwayCheckPoints = checkPointList
             };
 
-            data.CheckPointDatas = new List<HeadwayCheckPointData>();
+            data.CheckPointDatas = new List<HeadwayCheckRunningTimeData>();
             foreach (var cp in checkPointList)
             {
                 foreach (var hcWagon in scheme.WagonList)
                 {
-                    
+                    // 计算速度曲线
+                    var speedProfile = SpeedProfileGenerator.Generate(hcWagon, flatLayout, slopeLayout);
+
+                    // 计算至检算点的时间
+                    var enterTime = CalculateCumulativeTime(speedProfile, cp.StartX);
+                    var exitTime = CalculateCumulativeTime(speedProfile, cp.EndX);
+
+                    HeadwayCheckRunningTimeData cpData = new HeadwayCheckRunningTimeData()
+                    {
+                        HeadwayCheckWagon = hcWagon,
+                        HeadwayCheckPoint = cp,
+                        EnterTime = enterTime,
+                        ExitTime = exitTime
+                    };
+                    data.CheckPointDatas.Add(cpData);
                 }
             }
 
             return data;
+        }
+
+        private static double CalculateCumulativeTime(HeadwayCheckWagonSpeedProfile speedProfile, double x)
+        {
+            double cumulativeTime = 0;
+            for (int i = 0; i < speedProfile.PositionList.Count - 1; i++)
+            {
+                var pos0 = speedProfile.PositionList[i];
+                var v0 = speedProfile.SpeedList[i];
+
+                var pos1 = speedProfile.PositionList[i + 1];
+                var v1 = speedProfile.SpeedList[i + 1];
+
+                if (pos0 > x)
+                    break;
+
+                var duration = 2 * (pos1 - pos0) / (v0 + v1);  // 平均速度法计算时间
+                if (x>pos0 && x<pos1)
+                {
+                    duration = (x - pos0) / (pos1 - pos0) * duration;
+                }
+                cumulativeTime += duration;
+            }
+            return cumulativeTime;
         }
 
         /// <summary>
@@ -147,13 +192,13 @@ namespace SwitchYard.Hump
         /// </summary>
         /// <param name="data"></param>
         /// <returns></returns>
-        public static HeadwayCheckResult GetHeadwayCheckResult(HeadwayCheckData data, FlatLayout flatLayout)
+        public static HeadwayCheckResult GetHeadwayCheckResult(HeadwayCheckRunningTime data, FlatLayout flatLayout)
         {
             return new HeadwayCheckResult();
         }
     }
 
-    public class HeadwayCheckData
+    public class HeadwayCheckRunningTime
     {
         /// <summary>
         /// 驼峰实例ID
@@ -168,16 +213,68 @@ namespace SwitchYard.Hump
         /// <summary>
         /// 检算数据的字典，键为HeadwayCheckPoint，值为检算点数据列表
         /// </summary>
-        public List<HeadwayCheckPointData> CheckPointDatas { get; set; }
+        [JsonIgnore]
+        public List<HeadwayCheckRunningTimeData> CheckPointDatas { get; set; }
+
+        [JsonIgnore]
+        public Dictionary<HeadwayCheckWagon, List<HeadwayCheckRunningTimeData>> CheckPointDataDict
+        {
+            get
+            {
+                return CheckPointDatas.GroupBy(d => d.HeadwayCheckWagon)
+                    .ToDictionary(g => g.Key, g => g.ToList());
+            }
+        }
+
+        public List<HeadwayCheckWagonRunningTime> RunningTimes
+        {
+            get
+            {
+                return CheckPointDatas
+                    .GroupBy(d => d.HeadwayCheckWagon.Sequence)
+                    .Select(g =>
+                    {
+                        var wagon = g.First().HeadwayCheckWagon;
+                        var sortedData = g.OrderBy(d => d.HeadwayCheckPoint.StartX).ToList();
+                        
+                        var positionList = new List<double>();
+                        var runningTimeList = new List<double>();
+                        
+                        foreach (var data in sortedData)
+                        {
+                            positionList.Add(data.HeadwayCheckPoint.StartX);
+                            positionList.Add(data.HeadwayCheckPoint.EndX);
+                            runningTimeList.Add(data.EnterTime);
+                            runningTimeList.Add(data.ExitTime);
+                        }
+                        
+                        return new HeadwayCheckWagonRunningTime
+                        {
+                            Wagon = wagon,
+                            PositionList = positionList,
+                            RunningTimeList = runningTimeList
+                        };
+                    })
+                    .OrderBy(rt => rt.Wagon.Sequence)
+                    .ToList();
+            }
+        }
 
         /// <summary>
         /// 检算点列表
         /// </summary>
         [JsonIgnore]
-        public List<HeadwayCheckPoint> HeadwayCheckPoints { get; set; }
+        public List<HeadwayCheckPoint>? HeadwayCheckPoints { get; set; }
     }
 
-    public class HeadwayCheckPointData
+    public class HeadwayCheckWagonRunningTime
+    {
+        public HeadwayCheckWagon Wagon { get; set; }
+        public List<double> PositionList { get; set; } = new List<double>();
+        public List<double> RunningTimeList { get; set; } = new List<double>();
+    }
+
+    public class HeadwayCheckRunningTimeData
     {
         /// <summary>
         /// 检算车辆

@@ -2014,13 +2014,13 @@ namespace SwitchYard.Service.Controllers
         }
 
         /// <summary>
-        /// 执行驼峰检算
+        /// 计算运行时间
         /// </summary>
         /// <param name="instanceID">驼峰计算实例ID</param>
         /// <param name="headwayCheckSchemeID">驼峰检算方案ID</param>
         /// <returns></returns>
-        [HttpGet(Name = "ExecuteHeadwayCheck")]
-        public IActionResult ExecuteHeadwayCheck(string instanceID, string headwayCheckSchemeID)
+        [HttpGet(Name = "CalculateRunningTime")]
+        public IActionResult CalculateRunningTime(string instanceID, string headwayCheckSchemeID)
         {
             try
             {
@@ -2034,10 +2034,9 @@ namespace SwitchYard.Service.Controllers
                 var wagonConceptList = LoadWagonConcept(instanceID);
                 var slopeLine = LoadSlopeLine(instanceID, scheme.SlopeLineID);
 
-                foreach (var hcWagon in scheme.WagonList)
+                foreach (var hcWagon in scheme.WagonList)  // 分别对每勾车计算速度曲线
                 {
                     var humpCalc = hcWagon.HumpCalculation;
-                    slopeLine.FlatLayout = flatLayout;
                     var operationCondition = LoadOperationCondition(instanceID, humpCalc.OperationConditionID);
 
                     hcWagon.EnergyCalculationParams = new EnergyCalculationParams
@@ -2055,11 +2054,10 @@ namespace SwitchYard.Service.Controllers
                     };
                 }
 
-                var hcData = HeadwayChecker.GetHeadwayCheckData(scheme, flatLayout, slopeLayout);
-                //var hcResult = HeadwayChecker.GetHeadwayCheckResult(hcData, flatLayout);
+                var rtData = HeadwayChecker.CalculateRunningTime(scheme, flatLayout, slopeLayout);
 
                 _logger.LogInformation("HeadwayCheck with ID {SchemeID} for instance {InstanceID} has been excuted.", headwayCheckSchemeID, instanceID);
-                return Ok(hcData);
+                return Ok(rtData);
             }
             catch (Exception ex)
             {
