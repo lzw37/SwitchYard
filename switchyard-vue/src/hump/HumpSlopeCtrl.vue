@@ -41,6 +41,10 @@
                             style="cursor:pointer">+</text>
                     </g>
                 </g>
+                <g v-if="showRetarder" class="retarders">
+                    <rect v-for="retarder in retarderRects" :key="retarder.key" class="retarder-range"
+                        :x="retarder.x" :y="retarder.y" :width="retarder.width" :height="retarder.height" />
+                </g>
                 <g class="slopelines">
                     <line v-for="seg in slopeLayout?.positionSegmentList || []" class="slope-line"
                         :x1="getX(getPositionX(seg.startPositionID))" :y1="getY(getPositionHeight(seg.startPositionID))"
@@ -53,10 +57,10 @@
                             :class="{ 'point-circle-longpress': longPressActivatedId === pos.id, 'point-circle-dragging': draggingId === pos.id }"
                             @mousedown="startDrag(pos, $event)" @touchstart.prevent="startTouchDrag(pos, $event)">
                         </circle>
-                        <text class="point-height-text" :x="getX(pos.x)"
+                        <text v-if="showPointHeightNumber" class="point-height-text" :x="getX(pos.x)"
                             :y="(textPositions.get(pos.id)?.y ?? (getY(pos.height) - 10))">{{ pos.height }}m</text>
                         <line
-                            v-if="Math.abs(getY(pos.height) - (textPositions.get(pos.id)?.y ?? (getY(pos.height) - 10))) >= 15"
+                            v-if="showPointHeightNumber && Math.abs(getY(pos.height) - (textPositions.get(pos.id)?.y ?? (getY(pos.height) - 10))) >= 15"
                             class="point-line" :x1="getX(pos.x)"
                             :y1="textPositions.get(pos.id)?.barStartY ?? (getY(pos.height) - 10)" :x2="getX(pos.x)"
                             :y2="(textPositions.get(pos.id)?.barEndY ?? (getY(pos.height) - 10))"></line>
@@ -73,7 +77,7 @@
                     <g v-for="dataPoint in resistanceEnergyHeightData || []">
                         <circle class="resistance-circle" :cx="getX(dataPoint.x)"
                             :cy="getY(orgKineticEnergyY - dataPoint.height)" r="4" />
-                        <text class="resistance-text" :x="getX(dataPoint.x)"
+                        <text v-if="showResistanceNumber" class="resistance-text" :x="getX(dataPoint.x)"
                             :y="(getY(orgKineticEnergyY - dataPoint.height) + getY(orgKineticEnergyY)) / 2">{{
                                 dataPoint.height
                             }}m</text>
@@ -92,7 +96,7 @@
                         kineticEnergyHeightData || []" :x1="getX(dataPoint.x)"
                         :y1="getY(dataPoint.result.gravitationHeight)" :x2="getX(dataPoint.x)"
                         :y2="getY(dataPoint.result.gravitationHeight + dataPoint.result.kineticEnergyHeight)"></line>
-                    <text v-if="props.elementVisibility?.kinetic" class="kinetic-text" v-for="dataPoint in
+                    <text v-if="props.elementVisibility?.kinetic && showKineticNumber" class="kinetic-text" v-for="dataPoint in
                         kineticEnergyHeightData || []" :x="getX(dataPoint.x)"
                         :y="kineticTextPositions.get(dataPoint.x) ?? ((getY(dataPoint.result.gravitationHeight) + getY(dataPoint.result.gravitationHeight + dataPoint.result.kineticEnergyHeight)) / 2)">{{
                             dataPoint.result.kineticEnergyHeight
@@ -111,10 +115,11 @@
     </div>
 </template>
 <script setup lang="ts">
-import { CurveDirections, LocationParam, SlopeLayout, VPosition, VPositionSegment } from './humplayoutctrl';
+import { CurveDirections, FlatLayout, LocationParam, SlopeLayout, VPosition, VPositionSegment } from './humplayoutctrl';
 import { ref, computed, onBeforeUnmount, onMounted } from 'vue';
 
 const props = defineProps<{
+    flatLayout?: FlatLayout | null
     slopeLayout?: SlopeLayout | null
     resistanceEnergyHeightData?: { x: number, height: number }[] | null
     kineticEnergyHeightData?: { x: number, result: any }[] | null
@@ -125,6 +130,10 @@ const props = defineProps<{
         resistance: boolean
         kinetic: boolean
         breaking: boolean
+        retarder: boolean
+        resistanceNumber: boolean
+        kineticNumber: boolean
+        pointHeightNumber: boolean
     }
     g_?: number
     globalCursorX?: number
@@ -201,6 +210,10 @@ const marginLeft = ref(50);
 const marginRight = ref(20);
 const marginBottom = ref(20);
 const marginTop = ref(20);
+const showRetarder = computed(() => props.elementVisibility?.retarder ?? true);
+const showResistanceNumber = computed(() => props.elementVisibility?.resistanceNumber ?? true);
+const showKineticNumber = computed(() => props.elementVisibility?.kineticNumber ?? true);
+const showPointHeightNumber = computed(() => props.elementVisibility?.pointHeightNumber ?? true);
 const draggingId = ref<string | null>(null);
 const startMouseY = ref(0);
 const startHeight = ref(0);
@@ -259,6 +272,40 @@ function getPositionHeight(positionID: string): number {
     const position = props.slopeLayout?.positionList?.find(pos => pos.id === positionID);
     return position?.height ?? 0;
 }
+
+function getFlatPositionX(positionID: string): number | null {
+    const position = props.flatLayout?.positionList?.find(pos => pos.id?.toString() === positionID?.toString());
+    if (!position) return null;
+    return Number.isFinite(position.x) ? position.x : null;
+}
+
+const retarderRects = computed(() => {
+    const list = (props.flatLayout as any)?.retarderList as any[] | undefined;
+    const segments = props.flatLayout?.positionSegmentList || [];
+    if (!Array.isArray(list) || list.length === 0) return [];
+
+    const y = marginTop.value;
+    const height = Math.max(0, svgHeight.value - marginTop.value - marginBottom.value);
+
+    return list.map((retarder, index) => {
+        const segmentId = retarder?.bindingPositionSegmentID ?? retarder?.bindingPositionSegment?.id;
+        const directSegment = retarder?.bindingPositionSegment;
+        const segment = segments.find(seg => seg.id?.toString() === segmentId?.toString()) ?? directSegment;
+        const startX = getFlatPositionX(segment?.startPositionID);
+        const endX = getFlatPositionX(segment?.endPositionID);
+        if (startX === null || endX === null) return null;
+
+        const x1 = getX(Math.min(startX, endX));
+        const x2 = getX(Math.max(startX, endX));
+        return {
+            key: retarder?.id ?? segmentId ?? `retarder-${index}`,
+            x: x1,
+            y,
+            width: Math.max(0, x2 - x1),
+            height
+        };
+    }).filter((item): item is { key: string; x: number; y: number; width: number; height: number } => item !== null);
+});
 
 function startDrag(pos: { id: string; height: number; x: number }, event: MouseEvent) {
     event.preventDefault();
@@ -649,6 +696,12 @@ function addCursorXListener() {
     });
 }
 
+let tempVPositionIdSeq = 0;
+function createTempVPositionId(): string {
+    tempVPositionIdSeq += 1;
+    return `tmp-vp-${Date.now()}-${tempVPositionIdSeq}`;
+}
+
 function buildSegments(positions: VPosition[]): VPositionSegment[] {
     const sorted = [...positions].sort((a, b) => a.x - b.x);
     const segments: VPositionSegment[] = [];
@@ -700,15 +753,15 @@ function addVPosition(posX: number) {
 
     // 少于2个点时，直接插入默认高度2的点
     if (positions.length === 0) {
-        const newPos1 = new VPosition(`vp-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`, posX, 2);
-        const newPos2 = new VPosition(`vp-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`, posX + 5, 2);
+        const newPos1 = new VPosition(createTempVPositionId(), posX, 2);
+        const newPos2 = new VPosition(createTempVPositionId(), posX + 5, 2);
         const updated = [...positions, newPos1, newPos2].sort((a, b) => a.x - b.x);
         sl.positionList = updated;
         sl.positionSegmentList = buildSegments(updated);
         return;
     }
     else if (positions.length === 1) {
-        const newPos1 = new VPosition(`vp-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`, posX, 2);
+        const newPos1 = new VPosition(createTempVPositionId(), posX, 2);
         const updated = [...positions, newPos1].sort((a, b) => a.x - b.x);
         sl.positionList = updated;
         sl.positionSegmentList = buildSegments(updated);
@@ -727,7 +780,7 @@ function addVPosition(posX: number) {
         height = right.height;
     }
 
-    const newPos = new VPosition(`vp-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`, posX, Math.round(height * 1000) / 1000);
+    const newPos = new VPosition(createTempVPositionId(), posX, Math.round(height * 1000) / 1000);
     const updated = [...positions, newPos].sort((a, b) => a.x - b.x);
     sl.positionList = updated;
     sl.positionSegmentList = buildSegments(updated);
@@ -800,6 +853,13 @@ defineExpose({
 .slope-line {
     stroke: #C2A68C;
     stroke-width: 3px;
+}
+
+.retarders .retarder-range {
+    fill: none;
+    stroke: #2f74d0;
+    stroke-width: 1.5px;
+    pointer-events: none;
 }
 
 .guide-line {

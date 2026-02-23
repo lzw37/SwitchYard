@@ -22,7 +22,7 @@
                     </el-button>
                 </el-button-group>
             </div>
-            <el-tabs v-model="activeTab" class="hump-tabs">
+            <el-tabs v-model="activeTab" class="hump-main-tabs">
                 <el-tab-pane :label="t('humpMain.tabs.plan')" name="plan">
                     <HumpLayout :selectedInstanceId="selectedLine" />
                 </el-tab-pane>
@@ -160,20 +160,20 @@ onMounted(() => {
     margin-left: 10px;
 }
 
-.hump-tabs {
+.hump-main-tabs {
     margin: 0 auto;
 }
 
-.hump-tabs :deep(.el-tabs__header) {
+.hump-main-tabs > :deep(.el-tabs__header) {
     padding-left: 450px;
     padding-right: 120px;
 }
 
-.hump-tabs :deep(.el-tabs__nav-wrap) {
+.hump-main-tabs > :deep(.el-tabs__header .el-tabs__nav-wrap) {
     overflow-x: auto;
 }
 
-.hump-tabs :deep(.el-tabs__nav-scroll) {
+.hump-main-tabs > :deep(.el-tabs__header .el-tabs__nav-scroll) {
     min-width: max-content;
 }
 
@@ -248,7 +248,7 @@ el-card {
         margin-left: 0;
     }
 
-    .hump-tabs :deep(.el-tabs__header) {
+    .hump-main-tabs > :deep(.el-tabs__header) {
         padding-left: 0;
         padding-right: 0;
     }

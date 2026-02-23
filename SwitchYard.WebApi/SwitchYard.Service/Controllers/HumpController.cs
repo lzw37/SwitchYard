@@ -878,6 +878,26 @@ namespace SwitchYard.Service.Controllers
             return slopeLayout;
         }
 
+        private static bool NeedsServerGeneratedId(string? id)
+        {
+            return string.IsNullOrWhiteSpace(id) || id.StartsWith("tmp-", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string RemapPositionId(string positionId, Dictionary<string, string> generatedPositionIdMap)
+        {
+            if (string.IsNullOrWhiteSpace(positionId))
+            {
+                return positionId;
+            }
+
+            if (generatedPositionIdMap.TryGetValue(positionId, out var mappedId))
+            {
+                return mappedId;
+            }
+
+            return positionId;
+        }
+
         /// <summary>
         /// 创建新的纵断面
         /// </summary>
@@ -898,13 +918,19 @@ namespace SwitchYard.Service.Controllers
                 var username = User.Identity?.Name;
 
                 dbConnector.BeginTransaction();
+                var generatedPositionIdMap = new Dictionary<string, string>();
 
                 // Insert positions
                 foreach (var position in slopeLayout.PositionList)
                 {
-                    if (string.IsNullOrEmpty(position.ID))
+                    var originalPositionId = position.ID;
+                    if (NeedsServerGeneratedId(originalPositionId))
                     {
                         position.ID = _snowflakeIdGenerator.NextIdString();
+                        if (!string.IsNullOrWhiteSpace(originalPositionId))
+                        {
+                            generatedPositionIdMap[originalPositionId] = position.ID;
+                        }
                     }
                     position.InstanceID = instanceID;
                     position.HumpSchemeID = humpSchemeID;
@@ -915,7 +941,9 @@ namespace SwitchYard.Service.Controllers
                 // Insert position segments
                 foreach (var segment in slopeLayout.PositionSegmentList)
                 {
-                    if (string.IsNullOrEmpty(segment.ID))
+                    segment.StartPositionID = RemapPositionId(segment.StartPositionID, generatedPositionIdMap);
+                    segment.EndPositionID = RemapPositionId(segment.EndPositionID, generatedPositionIdMap);
+                    if (NeedsServerGeneratedId(segment.ID))
                     {
                         segment.ID = _snowflakeIdGenerator.NextIdString();
                     }
@@ -960,13 +988,19 @@ namespace SwitchYard.Service.Controllers
                 dbConnector.BeginTransaction();
                 dbConnector.ExecuteNonQuery("DELETE FROM vpositionsegment WHERE InstanceID = @instanceID AND HumpSchemeID = @humpSchemeID", new { instanceID, humpSchemeID });
                 dbConnector.ExecuteNonQuery("DELETE FROM vposition WHERE InstanceID = @instanceID AND HumpSchemeID = @humpSchemeID", new { instanceID, humpSchemeID });
+                var generatedPositionIdMap = new Dictionary<string, string>();
 
                 // Insert positions
                 foreach (var position in slopeLayout.PositionList)
                 {
-                    if (string.IsNullOrEmpty(position.ID))
+                    var originalPositionId = position.ID;
+                    if (NeedsServerGeneratedId(originalPositionId))
                     {
                         position.ID = _snowflakeIdGenerator.NextIdString();
+                        if (!string.IsNullOrWhiteSpace(originalPositionId))
+                        {
+                            generatedPositionIdMap[originalPositionId] = position.ID;
+                        }
                     }
                     position.InstanceID = instanceID;
                     position.HumpSchemeID = humpSchemeID;
@@ -977,7 +1011,9 @@ namespace SwitchYard.Service.Controllers
                 // Insert position segments
                 foreach (var segment in slopeLayout.PositionSegmentList)
                 {
-                    if (string.IsNullOrEmpty(segment.ID))
+                    segment.StartPositionID = RemapPositionId(segment.StartPositionID, generatedPositionIdMap);
+                    segment.EndPositionID = RemapPositionId(segment.EndPositionID, generatedPositionIdMap);
+                    if (NeedsServerGeneratedId(segment.ID))
                     {
                         segment.ID = _snowflakeIdGenerator.NextIdString();
                     }

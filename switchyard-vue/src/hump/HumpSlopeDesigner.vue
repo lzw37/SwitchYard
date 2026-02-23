@@ -76,21 +76,40 @@
             <span>{{ t('humpSlopeDesigner.temperature') }}{{ currentCalculateCondition.temperature }}°C</span>
         </div>
         <div class="main-ctrl">
-            <HumpSlopeCtrl ref="humpSlopeCtrlRef" v-model:slope-layout="slopeLayout"
+            <HumpSlopeCtrl ref="humpSlopeCtrlRef" v-model:slope-layout="slopeLayout" :flat-layout="flatLayout"
                 :resistance-energy-height-data="resistanceEnergyHeightData"
                 :kinetic-energy-height-data="kineticEnergyHeightData" :global-scale-x="globalScaleX"
                 :global-scale-y="globalScaleY" :element-visibility="elementVisibility" :global-cursor-x="globalCursorX"
                 @updateGlobalCursorX="updateGlobalCursorX" @horizontal-scroll="syncHorizontalScroll"
                 @wheel-scale-x="handleWheelScaleX" />
-            <HumpSlopeSketchBlock ref="humpSlopeSketchBlockRef" v-model:slope-layout="slopeLayout" style="height:auto" :global-scale-x="globalScaleX"
-                :global-cursor-x="globalCursorX" :horizontal-scroll-left="horizontalScrollLeft"
-                @updateGlobalCursorX="updateGlobalCursorX" @horizontal-scroll="syncHorizontalScroll" />
-            <HumpLayoutCtrl ref="humpLayoutCtrlRef" v-model:flat-layout="flatLayout" :is-toolbar-display="false" style="height:auto"
+            <HumpSlopeSketchBlock ref="humpSlopeSketchBlockRef" v-model:slope-layout="slopeLayout" style="height:auto"
                 :global-scale-x="globalScaleX" :global-cursor-x="globalCursorX"
+                :horizontal-scroll-left="horizontalScrollLeft" @updateGlobalCursorX="updateGlobalCursorX"
+                @horizontal-scroll="syncHorizontalScroll" />
+            <HumpLayoutCtrl ref="humpLayoutCtrlRef" v-model:flat-layout="flatLayout" :is-toolbar-display="false"
+                style="height:auto" :global-scale-x="globalScaleX" :global-cursor-x="globalCursorX"
                 @update:global-cursor-x="updateGlobalCursorX" @horizontal-scroll="syncHorizontalScroll" />
         </div>
         <div class="side-menu-left" v-show="leftVisible">
-            LEFT SIDE MENU
+            <div class="side-menu-container">
+                <div class="left-panel-title">{{ t('humpSlopeDesigner.displayElements') }}</div>
+                <div class="left-toggle-item">
+                    <span>{{ t('humpSlopeDesigner.showRetarder') }}</span>
+                    <el-switch v-model="showRetarder" size="small"></el-switch>
+                </div>
+                <div class="left-toggle-item">
+                    <span>{{ t('humpSlopeDesigner.showResistanceNumber') }}</span>
+                    <el-switch v-model="showResistanceNumber" size="small"></el-switch>
+                </div>
+                <div class="left-toggle-item">
+                    <span>{{ t('humpSlopeDesigner.showKineticNumber') }}</span>
+                    <el-switch v-model="showKineticNumber" size="small"></el-switch>
+                </div>
+                <div class="left-toggle-item">
+                    <span>{{ t('humpSlopeDesigner.showPointHeightNumber') }}</span>
+                    <el-switch v-model="showPointHeightNumber" size="small"></el-switch>
+                </div>
+            </div>
         </div>
         <div class="side-menu-right" v-show="rightVisible">
             <div class="side-menu-container">
@@ -99,16 +118,24 @@
                         <el-table :data="slopeLayout?.positionList || []" style="width: 100%">
                             <el-table-column prop="id" :label="t('humpSlopeDesigner.table.calculationConditionID')"
                                 width="100"></el-table-column>
-                            <el-table-column prop="x" :label="t('humpSlopeDesigner.positionX')"
-                                width="100"></el-table-column>
-                            <el-table-column prop="height" :label="t('humpSlopeDesigner.height')"
-                                width="120"></el-table-column>
+                            <el-table-column prop="x" :label="t('humpSlopeDesigner.positionX')" width="140">
+                                <template #default="{ row }">
+                                    <el-input-number v-model="row.x" :controls="false" :precision="3" size="small"
+                                        style="width: 100%" />
+                                </template>
+                            </el-table-column>
+                            <el-table-column prop="height" :label="t('humpSlopeDesigner.height')" width="140">
+                                <template #default="{ row }">
+                                    <el-input-number v-model="row.height" :controls="false" :precision="3" size="small"
+                                        style="width: 100%" />
+                                </template>
+                            </el-table-column>
                         </el-table>
                     </el-tab-pane>
                     <el-tab-pane :label="t('humpSlopeDesigner.positionSegments')" name="vpositionsegment">
                         <el-table :data="slopeLayout?.positionSegmentList || []" style="width: 100%">
-                            <el-table-column prop="id" :label="t('humpSlopeDesigner.table.operationConditionID')"
-                                width="100"></el-table-column>
+                            <!-- <el-table-column prop="id" :label="t('humpSlopeDesigner.table.operationConditionID')"
+                                width="100"></el-table-column> -->
                             <el-table-column prop="startPositionID" :label="t('humpSlopeDesigner.startPositionID')"
                                 width="120"></el-table-column>
                             <el-table-column prop="endPositionID" :label="t('humpSlopeDesigner.endPositionID')"
@@ -376,6 +403,10 @@ const showInitialKinetic = ref(false);
 const showResistance = ref(false);
 const showKinetic = ref(false);
 const showBreaking = ref(false);
+const showRetarder = ref(true);
+const showResistanceNumber = ref(true);
+const showKineticNumber = ref(true);
+const showPointHeightNumber = ref(true);
 
 const currentCalculateCondition = ref({
     wagonTypeName: "--",
@@ -421,7 +452,11 @@ const elementVisibility = computed(() => {
         initialKinetic: showInitialKinetic.value,
         resistance: showResistance.value,
         kinetic: showKinetic.value,
-        breaking: showBreaking.value
+        breaking: showBreaking.value,
+        retarder: showRetarder.value,
+        resistanceNumber: showResistanceNumber.value,
+        kineticNumber: showKineticNumber.value,
+        pointHeightNumber: showPointHeightNumber.value
     };
 });
 
@@ -1202,7 +1237,8 @@ const handleCancelCalculationEdit = () => {
     left: 0;
     width: 200px;
     height: calc(100vh - 100px);
-    background-color: #e0e0e0;
+    background-color: white;
+    opacity: 0.9;
     z-index: 10;
 }
 
@@ -1229,6 +1265,32 @@ const handleCancelCalculationEdit = () => {
     height: 100%;
     box-sizing: border-box;
     overflow-y: auto;
+}
+
+.left-panel-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #1f2a44;
+    margin-bottom: 10px;
+}
+
+.left-toggle-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 0;
+    border-bottom: 1px solid #d6dbe5;
+}
+
+.left-toggle-item:last-child {
+    border-bottom: none;
+}
+
+.left-toggle-item span {
+    font-size: 13px;
+    color: #303133;
+    line-height: 1.4;
 }
 
 .control-group {
