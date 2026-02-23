@@ -64,6 +64,7 @@
             <HumpTimeCurve ref="timeCurveRef" :time-curve-data="timeCurveData" :time-tabs="timeTabs"
                 :chart-width="chartWidth" :chart-height="chartHeight" :margin-left="marginLeft"
                 :margin-right="marginRight" :margin-top="marginTop" :margin-bottom="marginBottom"
+                :selected-instance-id="props.selectedInstanceId" :selected-slope-line-id="selectedSlopeLineID"
                 :fullscreen-chart="fullscreenChart" @remove-tab="handleRemoveTimeTab"
                 @toggle-fullscreen="toggleFullscreen('time')" />
         </div>
@@ -207,6 +208,12 @@ interface SpeedProfileResponseItem {
     wagon?: SpeedProfileWagon
     positionList?: Array<number | string>
     speedList?: Array<number | string>
+}
+
+interface RunningTimeResponseItem {
+    wagon?: SpeedProfileWagon
+    positionList?: Array<number | string>
+    runningTimeList?: Array<number | string>
 }
 
 interface OperationCondition {
@@ -760,6 +767,28 @@ const normalizeSpeedProfileItem = (item: any): SpeedProfileResponseItem => {
     }
 }
 
+const normalizeRunningTimeItem = (item: any): RunningTimeResponseItem => {
+    const positionList = Array.isArray(item?.positionList) ? item.positionList : item?.PositionList
+    const runningTimeList = Array.isArray(item?.runningTimeList) ? item.runningTimeList : item?.RunningTimeList
+
+    return {
+        wagon: normalizeSpeedProfileWagon(item?.wagon ?? item?.Wagon),
+        positionList: Array.isArray(positionList) ? positionList : [],
+        runningTimeList: Array.isArray(runningTimeList) ? runningTimeList : []
+    }
+}
+
+const extractRunningTimeItems = (payload: any): RunningTimeResponseItem[] => {
+    if (Array.isArray(payload)) {
+        return payload.map(item => normalizeRunningTimeItem(item))
+    }
+
+    const runningTimes = Array.isArray(payload?.runningTimes) ? payload.runningTimes : payload?.RunningTimes
+    if (!Array.isArray(runningTimes)) return []
+
+    return runningTimes.map(item => normalizeRunningTimeItem(item))
+}
+
 const getSpeedProfileLabel = (wagon: SpeedProfileWagon | undefined, index: number): string => {
     const sequence = Number.isFinite(Number(wagon?.sequence)) ? Number(wagon?.sequence) : index + 1
     const humpCalculationID = wagon?.humpCalculationID || ''
@@ -810,6 +839,43 @@ const renderSpeedProfiles = (rawProfiles: SpeedProfileResponseItem[]) => {
     velocityTabs.value = nextVelocityTabs
 }
 
+const renderRunningTimes = (rawRunningTimes: RunningTimeResponseItem[]) => {
+    const nextTimeCurveData: TimeCurveData[] = []
+    const nextTimeTabs: CurveTab[] = []
+
+    rawRunningTimes.forEach((rawRunningTime, index) => {
+        const positionList = toNumericList(rawRunningTime.positionList)
+        const runningTimeList = toNumericList(rawRunningTime.runningTimeList)
+        const pointCount = Math.min(positionList.length, runningTimeList.length)
+
+        if (pointCount <= 0) return
+
+        const data: TimePoint[] = []
+        for (let i = 0; i < pointCount; i++) {
+            const x = positionList[i]
+            const time = runningTimeList[i]
+            if (x === undefined || time === undefined) continue
+            data.push({ x, time })
+        }
+
+        if (data.length <= 0) return
+
+        const seriesName = `series-${index + 1}`
+        nextTimeCurveData.push({
+            seriesName,
+            color: CURVE_COLORS[index % CURVE_COLORS.length] || '#2563EB',
+            data
+        })
+        nextTimeTabs.push({
+            name: seriesName,
+            label: getSpeedProfileLabel(rawRunningTime.wagon, index)
+        })
+    })
+
+    timeCurveData.value = nextTimeCurveData
+    timeTabs.value = nextTimeTabs
+}
+
 const calculateAndRenderSpeedProfiles = async () => {
     if (!props.selectedInstanceId || !selectedHeadwayCheckSchemeID.value) {
         velocityCurveData.value = []
@@ -828,6 +894,24 @@ const calculateAndRenderSpeedProfiles = async () => {
     const rawProfiles = Array.isArray(response.data) ? response.data : []
     const profiles = rawProfiles.map(item => normalizeSpeedProfileItem(item))
     renderSpeedProfiles(profiles)
+}
+
+const calculateAndRenderRunningTimes = async () => {
+    if (!props.selectedInstanceId || !selectedHeadwayCheckSchemeID.value) {
+        timeCurveData.value = []
+        timeTabs.value = []
+        return
+    }
+
+    const response = await axios.get('/Hump/CalculateRunningTime', {
+        params: {
+            instanceID: props.selectedInstanceId,
+            headwayCheckSchemeID: selectedHeadwayCheckSchemeID.value
+        }
+    })
+
+    const runningTimeItems = extractRunningTimeItems(response.data)
+    renderRunningTimes(runningTimeItems)
 }
 
 const handleExecuteHeadwayCheck = async () => {
@@ -875,14 +959,35 @@ const handleExecuteHeadwayCheck = async () => {
         if (showHeadwaySchemeManager.value) {
             await loadHeadwaySchemeManagerData()
         }
-        await calculateAndRenderSpeedProfiles()
+        const [speedProfileResult, runningTimeResult] = await Promise.allSettled([
+            calculateAndRenderSpeedProfiles(),
+            calculateAndRenderRunningTimes()
+        ])
+
+        const speedProfileFailed = speedProfileResult.status === 'rejected'
+        const runningTimeFailed = runningTimeResult.status === 'rejected'
+
+        if (speedProfileFailed) {
+            console.error('速度-距离曲线计算失败:', speedProfileResult.reason)
+        }
+        if (runningTimeFailed) {
+            console.error('时间-距离曲线计算失败:', runningTimeResult.reason)
+        }
+
+        if (speedProfileFailed || runningTimeFailed) {
+            if (speedProfileFailed && runningTimeFailed) {
+                ElMessage.error('检算配置已保存，但速度-距离与时间-距离曲线计算失败')
+            } else if (speedProfileFailed) {
+                ElMessage.error('检算配置已保存，但速度-距离曲线计算失败')
+            } else {
+                ElMessage.error('检算配置已保存，但时间-距离曲线计算失败')
+            }
+            return
+        }
 
         ElMessage.success(t('hump.headway.messages.saveConfigSuccess'))
     } catch (error) {
-        if ((error as any)?.config?.url?.includes('/Hump/CalculateSpeedProfile')) {
-            console.error('速度-距离曲线计算失败:', error)
-            ElMessage.error('检算配置已保存，但速度-距离曲线计算失败')
-        } else if (configurationSaved) {
+        if (configurationSaved) {
             console.error('检算配置保存成功，但刷新结果失败:', error)
             ElMessage.error('检算配置已保存，但结果刷新失败')
         } else {

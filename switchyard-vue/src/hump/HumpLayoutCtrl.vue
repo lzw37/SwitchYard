@@ -104,7 +104,16 @@ import axios from '@/utils/axios'
 import { ElMessageBox } from 'element-plus'
 
 const emit = defineEmits(['update:flatLayout', 'update:globalCursorX', 'horizontal-scroll'])
-const props = defineProps<{ flatLayout?: any, isToolbarDisplay?: boolean, isEditable?: boolean, globalScaleX?: number, globalCursorX?: number }>()
+const props = defineProps<{
+    flatLayout?: any,
+    isToolbarDisplay?: boolean,
+    isEditable?: boolean,
+    globalScaleX?: number,
+    globalMinX?: number,
+    globalLeftMargin?: number,
+    globalDomainSpan?: number,
+    globalCursorX?: number
+}>()
 
 const { t } = useI18n()
 
@@ -142,6 +151,12 @@ const cursorX = computed({
 // 左侧边界距离
 const leftMargin = ref(50)
 const rightMargin = ref(20)
+const effectiveLeftMargin = computed(() => {
+    if (Number.isFinite(Number(props.globalLeftMargin))) {
+        return Number(props.globalLeftMargin)
+    }
+    return leftMargin.value
+})
 
 const leftMarginSliderValue = computed({
     get: () => -leftMargin.value,
@@ -198,9 +213,24 @@ const positionXStats = computed(() => {
     return { minX, maxX, spanX: Math.max(0, maxX - minX) }
 })
 
+const xDomainMin = computed(() => {
+    if (Number.isFinite(Number(props.globalMinX))) {
+        return Number(props.globalMinX)
+    }
+    return positionXStats.value.minX
+})
+
+const xDomainSpan = computed(() => {
+    const globalSpan = Number(props.globalDomainSpan)
+    if (Number.isFinite(globalSpan) && globalSpan > 0) {
+        return Math.max(globalSpan, positionXStats.value.spanX)
+    }
+    return Math.max(0, positionXStats.value.spanX)
+})
+
 const svgWidth = computed(() => {
-    const minWidth = leftMargin.value + rightMargin.value + 300
-    const layoutWidth = leftMargin.value + positionXStats.value.spanX * scaleX.value + rightMargin.value + Math.abs(switchShift.value.x)
+    const minWidth = effectiveLeftMargin.value + rightMargin.value + 300
+    const layoutWidth = effectiveLeftMargin.value + xDomainSpan.value * scaleX.value + rightMargin.value + Math.abs(switchShift.value.x)
     return Math.max(minWidth, layoutWidth)
 })
 
@@ -297,8 +327,8 @@ const curveDegreePositions = computed(() => {
  * @returns SVG中的X坐标
  */
 function getX(position: number): number {
-    const normalizedX = toFiniteNumber(position) - positionXStats.value.minX
-    return normalizedX * scaleX.value + leftMargin.value;
+    const normalizedX = toFiniteNumber(position) - xDomainMin.value
+    return normalizedX * scaleX.value + effectiveLeftMargin.value;
 }
 
 /**
@@ -307,7 +337,7 @@ function getX(position: number): number {
  * @returns 位置坐标
  */
 function getPositionByX(x: number): number {
-    return (x - leftMargin.value) / scaleX.value + positionXStats.value.minX;
+    return (x - effectiveLeftMargin.value) / scaleX.value + xDomainMin.value;
 }
 
 /**
@@ -740,7 +770,7 @@ function updateCursorX(event: MouseEvent) {
     if (!svgRef.value) return
     const rect = svgRef.value.getBoundingClientRect()
     const mouseX = event.clientX - rect.left
-    const posX = (mouseX - leftMargin.value) / scaleX.value
+    const posX = (mouseX - effectiveLeftMargin.value) / scaleX.value + xDomainMin.value
     cursorX.value = posX
 }
 

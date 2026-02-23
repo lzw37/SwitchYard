@@ -1,7 +1,7 @@
 <template>
     <div class="sketch-scroll-container" ref="scrollContainerRef" @scroll.passive="handleHorizontalScroll">
         <svg id="slopesketch" :style="{ width: svgWidth + 'px', height: sketchHeight + 10 + 'px' }">
-            <rect class="slopesketch-frame" :height="sketchHeight" :width="sketchWidth" :x="getX(0)" :y="0"></rect>
+            <rect class="slopesketch-frame" :height="sketchHeight" :width="sketchWidth" :x="frameStartX" :y="0"></rect>
             <g v-for="sec in sectors">
                 <line class="slope-line" :x1="getX(sec.startX || 0)"
                     :y1="getStartY(sec.gradient !== null ? sec.gradient : 0)" :x2="getX(sec.endX)"
@@ -36,6 +36,9 @@ class Sector {
 const props = defineProps<{
     slopeLayout?: SlopeLayout | null
     globalScaleX?: number
+    globalMinX?: number
+    globalLeftMargin?: number
+    globalDomainSpan?: number
     globalCursorX?: number
     horizontalScrollLeft?: number
 }>()
@@ -48,6 +51,12 @@ const emit = defineEmits<{
 const scaleX = computed(() => props.globalScaleX ?? 3.5);
 const marginLeft = ref(50);
 const marginRight = ref(20);
+const effectiveMarginLeft = computed(() => {
+    if (Number.isFinite(Number(props.globalLeftMargin))) {
+        return Number(props.globalLeftMargin);
+    }
+    return marginLeft.value;
+});
 const sketchHeight = ref(40);
 const fontSize = ref(13);
 const scrollContainerRef = ref<HTMLDivElement | null>(null);
@@ -67,7 +76,7 @@ const cursorX = computed({
 });
 
 function getX(posX: number): number {
-    return posX * scaleX.value + marginLeft.value;
+    return (posX - xDomainMin.value) * scaleX.value + effectiveMarginLeft.value;
 }
 
 function getStartY(gradient: number): number {
@@ -82,18 +91,45 @@ function getEndY(gradient: number): number {
     return 0;
 }
 
-const sketchWidth = computed(() => {
-    if (!props.slopeLayout || !props.slopeLayout.positionList || props.slopeLayout.positionList.length === 0) {
-        return 300;
+const slopeXStats = computed(() => {
+    const positions = props.slopeLayout?.positionList || [];
+    const xs = positions
+        .map(pos => Number(pos.x))
+        .filter(x => Number.isFinite(x));
+
+    if (xs.length === 0) {
+        return { minX: 0, spanX: 0 };
     }
-    const positions = props.slopeLayout.positionList;
-    const minX = Math.min(...positions.map(pos => pos.x));
-    const maxX = Math.max(...positions.map(pos => pos.x));
-    return (maxX - minX) * scaleX.value;
+
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    return { minX, spanX: Math.max(0, maxX - minX) };
 });
 
+const xDomainMin = computed(() => {
+    if (Number.isFinite(Number(props.globalMinX))) {
+        return Number(props.globalMinX);
+    }
+    return slopeXStats.value.minX;
+});
+
+const xDomainSpan = computed(() => {
+    const globalSpan = Number(props.globalDomainSpan);
+    if (Number.isFinite(globalSpan) && globalSpan > 0) {
+        return Math.max(globalSpan, slopeXStats.value.spanX);
+    }
+    return Math.max(0, slopeXStats.value.spanX);
+});
+
+const sketchWidth = computed(() => {
+    const width = xDomainSpan.value * scaleX.value;
+    return Math.max(300, width);
+});
+
+const frameStartX = computed(() => getX(xDomainMin.value));
+
 const svgWidth = computed(() => {
-    return marginLeft.value + sketchWidth.value + marginRight.value;
+    return effectiveMarginLeft.value + sketchWidth.value + marginRight.value;
 });
 
 const sectors = computed(() => {
@@ -137,7 +173,7 @@ function addCursorXListener() {
     svgElement.addEventListener('mousemove', (event) => {
         const rect = svgElement.getBoundingClientRect();
         const mouseX = event.clientX - rect.left;
-        const posX = (mouseX - marginLeft.value) / scaleX.value;
+        const posX = (mouseX - effectiveMarginLeft.value) / scaleX.value + xDomainMin.value;
         cursorX.value = posX;
     });
 }

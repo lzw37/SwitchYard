@@ -23,15 +23,16 @@
                     </linearGradient>
                 </defs>
                 <g class="background">
-                    <rect :width="chartWidth" :height="chartHeight" fill="url(#velocityGradient)" />
+                    <rect :width="effectiveChartWidth" :height="chartHeight" fill="url(#velocityGradient)" />
                 </g>
                 <g class="axis">
-                    <line class="x-axis" :x1="marginLeft" :x2="marginLeft + chartWidth - marginRight"
-                        :y1="chartHeight - marginBottom" :y2="chartHeight - marginBottom" />
+                    <line class="x-axis" :x1="plotLeft" :x2="plotRight" :y1="chartHeight - marginBottom"
+                        :y2="chartHeight - marginBottom" />
                     <line class="y-axis" :x1="marginLeft" :x2="marginLeft" :y1="marginTop"
                         :y2="chartHeight - marginBottom" />
-                    <text class="axis-label" :x="marginLeft + (chartWidth - marginRight - marginLeft) / 2"
-                        :y="chartHeight - 5" text-anchor="middle">{{ t('humpChart.axis.distance') }}</text>
+                    <text class="axis-label" :x="plotLeft + plotWidth / 2" :y="chartHeight - 5" text-anchor="middle">
+                        {{ t('humpChart.axis.distance') }}
+                    </text>
                     <text class="axis-label" :x="15" :y="marginTop + (chartHeight - marginBottom - marginTop) / 2"
                         text-anchor="middle" transform="rotate(-90, 15, 100)">{{ t('humpChart.axis.velocity') }}</text>
                 </g>
@@ -40,19 +41,16 @@
                         :points="getVelocityPolylinePoints(curve.data)" :stroke="curve.color" stroke-width="2"
                         fill="none" />
                     <g v-for="curve in velocityCurveData" :key="curve.seriesName">
-                        <circle v-for="point in curve.data" :key="point.x" :cx="getVelocityX(point.x)"
-                            :cy="getVelocityY(point.velocity)" r="3" :fill="curve.color" />
+                        <circle v-for="(point, pointIndex) in curve.data" :key="`${curve.seriesName}-${pointIndex}`"
+                            :cx="getVelocityX(point.x)" :cy="getVelocityY(point.velocity)" r="3" :fill="curve.color" />
                     </g>
                 </g>
                 <g class="grid-lines">
-                    <line v-for="i in 5" :key="i" class="grid-line-h" :x1="marginLeft"
-                        :x2="marginLeft + chartWidth - marginRight"
+                    <line v-for="i in 5" :key="i" class="grid-line-h" :x1="plotLeft" :x2="plotRight"
                         :y1="marginTop + (chartHeight - marginBottom - marginTop) * i / 5"
                         :y2="marginTop + (chartHeight - marginBottom - marginTop) * i / 5" />
-                    <line v-for="i in 6" :key="i" class="grid-line-v"
-                        :x1="marginLeft + (chartWidth - marginRight - marginLeft) * i / 6"
-                        :x2="marginLeft + (chartWidth - marginRight - marginLeft) * i / 6" :y1="marginTop"
-                        :y2="chartHeight - marginBottom" />
+                    <line v-for="i in 6" :key="i" class="grid-line-v" :x1="plotLeft + plotWidth * i / 6"
+                        :x2="plotLeft + plotWidth * i / 6" :y1="marginTop" :y2="chartHeight - marginBottom" />
                 </g>
             </svg>
         </div>
@@ -60,7 +58,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 interface VelocityPoint {
@@ -97,23 +95,66 @@ const emit = defineEmits<{
 }>()
 
 const chartContainer = ref<HTMLElement>()
+const localChartWidth = ref(0)
+let chartResizeObserver: ResizeObserver | null = null
 
-// 速度-距离曲线坐标转换
-const velocityMaxDistance = computed(() => {
-    const allDistances = props.velocityCurveData.flatMap(curve =>
-        curve.data.map(p => p.x))
-    return allDistances.length > 0 ? Math.max(...allDistances) : 1000
+function toFiniteNumber(value: unknown, fallback = 0): number {
+    const num = Number(value)
+    return Number.isFinite(num) ? num : fallback
+}
+
+function getChartContentWidth(container: HTMLElement | undefined): number {
+    if (!container) return 0
+    const styles = window.getComputedStyle(container)
+    const paddingLeft = toFiniteNumber(parseFloat(styles.paddingLeft), 0)
+    const paddingRight = toFiniteNumber(parseFloat(styles.paddingRight), 0)
+    return Math.max(0, container.clientWidth - paddingLeft - paddingRight)
+}
+
+function updateLocalChartWidth() {
+    localChartWidth.value = getChartContentWidth(chartContainer.value)
+}
+
+const effectiveChartWidth = computed(() => {
+    const minWidth = props.marginLeft + props.marginRight + 1
+    if (localChartWidth.value > 0) {
+        return Math.max(minWidth, localChartWidth.value)
+    }
+    return Math.max(minWidth, toFiniteNumber(props.chartWidth, minWidth))
+})
+
+const plotLeft = computed(() => props.marginLeft)
+const plotRight = computed(() => Math.max(plotLeft.value + 1, effectiveChartWidth.value - props.marginRight))
+const plotWidth = computed(() => Math.max(1, plotRight.value - plotLeft.value))
+
+const velocityXExtent = computed(() => {
+    const allDistances = props.velocityCurveData
+        .flatMap(curve => curve.data.map(p => Number(p.x)))
+        .filter(distance => Number.isFinite(distance))
+
+    if (allDistances.length === 0) {
+        return { min: 0, span: 1 }
+    }
+
+    const min = Math.min(...allDistances)
+    const max = Math.max(...allDistances)
+    return {
+        min,
+        span: Math.max(1e-9, max - min)
+    }
 })
 
 const velocityMaxVelocity = computed(() => {
-    const allVelocities = props.velocityCurveData.flatMap(curve =>
-        curve.data.map(p => p.velocity))
-    return allVelocities.length > 0 ? Math.max(...allVelocities) : 100
+    const allVelocities = props.velocityCurveData
+        .flatMap(curve => curve.data.map(p => Number(p.velocity)))
+        .filter(velocity => Number.isFinite(velocity))
+
+    const maxVelocity = allVelocities.length > 0 ? Math.max(...allVelocities) : 0
+    return maxVelocity > 0 ? maxVelocity : 1
 })
 
 const getVelocityX = (x: number): number => {
-    const chartAreaWidth = props.chartWidth - props.marginLeft - props.marginRight
-    return props.marginLeft + (x / velocityMaxDistance.value) * chartAreaWidth
+    return plotLeft.value + ((x - velocityXExtent.value.min) / velocityXExtent.value.span) * plotWidth.value
 }
 
 const getVelocityY = (velocity: number): number => {
@@ -133,7 +174,28 @@ const handleToggleFullscreen = () => {
     emit('toggleFullscreen')
 }
 
-// 暴露chartContainer给父组件
+onMounted(() => {
+    nextTick(() => {
+        updateLocalChartWidth()
+        if (typeof ResizeObserver !== 'undefined' && chartContainer.value) {
+            chartResizeObserver = new ResizeObserver(() => {
+                updateLocalChartWidth()
+            })
+            chartResizeObserver.observe(chartContainer.value)
+        } else {
+            window.addEventListener('resize', updateLocalChartWidth)
+        }
+    })
+})
+
+onBeforeUnmount(() => {
+    if (chartResizeObserver) {
+        chartResizeObserver.disconnect()
+        chartResizeObserver = null
+    }
+    window.removeEventListener('resize', updateLocalChartWidth)
+})
+
 defineExpose({
     chartContainer
 })

@@ -23,49 +23,48 @@
                     </linearGradient>
                 </defs>
                 <g class="background">
-                    <rect :width="chartWidth" :height="chartHeight" fill="url(#timeGradient)" />
+                    <rect :width="effectiveChartWidth" :height="chartHeight" fill="url(#timeGradient)" />
                 </g>
                 <g class="axis">
-                    <line class="x-axis" :x1="marginLeft" :x2="marginLeft + chartWidth - marginRight"
-                        :y1="chartHeight - marginBottom" :y2="chartHeight - marginBottom" />
+                    <line class="x-axis" :x1="plotLeft" :x2="plotRight" :y1="chartHeight - marginBottom"
+                        :y2="chartHeight - marginBottom" />
                     <line class="y-axis" :x1="marginLeft" :x2="marginLeft" :y1="marginTop"
                         :y2="chartHeight - marginBottom" />
-                    <text class="axis-label" :x="marginLeft + (chartWidth - marginRight - marginLeft) / 2"
-                        :y="chartHeight - 5" text-anchor="middle">{{ t('humpChart.axis.distance') }}</text>
+                    <text class="axis-label" :x="plotLeft + plotWidth / 2" :y="chartHeight - 5" text-anchor="middle">
+                        {{ t('humpChart.axis.distance') }}
+                    </text>
                     <text class="axis-label" :x="15" :y="marginTop + (chartHeight - marginBottom - marginTop) / 2"
                         text-anchor="middle" transform="rotate(-90, 15, 100)">{{ t('humpChart.axis.time') }}</text>
                 </g>
                 <g class="time-curves">
-                    <polyline v-for="curve in timeCurveData" :key="curve.seriesName"
-                        :points="getTimePolylinePoints(curve.data)" :stroke="curve.color" stroke-width="2"
-                        fill="none" />
+                    <polyline v-for="curve in timeCurveData" :key="curve.seriesName" :points="getTimePolylinePoints(curve.data)"
+                        :stroke="curve.color" stroke-width="2" fill="none" />
                     <g v-for="curve in timeCurveData" :key="curve.seriesName">
-                        <circle v-for="point in curve.data" :key="point.x" :cx="getTimeX(point.x)"
-                            :cy="getTimeY(point.time)" r="3" :fill="curve.color" />
+                        <circle v-for="(point, pointIndex) in curve.data" :key="`${curve.seriesName}-${pointIndex}`"
+                            :cx="getTimeX(point.x)" :cy="getTimeY(point.time)" r="3" :fill="curve.color" />
                     </g>
                 </g>
                 <g class="grid-lines">
-                    <line v-for="i in 5" :key="i" class="grid-line-h" :x1="marginLeft"
-                        :x2="marginLeft + chartWidth - marginRight"
+                    <line v-for="i in 5" :key="i" class="grid-line-h" :x1="plotLeft" :x2="plotRight"
                         :y1="marginTop + (chartHeight - marginBottom - marginTop) * i / 5"
                         :y2="marginTop + (chartHeight - marginBottom - marginTop) * i / 5" />
-                    <line v-for="i in 6" :key="i" class="grid-line-v"
-                        :x1="marginLeft + (chartWidth - marginRight - marginLeft) * i / 6"
-                        :x2="marginLeft + (chartWidth - marginRight - marginLeft) * i / 6" :y1="marginTop"
-                        :y2="chartHeight - marginBottom" />
+                    <line v-for="i in 6" :key="i" class="grid-line-v" :x1="plotLeft + plotWidth * i / 6"
+                        :x2="plotLeft + plotWidth * i / 6" :y1="marginTop" :y2="chartHeight - marginBottom" />
                 </g>
             </svg>
             <div>{{ t('humpChart.placeholderInterval') }}</div>
             <hump-slope-sketch-block v-model:slope-layout="slopeLayout" v-if="fullscreenChart === 'time'"
-                :global-scale-x="(chartWidth - marginLeft - marginRight) / 300" />
+                :global-scale-x="sharedScaleX" :global-min-x="sharedXExtent.min" :global-left-margin="plotLeft"
+                :global-domain-span="sharedXExtent.span" />
             <hump-layout-ctrl v-model:flat-layout="flatLayout" v-if="fullscreenChart === 'time'"
-                :global-scale-x="(chartWidth - marginLeft - marginRight) / 300" />
+                :global-scale-x="sharedScaleX" :global-min-x="sharedXExtent.min" :global-left-margin="plotLeft"
+                :global-domain-span="sharedXExtent.span" />
         </div>
     </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import HumpSlopeSketchBlock from './HumpSlopeSketchBlock.vue'
 import HumpLayoutCtrl from './HumpLayoutCtrl.vue'
@@ -101,6 +100,8 @@ const props = defineProps<{
     marginTop: number
     marginBottom: number
     fullscreenChart: 'velocity' | 'time' | null
+    selectedInstanceId?: string | null
+    selectedSlopeLineId?: string | null
 }>()
 
 const emit = defineEmits<{
@@ -109,23 +110,138 @@ const emit = defineEmits<{
 }>()
 
 const chartContainer = ref<HTMLElement>()
+const localChartWidth = ref(0)
+let chartResizeObserver: ResizeObserver | null = null
 
-// 时间-距离曲线坐标转换
-const timeMaxDistance = computed(() => {
-    const allDistances = props.timeCurveData.flatMap(curve =>
-        curve.data.map(p => p.x))
-    return allDistances.length > 0 ? Math.max(...allDistances) : 1000
+function toFiniteNumber(value: unknown, fallback = 0): number {
+    const num = Number(value)
+    return Number.isFinite(num) ? num : fallback
+}
+
+function getChartContentWidth(container: HTMLElement | undefined): number {
+    if (!container) return 0
+    const styles = window.getComputedStyle(container)
+    const paddingLeft = toFiniteNumber(parseFloat(styles.paddingLeft), 0)
+    const paddingRight = toFiniteNumber(parseFloat(styles.paddingRight), 0)
+    return Math.max(0, container.clientWidth - paddingLeft - paddingRight)
+}
+
+function updateLocalChartWidth() {
+    localChartWidth.value = getChartContentWidth(chartContainer.value)
+}
+
+const effectiveChartWidth = computed(() => {
+    const minWidth = props.marginLeft + props.marginRight + 1
+    if (localChartWidth.value > 0) {
+        return Math.max(minWidth, localChartWidth.value)
+    }
+    return Math.max(minWidth, toFiniteNumber(props.chartWidth, minWidth))
 })
 
+const plotLeft = computed(() => props.marginLeft)
+const plotRight = computed(() => Math.max(plotLeft.value + 1, effectiveChartWidth.value - props.marginRight))
+const plotWidth = computed(() => Math.max(1, plotRight.value - plotLeft.value))
+
+const timeXValues = computed(() => {
+    return props.timeCurveData
+        .flatMap(curve => curve.data.map(p => Number(p.x)))
+        .filter(distance => Number.isFinite(distance))
+})
+
+const timeXExtent = computed(() => {
+    const allDistances = timeXValues.value
+
+    if (allDistances.length === 0) {
+        return { min: 0, span: 1 }
+    }
+
+    const min = Math.min(...allDistances)
+    const max = Math.max(...allDistances)
+    return {
+        min,
+        span: Math.max(1e-9, max - min)
+    }
+})
+
+const slopeXExtent = computed(() => {
+    const xs = (slopeLayout.value?.positionList || [])
+        .map(pos => Number(pos.x))
+        .filter(x => Number.isFinite(x))
+
+    if (xs.length === 0) {
+        return { min: 0, span: 0 }
+    }
+
+    const min = Math.min(...xs)
+    const max = Math.max(...xs)
+    return {
+        min,
+        span: Math.max(0, max - min)
+    }
+})
+
+const flatXExtent = computed(() => {
+    const xs = (flatLayout.value?.positionList || [])
+        .map(pos => Number(pos.x))
+        .filter(x => Number.isFinite(x))
+
+    if (xs.length === 0) {
+        return { min: 0, span: 0 }
+    }
+
+    const min = Math.min(...xs)
+    const max = Math.max(...xs)
+    return {
+        min,
+        span: Math.max(0, max - min)
+    }
+})
+
+const sharedXExtent = computed(() => {
+    const mins: number[] = []
+    const maxes: number[] = []
+
+    if (timeXValues.value.length > 0) {
+        mins.push(timeXExtent.value.min)
+        maxes.push(timeXExtent.value.min + timeXExtent.value.span)
+    }
+
+    if (slopeXExtent.value.span > 0) {
+        mins.push(slopeXExtent.value.min)
+        maxes.push(slopeXExtent.value.min + slopeXExtent.value.span)
+    }
+
+    if (flatXExtent.value.span > 0) {
+        mins.push(flatXExtent.value.min)
+        maxes.push(flatXExtent.value.min + flatXExtent.value.span)
+    }
+
+    if (mins.length === 0 || maxes.length === 0) {
+        return { min: 0, span: 1 }
+    }
+
+    const min = Math.min(...mins)
+    const max = Math.max(...maxes)
+
+    return {
+        min,
+        span: Math.max(1e-9, max - min)
+    }
+})
+
+const sharedScaleX = computed(() => plotWidth.value / sharedXExtent.value.span)
+
 const timeMaxTime = computed(() => {
-    const allTimes = props.timeCurveData.flatMap(curve =>
-        curve.data.map(p => p.time))
-    return allTimes.length > 0 ? Math.max(...allTimes) : 100
+    const allTimes = props.timeCurveData
+        .flatMap(curve => curve.data.map(p => Number(p.time)))
+        .filter(time => Number.isFinite(time))
+
+    const maxTime = allTimes.length > 0 ? Math.max(...allTimes) : 0
+    return maxTime > 0 ? maxTime : 1
 })
 
 const getTimeX = (x: number): number => {
-    const chartAreaWidth = props.chartWidth - props.marginLeft - props.marginRight
-    return props.marginLeft + (x / timeMaxDistance.value) * chartAreaWidth
+    return plotLeft.value + ((x - sharedXExtent.value.min) / sharedXExtent.value.span) * plotWidth.value
 }
 
 const getTimeY = (time: number): number => {
@@ -151,12 +267,22 @@ function loadSlopeLayout() {
             slopeLayout.value = response.data as SlopeLayout;
         }
     }).catch(error => {
-        console.error("加载纵断面设计数据失败:", error);
+        console.error('Failed to load slope layout data:', error);
     });
 }
 
 function loadFlatLayout() {
-    axios.get(`/hump/getflatlayout`).then(response => {
+    if (!props.selectedInstanceId || !props.selectedSlopeLineId) {
+        flatLayout.value = null
+        return
+    }
+
+    axios.get(`/hump/getflatlayout`, {
+        params: {
+            instanceID: props.selectedInstanceId,
+            slopeLineID: props.selectedSlopeLineId
+        }
+    }).then(response => {
         if (response.data) {
             flatLayout.value = response.data
             if (flatLayout.value?.positionSegmentList) {
@@ -169,19 +295,45 @@ function loadFlatLayout() {
             console.log('Flat layout data loaded:', flatLayout.value)
         }
     }).catch(error => {
-        console.error("加载平面展开图数据失败:", error);
+        console.error('Failed to load flat layout data:', error);
     });
 }
 
 onMounted(() => {
-    loadFlatLayout();
     loadSlopeLayout();
+
+    nextTick(() => {
+        updateLocalChartWidth()
+        if (typeof ResizeObserver !== 'undefined' && chartContainer.value) {
+            chartResizeObserver = new ResizeObserver(() => {
+                updateLocalChartWidth()
+            })
+            chartResizeObserver.observe(chartContainer.value)
+        } else {
+            window.addEventListener('resize', updateLocalChartWidth)
+        }
+    })
 });
 
-// 暴露chartContainer给父组件
+onBeforeUnmount(() => {
+    if (chartResizeObserver) {
+        chartResizeObserver.disconnect()
+        chartResizeObserver = null
+    }
+    window.removeEventListener('resize', updateLocalChartWidth)
+})
+
 defineExpose({
     chartContainer
 })
+
+watch(
+    () => [props.selectedInstanceId, props.selectedSlopeLineId],
+    () => {
+        loadFlatLayout()
+    },
+    { immediate: true }
+)
 
 const { t } = useI18n()
 </script>
@@ -229,8 +381,6 @@ const { t } = useI18n()
     flex: 1;
     padding: 16px;
     overflow: auto;
-    /* display: flex;
-    flex-direction: column; */
     align-items: center;
     justify-content: center;
     color: #9ca3af;
