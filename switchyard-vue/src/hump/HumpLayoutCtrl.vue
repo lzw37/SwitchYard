@@ -178,14 +178,30 @@ const switchShift = computed(() => {
     return { x: 50, y: 15 };
 })
 
-const svgWidth = computed(() => {
-    const positions = props.flatLayout?.positionList || [];
-    if (positions.length === 0) {
-        return leftMargin.value + rightMargin.value + 300;
+function toFiniteNumber(value: unknown, fallback = 0): number {
+    const num = Number(value)
+    return Number.isFinite(num) ? num : fallback
+}
+
+const positionXStats = computed(() => {
+    const positions = props.flatLayout?.positionList || []
+    const xs = positions
+        .map((pos: any) => toFiniteNumber(pos?.x, NaN))
+        .filter((x: number) => Number.isFinite(x))
+
+    if (xs.length === 0) {
+        return { minX: 0, maxX: 0, spanX: 0 }
     }
-    const minX = Math.min(...positions.map((pos: any) => pos.x));
-    const maxX = Math.max(...positions.map((pos: any) => pos.x));
-    return leftMargin.value + (maxX - minX) * scaleX.value + rightMargin.value;
+
+    const minX = Math.min(...xs)
+    const maxX = Math.max(...xs)
+    return { minX, maxX, spanX: Math.max(0, maxX - minX) }
+})
+
+const svgWidth = computed(() => {
+    const minWidth = leftMargin.value + rightMargin.value + 300
+    const layoutWidth = leftMargin.value + positionXStats.value.spanX * scaleX.value + rightMargin.value + Math.abs(switchShift.value.x)
+    return Math.max(minWidth, layoutWidth)
 })
 
 const textPositions = computed(() => {
@@ -281,7 +297,8 @@ const curveDegreePositions = computed(() => {
  * @returns SVG中的X坐标
  */
 function getX(position: number): number {
-    return (position * scaleX.value + leftMargin.value);
+    const normalizedX = toFiniteNumber(position) - positionXStats.value.minX
+    return normalizedX * scaleX.value + leftMargin.value;
 }
 
 /**
@@ -290,7 +307,7 @@ function getX(position: number): number {
  * @returns 位置坐标
  */
 function getPositionByX(x: number): number {
-    return (x - leftMargin.value) / scaleX.value;
+    return (x - leftMargin.value) / scaleX.value + positionXStats.value.minX;
 }
 
 /**
@@ -300,7 +317,7 @@ function getPositionByX(x: number): number {
  */
 function getPositionByPositionID(positionID: string): number {
     const pos = props.flatLayout?.positionList.find((p: { id: { toString: () => string; }; }) => p.id.toString() === positionID)
-    return pos ? pos.x : 0;
+    return toFiniteNumber(pos?.x, 0);
 }
 
 /**
