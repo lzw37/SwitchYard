@@ -1,9 +1,12 @@
 using Microsoft.AspNetCore.Mvc;
+using Org.BouncyCastle.Asn1.Ocsp;
 using SwitchYard.Service.Models;
 using SwitchYard.Service.Services;
 
 namespace SwitchYard.Service.Controllers
 {
+    
+
     /// <summary>
     /// 认证控制器
     /// </summary>
@@ -11,6 +14,23 @@ namespace SwitchYard.Service.Controllers
     [Route("api/[controller]")]
     public class AuthController : ControllerBase
     {
+        private string GetClientIpAddress()
+        {
+            var forwardedFor = Request?.Headers["X-Forwarded-For"].FirstOrDefault();
+            if (!string.IsNullOrWhiteSpace(forwardedFor))
+            {
+                return forwardedFor.Split(',')[0].Trim();
+            }
+
+            var realIp = Request?.Headers["X-Real-IP"].FirstOrDefault();
+            if (!string.IsNullOrWhiteSpace(realIp))
+            {
+                return realIp;
+            }
+
+            return HttpContext?.Connection?.RemoteIpAddress?.ToString()??"unknown";
+        }
+
         private readonly JwtTokenService _jwtTokenService;
         private readonly UserService _userService;
         private readonly ILogger<AuthController> _logger;
@@ -39,7 +59,7 @@ namespace SwitchYard.Service.Controllers
                 var user = _userService.ValidateUser(request.Username, request.Password);
                 if (user == null)
                 {
-                    _logger.LogWarning("登录失败: 用户名或密码错误 - {Username}", request.Username);
+                    _logger.LogWarning("Login failed: Invalid username or password - {Username}, ClientIp: {ClientIp}", request.Username, GetClientIpAddress());
                     return Unauthorized(new { message = "用户名或密码错误" });
                 }
 
@@ -56,12 +76,12 @@ namespace SwitchYard.Service.Controllers
                     Role = user.Role
                 };
 
-                _logger.LogInformation("用户登录成功: {Username}", user.Name);
+                _logger.LogInformation("User logged in successfully: {Username}, ClientIp: {ClientIp}", user.Name, GetClientIpAddress());
                 return Ok(response);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "登录过程中发生错误");
+                _logger.LogError(ex, "An error occurred during login: {ErrorMessage}, ClientIp: {ClientIp}", ex.Message, GetClientIpAddress());
                 return StatusCode(500, new { message = "服务器内部错误" });
             }
         }
@@ -86,7 +106,7 @@ namespace SwitchYard.Service.Controllers
                 var existingUser = _userService.GetUserByUsername(request.Username);
                 if (existingUser != null)
                 {
-                    _logger.LogWarning("创建用户失败: 用户名已存在 - {Username}", request.Username);
+                    _logger.LogWarning("User creation failed: Username already exists - {Username}, ClientIp: {ClientIp}", request.Username, GetClientIpAddress());
                     return Conflict(new { message = "用户名已存在" });
                 }
 
@@ -100,7 +120,7 @@ namespace SwitchYard.Service.Controllers
 
                 if (newUser == null)
                 {
-                    _logger.LogError("创建用户失败 - {Username}", request.Username);
+                    _logger.LogError("User creation failed - {Username}, ClientIp: {ClientIp}", request.Username, GetClientIpAddress());
                     return StatusCode(500, new { message = "创建用户失败" });
                 }
 
@@ -114,12 +134,12 @@ namespace SwitchYard.Service.Controllers
                     Message = "用户创建成功"
                 };
 
-                _logger.LogInformation("用户创建成功: {Username}, ID: {UserId}", newUser.Name, newUser.Id);
+                _logger.LogInformation("User created successfully: {Username}, ID: {UserId}, ClientIp: {ClientIp}", newUser.Name, newUser.Id, GetClientIpAddress());
                 return Ok(response);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "创建用户过程中发生错误");
+                _logger.LogError(ex, "An error occurred while creating the user, ClientIp: {ClientIp}", GetClientIpAddress());
                 return StatusCode(500, new { message = "服务器内部错误" });
             }
         }
@@ -159,7 +179,7 @@ namespace SwitchYard.Service.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Token验证过程中发生错误");
+                _logger.LogError(ex, "An error occurred while validating the token, ClientIp: {ClientIp}", GetClientIpAddress());
                 return StatusCode(500, new { message = "服务器内部错误" });
             }
         }
@@ -196,7 +216,7 @@ namespace SwitchYard.Service.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "获取用户信息过程中发生错误");
+                _logger.LogError(ex, "An error occurred while retrieving user information, ClientIp: {ClientIp}", GetClientIpAddress());
                 return StatusCode(500, new { message = "服务器内部错误" });
             }
         }

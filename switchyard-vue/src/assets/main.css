@@ -14,3 +14,11 @@ a,
   }
 }
 
+/* Move Element Plus messages to the upper-right to reduce overlap with main content */
+.el-message {
+  left: auto !important;
+  right: max(200px, env(safe-area-inset-right)) !important;
+  transform: none !important;
+  max-width: min(420px, calc(100vw - 24px)) !important;
+}
+

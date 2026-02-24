@@ -1,12 +1,15 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.Extensions.Logging;
 using MySqlX.XDevAPI;
 using SwitchYard.Hump;
 using SwitchYard.Service.Services;
 using SwitchYard.Service.Utils;
+using System.Collections.Generic;
 using System.Data.Common;
 using System.Net;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text;
 
@@ -21,6 +24,9 @@ namespace SwitchYard.Service.Controllers
         ILogger<HumpController> _logger;
         SnowflakeIdGenerator _snowflakeIdGenerator;
         InstanceAuthorizationService _authService;
+        private const string UnknownLogValue = "N/A";
+        private const string LogInstanceIdKey = "__log_instance_id";
+        private const string LogObjectIdKey = "__log_object_id";
 
         public HumpController(ILogger<HumpController> logger, IConfiguration configuration, SnowflakeIdGenerator snowflakeIdGenerator, InstanceAuthorizationService authService)
         {
@@ -30,11 +36,48 @@ namespace SwitchYard.Service.Controllers
             _authService = authService;
         }
 
+        private string NormalizeLogValue(object? value)
+        {
+            var text = value?.ToString();
+            return string.IsNullOrWhiteSpace(text) ? UnknownLogValue : text;
+        }
+
+        private string GetCurrentUsername()
+        {
+            return string.IsNullOrWhiteSpace(User?.Identity?.Name) ? UnknownLogValue : User.Identity.Name;
+        }
+
+        private string GetCurrentInstanceId()
+        {
+            return NormalizeLogValue(HttpContext?.Items[LogInstanceIdKey]);
+        }
+
+        private void SetLogInstanceId(string? instanceID)
+        {
+            if (HttpContext != null && !string.IsNullOrWhiteSpace(instanceID))
+            {
+                HttpContext.Items[LogInstanceIdKey] = instanceID;
+            }
+        }
+
+        private void LogInformationWithContext(string message, params object?[] args)
+        {
+            var prefix = $"{GetCurrentUsername()} on {GetCurrentInstanceId()}: ";
+            _logger.LogInformation(prefix + message, args);
+        }
+
+        private void LogErrorWithContext(Exception ex, string message, params object?[] args)
+        {
+            var prefix = $"{GetCurrentUsername()} on {GetCurrentInstanceId()}: ";
+            _logger.LogError(ex, prefix + message, args);
+        }
+
         /// <summary>
         /// 验证实例所有权并返回相应的ActionResult
         /// </summary>
         private IActionResult? ValidateInstanceOwnershipOrFail(string instanceID)
         {
+            SetLogInstanceId(instanceID);
             var username = User.Identity?.Name;
             var result = _authService.ValidateInstanceOwnership(instanceID, username);
 
@@ -42,15 +85,15 @@ namespace SwitchYard.Service.Controllers
             {
                 if (result.IsNotFound)
                 {
-                    _logger.LogWarning(result.ErrorMessage);
+                    _logger.LogWarning("Instance ownership validation failed: {ErrorMessage}", result.ErrorMessage);
                     return NotFound(result.ErrorMessage);
                 }
                 if (result.IsError)
                 {
-                    _logger.LogWarning(500, result.ErrorMessage);
+                    _logger.LogWarning("Instance ownership validation encountered an internal error: {ErrorMessage}", result.ErrorMessage);
                     return StatusCode(500, result.ErrorMessage);
                 }
-                _logger.LogWarning(result.ErrorMessage);
+                _logger.LogWarning("Instance ownership validation failed: {ErrorMessage}", result.ErrorMessage);
                 return Unauthorized(result.ErrorMessage ?? "Instance not found or not owned by user.");
             }
 
@@ -66,12 +109,12 @@ namespace SwitchYard.Service.Controllers
 
                 DBConnector dbConnector = DBConnector.GetDBConnector();
                 var instanceList = dbConnector.Query<HumpInstance>("SELECT * FROM humpinstance WHERE Owner = @username", new { username });
-                _logger.LogInformation("Retrieved {InstanceCount} HumpInstances for user {Username}.", instanceList?.Count ?? 0, username);
+                LogInformationWithContext("Retrieved {InstanceCount} HumpInstances.", instanceList?.Count ?? 0);
                 return Ok(instanceList);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting HumpInstance.");
+                LogErrorWithContext(ex, "Error getting HumpInstance.");
                 return StatusCode(500, "Internal server error while getting HumpInstance.");
             }
         }
@@ -91,7 +134,7 @@ namespace SwitchYard.Service.Controllers
                     instance);
                 if (result > 0)
                 {
-                    _logger.LogInformation("Created HumpInstance with ID {InstanceID} for user {Username}.", instance.ID, username);
+                    LogInformationWithContext("Created HumpInstance with ID {InstanceID}.", instance.ID);
                     return Ok(instance);
                 }
                 else
@@ -102,7 +145,7 @@ namespace SwitchYard.Service.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error creating HumpInstance.");
+                LogErrorWithContext(ex, "Error creating HumpInstance.");
                 return StatusCode(500, "Internal server error while creating HumpInstance.");
             }
         }
@@ -121,18 +164,18 @@ namespace SwitchYard.Service.Controllers
                     new { instance.Name, instance.IsActive, instance.ID, Owner = username });
                 if (result > 0)
                 {
-                    _logger.LogInformation("Updated HumpInstance with ID {InstanceID} for user {Username}.", instance.ID, username);
+                    LogInformationWithContext("Updated HumpInstance with ID {InstanceID}.", instance.ID);
                     return Ok("Instance updated successfully.");
                 }
                 else
                 {
-                    _logger.LogWarning("Failed to update HumpInstance for user {Username}.", username);
+                    _logger.LogWarning("Failed to update HumpInstance.");
                     return StatusCode(500, "Failed to update instance.");
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error updating HumpInstance.");
+                LogErrorWithContext(ex, "Error updating HumpInstance.");
                 return StatusCode(500, "Internal server error while updating HumpInstance.");
             }
         }
@@ -150,18 +193,18 @@ namespace SwitchYard.Service.Controllers
                 var result = dbConnector.ExecuteNonQuery("DELETE FROM humpinstance WHERE ID = @id AND Owner = @username", new { id, username });
                 if (result > 0)
                 {
-                    _logger.LogInformation("Deleted HumpInstance with ID {InstanceID} for user {Username}.", id, username);
+                    LogInformationWithContext("Deleted HumpInstance with ID {InstanceID}.", id);
                     return Ok("Instance deleted successfully.");
                 }
                 else
                 {
-                    _logger.LogWarning("Failed to delete HumpInstance for user {Username}.", username);
+                    _logger.LogWarning("Failed to delete HumpInstance.");
                     return StatusCode(500, "Failed to delete instance.");
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error deleting HumpInstance.");
+                LogErrorWithContext(ex, "Error deleting HumpInstance.");
                 return StatusCode(500, "Internal server error while deleting HumpInstance.");
             }
         }
@@ -178,12 +221,12 @@ namespace SwitchYard.Service.Controllers
                 var username = User.Identity?.Name;
                 DBConnector dbConnector = DBConnector.GetDBConnector();
                 var slopeLines = dbConnector.Query<SwitchYard.Hump.SlopeLine>("SELECT * FROM slopeline WHERE instanceID = @instanceID", new { instanceID });
-                _logger.LogInformation("Retrieved {SlopeLineCount} SlopeLines for instance {InstanceID} by user {Username}.", slopeLines?.Count ?? 0, instanceID, username);
+                LogInformationWithContext("Retrieved {SlopeLineCount} SlopeLines.", slopeLines?.Count ?? 0);
                 return Ok(slopeLines);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting SlopeLines for instance {InstanceID}.", instanceID);
+                LogErrorWithContext(ex, "Error getting SlopeLines.");
                 return StatusCode(500, "Internal server error while getting SlopeLines.");
             }
         }
@@ -203,18 +246,18 @@ namespace SwitchYard.Service.Controllers
                     new { slopeLine.ID, slopeLine.InstanceID, slopeLine.Name });
                 if (result > 0)
                 {
-                    _logger.LogInformation("Created SlopeLine with ID {SlopeLineID} for instance {InstanceID} by user {Username}.", slopeLine.ID, slopeLine.InstanceID, username);
+                    LogInformationWithContext("Created SlopeLine with ID {SlopeLineID}.", slopeLine.ID);
                     return Ok(slopeLine);
                 }
                 else
                 {
-                    _logger.LogWarning("Failed to create SlopeLine for instance {InstanceID} by user {Username}.", slopeLine.InstanceID, username);
+                    _logger.LogWarning("Failed to create SlopeLine with ID {SlopeLineID}.", slopeLine.ID);
                     return StatusCode(500, "Failed to create slope line.");
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error creating SlopeLine.");
+                LogErrorWithContext(ex, "Error creating SlopeLine.");
                 return StatusCode(500, "Internal server error while creating SlopeLine.");
             }
         }
@@ -239,18 +282,18 @@ namespace SwitchYard.Service.Controllers
                     new { slopeLine.Name, slopeLine.ID });
                 if (result > 0)
                 {
-                    _logger.LogInformation("Updated SlopeLine with ID {SlopeLineID} for instance {InstanceID} by user {Username}.", slopeLine.ID, existing.InstanceID, username);
+                    LogInformationWithContext("Updated SlopeLine with ID {SlopeLineID}.", slopeLine.ID);
                     return Ok("SlopeLine updated successfully.");
                 }
                 else
                 {
-                    _logger.LogWarning("Failed to update SlopeLine for instance {InstanceID} by user {Username}.", existing.InstanceID, username);
+                    _logger.LogWarning("Failed to update SlopeLine with ID {SlopeLineID}.", slopeLine.ID);
                     return StatusCode(500, "Failed to update slope line.");
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error updating SlopeLine.");
+                LogErrorWithContext(ex, "Error updating SlopeLine.");
                 return StatusCode(500, "Internal server error while updating SlopeLine.");
             }
         }
@@ -274,18 +317,18 @@ namespace SwitchYard.Service.Controllers
                 var result = dbConnector.ExecuteNonQuery("DELETE FROM slopeline WHERE ID = @id", new { id });
                 if (result > 0)
                 {
-                    _logger.LogInformation("Deleted SlopeLine with ID {SlopeLineID} for instance {InstanceID} by user {Username}.", id, slopeLine.InstanceID, username);
+                    LogInformationWithContext("Deleted SlopeLine with ID {SlopeLineID}.", id);
                     return Ok("SlopeLine deleted successfully.");
                 }
                 else
                 {
-                    _logger.LogWarning("Failed to delete SlopeLine for instance {InstanceID} by user {Username}.", slopeLine.InstanceID, username);
+                    _logger.LogWarning("Failed to delete SlopeLine with ID {SlopeLineID}.", id);
                     return StatusCode(500, "Failed to delete slope line.");
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error deleting SlopeLine.");
+                LogErrorWithContext(ex, "Error deleting SlopeLine.");
                 return StatusCode(500, "Internal server error while deleting SlopeLine.");
             }
         }
@@ -308,7 +351,7 @@ namespace SwitchYard.Service.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error retrieving FlatLayout.");
+                LogErrorWithContext(ex, "Error retrieving FlatLayout.");
                 return StatusCode(500, "Internal server error while retrieving FlatLayout.");
             }
         }
@@ -350,7 +393,8 @@ namespace SwitchYard.Service.Controllers
                     retarder.BindingPositionSegment = flatLayout.PositionSegmentList.Find(s => s.ID == retarder.BindingPositionSegmentID);
                 }
 
-                _logger.LogInformation("FlatLayout retrieved with {PositionCount} positions, {SegmentCount} segments, {SwitchCount} switches, and {RetarderCount} retarders.",
+                LogInformationWithContext("FlatLayout retrieved, slope line {SlopeLineID} with {PositionCount} positions, {SegmentCount} segments, {SwitchCount} switches, and {RetarderCount} retarders.",
+                    slopeLineID,
                     flatLayout.PositionList?.Count ?? 0,
                     flatLayout.PositionSegmentList?.Count ?? 0,
                     flatLayout.SwitchList?.Count ?? 0,
@@ -360,7 +404,7 @@ namespace SwitchYard.Service.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting FlatLayout.");
+                LogErrorWithContext(ex, "Error getting FlatLayout.");
                 return null;
             }
         }
@@ -439,13 +483,13 @@ namespace SwitchYard.Service.Controllers
                         new { ID = retarder.ID, InstanceID = flatLayout.InstanceID, SlopeLineID = flatLayout.SlopeLineID, BindingPositionSegmentID = retarder.BindingPositionSegmentID, Numbers = retarder.Numbers });
                 }
                 dbConnector.Commit();
-                _logger.LogInformation("Updated FlatLayout for instance {InstanceID}, slope line {SlopeLineID} by user {Username}.", flatLayout.InstanceID, flatLayout.SlopeLineID, username);
+                LogInformationWithContext("Updated FlatLayout, slope line {SlopeLineID}.", flatLayout.SlopeLineID);
                 return Ok("FlatLayout updated successfully.");
             }
             catch (Exception ex)
             {
                 dbConnector.Rollback();
-                _logger.LogError(ex, "Error updating FlatLayout.");
+                LogErrorWithContext(ex, "Error updating FlatLayout.");
                 return StatusCode(500, "Internal server error while updating FlatLayout.");
             }
         }
@@ -468,13 +512,13 @@ namespace SwitchYard.Service.Controllers
                 dbConnector.ExecuteNonQuery("DELETE FROM positionsegment WHERE InstanceID = @instanceID AND SlopeLineID = @slopeLineID", new { instanceID = flatLayout.InstanceID, slopeLineID = flatLayout.SlopeLineID });
                 dbConnector.ExecuteNonQuery("DELETE FROM position WHERE InstanceID = @instanceID AND SlopeLineID = @slopeLineID", new { instanceID = flatLayout.InstanceID, slopeLineID = flatLayout.SlopeLineID });
                 dbConnector.Commit();
-                _logger.LogInformation("Deleted FlatLayout for instance {InstanceID}, slope line {SlopeLineID} by user {Username}.", flatLayout.InstanceID, flatLayout.SlopeLineID, username);
+                LogInformationWithContext("Deleted FlatLayout, slope line {SlopeLineID}.", flatLayout.SlopeLineID);
                 return Ok("FlatLayout deleted successfully.");
             }
             catch (Exception ex)
             {
                 dbConnector.Rollback();
-                _logger.LogError(ex, "Error deleting FlatLayout.");
+                LogErrorWithContext(ex, "Error deleting FlatLayout.");
                 return StatusCode(500, "Internal server error while deleting FlatLayout.");
             }
         }
@@ -492,12 +536,12 @@ namespace SwitchYard.Service.Controllers
                 if (authResult != null) return authResult;
 
                 var wagonConceptList = LoadWagonConcept(instanceID);
-                _logger.LogInformation("WagonConcept retrieved with {WagonConceptCount} entries.", wagonConceptList?.Count ?? 0);
+                LogInformationWithContext("WagonConcept retrieved with {WagonConceptCount} entries.", wagonConceptList?.Count ?? 0);
                 return Ok(wagonConceptList);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error retrieving WagonConcept.");
+                LogErrorWithContext(ex, "Error retrieving WagonConcept.");
                 return StatusCode(500, "Internal server error while retrieving WagonConcept.");
             }
         }
@@ -538,18 +582,18 @@ namespace SwitchYard.Service.Controllers
 
                 if (result > 0)
                 {
-                    _logger.LogInformation("Created WagonConcept {TypeName} for instance {InstanceID} by user {Username}.", wagonConcept.TypeName, wagonConcept.InstanceID, username);
+                    LogInformationWithContext("Created WagonConcept {TypeName}.", wagonConcept.TypeName);
                     return Ok(wagonConcept);
                 }
                 else
                 {
-                    _logger.LogWarning("Failed to create WagonConcept for instance {InstanceID} by user {Username}.", wagonConcept.InstanceID, username);
+                    _logger.LogWarning("Failed to create WagonConcept.", wagonConcept.InstanceID, username);
                     return StatusCode(500, "Failed to create WagonConcept.");
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error creating WagonConcept.");
+                LogErrorWithContext(ex, "Error creating WagonConcept.");
                 return StatusCode(500, "Internal server error while creating WagonConcept.");
             }
         }
@@ -595,18 +639,18 @@ namespace SwitchYard.Service.Controllers
 
                 if (result > 0)
                 {
-                    _logger.LogInformation("Updated WagonConcept {TypeName} for instance {InstanceID} by user {Username}.", wagonConcept.TypeName, existing.InstanceID, username);
+                    LogInformationWithContext("Updated WagonConcept {TypeName}.", wagonConcept.TypeName);
                     return Ok("WagonConcept updated successfully.");
                 }
                 else
                 {
-                    _logger.LogWarning("Failed to update WagonConcept {TypeName} for instance {InstanceID} by user {Username}.", wagonConcept.TypeName, existing.InstanceID, username);
+                    _logger.LogWarning("Failed to update WagonConcept {TypeName}.", wagonConcept.TypeName, existing.InstanceID, username);
                     return StatusCode(500, "Failed to update WagonConcept.");
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error updating WagonConcept.");
+                LogErrorWithContext(ex, "Error updating WagonConcept.");
                 return StatusCode(500, "Internal server error while updating WagonConcept.");
             }
         }
@@ -633,18 +677,18 @@ namespace SwitchYard.Service.Controllers
                 var result = dbConnector.ExecuteNonQuery("DELETE FROM wagonconcept WHERE TypeName = @typeName", new { typeName });
                 if (result > 0)
                 {
-                    _logger.LogInformation("Deleted WagonConcept {TypeName} for instance {InstanceID} by user {Username}.", typeName, existing.InstanceID, username);
+                    LogInformationWithContext("Deleted WagonConcept {TypeName}.", typeName);
                     return Ok("WagonConcept deleted successfully.");
                 }
                 else
                 {
-                    _logger.LogWarning("Failed to delete WagonConcept {TypeName} for instance {InstanceID} by user {Username}.", typeName, existing.InstanceID, username);
+                    _logger.LogWarning("Failed to delete WagonConcept {TypeName}.", typeName, existing.InstanceID, username);
                     return StatusCode(500, "Failed to delete WagonConcept.");
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error deleting WagonConcept.");
+                LogErrorWithContext(ex, "Error deleting WagonConcept.");
                 return StatusCode(500, "Internal server error while deleting WagonConcept.");
             }
         }
@@ -671,12 +715,12 @@ namespace SwitchYard.Service.Controllers
                 DBConnector dbConnector = DBConnector.GetDBConnector();
 
                 var list = dbConnector.Query<OperationCondition>("SELECT * FROM operationcondition WHERE InstanceID = @instanceID", new { instanceID });
-                _logger.LogInformation("Retrieved {Count} OperationConditions for instance {InstanceID}.", list?.Count ?? 0, instanceID);
+                LogInformationWithContext("Retrieved {Count} OperationConditions.", list?.Count ?? 0);
                 return Ok(list);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting OperationConditions for instance {InstanceID}.", instanceID);
+                LogErrorWithContext(ex, "Error getting OperationConditions.");
                 return StatusCode(500, "Internal server error while getting OperationConditions.");
             }
         }
@@ -729,18 +773,18 @@ namespace SwitchYard.Service.Controllers
 
                 if (result > 0)
                 {
-                    _logger.LogInformation("Created OperationCondition {ID} for instance {InstanceID}.", condition.ID, condition.InstanceID);
+                    LogInformationWithContext("Created OperationCondition {ID}.", condition.ID);
                     return Ok(condition);
                 }
                 else
                 {
-                    _logger.LogWarning("Failed to create OperationCondition for instance {InstanceID}.", condition.InstanceID);
+                    _logger.LogWarning("Failed to create OperationCondition.", condition.InstanceID);
                     return StatusCode(500, "Failed to create OperationCondition.");
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error creating OperationCondition.");
+                LogErrorWithContext(ex, "Error creating OperationCondition.");
                 return StatusCode(500, "Internal server error while creating OperationCondition.");
             }
         }
@@ -785,18 +829,18 @@ namespace SwitchYard.Service.Controllers
 
                 if (result > 0)
                 {
-                    _logger.LogInformation("Updated OperationCondition {ID} for instance {InstanceID}.", condition.ID, existing.InstanceID);
+                    LogInformationWithContext("Updated OperationCondition {ID}.", condition.ID);
                     return Ok("OperationCondition updated successfully.");
                 }
                 else
                 {
-                    _logger.LogWarning("Failed to update OperationCondition {ID} for instance {InstanceID}.", condition.ID, existing.InstanceID);
+                    _logger.LogWarning("Failed to update OperationCondition {ID}.", condition.ID, existing.InstanceID);
                     return StatusCode(500, "Failed to update OperationCondition.");
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error updating OperationCondition.");
+                LogErrorWithContext(ex, "Error updating OperationCondition.");
                 return StatusCode(500, "Internal server error while updating OperationCondition.");
             }
         }
@@ -822,18 +866,18 @@ namespace SwitchYard.Service.Controllers
                 var result = dbConnector.ExecuteNonQuery("DELETE FROM operationcondition WHERE ID = @id", new { id });
                 if (result > 0)
                 {
-                    _logger.LogInformation("Deleted OperationCondition {ID} for instance {InstanceID}.", id, existing.InstanceID);
+                    LogInformationWithContext("Deleted OperationCondition {ID}.", id);
                     return Ok("OperationCondition deleted successfully.");
                 }
                 else
                 {
-                    _logger.LogWarning("Failed to delete OperationCondition {ID} for instance {InstanceID}.", id, existing.InstanceID);
+                    _logger.LogWarning("Failed to delete OperationCondition {ID}.", id, existing.InstanceID);
                     return StatusCode(500, "Failed to delete OperationCondition.");
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error deleting OperationCondition.");
+                LogErrorWithContext(ex, "Error deleting OperationCondition.");
                 return StatusCode(500, "Internal server error while deleting OperationCondition.");
             }
         }
@@ -852,14 +896,15 @@ namespace SwitchYard.Service.Controllers
 
                 var slopeLayout = LoadSlopeLayout(instanceID, humpSchemeID);
 
-                _logger.LogInformation("SlopeLayout retrieved with {PositionCount} positions and {SegmentCount} segments.",
+                LogInformationWithContext("SlopeLayout retrieved, hump scheme {HumpSchemeID} with {PositionCount} positions and {SegmentCount} segments.",
+                    humpSchemeID,
                     slopeLayout.PositionList?.Count ?? 0,
                     slopeLayout.PositionSegmentList?.Count ?? 0);
                 return Ok(slopeLayout);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error retrieving SlopeLayout.");
+                LogErrorWithContext(ex, "Error retrieving SlopeLayout.");
                 return StatusCode(500, "Internal server error while retrieving SlopeLayout.");
             }
         }
@@ -954,13 +999,13 @@ namespace SwitchYard.Service.Controllers
                 }
 
                 dbConnector.Commit();
-                _logger.LogInformation("Created SlopeLayout for instance {InstanceID}, hump scheme {HumpSchemeID} by user {Username}.", instanceID, humpSchemeID, username);
+                LogInformationWithContext("Created SlopeLayout, hump scheme {HumpSchemeID}.", humpSchemeID);
                 return Ok(slopeLayout);
             }
             catch (Exception ex)
             {
                 dbConnector.Rollback();
-                _logger.LogError(ex, "Error creating SlopeLayout.");
+                LogErrorWithContext(ex, "Error creating SlopeLayout.");
                 return StatusCode(500, "Internal server error while creating SlopeLayout.");
             }
         }
@@ -1024,13 +1069,13 @@ namespace SwitchYard.Service.Controllers
                 }
 
                 dbConnector.Commit();
-                _logger.LogInformation("Updated SlopeLayout for instance {InstanceID}, hump scheme {HumpSchemeID} by user {Username}.", instanceID, humpSchemeID, username);
+                LogInformationWithContext("Updated SlopeLayout, hump scheme {HumpSchemeID}.", humpSchemeID);
                 return Ok("SlopeLayout updated successfully.");
             }
             catch (Exception ex)
             {
                 dbConnector.Rollback();
-                _logger.LogError(ex, "Error updating SlopeLayout.");
+                LogErrorWithContext(ex, "Error updating SlopeLayout.");
                 return StatusCode(500, "Internal server error while updating SlopeLayout.");
             }
         }
@@ -1057,13 +1102,13 @@ namespace SwitchYard.Service.Controllers
                 dbConnector.ExecuteNonQuery("DELETE FROM vpositionsegment WHERE InstanceID = @instanceID AND HumpSchemeID = @humpSchemeID", new { instanceID, humpSchemeID });
                 dbConnector.ExecuteNonQuery("DELETE FROM vposition WHERE InstanceID = @instanceID AND HumpSchemeID = @humpSchemeID", new { instanceID, humpSchemeID });
                 dbConnector.Commit();
-                _logger.LogInformation("Deleted SlopeLayout for instance {InstanceID}, hump scheme {HumpSchemeID} by user {Username}.", instanceID, humpSchemeID, username);
+                LogInformationWithContext("Deleted SlopeLayout, hump scheme {HumpSchemeID}.", humpSchemeID);
                 return Ok("SlopeLayout deleted successfully.");
             }
             catch (Exception ex)
             {
                 dbConnector.Rollback();
-                _logger.LogError(ex, "Error deleting SlopeLayout.");
+                LogErrorWithContext(ex, "Error deleting SlopeLayout.");
                 return StatusCode(500, "Internal server error while deleting SlopeLayout.");
             }
         }
@@ -1135,7 +1180,7 @@ namespace SwitchYard.Service.Controllers
                 if(sqlStrBuilder.Length == 0)
                 {
                     // 返回空
-                    _logger.LogInformation("No HumpCalculationData to insert for instance {InstanceID} and hump scheme {HumpSchemeID}.", parameters.InstanceID, parameters.HumpSchemeID);
+                LogInformationWithContext("No HumpCalculationData to insert, hump scheme {HumpSchemeID}.", parameters.HumpSchemeID);
                     return NoContent();
                 }
 
@@ -1143,16 +1188,16 @@ namespace SwitchYard.Service.Controllers
                 dbConnector.ExecuteNonQuery($"DELETE FROM humpcalculationdata WHERE InstanceID = '{parameters.InstanceID}' AND HumpSchemeID = '{parameters.HumpSchemeID}' AND HumpCalculationID = '{parameters.ID}';");
                 dbConnector.ExecuteNonQuery(sqlStrBuilder.ToString());
                 dbConnector.Commit();
-                _logger.LogInformation("Inserted {DataCount} HumpCalculationData records for instance {InstanceID} and hump scheme {HumpSchemeID}.", humpCalculation.Data?.Count ?? 0, parameters.InstanceID, parameters.HumpSchemeID);
+                LogInformationWithContext("Inserted {DataCount} HumpCalculationData records, hump scheme {HumpSchemeID}, hump calculation {HumpCalculationID}.", humpCalculation.Data?.Count ?? 0, parameters.HumpSchemeID, parameters.ID);
 
                 // 返回计算结果
-                _logger.LogInformation("Energy height calculation executed for instance {InstanceID} with parameters: {Parameters}.", parameters.InstanceID, parameters);
+                LogInformationWithContext("Energy height calculation executed with parameters: {Parameters}.", parameters);
                 return Ok(humpCalculation);
             }
             catch (Exception ex)
             {
                 dbConnector.Rollback();
-                _logger.LogError(ex, "Error calculating resistance.");
+                LogErrorWithContext(ex, "Error calculating resistance.");
                 return StatusCode(500, "Internal server error while calculating resistance.");
             }
         }
@@ -1188,12 +1233,12 @@ namespace SwitchYard.Service.Controllers
                     var energyHeightResult = HumpEnergyHeightCalculator.CalculateKineticEnergyHeight(flatLayout, slopeLayout, p.X, parameters, p.ID);
                     kineticEnergyHeightList.Add(new { x = p.X, result = energyHeightResult });
                 }
-                _logger.LogInformation("Kinetic Energy Height calculated for {PositionCount} positions.", kineticEnergyHeightList?.Count ?? 0);
+                LogInformationWithContext("Kinetic Energy Height calculated for {PositionCount} positions, slope line {SlopeLineID}, hump scheme {HumpSchemeID}, operation condition {OperationConditionID}.", kineticEnergyHeightList?.Count ?? 0, parameters.SlopeLineID, parameters.HumpSchemeID, parameters.OperationConditionID);
                 return Ok(kineticEnergyHeightList);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error calculating Kinetic Energy Height.");
+                LogErrorWithContext(ex, "Error calculating Kinetic Energy Height.");
                 return StatusCode(500, "Internal server error while calculating Kinetic Energy Height.");
             }
         }
@@ -1244,12 +1289,12 @@ namespace SwitchYard.Service.Controllers
                         resistanceEnergyHeightList.Add(new { x = i, height = Math.Round(energyHeight, 3) });
                     }
                 }
-                _logger.LogInformation("Resistance Energy Height calculated for {PositionCount} positions.", resistanceEnergyHeightList?.Count ?? 0);
+                LogInformationWithContext("Resistance Energy Height calculated for {PositionCount} positions, slope line {SlopeLineID}, hump scheme {HumpSchemeID}, operation condition {OperationConditionID}.", resistanceEnergyHeightList?.Count ?? 0, parameters.SlopeLineID, parameters.HumpSchemeID, parameters.OperationConditionID);
                 return Ok(resistanceEnergyHeightList);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error calculating Resistance Energy Height.");
+                LogErrorWithContext(ex, "Error calculating Resistance Energy Height.");
                 return StatusCode(500, "Internal server error while calculating Resistance Energy Height.");
             }
         }
@@ -1279,12 +1324,12 @@ namespace SwitchYard.Service.Controllers
                     var energyHeight = HumpEnergyHeightCalculator.CalculateBreakingEnergyHeight(flatLayout, p.X, parameters);
                     breakingEnergyHeightDict.Add(p.X, energyHeight);
                 }
-                _logger.LogInformation("Breaking Energy Height calculated for {PositionCount} positions.", breakingEnergyHeightDict?.Count ?? 0);
+                LogInformationWithContext("Breaking Energy Height calculated for {PositionCount} positions, slope line {SlopeLineID}, hump scheme {HumpSchemeID}.", breakingEnergyHeightDict?.Count ?? 0, parameters.SlopeLineID, parameters.HumpSchemeID);
                 return Ok(breakingEnergyHeightDict);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error calculating Breaking Energy Height.");
+                LogErrorWithContext(ex, "Error calculating Breaking Energy Height.");
                 return StatusCode(500, "Internal server error while calculating Breaking Energy Height.");
             }
         }
@@ -1331,12 +1376,12 @@ namespace SwitchYard.Service.Controllers
                 if (authResult != null) return authResult;
 
                 var velocityList = GetVelocityList(parameters);
-                _logger.LogInformation("Velocity calculated for {PositionCount} positions.", velocityList?.Count ?? 0);
+                LogInformationWithContext("Velocity calculated for {PositionCount} positions, slope line {SlopeLineID}, hump scheme {HumpSchemeID}.", velocityList?.Count ?? 0, parameters.SlopeLineID, parameters.HumpSchemeID);
                 return Ok(velocityList);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error calculating Velocity.");
+                LogErrorWithContext(ex, "Error calculating Velocity.");
                 return StatusCode(500, "Internal server error while calculating Velocity.");
             }
         }
@@ -1378,12 +1423,12 @@ namespace SwitchYard.Service.Controllers
                 {
                 }
 
-                _logger.LogInformation("Time calculated for {PositionCount} positions.", velocityList?.Count ?? 0);
+                LogInformationWithContext("Time calculated for {PositionCount} positions, slope line {SlopeLineID}, hump scheme {HumpSchemeID}.", velocityList?.Count ?? 0, parameters.SlopeLineID, parameters.HumpSchemeID);
                 return Ok(timeList);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error calculating Time.");
+                LogErrorWithContext(ex, "Error calculating Time.");
                 return StatusCode(500, "Internal server error while calculating Time.");
             }
         }
@@ -1402,12 +1447,12 @@ namespace SwitchYard.Service.Controllers
                 var username = User.Identity?.Name;
                 DBConnector dbConnector = DBConnector.GetDBConnector();
                 var humpSchemes = dbConnector.Query<HumpScheme>("SELECT * FROM humpscheme WHERE InstanceID = @instanceID", new { instanceID });
-                _logger.LogInformation("Retrieved {HumpSchemeCount} HumpSchemes for instance {InstanceID} by user {Username}.", humpSchemes?.Count ?? 0, instanceID, username);
+                LogInformationWithContext("Retrieved {HumpSchemeCount} HumpSchemes.", humpSchemes?.Count ?? 0);
                 return Ok(humpSchemes);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting HumpSchemes for instance {InstanceID}.", instanceID);
+                LogErrorWithContext(ex, "Error getting HumpSchemes.");
                 return StatusCode(500, "Internal server error while getting HumpSchemes.");
             }
         }
@@ -1436,18 +1481,18 @@ namespace SwitchYard.Service.Controllers
                     new { humpScheme.InstanceID, humpScheme.ID, humpScheme.Name });
                 if (result > 0)
                 {
-                    _logger.LogInformation("Created HumpScheme with ID {HumpSchemeID} for instance {InstanceID} by user {Username}.", humpScheme.ID, humpScheme.InstanceID, username);
+                    LogInformationWithContext("Created HumpScheme with ID {HumpSchemeID}.", humpScheme.ID);
                     return Ok(humpScheme);
                 }
                 else
                 {
-                    _logger.LogWarning("Failed to create HumpScheme for instance {InstanceID} by user {Username}.", humpScheme.InstanceID, username);
+                    _logger.LogWarning("Failed to create HumpScheme.", humpScheme.InstanceID, username);
                     return StatusCode(500, "Failed to create HumpScheme.");
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error creating HumpScheme.");
+                LogErrorWithContext(ex, "Error creating HumpScheme.");
                 return StatusCode(500, "Internal server error while creating HumpScheme.");
             }
         }
@@ -1481,18 +1526,18 @@ namespace SwitchYard.Service.Controllers
                     new { humpScheme.Name, humpScheme.ID });
                 if (result > 0)
                 {
-                    _logger.LogInformation("Updated HumpScheme with ID {HumpSchemeID} for instance {InstanceID} by user {Username}.", humpScheme.ID, existing.InstanceID, username);
+                    LogInformationWithContext("Updated HumpScheme with ID {HumpSchemeID}.", humpScheme.ID);
                     return Ok("HumpScheme updated successfully.");
                 }
                 else
                 {
-                    _logger.LogWarning("Failed to update HumpScheme for instance {InstanceID} by user {Username}.", existing.InstanceID, username);
+                    _logger.LogWarning("Failed to update HumpScheme.", existing.InstanceID, username);
                     return StatusCode(500, "Failed to update HumpScheme.");
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error updating HumpScheme.");
+                LogErrorWithContext(ex, "Error updating HumpScheme.");
                 return StatusCode(500, "Internal server error while updating HumpScheme.");
             }
         }
@@ -1520,18 +1565,18 @@ namespace SwitchYard.Service.Controllers
                 var result = dbConnector.ExecuteNonQuery("DELETE FROM humpscheme WHERE ID = @id", new { id });
                 if (result > 0)
                 {
-                    _logger.LogInformation("Deleted HumpScheme with ID {HumpSchemeID} for instance {InstanceID} by user {Username}.", id, humpScheme.InstanceID, username);
+                    LogInformationWithContext("Deleted HumpScheme with ID {HumpSchemeID}.", id);
                     return Ok("HumpScheme deleted successfully.");
                 }
                 else
                 {
-                    _logger.LogWarning("Failed to delete HumpScheme for instance {InstanceID} by user {Username}.", humpScheme.InstanceID, username);
+                    _logger.LogWarning("Failed to delete HumpScheme.", humpScheme.InstanceID, username);
                     return StatusCode(500, "Failed to delete HumpScheme.");
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error deleting HumpScheme.");
+                LogErrorWithContext(ex, "Error deleting HumpScheme.");
                 return StatusCode(500, "Internal server error while deleting HumpScheme.");
             }
         }
@@ -1550,12 +1595,12 @@ namespace SwitchYard.Service.Controllers
                 var username = User.Identity?.Name;
                 DBConnector dbConnector = DBConnector.GetDBConnector();
                 var humpCalculations = dbConnector.Query<HumpCalculation>("SELECT * FROM humpcalculation WHERE InstanceID = @instanceID AND HumpSchemeID = @humpSchemeID", new { instanceID = instanceID, humpSchemeID = humpSchemeID });
-                _logger.LogInformation("Retrieved {HumpCalculationCount} HumpCalculations for instance {InstanceID} by user {Username}.", humpCalculations?.Count ?? 0, instanceID, username);
+                LogInformationWithContext("Retrieved {HumpCalculationCount} HumpCalculations, hump scheme {HumpSchemeID}.", humpCalculations?.Count ?? 0, humpSchemeID);
                 return Ok(humpCalculations);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting HumpCalculations for instance {InstanceID}.", instanceID);
+                LogErrorWithContext(ex, "Error getting HumpCalculations.");
                 return StatusCode(500, "Internal server error while getting HumpCalculations.");
             }
         }
@@ -1592,18 +1637,18 @@ namespace SwitchYard.Service.Controllers
                     });
                 if (result > 0)
                 {
-                    _logger.LogInformation("Created HumpCalculation with ID {HumpCalculationID} for instance {InstanceID} by user {Username}.", humpCalculation.ID, humpCalculation.InstanceID, username);
+                    LogInformationWithContext("Created HumpCalculation with ID {HumpCalculationID}.", humpCalculation.ID);
                     return Ok(humpCalculation);
                 }
                 else
                 {
-                    _logger.LogWarning("Failed to create HumpCalculation for instance {InstanceID} by user {Username}.", humpCalculation.InstanceID, username);
+                    _logger.LogWarning("Failed to create HumpCalculation.", humpCalculation.InstanceID, username);
                     return StatusCode(500, "Failed to create HumpCalculation.");
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error creating HumpCalculation.");
+                LogErrorWithContext(ex, "Error creating HumpCalculation.");
                 return StatusCode(500, "Internal server error while creating HumpCalculation.");
             }
         }
@@ -1644,18 +1689,18 @@ namespace SwitchYard.Service.Controllers
                     });
                 if (result > 0)
                 {
-                    _logger.LogInformation("Updated HumpCalculation with ID {HumpCalculationID} for instance {InstanceID} by user {Username}.", humpCalculation.ID, existing.InstanceID, username);
+                    LogInformationWithContext("Updated HumpCalculation with ID {HumpCalculationID}.", humpCalculation.ID);
                     return Ok("HumpCalculation updated successfully.");
                 }
                 else
                 {
-                    _logger.LogWarning("Failed to update HumpCalculation for instance {InstanceID} by user {Username}.", existing.InstanceID, username);
+                    _logger.LogWarning("Failed to update HumpCalculation.", existing.InstanceID, username);
                     return StatusCode(500, "Failed to update HumpCalculation.");
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error updating HumpCalculation.");
+                LogErrorWithContext(ex, "Error updating HumpCalculation.");
                 return StatusCode(500, "Internal server error while updating HumpCalculation.");
             }
         }
@@ -1682,18 +1727,18 @@ namespace SwitchYard.Service.Controllers
                 var result = dbConnector.ExecuteNonQuery("DELETE FROM humpcalculation WHERE ID = @id", new { id });
                 if (result > 0)
                 {
-                    _logger.LogInformation("Deleted HumpCalculation with ID {HumpCalculationID} for instance {InstanceID} by user {Username}.", id, humpCalculation.InstanceID, username);
+                    LogInformationWithContext("Deleted HumpCalculation with ID {HumpCalculationID}.", id);
                     return Ok("HumpCalculation deleted successfully.");
                 }
                 else
                 {
-                    _logger.LogWarning("Failed to delete HumpCalculation for instance {InstanceID} by user {Username}.", humpCalculation.InstanceID, username);
+                    _logger.LogWarning("Failed to delete HumpCalculation.", humpCalculation.InstanceID, username);
                     return StatusCode(500, "Failed to delete HumpCalculation.");
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error deleting HumpCalculation.");
+                LogErrorWithContext(ex, "Error deleting HumpCalculation.");
                 return StatusCode(500, "Internal server error while deleting HumpCalculation.");
             }
         }
@@ -1709,12 +1754,12 @@ namespace SwitchYard.Service.Controllers
                 var authResult = ValidateInstanceOwnershipOrFail(instanceID);
                 if (authResult != null) return authResult;
                 var humpCalculation = GetHumpCalculation(instanceID, humpSchemeID, id);
-                _logger.LogInformation("Retrieved HumpCalculation with ID {HumpCalculationID} for instance {InstanceID}.", id, humpCalculation.InstanceID);
+                LogInformationWithContext("Retrieved HumpCalculation with ID {HumpCalculationID}.", id);
                 return Ok(humpCalculation);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting HumpCalculation with ID {HumpCalculationID}.", id);
+                LogErrorWithContext(ex, "Error getting HumpCalculation with ID {HumpCalculationID}.", id);
                 return StatusCode(500, "Internal server error while getting HumpCalculation.");
             }
         }
@@ -1740,13 +1785,12 @@ namespace SwitchYard.Service.Controllers
                 var username = User.Identity?.Name;
                 DBConnector dbConnector = DBConnector.GetDBConnector();
                 var schemes = dbConnector.Query<HeadwayCheckScheme>("SELECT * FROM headwaycheckscheme WHERE InstanceID = @instanceID", new { instanceID });
-                
-                _logger.LogInformation("Retrieved {SchemeCount} HeadwayCheckSchemes for instance {InstanceID} by user {Username}.", schemes?.Count ?? 0, instanceID, username);
+                LogInformationWithContext("Retrieved {SchemeCount} HeadwayCheckSchemes.", schemes?.Count ?? 0);
                 return Ok(schemes);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting HeadwayCheckSchemes for instance {InstanceID}.", instanceID);
+                LogErrorWithContext(ex, "Error getting HeadwayCheckSchemes.");
                 return StatusCode(500, "Internal server error while getting HeadwayCheckSchemes.");
             }
         }
@@ -1788,7 +1832,7 @@ namespace SwitchYard.Service.Controllers
                 if (result <= 0)
                 {
                     dbConnector.Rollback();
-                    _logger.LogWarning("Failed to create HeadwayCheckScheme for instance {InstanceID} by user {Username}.", scheme.InstanceID, username);
+                    _logger.LogWarning("Failed to create HeadwayCheckScheme.", scheme.InstanceID, username);
                     return StatusCode(500, "Failed to create HeadwayCheckScheme.");
                 }
                 
@@ -1809,13 +1853,13 @@ namespace SwitchYard.Service.Controllers
                 }
                 
                 dbConnector.Commit();
-                _logger.LogInformation("Created HeadwayCheckScheme with ID {SchemeID} and {WagonCount} wagons for instance {InstanceID} by user {Username}.", scheme.ID, scheme.WagonList?.Count ?? 0, scheme.InstanceID, username);
+                LogInformationWithContext("Created HeadwayCheckScheme with ID {SchemeID} and {WagonCount} wagons.", scheme.ID, scheme.WagonList?.Count ?? 0);
                 return Ok(scheme);
             }
             catch (Exception ex)
             {
                 dbConnector.Rollback();
-                _logger.LogError(ex, "Error creating HeadwayCheckScheme.");
+                LogErrorWithContext(ex, "Error creating HeadwayCheckScheme.");
                 return StatusCode(500, "Internal server error while creating HeadwayCheckScheme.");
             }
         }
@@ -1860,7 +1904,7 @@ namespace SwitchYard.Service.Controllers
                 if (result <= 0)
                 {
                     dbConnector.Rollback();
-                    _logger.LogWarning("Failed to update HeadwayCheckScheme for instance {InstanceID} by user {Username}.", existing.InstanceID, username);
+                    _logger.LogWarning("Failed to update HeadwayCheckScheme.", existing.InstanceID, username);
                     return StatusCode(500, "Failed to update HeadwayCheckScheme.");
                 }
                 
@@ -1884,13 +1928,13 @@ namespace SwitchYard.Service.Controllers
                 }
                 
                 dbConnector.Commit();
-                _logger.LogInformation("Updated HeadwayCheckScheme with ID {SchemeID} and {WagonCount} wagons for instance {InstanceID} by user {Username}.", scheme.ID, scheme.WagonList?.Count ?? 0, existing.InstanceID, username);
+                LogInformationWithContext("Updated HeadwayCheckScheme with ID {SchemeID} and {WagonCount} wagons.", scheme.ID, scheme.WagonList?.Count ?? 0);
                 return Ok("HeadwayCheckScheme updated successfully.");
             }
             catch (Exception ex)
             {
                 dbConnector.Rollback();
-                _logger.LogError(ex, "Error updating HeadwayCheckScheme.");
+                LogErrorWithContext(ex, "Error updating HeadwayCheckScheme.");
                 return StatusCode(500, "Internal server error while updating HeadwayCheckScheme.");
             }
         }
@@ -1924,20 +1968,20 @@ namespace SwitchYard.Service.Controllers
                 if (result > 0)
                 {
                     dbConnector.Commit();
-                    _logger.LogInformation("Deleted HeadwayCheckScheme with ID {SchemeID} for instance {InstanceID} by user {Username}.", id, scheme.InstanceID, username);
+                    LogInformationWithContext("Deleted HeadwayCheckScheme with ID {SchemeID}.", id);
                     return Ok("HeadwayCheckScheme deleted successfully.");
                 }
                 else
                 {
                     dbConnector.Rollback();
-                    _logger.LogWarning("Failed to delete HeadwayCheckScheme for instance {InstanceID} by user {Username}.", scheme.InstanceID, username);
+                    _logger.LogWarning("Failed to delete HeadwayCheckScheme.", scheme.InstanceID, username);
                     return StatusCode(500, "Failed to delete HeadwayCheckScheme.");
                 }
             }
             catch (Exception ex)
             {
                 dbConnector.Rollback();
-                _logger.LogError(ex, "Error deleting HeadwayCheckScheme.");
+                LogErrorWithContext(ex, "Error deleting HeadwayCheckScheme.");
                 return StatusCode(500, "Internal server error while deleting HeadwayCheckScheme.");
             }
         }
@@ -1981,12 +2025,12 @@ namespace SwitchYard.Service.Controllers
                     return NotFound("HeadwayCheckScheme not found.");
                 }
                 
-                _logger.LogInformation("Retrieved HeadwayCheckScheme with ID {SchemeID} and {WagonCount} wagons for instance {InstanceID}.", id, scheme.WagonList?.Count ?? 0, instanceID);
+                LogInformationWithContext("Retrieved HeadwayCheckScheme with ID {SchemeID} and {WagonCount} wagons.", id, scheme.WagonList?.Count ?? 0);
                 return Ok(scheme);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting HeadwayCheckScheme with ID {SchemeID}.", id);
+                LogErrorWithContext(ex, "Error getting HeadwayCheckScheme with ID {SchemeID}.", id);
                 return StatusCode(500, "Internal server error while getting HeadwayCheckScheme.");
             }
         }
@@ -2039,12 +2083,12 @@ namespace SwitchYard.Service.Controllers
                     speedProfileList.Add(speedProfile);
                 }
 
-                _logger.LogInformation("Calculated speed profile for HeadwayCheckScheme with ID {SchemeID} for instance {InstanceID}.", headwayCheckSchemeID, instanceID);
+                LogInformationWithContext("Calculated speed profile for HeadwayCheckScheme with ID {SchemeID}.", headwayCheckSchemeID);
                 return Ok(speedProfileList);
             }
             catch(Exception ex)
             {
-                _logger.LogError(ex, "Error calculating speed profile for instance {InstanceID} with HeadwayCheckScheme ID {SchemeID}.", instanceID, headwayCheckSchemeID);
+                LogErrorWithContext(ex, "Error calculating speed profile with HeadwayCheckScheme ID {SchemeID}.", headwayCheckSchemeID);
                 return StatusCode(500, "Internal server error while calculating speed profile.");
             }
         }
@@ -2092,14 +2136,15 @@ namespace SwitchYard.Service.Controllers
 
                 var rtData = HeadwayChecker.CalculateRunningTime(scheme, flatLayout, slopeLayout);
 
-                _logger.LogInformation("HeadwayCheck with ID {SchemeID} for instance {InstanceID} has been excuted.", headwayCheckSchemeID, instanceID);
+                LogInformationWithContext("HeadwayCheck with ID {SchemeID} has been executed.", headwayCheckSchemeID);
                 return Ok(rtData);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error executing HeadwayCheck for instance {InstanceID} with ID {SchemeID}.", instanceID, instanceID);
+                LogErrorWithContext(ex, "Error executing HeadwayCheck with ID {SchemeID}.", headwayCheckSchemeID);
                 return StatusCode(500, "Internal server error while executing HeadwayCheck.");
             }
         }
     }
 }
+
