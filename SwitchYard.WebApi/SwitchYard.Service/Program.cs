@@ -5,6 +5,10 @@ using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using SwitchYard.Service.Utils;
 using Serilog;
+using Microsoft.AspNetCore.HttpOverrides;
+using System.Net;
+
+using IPNetwork = Microsoft.AspNetCore.HttpOverrides.IPNetwork;
 
 // 配置 Serilog - 在创建 builder 之前
 var logDirectory = Path.Combine(AppContext.BaseDirectory, "logs");
@@ -38,6 +42,49 @@ try
 
     // Add services to the container.
     builder.Services.AddControllers();
+
+    // 配置代理头部转发 - 用于获取真实客户端IP
+    builder.Services.Configure<ForwardedHeadersOptions>(options =>
+    {
+        // 清除默认的已知网络和代理
+        options.KnownNetworks.Clear();
+        options.KnownProxies.Clear();
+        
+        // 配置要处理的头部
+        options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+        
+        // 如果您知道代理服务器的IP，可以添加到已知代理列表中
+        // 通常包括本地回环地址和私有网络地址
+        options.KnownProxies.Add(IPAddress.Loopback); // 127.0.0.1
+        options.KnownProxies.Add(IPAddress.IPv6Loopback); // ::1
+        
+        // 如果在容器或云环境中，可能需要添加特定的网络
+        // 例如 Docker 的默认网络
+        // options.KnownNetworks.Add(new IPNetwork(IPAddress.Parse("172.17.0.0"), 16));
+        
+        // 在生产环境中，为了安全考虑，应该限制已知代理
+        // 在开发环境中，可以允许所有代理
+        if (builder.Environment.IsDevelopment())
+        {
+            // 开发环境：允许任何代理
+            options.KnownProxies.Clear();
+            options.KnownNetworks.Clear();
+        }
+        else
+        {
+            // 生产环境：添加您的Nginx代理服务器IP
+            // 请根据您的实际部署环境修改以下IP地址
+            // options.KnownProxies.Add(IPAddress.Parse("nginx_server_ip"));
+            
+            // 或者添加整个内网网段
+            options.KnownNetworks.Add(new IPNetwork(IPAddress.Parse("10.0.0.0"), 8));
+            options.KnownNetworks.Add(new IPNetwork(IPAddress.Parse("172.16.0.0"), 12));
+            options.KnownNetworks.Add(new IPNetwork(IPAddress.Parse("192.168.0.0"), 16));
+        }
+        
+        // 设置转发限制（防止头部欺骗）
+        options.ForwardLimit = 2; // 允许最多经过2层代理
+    });
 
     // Configure CORS: 从配置文件读取允许的域名
     var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? Array.Empty<string>();
@@ -172,6 +219,11 @@ try
     logger.LogInformation("JWT Issuer: {Issuer}, Audience: {Audience}", issuer, audience);
 
     // Configure the HTTP request pipeline.
+    
+    // 必须在所有其他中间件之前添加ForwardedHeaders
+    app.UseForwardedHeaders();
+    logger.LogInformation("ForwardedHeaders middleware enabled for proxy support");
+    
     if (app.Environment.IsDevelopment())
     {
         app.UseSwagger();

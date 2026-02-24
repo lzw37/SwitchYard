@@ -5,8 +5,6 @@ using SwitchYard.Service.Services;
 
 namespace SwitchYard.Service.Controllers
 {
-    
-
     /// <summary>
     /// 认证控制器
     /// </summary>
@@ -16,19 +14,81 @@ namespace SwitchYard.Service.Controllers
     {
         private string GetClientIpAddress()
         {
+            // 优先检查 X-Forwarded-For，这是最常用的代理头部
             var forwardedFor = Request?.Headers["X-Forwarded-For"].FirstOrDefault();
             if (!string.IsNullOrWhiteSpace(forwardedFor))
             {
-                return forwardedFor.Split(',')[0].Trim();
+                // X-Forwarded-For 可能包含多个IP（客户端,代理1,代理2...），取第一个
+                var ips = forwardedFor.Split(',', StringSplitOptions.RemoveEmptyEntries);
+                foreach (var ip in ips)
+                {
+                    var trimmedIp = ip.Trim();
+                    if (IsValidIpAddress(trimmedIp))
+                    {
+                        return trimmedIp;
+                    }
+                }
             }
 
+            // 检查 X-Real-IP，Nginx常用
             var realIp = Request?.Headers["X-Real-IP"].FirstOrDefault();
-            if (!string.IsNullOrWhiteSpace(realIp))
+            if (!string.IsNullOrWhiteSpace(realIp) && IsValidIpAddress(realIp))
             {
                 return realIp;
             }
 
-            return HttpContext?.Connection?.RemoteIpAddress?.ToString()??"unknown";
+            // 检查 X-Forwarded-For 的其他变体
+            var cfConnectingIp = Request?.Headers["CF-Connecting-IP"].FirstOrDefault(); // Cloudflare
+            if (!string.IsNullOrWhiteSpace(cfConnectingIp) && IsValidIpAddress(cfConnectingIp))
+            {
+                return cfConnectingIp;
+            }
+
+            var xForwardedFor = Request?.Headers["X_FORWARDED_FOR"].FirstOrDefault(); // 下划线变体
+            if (!string.IsNullOrWhiteSpace(xForwardedFor) && IsValidIpAddress(xForwardedFor))
+            {
+                return xForwardedFor;
+            }
+
+            // 检查 True-Client-IP
+            var trueClientIp = Request?.Headers["True-Client-IP"].FirstOrDefault();
+            if (!string.IsNullOrWhiteSpace(trueClientIp) && IsValidIpAddress(trueClientIp))
+            {
+                return trueClientIp;
+            }
+
+            // 最后回退到连接的远程IP地址
+            var remoteIp = HttpContext?.Connection?.RemoteIpAddress?.ToString();
+            if (!string.IsNullOrWhiteSpace(remoteIp))
+            {
+                // 处理IPv6映射的IPv4地址
+                if (remoteIp.StartsWith("::ffff:"))
+                {
+                    remoteIp = remoteIp.Substring(7);
+                }
+                
+                if (IsValidIpAddress(remoteIp))
+                {
+                    return remoteIp;
+                }
+            }
+
+            return "unknown";
+        }
+
+        private bool IsValidIpAddress(string ipString)
+        {
+            // 验证IP地址格式并排除本地/私有地址（在生产环境中可能需要这些地址）
+            if (System.Net.IPAddress.TryParse(ipString, out var ipAddress))
+            {
+                // 排除明显的本地地址
+                if (ipString == "127.0.0.1" || ipString == "::1" || ipString == "localhost")
+                {
+                    return false;
+                }
+                return true;
+            }
+            return false;
         }
 
         private readonly JwtTokenService _jwtTokenService;

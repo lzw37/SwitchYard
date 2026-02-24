@@ -34,16 +34,15 @@
                     <!-- 跟随光标的圆和+号 -->
                     <g class="cursor-addpoint" v-if="cursorX >= 0 && cursorX <= sketchWidth / scaleX"
                         @click="addVPosition(cursorX)">
-                        <circle class="addpointhandler" :cx="getX(cursorX)" :cy="svgHeight - marginBottom / 2" r="8"
-                            stroke="#888" stroke-width="2" />
+                        <circle class="addpointhandler" :cx="getX(cursorX)" :cy="svgHeight - marginBottom / 2" />
                         <text :x="getX(cursorX)" :y="svgHeight - marginBottom / 2" text-anchor="middle"
                             dominant-baseline="middle" font-size="14" fill="white" font-weight="bold"
                             style="cursor:pointer">+</text>
                     </g>
                 </g>
                 <g v-if="showRetarder" class="retarders">
-                    <rect v-for="retarder in retarderRects" :key="retarder.key" class="retarder-range"
-                        :x="retarder.x" :y="retarder.y" :width="retarder.width" :height="retarder.height" />
+                    <rect v-for="retarder in retarderRects" :key="retarder.key" class="retarder-range" :x="retarder.x"
+                        :y="retarder.y" :width="retarder.width" :height="retarder.height" />
                 </g>
                 <g class="slopelines">
                     <line v-for="seg in slopeLayout?.positionSegmentList || []" class="slope-line"
@@ -940,8 +939,12 @@ defineExpose({
 }
 
 .addpointhandler {
-    fill: #888;
+    r: 5;
+    fill: #aeb8c2;
+    stroke: #98a4b0;
+    stroke-width: 2px;
     cursor: pointer;
+    transition: r 120ms ease, fill 120ms ease, stroke 120ms ease;
 }
 
 .cursor-addpoint {
@@ -949,8 +952,10 @@ defineExpose({
 }
 
 .cursor-addpoint:hover .addpointhandler {
-    stroke: red;
-    stroke-width: 3px;
+    r: 8;
+    fill: #5b9ad2;
+    stroke: #3f84c2;
+    stroke-width: 2px;
 }
 
 .context-menu {
