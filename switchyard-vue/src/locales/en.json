@@ -404,6 +404,56 @@
                 "loadConditionsFailed": "Failed to load wagon conditions",
                 "confirmSlopeConfig": "Please ensure hump profile scheme and slope line are configured first"
             }
+        },
+        "sim": {
+            "labels": {
+                "scheme": "Headway Check Scheme",
+                "playbackSpeed": "Playback Speed",
+                "progress": "Simulation Progress",
+                "clock": "Simulation Clock",
+                "unknown": "--"
+            },
+            "select": {
+                "placeholder": "Please select a headway check scheme",
+                "noData": "No available schemes",
+                "noMatch": "No matching result"
+            },
+            "buttons": {
+                "start": "Start",
+                "pause": "Pause",
+                "end": "End",
+                "prevSecond": "Previous Second",
+                "nextSecond": "Next Second",
+                "reset": "Reset"
+            },
+            "axis": {
+                "distance": "Distance (m)",
+                "height": "Elevation (m)"
+            },
+            "hints": {
+                "missingTrajectory": "Running-time trajectory is missing. Please execute the check first."
+            },
+            "states": {
+                "selectInstance": "Please select a hump instance in the main page first.",
+                "loading": "Loading simulation data...",
+                "noSchemes": "No headway check schemes are available for this instance.",
+                "selectScheme": "Please select a headway check scheme.",
+                "emptySlope": "Slope layout is empty. Please check GetSlopeLayout.",
+                "emptyRunningTime": "Running-time trajectory is empty. Please run CalculateRunningTime first."
+            },
+            "messages": {
+                "loadSchemesFailed": "Failed to load headway check schemes.",
+                "schemeNotFound": "Cannot find the selected headway check scheme.",
+                "missingHumpScheme": "Selected scheme does not contain hump scheme ID.",
+                "loadSpeedFailed": "Failed to load speed profiles. Instant speed will show as --",
+                "loadWagonTypeFailed": "Failed to load wagon types. WagonType will show as --",
+                "emptySlopeResponse": "Slope layout is empty. Please check GetSlopeLayout response.",
+                "emptyRunningTimeResponse": "Running-time trajectory is empty. Please run CalculateRunningTime first.",
+                "loadSimulationFailed": "Failed to load simulation data. Please check backend API."
+            },
+            "units": {
+                "speed": "m/s"
+            }
         }
     },
     "humpChart": {

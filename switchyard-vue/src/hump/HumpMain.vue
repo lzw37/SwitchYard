@@ -43,7 +43,7 @@
                     <HumpHeadwayCheck :selectedInstanceId="selectedLine" />
                 </el-tab-pane>
                 <el-tab-pane :label="t('humpMain.tabs.simulation')" name="simulation">
-                    <HumpSim />
+                    <HumpSim :selectedInstanceId="selectedLine" />
                 </el-tab-pane>
             </el-tabs>
         </div>

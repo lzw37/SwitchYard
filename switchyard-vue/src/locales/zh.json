@@ -398,6 +398,56 @@
                 "loadConditionsFailed": "加载钩车条件失败",
                 "confirmSlopeConfig": "请先确保纵断面方案和溜放线已配置"
             }
+        },
+        "sim": {
+            "labels": {
+                "scheme": "驼峰检算方案",
+                "playbackSpeed": "播放速度",
+                "progress": "仿真进度",
+                "clock": "仿真时钟",
+                "unknown": "--"
+            },
+            "select": {
+                "placeholder": "请选择一个检算方案",
+                "noData": "无可用检算方案",
+                "noMatch": "无匹配结果"
+            },
+            "buttons": {
+                "start": "开始",
+                "pause": "暂停",
+                "end": "结束",
+                "prevSecond": "前一秒",
+                "nextSecond": "后一秒",
+                "reset": "归零"
+            },
+            "axis": {
+                "distance": "距离 (m)",
+                "height": "高程 (m)"
+            },
+            "hints": {
+                "missingTrajectory": "未获取到时间-距离曲线，请先执行检算。"
+            },
+            "states": {
+                "selectInstance": "请先在主页面选择一个驼峰实例。",
+                "loading": "正在加载仿真数据...",
+                "noSchemes": "当前实例下没有可用的检算方案。",
+                "selectScheme": "请选择一个检算方案。",
+                "emptySlope": "纵断面数据为空，请检查 GetSlopeLayout。",
+                "emptyRunningTime": "运行时间曲线为空，请先执行 CalculateRunningTime。"
+            },
+            "messages": {
+                "loadSchemesFailed": "检算方案加载失败。",
+                "schemeNotFound": "未找到选中的检算方案。",
+                "missingHumpScheme": "该检算方案缺少纵断面方案 ID。",
+                "loadSpeedFailed": "速度曲线加载失败，瞬时速度将显示为 --",
+                "loadWagonTypeFailed": "车辆类型加载失败，WagonType 将显示为 --",
+                "emptySlopeResponse": "纵断面数据为空，请检查 GetSlopeLayout 返回值。",
+                "emptyRunningTimeResponse": "运行时间曲线为空，请先执行 CalculateRunningTime。",
+                "loadSimulationFailed": "仿真数据加载失败，请检查后端接口。"
+            },
+            "units": {
+                "speed": "m/s"
+            }
         }
     },
     "humpChart": {
