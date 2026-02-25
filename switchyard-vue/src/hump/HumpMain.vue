@@ -6,7 +6,8 @@
                     {{ t('humpMain.buttons.instanceManager') }}
                 </el-button>
                 <el-select v-model="selectedLine" class="line-select"
-                    :placeholder="t('humpMain.placeholders.selectInstance')">
+                    :placeholder="t('humpMain.placeholders.selectInstance')" :loading="loadingInstances"
+                    :disabled="loadingInstances">
                     <el-option v-for="line in lines" :key="line.id" :label="line.name" :value="line.id" />
                 </el-select>
             </div>
@@ -23,27 +24,34 @@
                 </el-button-group>
             </div>
             <el-tabs v-model="activeTab" class="hump-main-tabs">
-                <el-tab-pane :label="t('humpMain.tabs.plan')" name="plan">
-                    <HumpLayout :selectedInstanceId="selectedLine" />
+                <el-tab-pane :label="t('humpMain.tabs.plan')" name="plan" lazy>
+                    <HumpLayout v-if="hasSelectedInstance" :selectedInstanceId="selectedLine" />
+                    <el-empty v-else :description="t('humpMain.placeholders.selectInstance')" />
                 </el-tab-pane>
-                <el-tab-pane :label="t('humpMain.tabs.vehicle')" name="vehicle">
-                    <el-card class="param-card" shadow="hover">
-                        <h3>{{ t('humpMain.headings.wagonParams') }}</h3>
-                        <Wagon :selectedInstanceId="selectedLine" />
-                    </el-card>
-                    <el-card class="param-card" shadow="hover">
-                        <h3>{{ t('humpMain.headings.calcCondition') }}</h3>
-                        <HumpCalculationCondition :selectedInstanceId="selectedLine" />
-                    </el-card>
+                <el-tab-pane :label="t('humpMain.tabs.vehicle')" name="vehicle" lazy>
+                    <template v-if="hasSelectedInstance">
+                        <el-card class="param-card" shadow="hover">
+                            <h3>{{ t('humpMain.headings.wagonParams') }}</h3>
+                            <Wagon :selectedInstanceId="selectedLine" />
+                        </el-card>
+                        <el-card class="param-card" shadow="hover">
+                            <h3>{{ t('humpMain.headings.calcCondition') }}</h3>
+                            <HumpCalculationCondition :selectedInstanceId="selectedLine" />
+                        </el-card>
+                    </template>
+                    <el-empty v-else :description="t('humpMain.placeholders.selectInstance')" />
                 </el-tab-pane>
-                <el-tab-pane :label="t('humpMain.tabs.profile')" name="profile">
-                    <HumpSlopeDesigner :selectedInstanceId="selectedLine" />
+                <el-tab-pane :label="t('humpMain.tabs.profile')" name="profile" lazy>
+                    <HumpSlopeDesigner v-if="hasSelectedInstance" :selectedInstanceId="selectedLine" />
+                    <el-empty v-else :description="t('humpMain.placeholders.selectInstance')" />
                 </el-tab-pane>
-                <el-tab-pane :label="t('humpMain.tabs.release')" name="release">
-                    <HumpHeadwayCheck :selectedInstanceId="selectedLine" />
+                <el-tab-pane :label="t('humpMain.tabs.release')" name="release" lazy>
+                    <HumpHeadwayCheck v-if="hasSelectedInstance" :selectedInstanceId="selectedLine" />
+                    <el-empty v-else :description="t('humpMain.placeholders.selectInstance')" />
                 </el-tab-pane>
-                <el-tab-pane :label="t('humpMain.tabs.simulation')" name="simulation">
-                    <HumpSim :selectedInstanceId="selectedLine" />
+                <el-tab-pane :label="t('humpMain.tabs.simulation')" name="simulation" lazy>
+                    <HumpSim v-if="hasSelectedInstance" :selectedInstanceId="selectedLine" />
+                    <el-empty v-else :description="t('humpMain.placeholders.selectInstance')" />
                 </el-tab-pane>
             </el-tabs>
         </div>
@@ -80,40 +88,53 @@ interface HumpInstance {
 const activeTab = ref('plan')
 const selectedLine = ref<string | null>(null)
 const lines = ref<HumpInstance[]>([])
-const planSubTab = ref('ctrl')
 const showInstanceManager = ref(false)
+const loadingInstances = ref(false)
+const hasSelectedInstance = computed(() => Boolean(selectedLine.value))
 
-// 当前语言
+// Current language
 const currentLocale = computed(() => locale.value)
 
-// 切换语言
+// Switch language
 function switchLanguage(lang: string) {
     locale.value = lang
     localStorage.setItem('locale', lang)
 }
 
-// 加载实例列表
+// Load instance list
 const loadInstances = async () => {
+    loadingInstances.value = true
     try {
-        const response = await axios.get('/Hump/GetInstances')
+        const response = await axios.get<HumpInstance[]>('/Hump/GetInstances')
         lines.value = response.data || []
+
+        const currentSelected = selectedLine.value
+        const hasCurrent = currentSelected !== null && lines.value.some(item => item.id === currentSelected)
+        if (!hasCurrent) {
+            selectedLine.value = lines.value[0]?.id || null
+        }
     } catch (error: any) {
         console.error('Failed to load instances:', error)
-        ElMessage.error(t('humpMain.messages.loadInstancesError'))
         lines.value = []
+        selectedLine.value = null
+        if (error?.response?.status !== 401) {
+            ElMessage.error(t('humpMain.messages.loadInstancesError'))
+        }
+    } finally {
+        loadingInstances.value = false
     }
 }
 
-// 关闭实例管理对话框
+// Close instance manager dialog
 const handleCloseInstanceManager = (done: () => void) => {
     done()
-    // 刷新实例列表
-    loadInstances()
+    // Refresh instance list
+    void loadInstances()
 }
 
-// 组件挂载时加载实例
+// Load instances when component is mounted
 onMounted(() => {
-    loadInstances()
+    void loadInstances()
 })
 </script>
 

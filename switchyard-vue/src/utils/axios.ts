@@ -49,9 +49,10 @@ axios.interceptors.response.use(
                     localStorage.removeItem("username");
                     localStorage.removeItem("role");
                     // 跳转到登录页
-                    setTimeout(() => {
-                        window.location.href = "/login";
-                    }, 2000);
+                    const currentPath = window.location.pathname.replace(/\/+$/, "");
+                    if (!currentPath.endsWith("/login")) {
+                        window.location.replace("/login");
+                    }
                     break;
                 case 403:
                     ElMessage.error(
