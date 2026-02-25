@@ -1,7 +1,9 @@
 <template>
     <div>
-        <el-button @click="addNewWagon" type="primary">{{ t('wagon.new') }}</el-button>
-        <el-table :data="wagonData" style="width: 100%; margin-top: 20px;">
+        <div class="wagon-toolbar">
+            <el-button @click="addNewWagon" type="primary" size="small">{{ t('wagon.new') }}</el-button>
+        </div>
+        <el-table :data="wagonData" style="width: 100%;">
             <el-table-column prop="typeName" :label="t('wagon.typeName')" width="120">
                 <template #default="scope">
                     <span v-if="!scope.row.isEditing">{{ scope.row.typeName }}</span>
@@ -356,4 +358,10 @@ onMounted(() => {
 })
 </script>
 
-<style scoped lang="css"></style>
+<style scoped lang="css">
+.wagon-toolbar {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 12px;
+}
+</style>

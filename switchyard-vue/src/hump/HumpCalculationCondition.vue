@@ -1,34 +1,32 @@
 <template>
     <div class="calculation-condition-container">
-        <el-card class="condition-card">
-            <template #header>
-                <div class="card-header">
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <span style="font-weight: bold; min-width: 80px;">{{ t('hump.calcCondition.labels.condition')
-                            }}:</span>
-                        <el-select v-model="currentConditionId" style="width: 250px" @change="onConditionChange"
-                            :placeholder="t('hump.calcCondition.placeholders.chooseCondition')" clearable>
-                            <el-option v-for="condition in conditionsList" :key="condition.id" :label="condition.name"
-                                :value="condition.id" />
-                        </el-select>
-                        <el-button type="primary" size="small" @click="createNewCondition">
-                            {{ t("hump.calcCondition.new") }}
-                        </el-button>
-                    </div>
-
-                    <div class="header-buttons">
-                        <el-button type="primary" size="small" @click="saveCondition" :disabled="!currentInstanceId">
-                            {{ currentConditionId ? t("hump.calcCondition.update") : t("hump.calcCondition.save") }}
-                        </el-button>
-                        <el-button size="small" @click="resetForm">
-                            {{ t("hump.calcCondition.reset") }}
-                        </el-button>
-                        <el-button type="danger" size="small" @click="deleteCondition" :disabled="!currentConditionId">
-                            {{ t("hump.calcCondition.delete") }}
-                        </el-button>
-                    </div>
+        <div class="condition-card">
+            <div class="card-header">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="font-weight: bold; min-width: 80px;">{{ t('hump.calcCondition.labels.condition')
+                        }}:</span>
+                    <el-select v-model="currentConditionId" style="width: 250px" @change="onConditionChange"
+                        :placeholder="t('hump.calcCondition.placeholders.chooseCondition')" clearable>
+                        <el-option v-for="condition in conditionsList" :key="condition.id" :label="condition.name"
+                            :value="condition.id" />
+                    </el-select>
                 </div>
-            </template>
+
+                <div class="header-buttons">
+                    <el-button type="primary" size="small" @click="createNewCondition">
+                        {{ t("hump.calcCondition.new") }}
+                    </el-button>
+                    <el-button type="primary" size="small" @click="saveCondition" :disabled="!currentInstanceId">
+                        {{ currentConditionId ? t("hump.calcCondition.update") : t("hump.calcCondition.save") }}
+                    </el-button>
+                    <el-button size="small" @click="resetForm">
+                        {{ t("hump.calcCondition.reset") }}
+                    </el-button>
+                    <el-button type="danger" size="small" @click="deleteCondition" :disabled="!currentConditionId">
+                        {{ t("hump.calcCondition.delete") }}
+                    </el-button>
+                </div>
+            </div>
 
             <el-form :model="formData" label-width="140px" ref="formRef">
                 <div class="form-sections">
@@ -111,7 +109,7 @@
                     </div>
                 </div>
             </el-form>
-        </el-card>
+        </div>
     </div>
 </template>
 
@@ -413,12 +411,11 @@ watch(currentInstanceId, async (newInstanceId) => {
 
 <style scoped lang="css">
 .calculation-condition-container {
-    min-height: 100vh;
+    width: 100%;
 }
 
 .condition-card {
-    margin-bottom: 20px;
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+    margin-bottom: 0;
 }
 
 .card-header {
@@ -426,6 +423,9 @@ watch(currentInstanceId, async (newInstanceId) => {
     justify-content: space-between;
     align-items: center;
     width: 100%;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    gap: 10px;
 }
 
 .header-buttons {
