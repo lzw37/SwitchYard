@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.Mvc;
-using Org.BouncyCastle.Asn1.Ocsp;
 using SwitchYard.Service.Models;
 using SwitchYard.Service.Services;
 
@@ -204,50 +203,6 @@ namespace SwitchYard.Service.Controllers
             }
         }
 
-        /// <summary>
-        /// 验证Token
-        /// </summary>
-        /// <returns>验证结果</returns>
-        [HttpGet("validate")]
-        public IActionResult ValidateToken()
-        {
-            try
-            {
-                var authHeader = Request.Headers["Authorization"].ToString();
-                if (string.IsNullOrEmpty(authHeader) || !authHeader.StartsWith("Bearer "))
-                {
-                    return Unauthorized(new { message = "Token缺失或格式错误" });
-                }
-
-                var token = authHeader.Substring("Bearer ".Length).Trim();
-                var principal = _jwtTokenService.ValidateToken(token);
-
-                if (principal == null)
-                {
-                    return Unauthorized(new { message = "Token无效或已过期" });
-                }
-
-                var username = principal.Identity?.Name;
-                var role = principal.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value;
-
-                return Ok(new
-                {
-                    message = "Token有效",
-                    username = username,
-                    role = role
-                });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "An error occurred while validating the token, ClientIp: {ClientIp}", GetClientIpAddress());
-                return StatusCode(500, new { message = "服务器内部错误" });
-            }
-        }
-
-        /// <summary>
-        /// 获取当前用户信息
-        /// </summary>
-        /// <returns>用户信息</returns>
         [HttpGet("userinfo")]
         public IActionResult GetUserInfo()
         {

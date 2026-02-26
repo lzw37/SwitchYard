@@ -141,7 +141,8 @@ onMounted(() => {
 <style scoped lang="css">
 .hump-main {
     width: 100%;
-    min-height: 100dvh;
+    min-width: 1000px;
+    min-height: 1000px;
     padding: 24px;
     background-color: white;
     box-sizing: border-box;
@@ -230,48 +231,5 @@ el-card {
 
 .param-card {
     margin-bottom: 24px;
-}
-
-@media (max-width: 768px) and (orientation: portrait) {
-    .hump-main {
-        padding: 12px;
-    }
-
-    .hump-tabs-wrapper {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-    }
-
-    .left-controls,
-    .right-controls {
-        position: static;
-        height: auto;
-    }
-
-    .left-controls {
-        flex-wrap: wrap;
-        gap: 8px;
-        align-items: stretch;
-    }
-
-    .line-select {
-        margin-left: 0;
-        width: 100%;
-        min-width: 0;
-    }
-
-    .right-controls {
-        justify-content: flex-end;
-    }
-
-    .language-switch {
-        margin-left: 0;
-    }
-
-    .hump-main-tabs > :deep(.el-tabs__header) {
-        padding-left: 0;
-        padding-right: 0;
-    }
 }
 </style>

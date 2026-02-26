@@ -40,7 +40,18 @@ const router = createRouter({
         {
             path: "/usermanager",
             name: "usermanager",
-            component: () => import("../views/UserManager.vue"),
+            redirect: "/usermanagement",
+        },
+        {
+            path: "/usermanagement",
+            name: "usermanagement",
+            component: () => import("../views/UserManagement.vue"),
+            meta: { requiresAdmin: true },
+        },
+        {
+            path: "/no-permission",
+            name: "no-permission",
+            component: () => import("../views/NoPermission.vue"),
         },
         {
             path: "/createuser",
@@ -53,6 +64,31 @@ const router = createRouter({
             component: () => import("../capacity/CapacityMain.vue"),
         },
     ],
+});
+
+router.beforeEach((to) => {
+    const requiresAdmin = to.matched.some(
+        (record) => record.meta?.requiresAdmin === true,
+    );
+
+    if (!requiresAdmin) {
+        return true;
+    }
+
+    const token = localStorage.getItem("token");
+    if (!token) {
+        return {
+            path: "/login",
+            query: { redirect: to.fullPath },
+        };
+    }
+
+    const role = (localStorage.getItem("role") || "").toLowerCase();
+    if (role !== "admin") {
+        return { path: "/no-permission" };
+    }
+
+    return true;
 });
 
 export default router;

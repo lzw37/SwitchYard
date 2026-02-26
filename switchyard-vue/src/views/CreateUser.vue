@@ -26,8 +26,7 @@
                 </el-form-item>
 
                 <el-form-item :label="t('createUser.role')" prop="role">
-                    <el-select v-model="createUserForm.role" :placeholder="t('createUser.placeholder.selectRole')"
-                        style="width: 100%">
+                    <el-select v-model="createUserForm.role" :placeholder="t('createUser.placeholder.selectRole')" style="width: 100%">
                         <el-option :label="t('createUser.roles.user')" value="User" />
                         <el-option :label="t('createUser.roles.admin')" value="Admin" />
                     </el-select>

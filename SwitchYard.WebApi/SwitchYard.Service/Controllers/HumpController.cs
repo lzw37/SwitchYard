@@ -52,6 +52,18 @@ namespace SwitchYard.Service.Controllers
             return NormalizeLogValue(HttpContext?.Items[LogInstanceIdKey]);
         }
 
+        private bool IsCurrentUserAdmin()
+        {
+            var username = User?.Identity?.Name;
+            if (string.Equals(username, "Admin", System.StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            var role = User?.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value;
+            return string.Equals(role, "Admin", System.StringComparison.OrdinalIgnoreCase);
+        }
+
         private void SetLogInstanceId(string? instanceID)
         {
             if (HttpContext != null && !string.IsNullOrWhiteSpace(instanceID))
@@ -78,6 +90,11 @@ namespace SwitchYard.Service.Controllers
         private IActionResult? ValidateInstanceOwnershipOrFail(string instanceID)
         {
             SetLogInstanceId(instanceID);
+            if (IsCurrentUserAdmin())
+            {
+                return null;
+            }
+
             var username = User.Identity?.Name;
             var result = _authService.ValidateInstanceOwnership(instanceID, username);
 
@@ -106,9 +123,12 @@ namespace SwitchYard.Service.Controllers
             try
             {
                 var username = User.Identity.Name;
+                var isAdmin = IsCurrentUserAdmin();
 
                 DBConnector dbConnector = DBConnector.GetDBConnector();
-                var instanceList = dbConnector.Query<HumpInstance>("SELECT * FROM humpinstance WHERE Owner = @username", new { username });
+                var instanceList = isAdmin
+                    ? dbConnector.Query<HumpInstance>("SELECT * FROM humpinstance")
+                    : dbConnector.Query<HumpInstance>("SELECT * FROM humpinstance WHERE Owner = @username", new { username });
                 LogInformationWithContext("Retrieved {InstanceCount} HumpInstances.", instanceList?.Count ?? 0);
                 return Ok(instanceList);
             }
@@ -159,9 +179,13 @@ namespace SwitchYard.Service.Controllers
                 if (authResult != null) return authResult;
 
                 var username = User.Identity?.Name;
+                var isAdmin = IsCurrentUserAdmin();
                 DBConnector dbConnector = DBConnector.GetDBConnector();
-                var result = dbConnector.ExecuteNonQuery("UPDATE humpinstance SET Name = @Name, IsActive = @IsActive WHERE ID = @ID AND Owner = @Owner",
-                    new { instance.Name, instance.IsActive, instance.ID, Owner = username });
+                var result = isAdmin
+                    ? dbConnector.ExecuteNonQuery("UPDATE humpinstance SET Name = @Name, IsActive = @IsActive WHERE ID = @ID",
+                        new { instance.Name, instance.IsActive, instance.ID })
+                    : dbConnector.ExecuteNonQuery("UPDATE humpinstance SET Name = @Name, IsActive = @IsActive WHERE ID = @ID AND Owner = @Owner",
+                        new { instance.Name, instance.IsActive, instance.ID, Owner = username });
                 if (result > 0)
                 {
                     LogInformationWithContext("Updated HumpInstance with ID {InstanceID}.", instance.ID);
@@ -189,8 +213,11 @@ namespace SwitchYard.Service.Controllers
                 if (authResult != null) return authResult;
 
                 var username = User.Identity?.Name;
+                var isAdmin = IsCurrentUserAdmin();
                 DBConnector dbConnector = DBConnector.GetDBConnector();
-                var result = dbConnector.ExecuteNonQuery("DELETE FROM humpinstance WHERE ID = @id AND Owner = @username", new { id, username });
+                var result = isAdmin
+                    ? dbConnector.ExecuteNonQuery("DELETE FROM humpinstance WHERE ID = @id", new { id })
+                    : dbConnector.ExecuteNonQuery("DELETE FROM humpinstance WHERE ID = @id AND Owner = @username", new { id, username });
                 if (result > 0)
                 {
                     LogInformationWithContext("Deleted HumpInstance with ID {InstanceID}.", id);
