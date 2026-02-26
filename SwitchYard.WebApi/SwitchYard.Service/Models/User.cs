@@ -39,5 +39,11 @@ namespace SwitchYard.Service.Models
         /// 是否激活
         /// </summary>
         public uint IsActive { get; set; } = 1;
+
+        /// <summary>
+        /// Whether the user must change password on next login.
+        /// 1 = required, 0 = not required.
+        /// </summary>
+        public uint MustChangePassword { get; set; } = 0;
     }
 }

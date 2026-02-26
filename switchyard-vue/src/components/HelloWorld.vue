@@ -1,11 +1,46 @@
 <script setup lang="js">
 import { useRouter } from 'vue-router';
-import { ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { ElMessage } from 'element-plus';
 import i18n from '../i18n';
+import { useAuthStore } from '@/stores/auth';
 
 const router = useRouter();
 const { t } = useI18n({ useScope: 'global' });
+const authStore = useAuthStore();
+
+authStore.hydrateFromStorage();
+
+const userDisplayName = computed(() => authStore.username.trim() || t('common.userMenu.guest'));
+const userDisplayRole = computed(() => {
+    const role = authStore.role.trim();
+    if (!role) return t('createUser.roles.user');
+
+    const normalizedRole = role.toLowerCase();
+    if (normalizedRole === 'admin') return t('createUser.roles.admin');
+    if (normalizedRole === 'user') return t('createUser.roles.user');
+
+    return role;
+});
+
+const handleUserMenuCommand = (command) => {
+    if (command === 'userinfo') {
+        router.push('/userinfo');
+        return;
+    }
+
+    if (command === 'usermanagement') {
+        router.push('/usermanagement');
+        return;
+    }
+
+    if (command === 'logout') {
+        authStore.clearAuth();
+        ElMessage.success(t('common.userMenu.loggedOut'));
+        router.replace('/login');
+    }
+};
 
 // 语言切换（与 src/i18n.ts 配合）
 const locale = ref(i18n.global?.locale?.value ?? i18n.global?.locale ?? 'en');
@@ -215,6 +250,25 @@ console.log('欢迎访问 SwitchYard 项目主页！');
                 <button class="lang-toggle" @click="toggleLocale"
                     :title="locale === 'en' ? t('home.lang.switchToZh') : t('home.lang.switchToEn')">{{ locale === 'en'
                         ? t('home.lang.en') : t('home.lang.zh') }}</button>
+                <el-dropdown class="user-dropdown" @command="handleUserMenuCommand">
+                    <span class="user-trigger">
+                        <span class="user-name">{{ userDisplayName }}</span>
+                        <span class="user-role">{{ userDisplayRole }}</span>
+                    </span>
+                    <template #dropdown>
+                        <el-dropdown-menu>
+                            <el-dropdown-item command="userinfo">
+                                {{ t('userInfo.title') }}
+                            </el-dropdown-item>
+                            <el-dropdown-item v-if="authStore.isAdmin" command="usermanagement">
+                                {{ t('common.userMenu.userManagement') }}
+                            </el-dropdown-item>
+                            <el-dropdown-item divided command="logout">
+                                {{ t('common.userMenu.logout') }}
+                            </el-dropdown-item>
+                        </el-dropdown-menu>
+                    </template>
+                </el-dropdown>
             </div>
         </div>
     </nav>
@@ -349,7 +403,7 @@ console.log('欢迎访问 SwitchYard 项目主页！');
                         </div>
                         <div class="tech-item">
                             <span class="tech-label">{{ t('home.tech.backend.security') }}</span>
-                            <span class="tech-value">Argon2 密码哈希</span>
+                            <span class="tech-value">{{ t('home.tech.backend.securityValue') }}</span>
                         </div>
                     </div>
                 </div>
@@ -591,6 +645,44 @@ html {
 .lang-toggle:hover {
     background: rgba(255, 255, 255, 0.18);
     transform: translateY(-2px);
+}
+
+.user-dropdown {
+    margin-left: 0.4rem;
+}
+
+.user-trigger {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.35rem 0.7rem;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.14);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #ffffff;
+    cursor: pointer;
+    transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.user-trigger:hover {
+    background: rgba(255, 255, 255, 0.22);
+    transform: translateY(-2px);
+}
+
+.user-name {
+    font-weight: 700;
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.user-role {
+    font-size: 0.78rem;
+    opacity: 0.88;
+    padding: 0.08rem 0.45rem;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.28);
 }
 
 /* 英雄区域 */
@@ -1031,6 +1123,22 @@ section {
 /* 响应式设计 */
 @media (max-width: 768px) {
     .nav-menu {
+        display: none;
+    }
+
+    .nav-right {
+        gap: 0.5rem;
+    }
+
+    .user-trigger {
+        padding: 0.3rem 0.55rem;
+    }
+
+    .user-name {
+        max-width: 78px;
+    }
+
+    .user-role {
         display: none;
     }
 

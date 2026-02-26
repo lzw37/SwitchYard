@@ -143,6 +143,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import axios from '@/utils/axios'
+import { useAuthStore } from '@/stores/auth'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import CryptoJS from 'crypto-js'
 
@@ -201,10 +202,11 @@ const resetForm = reactive({
     confirmPassword: ''
 })
 
-const currentUsername = (localStorage.getItem('username') || '').trim()
+const authStore = useAuthStore()
+const currentUsername = computed(() => authStore.username.trim())
 
 const isCurrentUser = (user: UserRecord): boolean => {
-    return !!currentUsername && user.name.toLowerCase() === currentUsername.toLowerCase()
+    return !!currentUsername.value && user.name.toLowerCase() === currentUsername.value.toLowerCase()
 }
 
 const hashPassword = (password: string): string => {
@@ -411,7 +413,7 @@ const submitResetPassword = async () => {
             newPassword: hashPassword(resetForm.newPassword)
         })
 
-        ElMessage.success('密码重置成功')
+        ElMessage.success('密码重置成功，用户下次登录将被要求修改密码')
         resetPasswordVisible.value = false
         resetPasswordForm()
     } catch (error: any) {

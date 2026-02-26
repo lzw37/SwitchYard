@@ -15,13 +15,32 @@
                 <el-button-group class="language-switch">
                     <el-button size="small" :type="currentLocale === 'zh' ? 'primary' : 'default'"
                         @click="switchLanguage('zh')">
-                        中文
+                        {{ t('common.language.zh') }}
                     </el-button>
                     <el-button size="small" :type="currentLocale === 'en' ? 'primary' : 'default'"
                         @click="switchLanguage('en')">
-                        EN
+                        {{ t('common.language.en') }}
                     </el-button>
                 </el-button-group>
+                <el-dropdown class="user-dropdown" @command="handleUserMenuCommand">
+                    <span class="user-menu-trigger">
+                        <span class="user-menu-name">{{ userDisplayName }}</span>
+                        <span class="user-menu-role">{{ userDisplayRole }}</span>
+                    </span>
+                    <template #dropdown>
+                        <el-dropdown-menu>
+                            <el-dropdown-item command="userinfo">
+                                {{ t('userInfo.title') }}
+                            </el-dropdown-item>
+                            <el-dropdown-item v-if="authStore.isAdmin" command="usermanagement">
+                                {{ t('common.userMenu.userManagement') }}
+                            </el-dropdown-item>
+                            <el-dropdown-item divided command="logout">
+                                {{ t('common.userMenu.logout') }}
+                            </el-dropdown-item>
+                        </el-dropdown-menu>
+                    </template>
+                </el-dropdown>
             </div>
             <el-tabs v-model="activeTab" class="hump-main-tabs">
                 <el-tab-pane :label="t('humpMain.tabs.plan')" name="plan" lazy>
@@ -64,9 +83,11 @@
 
 <script lang="ts" setup>
 import { ref, onMounted, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import axios from '@/utils/axios'
 import { ElMessage } from 'element-plus'
+import { useAuthStore } from '@/stores/auth'
 import HumpLayout from './HumpLayout.vue';
 import HumpSlopeDesigner from './HumpSlopeDesigner.vue';
 import Wagon from './Wagon.vue';
@@ -75,7 +96,11 @@ import HumpHeadwayCheck from './HumpHeadwayCheck.vue';
 import HumpSim from './HumpSim.vue';
 import HumpInstanceManager from './HumpInstanceManager.vue';
 
+const router = useRouter()
 const { t, locale } = useI18n()
+const authStore = useAuthStore()
+
+authStore.hydrateFromStorage()
 
 interface HumpInstance {
     id: string
@@ -91,6 +116,17 @@ const lines = ref<HumpInstance[]>([])
 const showInstanceManager = ref(false)
 const loadingInstances = ref(false)
 const hasSelectedInstance = computed(() => Boolean(selectedLine.value))
+const userDisplayName = computed(() => authStore.username.trim() || t('common.userMenu.guest'))
+const userDisplayRole = computed(() => {
+    const role = authStore.role.trim()
+    if (!role) return t('createUser.roles.user')
+
+    const normalizedRole = role.toLowerCase()
+    if (normalizedRole === 'admin') return t('createUser.roles.admin')
+    if (normalizedRole === 'user') return t('createUser.roles.user')
+
+    return role
+})
 
 // Current language
 const currentLocale = computed(() => locale.value)
@@ -99,6 +135,24 @@ const currentLocale = computed(() => locale.value)
 function switchLanguage(lang: string) {
     locale.value = lang
     localStorage.setItem('locale', lang)
+}
+
+const handleUserMenuCommand = (command: string) => {
+    if (command === 'userinfo') {
+        router.push('/userinfo')
+        return
+    }
+
+    if (command === 'usermanagement') {
+        router.push('/usermanagement')
+        return
+    }
+
+    if (command === 'logout') {
+        authStore.clearAuth()
+        ElMessage.success(t('common.userMenu.loggedOut'))
+        router.replace('/login')
+    }
 }
 
 // Load instance list
@@ -175,11 +229,53 @@ onMounted(() => {
     z-index: 1;
     display: flex;
     align-items: center;
+    gap: 10px;
     height: 40px;
 }
 
 .language-switch {
-    margin-left: 10px;
+    margin-left: 0;
+}
+
+.user-dropdown {
+    display: inline-flex;
+}
+
+.user-menu-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 30px;
+    padding: 0 10px;
+    border-radius: 6px;
+    border: 1px solid #c9d8ea;
+    background: linear-gradient(180deg, #f9fbff 0%, #eef4fb 100%);
+    color: #1f3a68;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.user-menu-trigger:hover {
+    border-color: #8eb0d8;
+    background: linear-gradient(180deg, #ffffff 0%, #e8f1fb 100%);
+}
+
+.user-menu-name {
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 600;
+}
+
+.user-menu-role {
+    padding: 1px 6px;
+    border-radius: 999px;
+    border: 1px solid #adc4e3;
+    color: #24528a;
+    background: #f0f6ff;
+    font-size: 12px;
 }
 
 .hump-main-tabs {
@@ -188,7 +284,7 @@ onMounted(() => {
 
 .hump-main-tabs > :deep(.el-tabs__header) {
     padding-left: 450px;
-    padding-right: 120px;
+    padding-right: 380px;
 }
 
 .hump-main-tabs > :deep(.el-tabs__header .el-tabs__nav-wrap) {

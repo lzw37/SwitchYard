@@ -1,5 +1,9 @@
 import { createRouter, createWebHistory } from "vue-router";
 import HomeView from "../views/HomeView.vue";
+import pinia from "@/stores";
+import { useAuthStore } from "@/stores/auth";
+
+const authStore = useAuthStore(pinia);
 
 const router = createRouter({
     history: createWebHistory(import.meta.env.BASE_URL),
@@ -36,6 +40,7 @@ const router = createRouter({
             path: "/userinfo",
             name: "userinfo",
             component: () => import("../views/UserInfo.vue"),
+            meta: { requiresAuth: true },
         },
         {
             path: "/usermanager",
@@ -67,24 +72,44 @@ const router = createRouter({
 });
 
 router.beforeEach((to) => {
+    const requiresAuth = to.matched.some(
+        (record) => record.meta?.requiresAuth === true,
+    );
     const requiresAdmin = to.matched.some(
         (record) => record.meta?.requiresAdmin === true,
     );
+    const isLoginRoute = to.path === "/login";
+    const isUserInfoRoute = to.path === "/userinfo";
 
-    if (!requiresAdmin) {
-        return true;
-    }
+    authStore.hydrateFromStorage();
 
-    const token = localStorage.getItem("token");
-    if (!token) {
+    if ((requiresAuth || requiresAdmin) && !authStore.isAuthenticated) {
         return {
             path: "/login",
             query: { redirect: to.fullPath },
         };
     }
 
-    const role = (localStorage.getItem("role") || "").toLowerCase();
-    if (role !== "admin") {
+    if (authStore.isAuthenticated && authStore.needsPasswordChange) {
+        if (isLoginRoute) {
+            return {
+                path: "/userinfo",
+                query: { forcePasswordChange: "1" },
+            };
+        }
+
+        if (!isUserInfoRoute) {
+            return {
+                path: "/userinfo",
+                query: {
+                    forcePasswordChange: "1",
+                    redirect: to.fullPath,
+                },
+            };
+        }
+    }
+
+    if (requiresAdmin && !authStore.isAdmin) {
         return { path: "/no-permission" };
     }
 

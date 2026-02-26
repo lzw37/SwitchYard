@@ -32,7 +32,8 @@ namespace SwitchYard.Service.Controllers
                         role = user.Role,
                         email = user.Email,
                         createAt = user.CreateAt,
-                        isActive = user.IsActive
+                        isActive = user.IsActive,
+                        mustChangePassword = user.MustChangePassword
                     });
 
                 return Ok(users);
@@ -77,7 +78,8 @@ namespace SwitchYard.Service.Controllers
                     request.Password.Trim(),
                     string.IsNullOrWhiteSpace(request.Email) ? null : request.Email.Trim(),
                     normalizedRole,
-                    request.IsActive
+                    request.IsActive,
+                    mustChangePassword: 1
                 );
 
                 if (createdUser == null)
@@ -92,7 +94,8 @@ namespace SwitchYard.Service.Controllers
                     role = createdUser.Role,
                     email = createdUser.Email,
                     createAt = createdUser.CreateAt,
-                    isActive = createdUser.IsActive
+                    isActive = createdUser.IsActive,
+                    mustChangePassword = createdUser.MustChangePassword
                 });
             }
             catch (Exception ex)
@@ -165,7 +168,8 @@ namespace SwitchYard.Service.Controllers
                     Role = normalizedRole,
                     Email = string.IsNullOrWhiteSpace(request.Email) ? null : request.Email.Trim(),
                     CreateAt = request.CreateAt == default ? currentUser.CreateAt : request.CreateAt,
-                    IsActive = request.IsActive
+                    IsActive = request.IsActive,
+                    MustChangePassword = currentUser.MustChangePassword
                 };
 
                 var updated = _userService.UpdateUser(currentUser.Id, updatedUser);
@@ -181,7 +185,8 @@ namespace SwitchYard.Service.Controllers
                     role = updatedUser.Role,
                     email = updatedUser.Email,
                     createAt = updatedUser.CreateAt,
-                    isActive = updatedUser.IsActive
+                    isActive = updatedUser.IsActive,
+                    mustChangePassword = updatedUser.MustChangePassword
                 });
             }
             catch (Exception ex)
@@ -212,13 +217,13 @@ namespace SwitchYard.Service.Controllers
                     return NotFound(new { message = "User not found" });
                 }
 
-                var updated = _userService.ResetUserPassword(user.Id, request.NewPassword.Trim());
+                var updated = _userService.ResetUserPassword(user.Id, request.NewPassword.Trim(), forceChangeAtNextLogin: true);
                 if (!updated)
                 {
                     return StatusCode(500, new { message = "Failed to reset password" });
                 }
 
-                return Ok(new { message = "Password reset successfully" });
+                return Ok(new { message = "Password reset successfully. User must change password at next login." });
             }
             catch (Exception ex)
             {

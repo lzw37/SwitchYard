@@ -128,6 +128,16 @@
             "edit": "编辑",
             "delete": "删除"
         },
+        "userMenu": {
+            "guest": "访客",
+            "userManagement": "用户管理",
+            "logout": "退出登录",
+            "loggedOut": "已退出登录"
+        },
+        "language": {
+            "zh": "中文",
+            "en": "EN"
+        },
         "networkError": "网络错误，请稍后重试"
     },
     "axios": {
@@ -568,7 +578,8 @@
                 "language": "语言",
                 "auth": "认证",
                 "database": "数据库",
-                "security": "安全"
+                "security": "安全",
+                "securityValue": "Argon2 密码哈希"
             }
         },
         "security": {

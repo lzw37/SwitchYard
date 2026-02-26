@@ -34,5 +34,10 @@ namespace SwitchYard.Service.Models
         /// 角色
         /// </summary>
         public string Role { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Whether the current user must change password immediately.
+        /// </summary>
+        public bool MustChangePassword { get; set; }
     }
 }

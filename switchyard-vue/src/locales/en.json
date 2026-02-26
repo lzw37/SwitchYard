@@ -128,6 +128,16 @@
             "edit": "Edit",
             "delete": "Delete"
         },
+        "userMenu": {
+            "guest": "Guest",
+            "userManagement": "User Management",
+            "logout": "Logout",
+            "loggedOut": "Logged out"
+        },
+        "language": {
+            "zh": "中文",
+            "en": "EN"
+        },
         "networkError": "Network error, please try again later"
     },
     "axios": {
@@ -619,7 +629,8 @@
                 "language": "Language",
                 "auth": "Auth",
                 "database": "Database",
-                "security": "Security"
+                "security": "Security",
+                "securityValue": "Argon2 password hashing"
             }
         },
         "security": {

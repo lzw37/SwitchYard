@@ -1,27 +1,50 @@
 <template>
     <div class="login-container">
         <div class="login-box">
-            <h2 class="login-title">{{ t('login.title') }}</h2>
-            <el-form :model="loginForm" :rules="rules" ref="loginFormRef" class="login-form">
+            <h2 class="login-title">{{ t("login.title") }}</h2>
+            <el-form
+                ref="loginFormRef"
+                :model="loginForm"
+                :rules="rules"
+                class="login-form"
+            >
                 <el-form-item prop="username">
-                    <el-input v-model="loginForm.username" :placeholder="t('login.usernamePlaceholder')"
-                        prefix-icon="User" size="large" clearable />
+                    <el-input
+                        v-model="loginForm.username"
+                        :placeholder="t('login.usernamePlaceholder')"
+                        prefix-icon="User"
+                        size="large"
+                        clearable
+                    />
                 </el-form-item>
 
                 <el-form-item prop="password">
-                    <el-input v-model="loginForm.password" type="password" :placeholder="t('login.passwordPlaceholder')"
-                        prefix-icon="Lock" size="large" show-password @keyup.enter="handleLogin" />
+                    <el-input
+                        v-model="loginForm.password"
+                        type="password"
+                        :placeholder="t('login.passwordPlaceholder')"
+                        prefix-icon="Lock"
+                        size="large"
+                        show-password
+                        @keyup.enter="handleLogin"
+                    />
                 </el-form-item>
 
                 <el-form-item>
-                    <el-button type="primary" size="large" :loading="loading" @click="handleLogin" class="login-button">
-                        {{ t('login.login') }}
+                    <el-button
+                        type="primary"
+                        size="large"
+                        :loading="loading"
+                        class="login-button"
+                        @click="handleLogin"
+                    >
+                        {{ t("login.login") }}
                     </el-button>
                 </el-form-item>
 
                 <div class="register-link">
-                    <span>{{ t('login.registerPrompt') }}</span>
-                    <router-link to="/createuser">{{ t('login.registerLink') }}</router-link>
+                    <span>{{ t("login.registerPrompt") }}</span>
+                    <router-link to="/createuser">{{ t("login.registerLink") }}</router-link>
                 </div>
             </el-form>
         </div>
@@ -29,98 +52,120 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
-import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
-import type { FormInstance, FormRules } from 'element-plus'
-import axios from '@/utils/axios'
-import CryptoJS from 'crypto-js'
+import { reactive, ref } from "vue";
+import { useI18n } from "vue-i18n";
+import { useRoute, useRouter } from "vue-router";
+import { ElMessage } from "element-plus";
+import type { FormInstance, FormRules } from "element-plus";
+import CryptoJS from "crypto-js";
+import axios from "@/utils/axios";
+import { useAuthStore } from "@/stores/auth";
 
-// 定义登录响应接口
 interface LoginResponse {
-    token: string
-    tokenType: string
-    expiresIn: number
-    name: string
-    role: string
+    token: string;
+    tokenType: string;
+    expiresIn: number;
+    name: string;
+    role: string;
+    mustChangePassword?: boolean;
 }
 
-const router = useRouter()
-const { t } = useI18n()
-const loginFormRef = ref<FormInstance>()
-const loading = ref(false)
+const router = useRouter();
+const route = useRoute();
+const { t } = useI18n();
+const authStore = useAuthStore();
+const loginFormRef = ref<FormInstance>();
+const loading = ref(false);
 
-// 登录表单数据
 const loginForm = reactive({
-    username: '',
-    password: ''
-})
+    username: "",
+    password: "",
+});
 
-// 表单验证规则
 const rules = reactive<FormRules>({
     username: [
-        { required: true, message: t('login.validation.usernameRequired'), trigger: 'blur' },
-        { min: 3, max: 20, message: t('login.validation.usernameLength'), trigger: 'blur' }
+        {
+            required: true,
+            message: t("login.validation.usernameRequired"),
+            trigger: "blur",
+        },
+        {
+            min: 3,
+            max: 20,
+            message: t("login.validation.usernameLength"),
+            trigger: "blur",
+        },
     ],
     password: [
-        { required: true, message: t('login.validation.passwordRequired'), trigger: 'blur' },
-        { min: 6, max: 30, message: t('login.validation.passwordLength'), trigger: 'blur' }
-    ]
-})
+        {
+            required: true,
+            message: t("login.validation.passwordRequired"),
+            trigger: "blur",
+        },
+        {
+            min: 6,
+            max: 30,
+            message: t("login.validation.passwordLength"),
+            trigger: "blur",
+        },
+    ],
+});
 
-// SHA-256 哈希函数
 const hashPassword = (password: string): string => {
-    // 使用 crypto-js 进行 SHA-256 哈希
-    return CryptoJS.SHA256(password).toString()
-}
+    return CryptoJS.SHA256(password).toString();
+};
 
-// 处理登录
 const handleLogin = async () => {
-    if (!loginFormRef.value) return
+    if (!loginFormRef.value) return;
 
     await loginFormRef.value.validate(async (valid) => {
-        if (valid) {
-            loading.value = true
-            try {
-                // 对密码进行 SHA-256 哈希
-                const hashedPassword = hashPassword(loginForm.password)
+        if (!valid) return;
 
-                const response = await axios.post<LoginResponse>('/api/Auth/login', {
-                    username: loginForm.username,
-                    password: hashedPassword
-                })
+        loading.value = true;
+        try {
+            const hashedPassword = hashPassword(loginForm.password);
 
-                // 登录成功，保存 token 和用户信息
-                const data = response.data
-                if (data.token && data.name) {
-                    localStorage.setItem('token', data.token)
-                    localStorage.setItem('tokenType', data.tokenType || 'Bearer')
-                    localStorage.setItem('username', data.name)
-                    localStorage.setItem('role', data.role || 'User')
+            const response = await axios.post<LoginResponse>("/api/Auth/login", {
+                username: loginForm.username,
+                password: hashedPassword,
+            });
 
-                    ElMessage.success(t('login.success'))
-                } else {
-                    throw new Error(t('login.incompleteResponse'))
+            const data = response.data;
+            if (data.token && data.name) {
+                authStore.setAuth({
+                    token: data.token,
+                    tokenType: data.tokenType || "Bearer",
+                    username: data.name,
+                    role: data.role || "User",
+                    mustChangePassword: data.mustChangePassword === true,
+                });
+                ElMessage.success(t("login.success"));
+
+                if (data.mustChangePassword === true) {
+                    ElMessage.warning("首次登录或密码被重置后，请先修改密码");
+                    await router.push("/userinfo?forcePasswordChange=1");
+                    return;
                 }
-
-                // 跳转到首页
-                router.push('/')
-            } catch (error: any) {
-                console.error('登录错误:', error)
-                if (error.response?.data?.message) {
-                    ElMessage.error(error.response.data.message)
-                } else if (!error.response) {
-                    ElMessage.error(t('common.networkError'))
-                } else {
-                    ElMessage.error(t('login.failed'))
-                }
-            } finally {
-                loading.value = false
+            } else {
+                throw new Error(t("login.incompleteResponse"));
             }
+
+            const redirect = typeof route.query.redirect === "string" ? route.query.redirect : "/";
+            await router.push(redirect);
+        } catch (error: any) {
+            console.error("login error:", error);
+            if (error.response?.data?.message) {
+                ElMessage.error(error.response.data.message);
+            } else if (!error.response) {
+                ElMessage.error(t("common.networkError"));
+            } else {
+                ElMessage.error(t("login.failed"));
+            }
+        } finally {
+            loading.value = false;
         }
-    })
-}
+    });
+};
 </script>
 
 <style scoped>
