@@ -693,6 +693,18 @@
         "horizontalScale": "横向缩放",
         "verticalBaseline": "纵向基线"
     },
+    "humpSlopeCtrl": {
+        "dialog": {
+            "retarderSettings": "\u51cf\u901f\u5668\u8bbe\u7f6e"
+        },
+        "labels": {
+            "retarderID": "ID",
+            "enabled": "\u542f\u7528",
+            "output": "\u8f93\u51fa",
+            "totalEnergyHeight": "\u603b\u80fd\u9ad8",
+            "notConfigured": "\u672a\u914d\u7f6e"
+        }
+    },
     "humpSlopeDesigner": {
         "tool": "工具",
         "longitudinalSectionScheme": "纵断面方案",
@@ -742,11 +754,14 @@
         "dialog": {
             "schemeManagement": "驼峰方案管理",
             "conditionManagement": "计算条件管理",
+            "retarderStatusManagement": "减速器工作状态",
             "close": "关闭"
         },
         "buttons": {
             "addScheme": "新增方案",
             "addCondition": "新增计算条件",
+            "retarderStatus": "减速器状态",
+            "addRetarderStatus": "新增减速器状态",
             "save": "保存",
             "cancel": "取消",
             "edit": "编辑",
@@ -763,7 +778,8 @@
             "wagonType": "车辆类型",
             "operationCondition": "运行条件",
             "slopeLine": "溜放线",
-            "humpScheme": "驼峰方案"
+            "humpScheme": "驼峰方案",
+            "retarderStatus": "减速器状态"
         },
         "placeholder": {
             "selectWagonType": "选择车辆类型",
@@ -802,6 +818,15 @@
         },
         "common": {
             "cancelDelete": "取消删除"
+        },
+        "retarderStatus": {
+            "retarderID": "减速器",
+            "selectRetarder": "选择减速器",
+            "isActivated": "是否工作",
+            "output": "输出比例(0~1)",
+            "totalEnergyHeight": "制动能高/m",
+            "saveSuccess": "减速器工作状态保存成功",
+            "saveError": "减速器工作状态保存失败"
         }
     },
     "humpInstance": {

@@ -77,11 +77,13 @@
         </div>
         <div class="main-ctrl">
             <HumpSlopeCtrl ref="humpSlopeCtrlRef" v-model:slope-layout="slopeLayout" :flat-layout="flatLayout"
+                :retarder-status-list="currentRetarderStatusList"
                 :resistance-energy-height-data="resistanceEnergyHeightData"
                 :kinetic-energy-height-data="kineticEnergyHeightData" :global-scale-x="globalScaleX"
                 :global-scale-y="globalScaleY" :element-visibility="elementVisibility" :global-cursor-x="globalCursorX"
                 @updateGlobalCursorX="updateGlobalCursorX" @horizontal-scroll="syncHorizontalScroll"
-                @wheel-scale-x="handleWheelScaleX" />
+                @wheel-scale-x="handleWheelScaleX"
+                @update-retarder-status-list="handleInlineRetarderStatusUpdate" />
             <HumpSlopeSketchBlock ref="humpSlopeSketchBlockRef" v-model:slope-layout="slopeLayout" style="height:auto"
                 :global-scale-x="globalScaleX" :global-cursor-x="globalCursorX"
                 :horizontal-scroll-left="horizontalScrollLeft" @updateGlobalCursorX="updateGlobalCursorX"
@@ -249,6 +251,13 @@
                             }}</span>
                     </template>
                 </el-table-column>
+                <el-table-column :label="t('humpSlopeDesigner.table.retarderStatus')" width="120">
+                    <template #default="{ row }">
+                        <el-button type="info" size="small" @click="handleEditRetarderStatus(row)">
+                            {{ t('humpSlopeDesigner.buttons.retarderStatus') }}
+                        </el-button>
+                    </template>
+                </el-table-column>
                 <el-table-column :label="t('humpSlopeDesigner.table.operation')" width="200">
                     <template #default="{ row, $index }">
                         <div v-if="editingCalculationIndex === $index">
@@ -269,6 +278,62 @@
 
             <template #footer>
                 <el-button @click="showConditionManager = false">{{ t('humpSlopeDesigner.dialog.close') }}</el-button>
+            </template>
+        </el-dialog>
+
+        <!-- 减速器工作状态编辑对话框 -->
+        <el-dialog v-model="showRetarderStatusDialog" :title="t('humpSlopeDesigner.dialog.retarderStatusManagement')"
+            width="800px" :close-on-click-modal="false">
+            <div style="margin-bottom: 16px;">
+                <el-button type="primary" @click="handleAddRetarderStatus">
+                    {{ t('humpSlopeDesigner.buttons.addRetarderStatus') }}
+                </el-button>
+            </div>
+            <el-table :data="editingRetarderStatusList" style="width: 100%">
+                <el-table-column prop="retarderID" :label="t('humpSlopeDesigner.retarderStatus.retarderID')"
+                    min-width="180">
+                    <template #default="{ row }">
+                        <el-select v-model="row.retarderID" size="small" style="width: 100%"
+                            :loading="retarderOptionsLoading"
+                            :placeholder="t('humpSlopeDesigner.retarderStatus.selectRetarder')">
+                            <el-option v-for="opt in retarderOptions" :key="opt.id" :label="opt.label"
+                                :value="opt.id" />
+                        </el-select>
+                    </template>
+                </el-table-column>
+                <el-table-column prop="isActivated" :label="t('humpSlopeDesigner.retarderStatus.isActivated')"
+                    width="110" align="center">
+                    <template #default="{ row }">
+                        <el-switch v-model="row.isActivated" />
+                    </template>
+                </el-table-column>
+                <el-table-column prop="output" :label="t('humpSlopeDesigner.retarderStatus.output')" width="160">
+                    <template #default="{ row }">
+                        <el-input-number v-model="row.output" :min="0" :max="1" :step="0.1" :precision="2" size="small"
+                            style="width: 130px" />
+                    </template>
+                </el-table-column>
+                <el-table-column prop="totalEnergyHeight"
+                    :label="t('humpSlopeDesigner.retarderStatus.totalEnergyHeight')" width="160">
+                    <template #default="{ row }">
+                        <el-input-number v-model="row.totalEnergyHeight" :min="0" :step="0.01" :precision="3"
+                            size="small" style="width: 130px" />
+                    </template>
+                </el-table-column>
+                <el-table-column :label="t('humpSlopeDesigner.table.operation')" width="85" fixed="right">
+                    <template #default="{ $index }">
+                        <el-button type="danger" size="small" @click="handleRemoveRetarderStatus($index)">
+                            {{ t('humpSlopeDesigner.buttons.delete') }}
+                        </el-button>
+                    </template>
+                </el-table-column>
+            </el-table>
+            <template #footer>
+                <el-button @click="showRetarderStatusDialog = false">{{ t('humpSlopeDesigner.dialog.close')
+                }}</el-button>
+                <el-button type="primary" @click="handleSaveRetarderStatus" :loading="retarderStatusSaving">
+                    {{ t('humpSlopeDesigner.buttons.save') }}
+                </el-button>
             </template>
         </el-dialog>
     </div>
@@ -302,6 +367,14 @@ interface HumpScheme {
     name: string
 }
 
+// RetarderStatus 接口
+interface RetarderStatus {
+    retarderID: string
+    isActivated: boolean
+    output: number
+    totalEnergyHeight: number
+}
+
 // HumpCalculation 接口
 interface HumpCalculation {
     id: string
@@ -311,6 +384,7 @@ interface HumpCalculation {
     operationConditionID: string
     slopeLineID: string
     data: any // 对应后端的 HumpCalculationData
+    retarderStatusList?: RetarderStatus[]
 }
 
 const humpSchemes = ref<HumpScheme[]>([])
@@ -318,6 +392,13 @@ const currentHumpSchemeID = ref("");
 
 const humpCalculations = ref<HumpCalculation[]>([])
 const currentHumpCalculationID = ref("")
+const currentRetarderStatusList = computed<RetarderStatus[]>(() => {
+    if (!currentHumpCalculationID.value) {
+        return []
+    }
+    const currentCalculation = humpCalculations.value.find(calc => calc.id === currentHumpCalculationID.value)
+    return currentCalculation?.retarderStatusList || []
+})
 
 // 下拉菜单选项数据
 const wagonConcepts = ref<any[]>([])
@@ -352,6 +433,14 @@ const editingCalculation = ref<HumpCalculation>({
     slopeLineID: '',
     data: {}
 })
+
+// 减速器工作状态编辑相关状态
+const showRetarderStatusDialog = ref(false)
+const retarderStatusSaving = ref(false)
+const retarderOptionsLoading = ref(false)
+const editingRetarderStatusCalculation = ref<HumpCalculation | null>(null)
+const editingRetarderStatusList = ref<RetarderStatus[]>([])
+const retarderOptions = ref<{ id: string; label: string }[]>([])
 
 const slopeLayout = ref<SlopeLayout | null>(null);
 const flatLayout = ref<FlatLayout | null>(null);
@@ -1197,6 +1286,125 @@ const handleCancelCalculationEdit = () => {
         operationConditionID: '',
         slopeLineID: '',
         data: []
+    }
+}
+
+// 减速器工作状态相关方法
+const handleEditRetarderStatus = async (calculation: HumpCalculation) => {
+    editingRetarderStatusCalculation.value = calculation
+    editingRetarderStatusList.value = calculation.retarderStatusList
+        ? JSON.parse(JSON.stringify(calculation.retarderStatusList))
+        : []
+
+    // 加载该溜放线上的减速器选项
+    retarderOptions.value = []
+    if (props.selectedInstanceId && calculation.slopeLineID) {
+        try {
+            retarderOptionsLoading.value = true
+            const response = await axios.get('/Hump/GetFlatLayout', {
+                params: {
+                    instanceID: props.selectedInstanceId,
+                    slopeLineID: calculation.slopeLineID
+                }
+            })
+            const list = response.data?.retarderList || []
+            retarderOptions.value = list.map((r: any) => ({
+                id: r.id,
+                label: r.numbers ? `${r.id} (${r.numbers})` : r.id
+            }))
+        } catch (error) {
+            console.error('加载减速器列表失败:', error)
+        } finally {
+            retarderOptionsLoading.value = false
+        }
+    }
+
+    showRetarderStatusDialog.value = true
+}
+
+const handleAddRetarderStatus = () => {
+    editingRetarderStatusList.value.push({
+        retarderID: retarderOptions.value.length > 0 ? (retarderOptions.value[0]?.id ?? '') : '',
+        isActivated: true,
+        output: 1.0,
+        totalEnergyHeight: 0
+    })
+}
+
+const handleRemoveRetarderStatus = (index: number) => {
+    editingRetarderStatusList.value.splice(index, 1)
+}
+
+const handleInlineRetarderStatusUpdate = async (retarderStatusList: RetarderStatus[]) => {
+    const calc = humpCalculations.value.find(c => c.id === currentHumpCalculationID.value)
+    if (!calc) return
+
+    const normalizedList = (retarderStatusList || []).map(r => ({
+        retarderID: r.retarderID,
+        isActivated: Boolean(r.isActivated),
+        output: Math.max(0, Math.min(1, Number(r.output ?? 0))),
+        totalEnergyHeight: Math.max(0, Number(r.totalEnergyHeight ?? 0))
+    }))
+
+    const backupList = calc.retarderStatusList ? JSON.parse(JSON.stringify(calc.retarderStatusList)) : []
+    calc.retarderStatusList = normalizedList
+
+    try {
+        const apiRequest = {
+            ID: calc.id,
+            InstanceID: calc.instanceID,
+            HumpSchemeID: calc.humpSchemeID,
+            WagonType: calc.wagonType,
+            OperationConditionID: calc.operationConditionID,
+            SlopeLineID: calc.slopeLineID,
+            Data: calc.data,
+            RetarderStatusList: normalizedList.map(r => ({
+                RetarderID: r.retarderID,
+                IsActivated: r.isActivated,
+                Output: r.output,
+                TotalEnergyHeight: r.totalEnergyHeight
+            }))
+        }
+        await axios.put('/Hump/EditHumpCalculation', apiRequest)
+    } catch (error) {
+        calc.retarderStatusList = backupList
+        console.error('保存减速器状态失败:', error)
+        ElMessage.error(t('humpSlopeDesigner.retarderStatus.saveError'))
+    }
+}
+
+const handleSaveRetarderStatus = async () => {
+    if (!editingRetarderStatusCalculation.value) return
+
+    try {
+        retarderStatusSaving.value = true
+        const calc = editingRetarderStatusCalculation.value
+        const apiRequest = {
+            ID: calc.id,
+            InstanceID: calc.instanceID,
+            HumpSchemeID: calc.humpSchemeID,
+            WagonType: calc.wagonType,
+            OperationConditionID: calc.operationConditionID,
+            SlopeLineID: calc.slopeLineID,
+            Data: calc.data,
+            RetarderStatusList: editingRetarderStatusList.value.map(r => ({
+                RetarderID: r.retarderID,
+                IsActivated: r.isActivated,
+                Output: r.output,
+                TotalEnergyHeight: r.totalEnergyHeight
+            }))
+        }
+        const response = await axios.put('/Hump/EditHumpCalculation', apiRequest)
+        if (response.status === 200) {
+            await loadHumpCalculations()
+            showRetarderStatusDialog.value = false
+            ElMessage.success(t('humpSlopeDesigner.retarderStatus.saveSuccess'))
+        }
+    } catch (error) {
+        console.error('保存减速器状态失败:', error)
+        ElMessage.error(t('humpSlopeDesigner.retarderStatus.saveError'))
+    } finally {
+        retarderStatusSaving.value = false
     }
 }
 

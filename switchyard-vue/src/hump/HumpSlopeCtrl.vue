@@ -31,7 +31,7 @@
                     <line class="addpointbar" :x1="marginLeft" :x2="marginLeft + sketchWidth"
                         :y1="svgHeight - marginBottom / 2" :y2="svgHeight - marginBottom / 2">
                     </line>
-                    <!-- 跟随光标的圆和+号 -->
+                    <!-- Add point handler that follows current cursor X -->
                     <g class="cursor-addpoint" v-if="cursorX >= 0 && cursorX <= sketchWidth / scaleX"
                         @click="addVPosition(cursorX)">
                         <circle class="addpointhandler" :cx="getX(cursorX)" :cy="svgHeight - marginBottom / 2" />
@@ -41,8 +41,14 @@
                     </g>
                 </g>
                 <g v-if="showRetarder" class="retarders">
-                    <rect v-for="retarder in retarderRects" :key="retarder.key" class="retarder-range" :x="retarder.x"
-                        :y="retarder.y" :width="retarder.width" :height="retarder.height" />
+                    <g v-for="retarder in retarderRects" :key="retarder.key">
+                        <rect class="retarder-range" :class="{ 'retarder-range-active': retarder.isActivated }"
+                            :x="retarder.x" :y="retarder.y" :width="retarder.width" :height="retarder.height"
+                            :style="{ opacity: retarder.opacity }"
+                            @dblclick.stop="openRetarderStatusDialog(retarder)" />
+                        <text class="retarder-output-text" :x="retarder.x + retarder.width / 2" :y="retarder.y - 4">{{
+                            retarder.outputPercentText }}</text>
+                    </g>
                 </g>
                 <g class="slopelines">
                     <line v-for="seg in slopeLayout?.positionSegmentList || []" class="slope-line"
@@ -109,17 +115,64 @@
         </div>
         <div v-if="contextMenu.visible" class="context-menu"
             :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }">
-            <div class="context-menu-item" @click.stop="deleteContextPos">删除节点</div>
+            <div class="context-menu-item" @click.stop="deleteContextPos">Delete Node</div>
         </div>
+        <el-dialog v-model="showRetarderStatusDialog" :title="t('humpSlopeCtrl.dialog.retarderSettings')" width="420px"
+            :close-on-click-modal="false" append-to-body>
+            <div v-if="editingRetarderStatus">
+                <div style="margin-bottom: 10px;">{{ t('humpSlopeCtrl.labels.retarderID') }}: {{ editingRetarderStatus.retarderID }}</div>
+                <div style="margin-bottom: 12px;">
+                    <span style="margin-right: 8px;">{{ t('humpSlopeCtrl.labels.enabled') }}</span>
+                    <el-switch v-model="editingRetarderStatus.isActivated" />
+                </div>
+                <div style="margin-bottom: 12px;">
+                    <span style="display:inline-block; width: 80px;">{{ t('humpSlopeCtrl.labels.output') }}</span>
+                    <el-input-number v-model="editingRetarderStatus.output" :min="0" :max="1" :step="0.1"
+                        :precision="2" />
+                </div>
+                <div>
+                    <span style="display:inline-block; width: 80px;">{{ t('humpSlopeCtrl.labels.totalEnergyHeight') }}</span>
+                    <el-input-number v-model="editingRetarderStatus.totalEnergyHeight" :min="0" :step="0.01"
+                        :precision="3" />
+                </div>
+            </div>
+            <template #footer>
+                <el-button @click="showRetarderStatusDialog = false">{{ t('common.buttons.cancel') }}</el-button>
+                <el-button type="primary" @click="saveRetarderStatusDialog">{{ t('common.buttons.confirm') }}</el-button>
+            </template>
+        </el-dialog>
     </div>
 </template>
 <script setup lang="ts">
 import { CurveDirections, FlatLayout, LocationParam, SlopeLayout, VPosition, VPositionSegment } from './humplayoutctrl';
 import { ref, computed, onBeforeUnmount, onMounted } from 'vue';
+import { useI18n } from 'vue-i18n';
+
+type RetarderStatusItem = {
+    retarderID: string
+    isActivated: boolean
+    output: number
+    totalEnergyHeight: number
+}
+
+type RetarderRectItem = {
+    key: string
+    retarderID: string
+    x: number
+    y: number
+    width: number
+    height: number
+    isActivated: boolean
+    output: number
+    totalEnergyHeight: number
+    outputPercentText: string
+    opacity: number
+}
 
 const props = defineProps<{
     flatLayout?: FlatLayout | null
     slopeLayout?: SlopeLayout | null
+    retarderStatusList?: RetarderStatusItem[] | null
     resistanceEnergyHeightData?: { x: number, height: number }[] | null
     kineticEnergyHeightData?: { x: number, result: any }[] | null
     globalScaleX?: number
@@ -142,7 +195,9 @@ const emit = defineEmits<{
     updateGlobalCursorX: [value: number]
     'horizontal-scroll': [scrollLeft: number]
     'wheel-scale-x': [payload: { scaleX: number, scrollLeft: number }]
+    'update-retarder-status-list': [value: RetarderStatusItem[]]
 }>()
+const { t } = useI18n();
 const scrollContainerRef = ref<HTMLDivElement | null>(null);
 const minScaleX = 0.1;
 const maxScaleX = 5;
@@ -193,12 +248,12 @@ const cursorX = computed({
         return props.globalCursorX !== undefined ? props.globalCursorX : localCursorX.value;
     },
     set(newVal: number) {
-        // 如果globalCursorX存在，则不更新本地值
+        // If parent controls cursor X, emit update instead of mutating local state.
         if (props.globalCursorX === undefined) {
             localCursorX.value = newVal;
         }
         else {
-            // 当globalCursorX存在时，emit事件更新父组件的globalCursorX
+            // Sync cursor X back to parent.
             emit('updateGlobalCursorX', newVal);
         }
     }
@@ -278,6 +333,44 @@ function getFlatPositionX(positionID: string): number | null {
     return Number.isFinite(position.x) ? position.x : null;
 }
 
+function normalizeId(value: unknown): string {
+    return String(value ?? '').trim().toLowerCase();
+}
+
+function formatOutputPercent(output: unknown): string {
+    const value = Number(output);
+    if (!Number.isFinite(value)) {
+        return '0%';
+    }
+    const percent = Math.max(0, Math.min(1, value)) * 100;
+    if (Math.abs(percent - Math.round(percent)) < 1e-9) {
+        return `${Math.round(percent)}%`;
+    }
+    return `${percent.toFixed(1)}%`;
+}
+
+function toOpacityFromOutput(output: unknown): number {
+    const value = Number(output);
+    if (!Number.isFinite(value)) return 0;
+    return Math.max(0, Math.min(1, value));
+}
+
+const retarderStatusMap = computed(() => {
+    const map = new Map<string, RetarderStatusItem>();
+    const list = props.retarderStatusList || [];
+    for (const status of list) {
+        const id = normalizeId(status?.retarderID);
+        if (!id) continue;
+        map.set(id, {
+            retarderID: status?.retarderID ?? '',
+            isActivated: Boolean(status?.isActivated),
+            output: toOpacityFromOutput(status?.output ?? 1),
+            totalEnergyHeight: Math.max(0, Number(status?.totalEnergyHeight ?? 0))
+        });
+    }
+    return map;
+});
+
 const retarderRects = computed(() => {
     const list = (props.flatLayout as any)?.retarderList as any[] | undefined;
     const segments = props.flatLayout?.positionSegmentList || [];
@@ -296,15 +389,73 @@ const retarderRects = computed(() => {
 
         const x1 = getX(Math.min(startX, endX));
         const x2 = getX(Math.max(startX, endX));
+        const retarderId = String(retarder?.id ?? '');
+        const status = retarderStatusMap.value.get(normalizeId(retarderId));
+        const hasStatus = Boolean(status);
+        const resolvedStatus = status ?? {
+            retarderID: retarderId,
+            isActivated: false,
+            output: 1,
+            totalEnergyHeight: 0
+        };
+        const clampedOutput = toOpacityFromOutput(resolvedStatus.output);
+
         return {
             key: retarder?.id ?? segmentId ?? `retarder-${index}`,
+            retarderID: retarderId,
             x: x1,
             y,
             width: Math.max(0, x2 - x1),
-            height
+            height,
+            isActivated: Boolean(resolvedStatus.isActivated),
+            output: clampedOutput,
+            totalEnergyHeight: resolvedStatus.totalEnergyHeight,
+            outputPercentText: hasStatus ? formatOutputPercent(clampedOutput) : t('humpSlopeCtrl.labels.notConfigured'),
+            opacity: clampedOutput
         };
-    }).filter((item): item is { key: string; x: number; y: number; width: number; height: number } => item !== null);
+    }).filter((item): item is RetarderRectItem => item !== null);
 });
+
+const showRetarderStatusDialog = ref(false);
+const editingRetarderStatus = ref<RetarderStatusItem | null>(null);
+
+function openRetarderStatusDialog(retarder: RetarderRectItem) {
+    editingRetarderStatus.value = {
+        retarderID: retarder.retarderID,
+        isActivated: retarder.isActivated,
+        output: retarder.output,
+        totalEnergyHeight: retarder.totalEnergyHeight
+    };
+    showRetarderStatusDialog.value = true;
+}
+
+function saveRetarderStatusDialog() {
+    if (!editingRetarderStatus.value) return;
+
+    const edited: RetarderStatusItem = {
+        retarderID: editingRetarderStatus.value.retarderID,
+        isActivated: Boolean(editingRetarderStatus.value.isActivated),
+        output: toOpacityFromOutput(editingRetarderStatus.value.output),
+        totalEnergyHeight: Math.max(0, Number(editingRetarderStatus.value.totalEnergyHeight ?? 0))
+    };
+
+    const nextList: RetarderStatusItem[] = (props.retarderStatusList || []).map(item => ({
+        retarderID: item.retarderID,
+        isActivated: Boolean(item.isActivated),
+        output: toOpacityFromOutput(item.output),
+        totalEnergyHeight: Math.max(0, Number(item.totalEnergyHeight ?? 0))
+    }));
+
+    const idx = nextList.findIndex(item => normalizeId(item.retarderID) === normalizeId(edited.retarderID));
+    if (idx >= 0) {
+        nextList[idx] = edited;
+    } else {
+        nextList.push(edited);
+    }
+
+    emit('update-retarder-status-list', nextList);
+    showRetarderStatusDialog.value = false;
+}
 
 function startDrag(pos: { id: string; height: number; x: number }, event: MouseEvent) {
     event.preventDefault();
@@ -371,10 +522,10 @@ function onMouseMove(event: MouseEvent) {
         target.x = Math.round(Math.max(0, newX) * 1000) / 1000;
         currentX.value = target.x;
     }
-    updateKineticEnergyHeights(draggingId.value);  // 更新能高线数据
+    updateKineticEnergyHeights(draggingId.value);  // refresh kinetic profile for dragged point
 
-    if (target.x === 0) { // 峰高改变
-        // 更新其他位置的能高线数据
+    if (target.x === 0) { // hump crest moved
+        // refresh kinetic profile for all other points
         props.slopeLayout.positionList.forEach(p => {
             if (p.id !== draggingId.value) {
                 updateKineticEnergyHeights(p.id);
@@ -517,7 +668,7 @@ const svgWidth = computed(() => {
 const polygonPoints = computed(() => {
     if (!props.slopeLayout?.positionSegmentList || !props.slopeLayout.positionList) return '';
 
-    // 收集 slopelines 的所有点，按 x 排序
+    // Collect all slope polyline points and sort by x.
     const points: { x: number; y: number }[] = [];
     props.slopeLayout.positionSegmentList.forEach(seg => {
         const startX = getPositionX(seg.startPositionID);
@@ -527,12 +678,12 @@ const polygonPoints = computed(() => {
         points.push({ x: startX, y: startY });
         points.push({ x: endX, y: endY });
     });
-    // 去重并排序
+    // De-duplicate and sort.
     const uniquePoints = points.filter((point, index, self) =>
         index === self.findIndex(p => p.x === point.x && p.y === point.y)
     ).sort((a, b) => a.x - b.x);
 
-    // 多边形点：yaxis 顶部 -> slopelines 点 -> xaxis 右端 -> xaxis 左端 -> yaxis 底部
+    // Polygon points: top-left -> slope points -> bottom-right -> bottom-left.
     const polyPoints: string[] = [];
     polyPoints.push(`${marginLeft.value},${marginTop.value}`);
     uniquePoints.forEach(point => {
@@ -545,18 +696,18 @@ const polygonPoints = computed(() => {
     return polyPoints.join(' ');
 });
 
-// 计算文字的垂直偏移，避免重叠
+// Compute vertical offsets for labels to avoid overlap.
 const fontSize = ref(12);
 
-// 计算标签位置，避免任意两个标签的矩形（宽/高）重叠
+// Compute label placements and avoid rectangle overlaps.
 const textPositions = computed(() => {
     const map = new Map<string, { y: number; barStartY: number; barEndY: number }>();
     if (!props.slopeLayout?.positionList) return map;
 
     const placed: { id: string; x1: number; x2: number; y1: number; y2: number }[] = [];
 
-    const charWidth = fontSize.value * 0.6; // 近似每字符宽度
-    const textHeight = fontSize.value; // 近似文本高度
+    const charWidth = fontSize.value * 0.6; // approximate width per character
+    const textHeight = fontSize.value; // approximate text height
 
     for (const pos of props.slopeLayout.positionList) {
         const text = String(pos.height);
@@ -568,7 +719,7 @@ const textPositions = computed(() => {
         var barStartY = getY(pos.height) + 5;
         var barEndY = svgHeight.value - marginBottom.value;
 
-        if (ty > svgHeight.value - marginBottom.value - 10) {  // 太低不好看，调整到上方
+        if (ty > svgHeight.value - marginBottom.value - 10) {  // keep labels readable
             ty = getY(pos.height) - 10;
             anchor = 1;
         }
@@ -584,7 +735,7 @@ const textPositions = computed(() => {
         let rect = getRect(ty);
         let iter = 0;
         while (placed.some(p => !(p.x2 < rect.x1 || p.x1 > rect.x2 || p.y2 < rect.y1 || p.y1 > rect.y2))) {
-            // 如果重叠，向上移动一个步长
+            // Move upward until it no longer overlaps.
             ty -= (textHeight + 4);
             rect = getRect(ty);
             if (++iter > 20) break;
@@ -604,7 +755,7 @@ const textPositions = computed(() => {
     return map;
 });
 
-// 调整动能文字位置，避免相互覆盖
+// Adjust kinetic text positions to avoid overlap.
 const kineticTextPositions = computed(() => {
     const map = new Map<number, number>();
     if (!props.kineticEnergyHeightData) return map;
@@ -689,7 +840,7 @@ function addCursorXListener() {
     if (!svgElement) return;
     svgElement.addEventListener('mousemove', (event) => {
         const rect = svgElement.getBoundingClientRect();
-        const mouseX = event.clientX - rect.left; // 鼠标相对于SVG左边界的X坐标
+        const mouseX = event.clientX - rect.left; // mouse X relative to SVG left edge
         const posX = (mouseX - marginLeft.value) / scaleX.value;
         cursorX.value = posX;
     });
@@ -747,10 +898,10 @@ function addVPosition(posX: number) {
 
     const positions = [...sl.positionList].sort((a, b) => a.x - b.x);
 
-    // 已存在同x坐标则不重复添加
+    // Do not add duplicate x positions.
     if (positions.some((p) => Math.abs(p.x - posX) < 1e-6)) return;
 
-    // 少于2个点时，直接插入默认高度2的点
+    // Initialize with two default points when empty.
     if (positions.length === 0) {
         const newPos1 = new VPosition(createTempVPositionId(), posX, 2);
         const newPos2 = new VPosition(createTempVPositionId(), posX + 5, 2);
@@ -858,6 +1009,21 @@ defineExpose({
     fill: none;
     stroke: #2f74d0;
     stroke-width: 1.5px;
+    pointer-events: auto;
+    cursor: pointer;
+}
+
+.retarders .retarder-range.retarder-range-active {
+    fill: rgba(47, 116, 208, 0.28);
+}
+
+.retarders .retarder-output-text {
+    fill: #1e3a8a;
+    font-size: 11px;
+    font-weight: 600;
+    text-anchor: middle;
+    dominant-baseline: auto;
+    user-select: none;
     pointer-events: none;
 }
 

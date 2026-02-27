@@ -12,19 +12,26 @@ namespace SwitchYard.Hump
     /// </summary>
     public class RetarderStatus
     {
+        [JsonIgnore]
+        public string? HumpCalculationID { get; set; }
         /// <summary>
-        /// 减速器工作状态ID
+        /// 减速器ID
         /// </summary>
-        public string ID { get; set; }
+        public string RetarderID { get; set; }
 
         /// <summary>
-        /// 减速器激活状态
+        /// 是否工作
         /// </summary>
-        public Dictionary<string, bool> RetarderActivation { get; set; }
+        public bool IsActivated { get; set; }
 
         /// <summary>
-        /// 减速器输出制动力比例
+        /// 输出制动力比例（取值范围为0-1）
         /// </summary>
-        public Dictionary<string, double> RetarderOutput { get; set; }
+        public double Output { get; set; }
+
+        /// <summary>
+        /// 设计总制动能高度/(m)
+        /// </summary>
+        public double TotalEnergyHeight { get; set; }
     }
 }

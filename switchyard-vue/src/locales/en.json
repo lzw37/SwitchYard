@@ -699,6 +699,18 @@
         "horizontalScale": "Horizontal Scale",
         "verticalBaseline": "Vertical Baseline"
     },
+    "humpSlopeCtrl": {
+        "dialog": {
+            "retarderSettings": "Retarder Settings"
+        },
+        "labels": {
+            "retarderID": "ID",
+            "enabled": "Enabled",
+            "output": "Output",
+            "totalEnergyHeight": "Total EH",
+            "notConfigured": "Not Configured"
+        }
+    },
     "humpSlopeDesigner": {
         "tool": "Tool",
         "longitudinalSectionScheme": "Longitudinal Section Scheme",
@@ -748,11 +760,14 @@
         "dialog": {
             "schemeManagement": "Scheme Management",
             "conditionManagement": "Calculation Condition Management",
+            "retarderStatusManagement": "Retarder Working Status",
             "close": "Close"
         },
         "buttons": {
             "addScheme": "Add Scheme",
             "addCondition": "Add Condition",
+            "retarderStatus": "Retarder Status",
+            "addRetarderStatus": "Add Retarder Status",
             "save": "Save",
             "cancel": "Cancel",
             "edit": "Edit",
@@ -769,7 +784,8 @@
             "wagonType": "Wagon Type",
             "operationCondition": "Operation Condition",
             "slopeLine": "Slope Line",
-            "humpScheme": "Hump Scheme"
+            "humpScheme": "Hump Scheme",
+            "retarderStatus": "Retarder Status"
         },
         "placeholder": {
             "selectWagonType": "Select Wagon Type",
@@ -808,6 +824,15 @@
         },
         "common": {
             "cancelDelete": "Delete cancelled"
+        },
+        "retarderStatus": {
+            "retarderID": "Retarder",
+            "selectRetarder": "Select Retarder",
+            "isActivated": "Activated",
+            "output": "Output Ratio (0~1)",
+            "totalEnergyHeight": "Braking Height/m",
+            "saveSuccess": "Retarder status saved successfully",
+            "saveError": "Failed to save retarder status"
         }
     },
     "humpInstance": {

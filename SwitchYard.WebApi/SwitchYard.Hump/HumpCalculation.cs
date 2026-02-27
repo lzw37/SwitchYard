@@ -42,6 +42,11 @@ namespace SwitchYard.Hump
         public string SlopeLineID { get; set; }
 
         /// <summary>
+        /// 减速器工作状态列表
+        /// </summary>
+        public List<RetarderStatus>? RetarderStatusList { get; set; }
+
+        /// <summary>
         /// 计算数据集合
         /// </summary>
         public List<HumpCalculationData>? Data { get; set; }

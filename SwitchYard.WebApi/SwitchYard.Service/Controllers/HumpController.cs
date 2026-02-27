@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.Extensions.Logging;
@@ -1708,8 +1708,27 @@ namespace SwitchYard.Service.Controllers
 
                 var username = User.Identity?.Name;
                 DBConnector dbConnector = DBConnector.GetDBConnector();
-                var humpCalculations = dbConnector.Query<HumpCalculation>("SELECT * FROM humpcalculation WHERE InstanceID = @instanceID AND HumpSchemeID = @humpSchemeID", new { instanceID = instanceID, humpSchemeID = humpSchemeID });
-                LogInformationWithContext("Retrieved {HumpCalculationCount} HumpCalculations, hump scheme {HumpSchemeID}.", humpCalculations?.Count ?? 0, humpSchemeID);
+                var humpCalculations = dbConnector.Query<HumpCalculation>("SELECT * FROM humpcalculation WHERE InstanceID = @instanceID AND HumpSchemeID = @humpSchemeID", new { instanceID = instanceID, humpSchemeID = humpSchemeID }) ?? new List<HumpCalculation>();
+
+                var humpCalculationIds = humpCalculations
+                    .Where(c => !string.IsNullOrWhiteSpace(c.ID))
+                    .Select(c => c.ID)
+                    .ToList();
+                var retarderStatusMap = LoadRetarderStatusMap(dbConnector, instanceID, humpCalculationIds);
+
+                foreach (var calculation in humpCalculations)
+                {
+                    if (!string.IsNullOrWhiteSpace(calculation.ID) && retarderStatusMap.TryGetValue(calculation.ID, out var retarderStatusList))
+                    {
+                        calculation.RetarderStatusList = retarderStatusList;
+                    }
+                    else
+                    {
+                        calculation.RetarderStatusList = new List<RetarderStatus>();
+                    }
+                }
+
+                LogInformationWithContext("Retrieved {HumpCalculationCount} HumpCalculations, hump scheme {HumpSchemeID}.", humpCalculations.Count, humpSchemeID);
                 return Ok(humpCalculations);
             }
             catch (Exception ex)
@@ -1725,6 +1744,7 @@ namespace SwitchYard.Service.Controllers
         [HttpPost(Name = "CreateHumpCalculation")]
         public IActionResult CreateHumpCalculation(HumpCalculation humpCalculation)
         {
+            DBConnector dbConnector = DBConnector.GetDBConnector();
             try
             {
                 if (humpCalculation == null || string.IsNullOrEmpty(humpCalculation.InstanceID))
@@ -1736,8 +1756,10 @@ namespace SwitchYard.Service.Controllers
                 if (authResult != null) return authResult;
 
                 var username = User.Identity?.Name;
-                DBConnector dbConnector = DBConnector.GetDBConnector();
                 humpCalculation.ID = _snowflakeIdGenerator.NextIdString();
+
+                dbConnector.BeginTransaction();
+
                 var result = dbConnector.ExecuteNonQuery(
                     "INSERT INTO humpcalculation (InstanceID, HumpSchemeID, ID, WagonType, OperationConditionID, SlopeLineID) VALUES (@InstanceID, @HumpSchemeID, @ID, @WagonType, @OperationConditionID, @SlopeLineID)",
                     new
@@ -1749,19 +1771,23 @@ namespace SwitchYard.Service.Controllers
                         humpCalculation.OperationConditionID,
                         humpCalculation.SlopeLineID
                     });
-                if (result > 0)
+
+                if (result <= 0)
                 {
-                    LogInformationWithContext("Created HumpCalculation with ID {HumpCalculationID}.", humpCalculation.ID);
-                    return Ok(humpCalculation);
-                }
-                else
-                {
+                    dbConnector.Rollback();
                     _logger.LogWarning("Failed to create HumpCalculation.", humpCalculation.InstanceID, username);
                     return StatusCode(500, "Failed to create HumpCalculation.");
                 }
+
+                SaveRetarderStatusList(dbConnector, humpCalculation.InstanceID, humpCalculation.ID, humpCalculation.RetarderStatusList);
+                dbConnector.Commit();
+
+                LogInformationWithContext("Created HumpCalculation with ID {HumpCalculationID}.", humpCalculation.ID);
+                return Ok(humpCalculation);
             }
             catch (Exception ex)
             {
+                dbConnector.Rollback();
                 LogErrorWithContext(ex, "Error creating HumpCalculation.");
                 return StatusCode(500, "Internal server error while creating HumpCalculation.");
             }
@@ -1773,6 +1799,7 @@ namespace SwitchYard.Service.Controllers
         [HttpPut(Name = "EditHumpCalculation")]
         public IActionResult EditHumpCalculation(HumpCalculation humpCalculation)
         {
+            DBConnector dbConnector = DBConnector.GetDBConnector();
             try
             {
                 if (humpCalculation == null || string.IsNullOrEmpty(humpCalculation.ID))
@@ -1781,8 +1808,7 @@ namespace SwitchYard.Service.Controllers
                 }
 
                 var username = User.Identity?.Name;
-                DBConnector dbConnector = DBConnector.GetDBConnector();
-                var existing = dbConnector.Query<HumpCalculation>("SELECT * FROM humpcalculation WHERE ID = @id", new { id = humpCalculation.ID }).FirstOrDefault();
+                var existing = (dbConnector.Query<HumpCalculation>("SELECT * FROM humpcalculation WHERE ID = @id", new { id = humpCalculation.ID }) ?? new List<HumpCalculation>()).FirstOrDefault();
                 if (existing == null)
                 {
                     return NotFound("HumpCalculation not found.");
@@ -1790,6 +1816,8 @@ namespace SwitchYard.Service.Controllers
 
                 var authResult = ValidateInstanceOwnershipOrFail(existing.InstanceID);
                 if (authResult != null) return authResult;
+
+                dbConnector.BeginTransaction();
 
                 var result = dbConnector.ExecuteNonQuery(
                     "UPDATE humpcalculation SET HumpSchemeID = @HumpSchemeID, WagonType = @WagonType, OperationConditionID = @OperationConditionID, SlopeLineID = @SlopeLineID WHERE ID = @ID",
@@ -1801,19 +1829,23 @@ namespace SwitchYard.Service.Controllers
                         humpCalculation.SlopeLineID,
                         humpCalculation.ID
                     });
-                if (result > 0)
+
+                if (result <= 0)
                 {
-                    LogInformationWithContext("Updated HumpCalculation with ID {HumpCalculationID}.", humpCalculation.ID);
-                    return Ok("HumpCalculation updated successfully.");
-                }
-                else
-                {
+                    dbConnector.Rollback();
                     _logger.LogWarning("Failed to update HumpCalculation.", existing.InstanceID, username);
                     return StatusCode(500, "Failed to update HumpCalculation.");
                 }
+
+                SaveRetarderStatusList(dbConnector, existing.InstanceID, humpCalculation.ID, humpCalculation.RetarderStatusList);
+                dbConnector.Commit();
+
+                LogInformationWithContext("Updated HumpCalculation with ID {HumpCalculationID}.", humpCalculation.ID);
+                return Ok("HumpCalculation updated successfully.");
             }
             catch (Exception ex)
             {
+                dbConnector.Rollback();
                 LogErrorWithContext(ex, "Error updating HumpCalculation.");
                 return StatusCode(500, "Internal server error while updating HumpCalculation.");
             }
@@ -1825,11 +1857,11 @@ namespace SwitchYard.Service.Controllers
         [HttpDelete(Name = "DeleteHumpCalculation")]
         public IActionResult DeleteHumpCalculation(string instanceID, string humpSchemeID, string id)
         {
+            DBConnector dbConnector = DBConnector.GetDBConnector();
             try
             {
                 var username = User.Identity?.Name;
-                DBConnector dbConnector = DBConnector.GetDBConnector();
-                var humpCalculation = dbConnector.Query<HumpCalculation>("SELECT * FROM humpcalculation WHERE InstanceID = @instanceID AND HumpSchemeID = @humpSchemeID AND ID = @id", new { instanceID = instanceID, humpSchemeID = humpSchemeID, id = id }).FirstOrDefault();
+                var humpCalculation = (dbConnector.Query<HumpCalculation>("SELECT * FROM humpcalculation WHERE InstanceID = @instanceID AND HumpSchemeID = @humpSchemeID AND ID = @id", new { instanceID = instanceID, humpSchemeID = humpSchemeID, id = id }) ?? new List<HumpCalculation>()).FirstOrDefault();
                 if (humpCalculation == null)
                 {
                     return NotFound("HumpCalculation not found.");
@@ -1838,20 +1870,27 @@ namespace SwitchYard.Service.Controllers
                 var authResult = ValidateInstanceOwnershipOrFail(humpCalculation.InstanceID);
                 if (authResult != null) return authResult;
 
+                dbConnector.BeginTransaction();
+                dbConnector.ExecuteNonQuery("DELETE FROM retarderstatus WHERE InstanceID = @instanceID AND HumpCalculationID = @humpCalculationID",
+                    new { instanceID = humpCalculation.InstanceID, humpCalculationID = id });
+
                 var result = dbConnector.ExecuteNonQuery("DELETE FROM humpcalculation WHERE ID = @id", new { id });
                 if (result > 0)
                 {
+                    dbConnector.Commit();
                     LogInformationWithContext("Deleted HumpCalculation with ID {HumpCalculationID}.", id);
                     return Ok("HumpCalculation deleted successfully.");
                 }
                 else
                 {
+                    dbConnector.Rollback();
                     _logger.LogWarning("Failed to delete HumpCalculation.", humpCalculation.InstanceID, username);
                     return StatusCode(500, "Failed to delete HumpCalculation.");
                 }
             }
             catch (Exception ex)
             {
+                dbConnector.Rollback();
                 LogErrorWithContext(ex, "Error deleting HumpCalculation.");
                 return StatusCode(500, "Internal server error while deleting HumpCalculation.");
             }
@@ -1881,8 +1920,76 @@ namespace SwitchYard.Service.Controllers
         private HumpCalculation GetHumpCalculation(string instanceID, string humpSchemeID, string id)
         {
             DBConnector dbConnector = DBConnector.GetDBConnector();
-            var humpCalculation = dbConnector.Query<HumpCalculation>("SELECT * FROM humpcalculation WHERE ID = @id AND InstanceID = @instanceID AND HumpSchemeID = @humpSchemeID", new { id = id, instanceID = instanceID, humpSchemeID = humpSchemeID }).FirstOrDefault();
+            var humpCalculation = (dbConnector.Query<HumpCalculation>("SELECT * FROM humpcalculation WHERE ID = @id AND InstanceID = @instanceID AND HumpSchemeID = @humpSchemeID", new { id = id, instanceID = instanceID, humpSchemeID = humpSchemeID }) ?? new List<HumpCalculation>()).FirstOrDefault();
+            if (humpCalculation != null)
+            {
+                humpCalculation.RetarderStatusList = LoadRetarderStatusList(dbConnector, instanceID, humpCalculation.ID);
+            }
             return humpCalculation;
+        }
+
+        private Dictionary<string, List<RetarderStatus>> LoadRetarderStatusMap(DBConnector dbConnector, string instanceID, List<string> humpCalculationIds)
+        {
+            var retarderStatusMap = new Dictionary<string, List<RetarderStatus>>();
+            if (humpCalculationIds == null || humpCalculationIds.Count == 0)
+            {
+                return retarderStatusMap;
+            }
+
+            var rows = dbConnector.Query<RetarderStatus>(
+                "SELECT HumpCalculationID, RetarderID, COALESCE(IsActivated, 0) AS IsActivated, COALESCE(Output, 0) AS Output, COALESCE(TotalEnergyHeight, 0) AS TotalEnergyHeight FROM retarderstatus WHERE InstanceID = @instanceID AND HumpCalculationID IN @humpCalculationIds",
+                new { instanceID, humpCalculationIds }) ?? new List<RetarderStatus>();
+
+            retarderStatusMap = rows
+                .Where(r => !string.IsNullOrWhiteSpace(r.HumpCalculationID))
+                .GroupBy(r => r.HumpCalculationID!)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.Select(r => new RetarderStatus
+                    {
+                        RetarderID = r.RetarderID ?? string.Empty,
+                        IsActivated = r.IsActivated,
+                        Output = r.Output,
+                        TotalEnergyHeight = r.TotalEnergyHeight
+                    }).ToList());
+
+            return retarderStatusMap;
+        }
+
+        private List<RetarderStatus> LoadRetarderStatusList(DBConnector dbConnector, string instanceID, string humpCalculationID)
+        {
+            var retarderStatusList = dbConnector.Query<RetarderStatus>(
+                "SELECT RetarderID, COALESCE(IsActivated, 0) AS IsActivated, COALESCE(Output, 0) AS Output, COALESCE(TotalEnergyHeight, 0) AS TotalEnergyHeight FROM retarderstatus WHERE InstanceID = @instanceID AND HumpCalculationID = @humpCalculationID",
+                new { instanceID, humpCalculationID });
+
+            return retarderStatusList ?? new List<RetarderStatus>();
+        }
+
+        private void SaveRetarderStatusList(DBConnector dbConnector, string instanceID, string humpCalculationID, List<RetarderStatus>? retarderStatusList)
+        {
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM retarderstatus WHERE InstanceID = @instanceID AND HumpCalculationID = @humpCalculationID",
+                new { instanceID, humpCalculationID });
+
+            if (retarderStatusList == null || retarderStatusList.Count == 0)
+            {
+                return;
+            }
+
+            foreach (var retarderStatus in retarderStatusList)
+            {
+                dbConnector.ExecuteNonQuery(
+                    "INSERT INTO retarderstatus (InstanceID, RetarderID, IsActivated, Output, TotalEnergyHeight, HumpCalculationID) VALUES (@InstanceID, @RetarderID, @IsActivated, @Output, @TotalEnergyHeight, @HumpCalculationID)",
+                    new
+                    {
+                        InstanceID = instanceID,
+                        retarderStatus.RetarderID,
+                        IsActivated = retarderStatus.IsActivated ? 1 : 0,
+                        retarderStatus.Output,
+                        retarderStatus.TotalEnergyHeight,
+                        HumpCalculationID = humpCalculationID
+                    });
+            }
         }
 
         /// <summary>
