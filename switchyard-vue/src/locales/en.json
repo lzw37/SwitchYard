@@ -229,6 +229,7 @@
             "confirm": "Confirm",
             "cancel": "Cancel",
             "add": "Add",
+            "edit": "Edit",
             "save": "Save",
             "delete": "Delete"
         },
@@ -246,6 +247,10 @@
             "slopeLineDeleted": "Slope line deleted successfully",
             "deleteSlopeLineError": "Failed to delete slope line",
             "loadSlopeLinesError": "Failed to load slope lines",
+            "slopeLineManagerTitle": "Slope Line Manager",
+            "slopeLineName": "Slope Line Name",
+            "slopeLineUpdated": "Slope line names updated successfully",
+            "updateSlopeLineError": "Failed to update slope line names",
             "flatLayoutLoaded": "Flat layout loaded successfully",
             "flatLayoutSaved": "Flat layout saved successfully!",
             "loadFlatLayoutError": "Failed to load flat layout",

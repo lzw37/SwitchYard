@@ -408,7 +408,7 @@ const showResistanceNumber = ref(true);
 const showKineticNumber = ref(true);
 const showPointHeightNumber = ref(true);
 
-const currentCalculateCondition = ref({
+const defaultCalculateCondition = () => ({
     wagonTypeName: "--",
     slopeLineName: "--",
     wagonVelocityOnTop: "--",
@@ -422,6 +422,18 @@ const currentCalculateCondition = ref({
     retarderActivation: {},
     retarderOutput: {}
 })
+
+const currentCalculateCondition = ref(defaultCalculateCondition())
+
+const clearSlopeBindingData = () => {
+    slopeLayout.value = null
+    flatLayout.value = null
+    humpCalculations.value = []
+    currentHumpCalculationID.value = ""
+    resistanceEnergyHeightData.value = null
+    kineticEnergyHeightData.value = null
+    currentCalculateCondition.value = defaultCalculateCondition()
+}
 
 watch(showInitialKinetic, (newVal) => {
     if (newVal === true) {
@@ -713,6 +725,7 @@ const loadHumpSchemes = async () => {
     if (!props.selectedInstanceId) {
         humpSchemes.value = []
         currentHumpSchemeID.value = ""
+        clearSlopeBindingData()
         return
     }
 
@@ -727,6 +740,7 @@ const loadHumpSchemes = async () => {
             currentHumpSchemeID.value = humpSchemes.value[0].id
         } else {
             currentHumpSchemeID.value = ""
+            clearSlopeBindingData()
         }
 
         console.log('Hump schemes loaded:', humpSchemes.value)
@@ -734,12 +748,19 @@ const loadHumpSchemes = async () => {
         console.error('加载驼峰方案失败:', error)
         humpSchemes.value = []
         currentHumpSchemeID.value = ""
+        clearSlopeBindingData()
     }
 }
 
 // 监听 selectedInstanceId 变化
 watch(() => props.selectedInstanceId, (newInstanceId) => {
     console.log('Selected instance changed:', newInstanceId)
+    humpSchemes.value = []
+    currentHumpSchemeID.value = ""
+    clearSlopeBindingData()
+    if (!newInstanceId) {
+        return
+    }
     loadHumpSchemes()
 }, { immediate: true })
 
@@ -750,6 +771,8 @@ watch(currentHumpSchemeID, (newSchemeId, oldSchemeId) => {
         loadSlopeLayout()
         loadFlatLayout()
         loadHumpCalculations()
+    } else {
+        clearSlopeBindingData()
     }
 })
 

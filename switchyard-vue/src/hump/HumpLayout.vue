@@ -1,22 +1,60 @@
 <template>
     <section class="hump-layout">
         <div class="plan-top">
-            <el-select v-model="selectedLine" :placeholder="t('hump.selectLine')" clearable style="width:240px">
+            <el-select v-model="selectedLine" size="small" :placeholder="t('hump.selectLine')" clearable
+                style="width:240px;align-items: center;vertical-align: middle;">
                 <el-option v-for="line in lines" :key="line.id" :label="line.name" :value="line.id" />
             </el-select>
+            <el-button type="primary" size="small" @click="openSlopeLineManager">...</el-button>
             <div>
                 <el-button-group>
-                    <el-button type="plain" @click="loadFlatLayout">{{ t('hump.load') }}</el-button>
-                    <el-button type="primary" @click="saveFlatLayout">{{ t('hump.buttons.save') }}</el-button>
-                </el-button-group>
-
-                <el-button-group style="margin-left: 20px;">
-                    <el-button type="primary" @click="createNewLayout">{{ t('hump.new') }}</el-button>
-                    <el-button type="danger" @click="deleteSlopeLine">{{ t('hump.delete') }}</el-button>
+                    <el-button type="plain" size="small" @click="loadFlatLayout">{{ t('hump.load') }}</el-button>
+                    <el-button type="primary" size="small" @click="saveFlatLayout">{{ t('hump.buttons.save')
+                        }}</el-button>
                 </el-button-group>
 
             </div>
         </div>
+
+        <el-dialog v-model="slopeLineManagerVisible" :title="t('hump.messages.slopeLineManagerTitle')" width="760px"
+            :close-on-click-modal="false">
+            <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
+                <el-button type="primary" size="small" @click="addSlopeLineInManager">{{ t('hump.new') }}</el-button>
+            </div>
+            <el-table :data="slopeLineEditList" size="small" :max-height="360" style="width: 100%">
+                <el-table-column prop="id" :label="t('hump.id')" width="240" />
+                <el-table-column :label="t('hump.messages.slopeLineName')" min-width="280">
+                    <template #default="scope">
+                        <template v-if="scope.row._isEditing">
+                            <el-input v-model="scope.row.name" size="small"
+                                :placeholder="t('hump.messages.enterSlopeLineName')" />
+                        </template>
+                        <template v-else>
+                            <span>{{ scope.row.name }}</span>
+                        </template>
+                    </template>
+                </el-table-column>
+                <el-table-column :label="t('hump.operation')" width="220">
+                    <template #default="scope">
+                        <template v-if="scope.row._isEditing">
+                            <el-button type="primary" size="small" :loading="scope.row._loading"
+                                @click="saveSlopeLineInManager(scope.row)">{{ t('hump.buttons.save') }}</el-button>
+                            <el-button size="small" :disabled="scope.row._loading"
+                                @click="cancelEditSlopeLine(scope.$index)">{{ t('hump.buttons.cancel') }}</el-button>
+                        </template>
+                        <template v-else>
+                            <el-button size="small" :disabled="scope.row._loading"
+                                @click="startEditSlopeLine(scope.row)">{{ t('hump.buttons.edit') }}</el-button>
+                            <el-button type="danger" size="small" :loading="scope.row._loading"
+                                @click="removeSlopeLineInManager(scope.row, scope.$index)">{{ t('hump.buttons.delete') }}</el-button>
+                        </template>
+                    </template>
+                </el-table-column>
+            </el-table>
+            <template #footer>
+                <el-button @click="slopeLineManagerVisible = false">{{ t('hump.buttons.cancel') }}</el-button>
+            </template>
+        </el-dialog>
 
         <div class="plan-graphic">
             <div class="graphic-placeholder">
@@ -261,6 +299,13 @@ interface SlopeLine {
     name: string
 }
 
+interface EditableSlopeLine extends SlopeLine {
+    _isEditing: boolean
+    _isNew: boolean
+    _loading: boolean
+    _originalName: string
+}
+
 interface Props {
     selectedInstanceId?: string | null
 }
@@ -273,6 +318,8 @@ const { t } = useI18n()
 const selectedLine = ref<string | null>(null)
 const lines = ref<SlopeLine[]>([])
 const planSubTab = ref('ctrl')
+const slopeLineManagerVisible = ref(false)
+const slopeLineEditList = ref<EditableSlopeLine[]>([])
 
 const ctrlRef = ref<InstanceType<typeof HumpLayoutCtrl> | null>(null)
 const flatLayout = ref<FlatLayout | null>(null)
@@ -287,7 +334,7 @@ const isPositionListDirty = computed(() => {
     }
 })
 
-// 加载溜放线列表
+// 加载溜放线列�?
 async function loadSlopeLines() {
     if (!props.selectedInstanceId) {
         lines.value = []
@@ -306,7 +353,137 @@ async function loadSlopeLines() {
     }
 }
 
-// 监听selectedInstanceId变化，自动加载溜放线列表
+// Manage slope line names.
+function buildSlopeLineEditRows(source: SlopeLine[]): EditableSlopeLine[] {
+    return source.map(line => ({
+        ...line,
+        _isEditing: false,
+        _isNew: false,
+        _loading: false,
+        _originalName: line.name
+    }))
+}
+
+async function openSlopeLineManager() {
+    if (!props.selectedInstanceId) {
+        ElMessage.warning(t('hump.messages.selectInstanceFirst'))
+        return
+    }
+    await loadSlopeLines()
+    slopeLineEditList.value = buildSlopeLineEditRows(lines.value)
+    slopeLineManagerVisible.value = true
+}
+
+function addSlopeLineInManager() {
+    if (!props.selectedInstanceId) {
+        ElMessage.warning(t('hump.messages.selectInstanceFirst'))
+        return
+    }
+    const tempId = `new-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    slopeLineEditList.value.push({
+        id: tempId,
+        instanceID: props.selectedInstanceId,
+        name: '',
+        _isEditing: true,
+        _isNew: true,
+        _loading: false,
+        _originalName: ''
+    })
+}
+
+function startEditSlopeLine(row: EditableSlopeLine) {
+    row._originalName = row.name
+    row._isEditing = true
+}
+
+function cancelEditSlopeLine(index: number) {
+    const row = slopeLineEditList.value[index]
+    if (!row) return
+    if (row._isNew) {
+        slopeLineEditList.value.splice(index, 1)
+        return
+    }
+    row.name = row._originalName
+    row._isEditing = false
+}
+
+async function saveSlopeLineInManager(row: EditableSlopeLine) {
+    if (!props.selectedInstanceId) return
+
+    const name = (row.name ?? '').trim()
+    if (!name) {
+        ElMessage.warning(t('hump.messages.nameRequired'))
+        return
+    }
+
+    row._loading = true
+    try {
+        if (row._isNew) {
+            await axios.post('/Hump/CreateSlopeLine', {
+                InstanceID: props.selectedInstanceId,
+                Name: name
+            })
+            ElMessage.success(t('hump.messages.slopeLineCreated'))
+        } else {
+            await axios.put('/Hump/EditSlopeLine', {
+                ID: row.id,
+                InstanceID: row.instanceID || props.selectedInstanceId,
+                Name: name
+            })
+            ElMessage.success(t('hump.messages.slopeLineUpdated'))
+        }
+
+        await loadSlopeLines()
+        slopeLineEditList.value = buildSlopeLineEditRows(lines.value)
+    } catch (error: any) {
+        console.error('Failed to save slope line name:', error)
+        ElMessage.error(row._isNew ? t('hump.messages.createSlopeLineError') : t('hump.messages.updateSlopeLineError'))
+    } finally {
+        row._loading = false
+    }
+}
+
+async function removeSlopeLineInManager(row: EditableSlopeLine, index: number) {
+    if (row._isNew) {
+        slopeLineEditList.value.splice(index, 1)
+        return
+    }
+
+    try {
+        await ElMessageBox.confirm(
+            t('hump.messages.deleteSlopeLineConfirm', { name: row.name || row.id }),
+            t('hump.messages.deleteSlopeLineTitle'),
+            {
+                confirmButtonText: t('hump.buttons.confirm'),
+                cancelButtonText: t('hump.buttons.cancel'),
+                type: 'warning'
+            }
+        )
+
+        row._loading = true
+        await axios.delete('/Hump/DeleteSlopeLine', {
+            params: { id: row.id }
+        })
+
+        ElMessage.success(t('hump.messages.slopeLineDeleted'))
+
+        if (selectedLine.value === row.id) {
+            selectedLine.value = null
+            flatLayout.value = null
+        }
+
+        await loadSlopeLines()
+        slopeLineEditList.value = buildSlopeLineEditRows(lines.value)
+    } catch (error: any) {
+        if (error !== 'cancel' && error !== 'close') {
+            console.error('Failed to delete slope line:', error)
+            ElMessage.error(t('hump.messages.deleteSlopeLineError'))
+        }
+    } finally {
+        row._loading = false
+    }
+}
+// Reload slope lines when selected instance changes.
 watch(() => props.selectedInstanceId, (newValue) => {
     if (newValue) {
         loadSlopeLines()
@@ -321,6 +498,9 @@ watch(() => props.selectedInstanceId, (newValue) => {
 // 选中溜放线变化时，清空平面布局数据
 watch(selectedLine, (newValue) => {
     flatLayout.value = null
+    if (newValue) {
+        loadFlatLayout()
+    }
 }, { immediate: true })
 
 function updateGlobalCursorX(value: number) {
@@ -524,7 +704,7 @@ function addSwitch() {
         flatLayout.value.switchList = []
     }
 
-    // 生成自增ID，从1开始
+    // 生成自增ID，从1开�?
     const existingIds = flatLayout.value.switchList
         .map(s => parseInt(s.id))
         .filter(id => !isNaN(id))
@@ -557,7 +737,7 @@ async function confirmRemoveSwitch(index: number) {
 
         flatLayout.value.switchList?.splice(index, 1)
     } catch (error) {
-        // 用户取消，不做操作
+        // 用户取消，不做操�?
     }
 }
 
@@ -570,7 +750,7 @@ function addRetarder() {
         flatLayout.value.retarderList = []
     }
 
-    // 生成自增ID，从1开始
+    // 生成自增ID，从1开�?
     const existingIds = flatLayout.value.retarderList
         .map(r => parseInt(r.id))
         .filter(id => !isNaN(id))
@@ -601,7 +781,7 @@ async function confirmRemoveRetarder(index: number) {
 
         flatLayout.value.retarderList?.splice(index, 1)
     } catch (error) {
-        // 用户取消，不做操作
+        // 用户取消，不做操�?
     }
 }
 
@@ -623,17 +803,17 @@ async function confirmRemovePosition(index: number) {
         if (deletedPosition === undefined) return
         const deletedId = deletedPosition.id.toString()
 
-        // 删除控制点
+        // 删除控制�?
         flatLayout.value.positionList.splice(index, 1)
 
-        // 删除引用该控制点的区段
+        // 删除引用该控制点的区�?
         if (flatLayout.value.positionSegmentList) {
             flatLayout.value.positionSegmentList = flatLayout.value.positionSegmentList.filter(
                 seg => seg.startPositionID !== deletedId && seg.endPositionID !== deletedId
             )
         }
     } catch (error) {
-        // 用户取消，不做操作
+        // 用户取消，不做操�?
     }
 }
 
@@ -641,7 +821,7 @@ function updatePositionSegmentList() {
     // 根据最新的positionList更新positionSegmentList
     if (!flatLayout.value?.positionList || !flatLayout.value?.positionSegmentList) return
 
-    // 检查positionList中的元素id是否有重复？如果有，则弹出对话框提示，然后返回
+    // 检查positionList中的元素id是否有重复？如果有，则弹出对话框提示，然后返�?
     const idSet = new Set<string>()
     for (const pos of flatLayout.value.positionList) {
         if (idSet.has(pos.id)) {
@@ -682,7 +862,7 @@ function updatePositionSegmentList() {
             newPositionSegmentList.push(seg)
         }
         else {
-            // 存在则保留原有区段对象，但更新长度
+            // 存在则保留原有区段对象，但更新长�?
             seg.length = Math.round(Math.abs(endPos.x - startPos.x) * 1000) / 1000
             newPositionSegmentList.push(seg)
         }
@@ -711,7 +891,7 @@ function loadFlatLayout() {
         }
     }).then(response => {
         flatLayout.value = response.data
-        // 保存加载时的 positionList 快照，用于判断是否发生更改
+        // 保存加载时的 positionList 快照，用于判断是否发生更�?
         originalPositionListJson.value = JSON.stringify(flatLayout.value?.positionList || [])
         if (flatLayout.value?.positionSegmentList) {
             flatLayout.value.positionSegmentList.forEach(seg => {
@@ -729,102 +909,6 @@ function loadFlatLayout() {
     })
 }
 
-async function createNewLayout() {
-    if (!props.selectedInstanceId) {
-        ElMessage.warning(t('hump.messages.selectInstanceFirst'))
-        return
-    }
-
-    try {
-        // 生成默认的溜放线名称
-        const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-')
-        const defaultName = `溜放线_${timestamp}`
-
-        // 弹出对话框让用户输入名称
-        const slopeLineName = await ElMessageBox.prompt(
-            t('hump.messages.enterSlopeLineName'),
-            t('hump.messages.createSlopeLineTitle'),
-            {
-                confirmButtonText: t('hump.buttons.confirm'),
-                cancelButtonText: t('hump.buttons.cancel'),
-                inputPattern: /.+/,
-                inputErrorMessage: t('hump.messages.nameRequired'),
-                inputValue: defaultName
-            }
-        ).then(({ value }) => value).catch(() => null)
-
-        // 用户取消输入
-        if (!slopeLineName) {
-            return
-        }
-
-        const slopeLineData = {
-            InstanceID: props.selectedInstanceId,
-            Name: slopeLineName
-        }
-
-        const response = await axios.post('/Hump/CreateSlopeLine', slopeLineData)
-
-        if (response.data) {
-            ElMessage.success(t('hump.messages.slopeLineCreated'))
-            // 刷新溜放线列表
-            await loadSlopeLines()
-            // 自动选中新创建的溜放线
-            selectedLine.value = response.data.id
-            console.log('Created slope line:', response.data)
-        }
-    } catch (error: any) {
-        console.error('Failed to create slope line:', error)
-        ElMessage.error(t('hump.messages.createSlopeLineError'))
-    }
-}
-
-async function deleteSlopeLine() {
-    if (!selectedLine.value) {
-        ElMessage.warning(t('hump.messages.selectSlopeLineFirst'))
-        return
-    }
-
-    // 获取当前选中溜放线的名称
-    const currentLine = lines.value.find(line => line.id === selectedLine.value)
-    const lineName = currentLine?.name || selectedLine.value
-
-    try {
-        // 弹出确认对话框
-        await ElMessageBox.confirm(
-            t('hump.messages.deleteSlopeLineConfirm', { name: lineName }),
-            t('hump.messages.deleteSlopeLineTitle'),
-            {
-                confirmButtonText: t('hump.buttons.confirm'),
-                cancelButtonText: t('hump.buttons.cancel'),
-                type: 'warning'
-            }
-        )
-
-        // 调用删除API
-        await axios.delete('/Hump/DeleteSlopeLine', {
-            params: { id: selectedLine.value }
-        })
-
-        ElMessage.success(t('hump.messages.slopeLineDeleted'))
-
-        // 清空当前选中
-        selectedLine.value = null
-
-        // 清空平面布局数据
-        flatLayout.value = null
-
-        // 刷新溜放线列表
-        await loadSlopeLines()
-
-    } catch (error: any) {
-        // 用户取消操作不显示错误
-        if (error !== 'cancel') {
-            console.error('Failed to delete slope line:', error)
-            ElMessage.error(t('hump.messages.deleteSlopeLineError'))
-        }
-    }
-}
 
 function saveFlatLayout() {
     if (!flatLayout.value) {
@@ -846,6 +930,7 @@ function saveFlatLayout() {
 .plan-top {
     display: flex;
     justify-content: flex-start;
+    align-items: center;
     gap: 12px;
     margin-bottom: 12px;
 }
@@ -869,3 +954,4 @@ function saveFlatLayout() {
     margin-top: 12px;
 }
 </style>
+

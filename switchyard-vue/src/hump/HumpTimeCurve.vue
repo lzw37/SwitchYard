@@ -37,8 +37,9 @@
                         text-anchor="middle" transform="rotate(-90, 15, 100)">{{ t('humpChart.axis.time') }}</text>
                 </g>
                 <g class="time-curves">
-                    <polyline v-for="curve in timeCurveData" :key="curve.seriesName" :points="getTimePolylinePoints(curve.data)"
-                        :stroke="curve.color" stroke-width="2" fill="none" />
+                    <polyline v-for="curve in timeCurveData" :key="curve.seriesName"
+                        :points="getTimePolylinePoints(curve.data)" :stroke="curve.color" stroke-width="2"
+                        fill="none" />
                     <g v-for="curve in timeCurveData" :key="curve.seriesName">
                         <circle v-for="(point, pointIndex) in curve.data" :key="`${curve.seriesName}-${pointIndex}`"
                             :cx="getTimeX(point.x)" :cy="getTimeY(point.time)" r="3" :fill="curve.color" />
@@ -102,6 +103,7 @@ const props = defineProps<{
     fullscreenChart: 'velocity' | 'time' | null
     selectedInstanceId?: string | null
     selectedSlopeLineId?: string | null
+    selectedHumpSchemeId?: string | null
 }>()
 
 const emit = defineEmits<{
@@ -262,7 +264,16 @@ const handleToggleFullscreen = () => {
 }
 
 function loadSlopeLayout() {
-    axios.get(`/hump/getslopelayout`).then(response => {
+    if (!props.selectedInstanceId || !props.selectedHumpSchemeId) {
+        slopeLayout.value = null
+        return
+    }
+    axios.get(`/Hump/GetSlopeLayout`, {
+        params: {
+            instanceID: props.selectedInstanceId,
+            humpSchemeID: props.selectedHumpSchemeId
+        }
+    }).then(response => {
         if (response.data) {
             slopeLayout.value = response.data as SlopeLayout;
         }
@@ -300,8 +311,6 @@ function loadFlatLayout() {
 }
 
 onMounted(() => {
-    loadSlopeLayout();
-
     nextTick(() => {
         updateLocalChartWidth()
         if (typeof ResizeObserver !== 'undefined' && chartContainer.value) {
@@ -331,6 +340,14 @@ watch(
     () => [props.selectedInstanceId, props.selectedSlopeLineId],
     () => {
         loadFlatLayout()
+    },
+    { immediate: true }
+)
+
+watch(
+    () => [props.selectedInstanceId, props.selectedHumpSchemeId],
+    () => {
+        loadSlopeLayout()
     },
     { immediate: true }
 )

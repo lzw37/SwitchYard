@@ -65,15 +65,15 @@
                 :chart-width="chartWidth" :chart-height="chartHeight" :margin-left="marginLeft"
                 :margin-right="marginRight" :margin-top="marginTop" :margin-bottom="marginBottom"
                 :selected-instance-id="props.selectedInstanceId" :selected-slope-line-id="selectedSlopeLineID"
-                :fullscreen-chart="fullscreenChart" @remove-tab="handleRemoveTimeTab"
-                @toggle-fullscreen="toggleFullscreen('time')" />
+                :selected-hump-scheme-id="selectedHumpSchemeID" :fullscreen-chart="fullscreenChart"
+                @remove-tab="handleRemoveTimeTab" @toggle-fullscreen="toggleFullscreen('time')" />
         </div>
 
         <el-dialog v-model="showHeadwaySchemeManager" :title="t('hump.headway.manager.title')" width="90%"
             :close-on-click-modal="false">
             <div class="manager-toolbar">
                 <el-button type="primary" @click="handleAddHeadwayScheme">{{ t('hump.headway.buttons.add')
-                    }}</el-button>
+                }}</el-button>
             </div>
             <el-table :data="headwaySchemeManagerRows" style="width: 100%" v-loading="headwaySchemeManagerLoading">
                 <el-table-column prop="id" :label="t('hump.headway.labels.id')" width="190" />

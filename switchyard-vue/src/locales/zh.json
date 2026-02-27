@@ -223,6 +223,7 @@
             "confirm": "确定",
             "cancel": "取消",
             "add": "添加",
+            "edit": "编辑",
             "save": "保存",
             "delete": "删除"
         },
@@ -240,6 +241,10 @@
             "slopeLineDeleted": "溜放线删除成功",
             "deleteSlopeLineError": "删除溜放线失败",
             "loadSlopeLinesError": "加载溜放线列表失败",
+            "slopeLineManagerTitle": "溜放线管理",
+            "slopeLineName": "溜放线名称",
+            "slopeLineUpdated": "溜放线名称更新成功",
+            "updateSlopeLineError": "更新溜放线名称失败",
             "flatLayoutLoaded": "平面布局加载成功",
             "flatLayoutSaved": "平面布置图保存成功！",
             "loadFlatLayoutError": "加载平面布局失败",
