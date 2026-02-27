@@ -3,14 +3,16 @@ import { RouterLink, RouterView, useRoute } from 'vue-router'
 import HelloWorld from './components/HelloWorld.vue'
 import HumpMain from './hump/HumpMain.vue'
 import CourseMain from './course/CourseMain.vue'
+import type ScrollBar from 'element-plus/es/components/virtual-list/src/components/scrollbar.mjs'
 
 const route = useRoute()
-const isHumpRoute = () => route.path === '/hump' || route.path.startsWith('/hump/')
-const isCourseMainRoute = () => route.path === '/courses' || route.path.startsWith('/courses/')
+const isHumpRoute = () => route.path === '/hump'
+const isCourseMainRoute = () => route.path === '/courses'
 const isIndex = () => route.path === '/'
 </script>
 
 <template>
+    <ScrollBar></ScrollBar>
     <template v-if="isHumpRoute()">
         <HumpMain />
     </template>

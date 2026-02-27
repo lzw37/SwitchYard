@@ -27,6 +27,12 @@ const router = createRouter({
             component: () => import("../hump/HumpMain.vue"),
         },
         {
+            path: "/hump/instancemanagement",
+            name: "hump-instance-management",
+            component: () => import("../views/HumpInstanceManagement.vue"),
+            meta: { requiresAdmin: true },
+        },
+        {
             path: "/courses",
             name: "courses",
             component: () => import("../course/CourseMain.vue"),

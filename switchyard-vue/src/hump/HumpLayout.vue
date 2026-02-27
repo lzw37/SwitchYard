@@ -10,7 +10,7 @@
                 <el-button-group>
                     <el-button type="plain" size="small" @click="loadFlatLayout">{{ t('hump.load') }}</el-button>
                     <el-button type="primary" size="small" @click="saveFlatLayout">{{ t('hump.buttons.save')
-                        }}</el-button>
+                    }}</el-button>
                 </el-button-group>
 
             </div>
@@ -46,7 +46,8 @@
                             <el-button size="small" :disabled="scope.row._loading"
                                 @click="startEditSlopeLine(scope.row)">{{ t('hump.buttons.edit') }}</el-button>
                             <el-button type="danger" size="small" :loading="scope.row._loading"
-                                @click="removeSlopeLineInManager(scope.row, scope.$index)">{{ t('hump.buttons.delete') }}</el-button>
+                                @click="removeSlopeLineInManager(scope.row, scope.$index)">{{ t('hump.buttons.delete')
+                                }}</el-button>
                         </template>
                     </template>
                 </el-table-column>
@@ -75,7 +76,7 @@
                                         style="margin-left:20px;" @click="addPosition">{{ t('hump.buttons.add')
                                         }}</el-button>
                                 </div>
-                                <el-table :data="flatLayout?.positionList || []" stripe :max-height="250"
+                                <el-table :data="flatLayout?.positionList || []" stripe :max-height="400"
                                     style="width: 100%">
                                     <el-table-column :label="t('hump.id')" width="100">
                                         <template #default="scope">
@@ -107,7 +108,7 @@
                                         @click="updatePositionSegmentList" style="margin-left:20px">{{ t('hump.update')
                                         }}</el-button>
                                 </div>
-                                <el-table :data="flatLayout?.positionSegmentList || []" stripe :max-height="250"
+                                <el-table :data="flatLayout?.positionSegmentList || []" stripe :max-height="400"
                                     style="width: 100%">
                                     <el-table-column prop="id" :label="t('hump.id')" width="100"></el-table-column>
                                     <el-table-column prop="startPositionID" :label="t('hump.startID')"
@@ -156,7 +157,7 @@
                                 @click="addSwitch">{{ t('hump.buttons.add')
                                 }}</el-button>
                         </div>
-                        <el-table :data="flatLayout?.switchList || []" stripe :max-height="250" style="width: 100%">
+                        <el-table :data="flatLayout?.switchList || []" stripe :max-height="400" style="width: 100%">
                             <el-table-column :label="t('hump.id')" width="100">
                                 <template #default="scope">
                                     {{ scope.row.id }}
@@ -234,7 +235,7 @@
                                 @click="addRetarder">{{ t('hump.buttons.add')
                                 }}</el-button>
                         </div>
-                        <el-table :data="flatLayout?.retarderList || []" stripe :max-height="250" style="width: 100%">
+                        <el-table :data="flatLayout?.retarderList || []" stripe :max-height="400" style="width: 100%">
                             <el-table-column :label="t('hump.retarder.index')" width="80">
                                 <template #default="scope">{{ scope.row.id }}</template>
                             </el-table-column>
@@ -334,7 +335,7 @@ const isPositionListDirty = computed(() => {
     }
 })
 
-// 加载溜放线列�?
+// 加载溜放线列�?
 async function loadSlopeLines() {
     if (!props.selectedInstanceId) {
         lines.value = []
@@ -704,7 +705,7 @@ function addSwitch() {
         flatLayout.value.switchList = []
     }
 
-    // 生成自增ID，从1开�?
+    // 生成自增ID，从1开�?
     const existingIds = flatLayout.value.switchList
         .map(s => parseInt(s.id))
         .filter(id => !isNaN(id))
@@ -737,7 +738,7 @@ async function confirmRemoveSwitch(index: number) {
 
         flatLayout.value.switchList?.splice(index, 1)
     } catch (error) {
-        // 用户取消，不做操�?
+        // 用户取消，不做操�?
     }
 }
 
@@ -750,7 +751,7 @@ function addRetarder() {
         flatLayout.value.retarderList = []
     }
 
-    // 生成自增ID，从1开�?
+    // 生成自增ID，从1开�?
     const existingIds = flatLayout.value.retarderList
         .map(r => parseInt(r.id))
         .filter(id => !isNaN(id))
@@ -781,7 +782,7 @@ async function confirmRemoveRetarder(index: number) {
 
         flatLayout.value.retarderList?.splice(index, 1)
     } catch (error) {
-        // 用户取消，不做操�?
+        // 用户取消，不做操�?
     }
 }
 
@@ -803,17 +804,17 @@ async function confirmRemovePosition(index: number) {
         if (deletedPosition === undefined) return
         const deletedId = deletedPosition.id.toString()
 
-        // 删除控制�?
+        // 删除控制�?
         flatLayout.value.positionList.splice(index, 1)
 
-        // 删除引用该控制点的区�?
+        // 删除引用该控制点的区�?
         if (flatLayout.value.positionSegmentList) {
             flatLayout.value.positionSegmentList = flatLayout.value.positionSegmentList.filter(
                 seg => seg.startPositionID !== deletedId && seg.endPositionID !== deletedId
             )
         }
     } catch (error) {
-        // 用户取消，不做操�?
+        // 用户取消，不做操�?
     }
 }
 
@@ -821,7 +822,7 @@ function updatePositionSegmentList() {
     // 根据最新的positionList更新positionSegmentList
     if (!flatLayout.value?.positionList || !flatLayout.value?.positionSegmentList) return
 
-    // 检查positionList中的元素id是否有重复？如果有，则弹出对话框提示，然后返�?
+    // 检查positionList中的元素id是否有重复？如果有，则弹出对话框提示，然后返�?
     const idSet = new Set<string>()
     for (const pos of flatLayout.value.positionList) {
         if (idSet.has(pos.id)) {
@@ -862,7 +863,7 @@ function updatePositionSegmentList() {
             newPositionSegmentList.push(seg)
         }
         else {
-            // 存在则保留原有区段对象，但更新长�?
+            // 存在则保留原有区段对象，但更新长�?
             seg.length = Math.round(Math.abs(endPos.x - startPos.x) * 1000) / 1000
             newPositionSegmentList.push(seg)
         }
@@ -891,7 +892,7 @@ function loadFlatLayout() {
         }
     }).then(response => {
         flatLayout.value = response.data
-        // 保存加载时的 positionList 快照，用于判断是否发生更�?
+        // 保存加载时的 positionList 快照，用于判断是否发生更�?
         originalPositionListJson.value = JSON.stringify(flatLayout.value?.positionList || [])
         if (flatLayout.value?.positionSegmentList) {
             flatLayout.value.positionSegmentList.forEach(seg => {
@@ -954,4 +955,3 @@ function saveFlatLayout() {
     margin-top: 12px;
 }
 </style>
-

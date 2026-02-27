@@ -8,7 +8,7 @@
                 <el-select v-model="selectedLine" class="line-select"
                     :placeholder="t('humpMain.placeholders.selectInstance')" :loading="loadingInstances"
                     :disabled="loadingInstances">
-                    <el-option v-for="line in lines" :key="line.id" :label="line.name" :value="line.id" />
+                    <el-option v-for="line in activeLines" :key="line.id" :label="line.name" :value="line.id" />
                 </el-select>
             </div>
             <div class="right-controls">
@@ -34,6 +34,9 @@
                             </el-dropdown-item>
                             <el-dropdown-item v-if="authStore.isAdmin" command="usermanagement">
                                 {{ t('common.userMenu.userManagement') }}
+                            </el-dropdown-item>
+                            <el-dropdown-item v-if="authStore.isAdmin" command="humpInstanceManagement">
+                                {{ t('humpMain.menu.instanceManagement') }}
                             </el-dropdown-item>
                             <el-dropdown-item divided command="logout">
                                 {{ t('common.userMenu.logout') }}
@@ -115,6 +118,7 @@ const selectedLine = ref<string | null>(null)
 const lines = ref<HumpInstance[]>([])
 const showInstanceManager = ref(false)
 const loadingInstances = ref(false)
+const activeLines = computed(() => lines.value.filter((item) => Number(item.isActive) === 1))
 const hasSelectedInstance = computed(() => Boolean(selectedLine.value))
 const userDisplayName = computed(() => authStore.username.trim() || t('common.userMenu.guest'))
 const userDisplayRole = computed(() => {
@@ -148,6 +152,11 @@ const handleUserMenuCommand = (command: string) => {
         return
     }
 
+    if (command === 'humpInstanceManagement') {
+        router.push('/hump/instancemanagement')
+        return
+    }
+
     if (command === 'logout') {
         authStore.clearAuth()
         ElMessage.success(t('common.userMenu.loggedOut'))
@@ -160,12 +169,15 @@ const loadInstances = async () => {
     loadingInstances.value = true
     try {
         const response = await axios.get<HumpInstance[]>('/Hump/GetInstances')
-        lines.value = response.data || []
+        lines.value = (response.data || []).map((item) => ({
+            ...item,
+            isActive: Number(item.isActive),
+        }))
 
         const currentSelected = selectedLine.value
-        const hasCurrent = currentSelected !== null && lines.value.some(item => item.id === currentSelected)
+        const hasCurrent = currentSelected !== null && activeLines.value.some(item => item.id === currentSelected)
         if (!hasCurrent) {
-            selectedLine.value = lines.value[0]?.id || null
+            selectedLine.value = activeLines.value[0]?.id || null
         }
     } catch (error: any) {
         console.error('Failed to load instances:', error)
@@ -195,16 +207,17 @@ onMounted(() => {
 <style scoped lang="css">
 .hump-main {
     width: 100%;
-    min-width: 1000px;
     min-height: 1000px;
     padding: 24px;
     background-color: white;
     box-sizing: border-box;
-    overflow: auto;
+    overflow-x: auto;
+    overflow-y: auto;
 }
 
 .hump-tabs-wrapper {
     position: relative;
+    min-width: 1000px;
 }
 
 .left-controls {
@@ -282,16 +295,16 @@ onMounted(() => {
     margin: 0 auto;
 }
 
-.hump-main-tabs > :deep(.el-tabs__header) {
+.hump-main-tabs> :deep(.el-tabs__header) {
     padding-left: 450px;
     padding-right: 380px;
 }
 
-.hump-main-tabs > :deep(.el-tabs__header .el-tabs__nav-wrap) {
+.hump-main-tabs> :deep(.el-tabs__header .el-tabs__nav-wrap) {
     overflow-x: auto;
 }
 
-.hump-main-tabs > :deep(.el-tabs__header .el-tabs__nav-scroll) {
+.hump-main-tabs> :deep(.el-tabs__header .el-tabs__nav-scroll) {
     min-width: max-content;
 }
 

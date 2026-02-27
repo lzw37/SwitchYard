@@ -544,7 +544,6 @@ body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
     line-height: 1.6;
     color: var(--text-dark);
-    overflow-x: hidden;
 }
 
 html {

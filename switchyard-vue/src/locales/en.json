@@ -543,6 +543,9 @@
         "buttons": {
             "instanceManager": "Instance Management"
         },
+        "menu": {
+            "instanceManagement": "Instance Management Page"
+        },
         "placeholders": {
             "selectInstance": "Select Instance"
         },
@@ -851,6 +854,30 @@
             "deleteError": "Failed to delete instance",
             "deleteConfirm": "Are you sure you want to delete instance {name}? This action cannot be undone."
         }
+    },
+    "humpInstanceManagement": {
+        "title": "Instance Administration",
+        "subtitle": "Assign owners and keep every hump instance aligned with the database.",
+        "toolbar": {
+            "create": "Add Instance",
+            "refresh": "Refresh List"
+        },
+        "columns": {
+            "id": "ID"
+        },
+        "placeholder": {
+            "owner": "Select owner"
+        },
+        "validation": {
+            "ownerRequired": "Please select an owner before saving"
+        },
+        "labels": {
+            "ownerUnknown": "Unassigned"
+        },
+        "messages": {
+            "userLoadError": "Failed to load user list"
+        },
+        "empty": "No instances yet. Create one to get started."
     },
     "capacityMain": {
         "buttons": {

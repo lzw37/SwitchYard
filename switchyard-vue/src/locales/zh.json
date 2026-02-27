@@ -492,6 +492,9 @@
         "buttons": {
             "instanceManager": "计算实例管理"
         },
+        "menu": {
+            "instanceManagement": "实例管理页面"
+        },
         "placeholders": {
             "selectInstance": "选择实例"
         },
@@ -845,6 +848,30 @@
             "deleteError": "删除实例失败",
             "deleteConfirm": "确定要删除实例 {name} 吗？此操作不可恢复。"
         }
+    },
+    "humpInstanceManagement": {
+        "title": "实例管理",
+        "subtitle": "浏览数据库中的驼峰实例并分配所有者",
+        "toolbar": {
+            "create": "新增实例",
+            "refresh": "刷新列表"
+        },
+        "columns": {
+            "id": "编号"
+        },
+        "placeholder": {
+            "owner": "请选择所有者"
+        },
+        "validation": {
+            "ownerRequired": "请选择一个实例所有者"
+        },
+        "labels": {
+            "ownerUnknown": "未分配"
+        },
+        "messages": {
+            "userLoadError": "加载用户列表失败"
+        },
+        "empty": "暂无实例，先新增一个吧。"
     },
     "capacityMain": {
         "buttons": {
