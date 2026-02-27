@@ -24,16 +24,23 @@ namespace SwitchYard.Service.Controllers
         ILogger<HumpController> _logger;
         SnowflakeIdGenerator _snowflakeIdGenerator;
         InstanceAuthorizationService _authService;
+        UserService _userService;
         private const string UnknownLogValue = "N/A";
         private const string LogInstanceIdKey = "__log_instance_id";
         private const string LogObjectIdKey = "__log_object_id";
 
-        public HumpController(ILogger<HumpController> logger, IConfiguration configuration, SnowflakeIdGenerator snowflakeIdGenerator, InstanceAuthorizationService authService)
+        public HumpController(
+            ILogger<HumpController> logger,
+            IConfiguration configuration,
+            SnowflakeIdGenerator snowflakeIdGenerator,
+            InstanceAuthorizationService authService,
+            UserService userService)
         {
             _logger = logger;
             _config = configuration;
             _snowflakeIdGenerator = snowflakeIdGenerator;
             _authService = authService;
+            _userService = userService;
         }
 
         private string NormalizeLogValue(object? value)
@@ -62,6 +69,36 @@ namespace SwitchYard.Service.Controllers
 
             var role = User?.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value;
             return string.Equals(role, "Admin", System.StringComparison.OrdinalIgnoreCase);
+        }
+
+        private bool TryNormalizeOwnerForPersistence(string? ownerInput, out string normalizedOwner, out string errorMessage)
+        {
+            normalizedOwner = string.Empty;
+            errorMessage = string.Empty;
+
+            if (string.IsNullOrWhiteSpace(ownerInput))
+            {
+                errorMessage = "Owner is required.";
+                return false;
+            }
+
+            var trimmedOwner = ownerInput.Trim();
+            var userById = _userService.GetUserById(trimmedOwner);
+            if (userById != null)
+            {
+                normalizedOwner = userById.Name;
+                return true;
+            }
+
+            var userByName = _userService.GetUserByUsername(trimmedOwner);
+            if (userByName != null)
+            {
+                normalizedOwner = userByName.Name;
+                return true;
+            }
+
+            errorMessage = "Owner does not exist.";
+            return false;
         }
 
         private void SetLogInstanceId(string? instanceID)
@@ -144,10 +181,33 @@ namespace SwitchYard.Service.Controllers
         {
             try
             {
-                var username = User.Identity.Name;
-                instance.Owner = username;
+                if (instance == null || string.IsNullOrWhiteSpace(instance.Name))
+                {
+                    return BadRequest("Invalid instance payload or missing name.");
+                }
+
+                var username = User.Identity?.Name;
+                if (string.IsNullOrWhiteSpace(username))
+                {
+                    return Unauthorized("Invalid user context.");
+                }
+
+                var isAdmin = IsCurrentUserAdmin();
+                var targetOwner = username;
+                if (isAdmin)
+                {
+                    if (!TryNormalizeOwnerForPersistence(instance.Owner, out var normalizedOwner, out var ownerError))
+                    {
+                        return BadRequest(ownerError);
+                    }
+
+                    targetOwner = normalizedOwner;
+                }
+
+                instance.Name = instance.Name.Trim();
+                instance.Owner = targetOwner;
                 instance.CreatedDate = DateTime.Now;
-                instance.IsActive = 1;
+                instance.IsActive = instance.IsActive == 0 ? 0 : 1;
                 DBConnector dbConnector = DBConnector.GetDBConnector();
                 instance.ID = _snowflakeIdGenerator.NextIdString();
                 var result = dbConnector.ExecuteNonQuery("INSERT INTO humpinstance (ID, Name, Owner, CreatedDate, IsActive) VALUES (@ID, @Name, @Owner, @CreatedDate, @IsActive)",
@@ -175,17 +235,44 @@ namespace SwitchYard.Service.Controllers
         {
             try
             {
+                if (instance == null || string.IsNullOrWhiteSpace(instance.ID) || string.IsNullOrWhiteSpace(instance.Name))
+                {
+                    return BadRequest("Invalid instance payload or missing ID/name.");
+                }
+
                 var authResult = ValidateInstanceOwnershipOrFail(instance.ID);
                 if (authResult != null) return authResult;
 
                 var username = User.Identity?.Name;
                 var isAdmin = IsCurrentUserAdmin();
+                if (!isAdmin && string.IsNullOrWhiteSpace(username))
+                {
+                    return Unauthorized("Invalid user context.");
+                }
+
+                var normalizedIsActive = instance.IsActive == 0 ? 0 : 1;
                 DBConnector dbConnector = DBConnector.GetDBConnector();
-                var result = isAdmin
-                    ? dbConnector.ExecuteNonQuery("UPDATE humpinstance SET Name = @Name, IsActive = @IsActive WHERE ID = @ID",
-                        new { instance.Name, instance.IsActive, instance.ID })
-                    : dbConnector.ExecuteNonQuery("UPDATE humpinstance SET Name = @Name, IsActive = @IsActive WHERE ID = @ID AND Owner = @Owner",
-                        new { instance.Name, instance.IsActive, instance.ID, Owner = username });
+                var trimmedName = instance.Name.Trim();
+
+                int result;
+                if (isAdmin)
+                {
+                    if (!TryNormalizeOwnerForPersistence(instance.Owner, out var normalizedOwner, out var ownerError))
+                    {
+                        return BadRequest(ownerError);
+                    }
+
+                    result = dbConnector.ExecuteNonQuery(
+                        "UPDATE humpinstance SET Name = @Name, Owner = @Owner, IsActive = @IsActive WHERE ID = @ID",
+                        new { Name = trimmedName, Owner = normalizedOwner, IsActive = normalizedIsActive, ID = instance.ID });
+                }
+                else
+                {
+                    result = dbConnector.ExecuteNonQuery(
+                        "UPDATE humpinstance SET Name = @Name, IsActive = @IsActive WHERE ID = @ID AND Owner = @Owner",
+                        new { Name = trimmedName, IsActive = normalizedIsActive, ID = instance.ID, Owner = username });
+                }
+
                 if (result > 0)
                 {
                     LogInformationWithContext("Updated HumpInstance with ID {InstanceID}.", instance.ID);
