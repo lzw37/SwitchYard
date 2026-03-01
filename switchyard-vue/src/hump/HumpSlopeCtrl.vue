@@ -50,6 +50,18 @@
                             retarder.outputPercentText }}</text>
                     </g>
                 </g>
+                <g v-if="props.elementVisibility?.breaking" class="breakingenergyheight">
+                    <polygon v-if="props.elementVisibility?.resistance && breakingResistanceShadePoints"
+                        :points="breakingResistanceShadePoints" class="breaking-resistance-shade" />
+                    <polyline v-if="breakingPoints" :points="breakingPoints" class="breaking-line" />
+                    <circle v-for="dataPoint in breakingEnergyHeightData?.filter(x => x.display) || []"
+                        :key="`breaking-${dataPoint.x}`" class="breaking-circle" :cx="getX(dataPoint.x)"
+                        :cy="getY(dataPoint.gravityEnergyHeight + dataPoint.kineticEnergyHeight)" r="4" />
+                    <text v-for="label in retarderBreakingHeightLabels" :key="label.key"
+                        class="retarder-breaking-height-text" :x="label.x" :y="label.y">
+                        {{ label.text }}
+                    </text>
+                </g>
                 <g class="slopelines">
                     <line v-for="seg in slopeLayout?.positionSegmentList || []" class="slope-line"
                         :x1="getX(getPositionX(seg.startPositionID))" :y1="getY(getPositionHeight(seg.startPositionID))"
@@ -120,7 +132,8 @@
         <el-dialog v-model="showRetarderStatusDialog" :title="t('humpSlopeCtrl.dialog.retarderSettings')" width="420px"
             :close-on-click-modal="false" append-to-body>
             <div v-if="editingRetarderStatus">
-                <div style="margin-bottom: 10px;">{{ t('humpSlopeCtrl.labels.retarderID') }}: {{ editingRetarderStatus.retarderID }}</div>
+                <div style="margin-bottom: 10px;">{{ t('humpSlopeCtrl.labels.retarderID') }}: {{
+                    editingRetarderStatus.retarderID }}</div>
                 <div style="margin-bottom: 12px;">
                     <span style="margin-right: 8px;">{{ t('humpSlopeCtrl.labels.enabled') }}</span>
                     <el-switch v-model="editingRetarderStatus.isActivated" />
@@ -131,14 +144,16 @@
                         :precision="2" />
                 </div>
                 <div>
-                    <span style="display:inline-block; width: 80px;">{{ t('humpSlopeCtrl.labels.totalEnergyHeight') }}</span>
+                    <span style="display:inline-block; width: 80px;">{{ t('humpSlopeCtrl.labels.totalEnergyHeight')
+                    }}</span>
                     <el-input-number v-model="editingRetarderStatus.totalEnergyHeight" :min="0" :step="0.01"
                         :precision="3" />
                 </div>
             </div>
             <template #footer>
                 <el-button @click="showRetarderStatusDialog = false">{{ t('common.buttons.cancel') }}</el-button>
-                <el-button type="primary" @click="saveRetarderStatusDialog">{{ t('common.buttons.confirm') }}</el-button>
+                <el-button type="primary" @click="saveRetarderStatusDialog">{{ t('common.buttons.confirm')
+                }}</el-button>
             </template>
         </el-dialog>
     </div>
@@ -169,12 +184,21 @@ type RetarderRectItem = {
     opacity: number
 }
 
+type BreakingEnergyHeightPoint = {
+    x: number
+    breakingEnergyHeight: number
+    gravityEnergyHeight: number
+    kineticEnergyHeight: number
+    display: boolean
+}
+
 const props = defineProps<{
     flatLayout?: FlatLayout | null
     slopeLayout?: SlopeLayout | null
     retarderStatusList?: RetarderStatusItem[] | null
     resistanceEnergyHeightData?: { x: number, height: number }[] | null
     kineticEnergyHeightData?: { x: number, result: any }[] | null
+    breakingEnergyHeightData?: BreakingEnergyHeightPoint[] | null
     globalScaleX?: number
     globalScaleY?: number
     elementVisibility?: {
@@ -649,6 +673,11 @@ const maxDisplayHeight = computed(() => {
         candidates.push(...props.kineticEnergyHeightData.map(dataPoint => dataPoint.result.gravitationHeight + dataPoint.result.kineticEnergyHeight));
     }
 
+    if (props.breakingEnergyHeightData?.length) {
+        candidates.push(...props.breakingEnergyHeightData.map(dataPoint =>
+            dataPoint.breakingEnergyHeight + dataPoint.gravityEnergyHeight + dataPoint.kineticEnergyHeight));
+    }
+
     if (orgKineticEnergyY.value) {
         candidates.push(orgKineticEnergyY.value);
     }
@@ -810,6 +839,158 @@ const kineticPoints = computed(() => {
         const y = getY(dataPoint.result.kineticEnergyHeight);
         return `${x},${y}`;
     }).join(' ');
+});
+
+type CurveSamplePoint = {
+    x: number
+    value: number
+}
+
+type RetarderBreakingHeightLabel = {
+    key: string
+    x: number
+    y: number
+    text: string
+}
+
+function interpolateSeriesValue(points: CurveSamplePoint[], x: number): number | null {
+    if (points.length === 0) return null;
+    const first = points[0];
+    const last = points[points.length - 1];
+    if (!first || !last) return null;
+    if (x < first.x || x > last.x) return null;
+
+    for (let i = 0; i < points.length - 1; i++) {
+        const p1 = points[i];
+        const p2 = points[i + 1];
+        if (!p1 || !p2) continue;
+
+        if (Math.abs(x - p1.x) < 1e-9) return p1.value;
+        if (Math.abs(x - p2.x) < 1e-9) return p2.value;
+
+        if (x > p1.x && x < p2.x) {
+            const dx = p2.x - p1.x;
+            if (Math.abs(dx) < 1e-9) return p1.value;
+            const t = (x - p1.x) / dx;
+            return p1.value + (p2.value - p1.value) * t;
+        }
+    }
+
+    return Math.abs(x - last.x) < 1e-9 ? last.value : null;
+}
+
+function formatHeightValue(value: number): string {
+    if (!Number.isFinite(value)) return '0';
+    return Number(value.toFixed(3)).toString();
+}
+
+const retarderBreakingHeightLabels = computed<RetarderBreakingHeightLabel[]>(() => {
+    const retarderList = (props.flatLayout as any)?.retarderList as any[] | undefined;
+    const segments = props.flatLayout?.positionSegmentList || [];
+    if (!Array.isArray(retarderList) || retarderList.length === 0 || !props.breakingEnergyHeightData?.length) {
+        return [];
+    }
+
+    const breakingSeries: CurveSamplePoint[] = props.breakingEnergyHeightData
+        .filter(dataPoint => dataPoint.display && Number.isFinite(dataPoint.x))
+        .map(dataPoint => ({
+            x: dataPoint.x,
+            value: dataPoint.gravityEnergyHeight + dataPoint.kineticEnergyHeight
+        }))
+        .filter(point => Number.isFinite(point.value))
+        .sort((a, b) => a.x - b.x);
+
+    if (breakingSeries.length === 0) return [];
+
+    return retarderList.map((retarder, index) => {
+        const segmentId = retarder?.bindingPositionSegmentID ?? retarder?.bindingPositionSegment?.id;
+        const directSegment = retarder?.bindingPositionSegment;
+        const segment = segments.find(seg => seg.id?.toString() === segmentId?.toString()) ?? directSegment;
+        const startX = getFlatPositionX(segment?.startPositionID);
+        const endX = getFlatPositionX(segment?.endPositionID);
+        if (startX === null || endX === null) return null;
+
+        const startHeight = interpolateSeriesValue(breakingSeries, startX);
+        const endHeight = interpolateSeriesValue(breakingSeries, endX);
+        if (startHeight === null || endHeight === null) return null;
+
+        const heightDiff = Math.round(Math.abs(startHeight - endHeight) * 1000) / 1000;
+        const midX = (startX + endX) / 2;
+        const midY = (startHeight + endHeight) / 2;
+
+        return {
+            key: `retarder-breaking-${retarder?.id ?? segmentId ?? index}`,
+            x: getX(endX),
+            y: getY(midY),
+            text: `${formatHeightValue(heightDiff)}m`
+        };
+    }).filter((item): item is RetarderBreakingHeightLabel => item !== null);
+});
+
+const breakingPoints = computed(() => {
+    if (!props.breakingEnergyHeightData?.length) return '';
+    return [...props.breakingEnergyHeightData]
+        .sort((a, b) => a.x - b.x)
+        .map(dataPoint => {
+            const x = getX(dataPoint.x);
+            const y = getY(dataPoint.gravityEnergyHeight + dataPoint.kineticEnergyHeight);
+            return `${x},${y}`;
+        }).join(' ');
+});
+
+const breakingResistanceShadePoints = computed(() => {
+    if (!props.breakingEnergyHeightData?.length || !props.resistanceEnergyHeightData?.length) return '';
+
+    const breakingSeries: CurveSamplePoint[] = props.breakingEnergyHeightData
+        .filter(dataPoint => Number.isFinite(dataPoint.x))
+        .map(dataPoint => ({
+            x: dataPoint.x,
+            value: dataPoint.gravityEnergyHeight + dataPoint.kineticEnergyHeight
+        }))
+        .filter(point => Number.isFinite(point.value))
+        .sort((a, b) => a.x - b.x);
+
+    const resistanceSeries: CurveSamplePoint[] = props.resistanceEnergyHeightData
+        .filter(dataPoint => Number.isFinite(dataPoint.x))
+        .map(dataPoint => ({
+            x: dataPoint.x,
+            value: orgKineticEnergyY.value - dataPoint.height
+        }))
+        .filter(point => Number.isFinite(point.value))
+        .sort((a, b) => a.x - b.x);
+
+    if (breakingSeries.length < 2 || resistanceSeries.length < 2) return '';
+
+    const startX = Math.max(breakingSeries[0]!.x, resistanceSeries[0]!.x);
+    const endX = Math.min(breakingSeries[breakingSeries.length - 1]!.x, resistanceSeries[resistanceSeries.length - 1]!.x);
+    if (endX <= startX) return '';
+
+    const sampleXRaw = [...breakingSeries.map(point => point.x), ...resistanceSeries.map(point => point.x)]
+        .filter(x => x >= startX && x <= endX)
+        .sort((a, b) => a - b);
+
+    const sampleX: number[] = [];
+    for (const x of sampleXRaw) {
+        const last = sampleX[sampleX.length - 1];
+        if (last === undefined || Math.abs(x - last) > 1e-6) {
+            sampleX.push(x);
+        }
+    }
+    if (sampleX.length < 2) return '';
+
+    const breakingBoundary: string[] = [];
+    const resistanceBoundary: string[] = [];
+    for (const x of sampleX) {
+        const breakingValue = interpolateSeriesValue(breakingSeries, x);
+        const resistanceValue = interpolateSeriesValue(resistanceSeries, x);
+        if (breakingValue === null || resistanceValue === null) continue;
+
+        breakingBoundary.push(`${getX(x)},${getY(breakingValue)}`);
+        resistanceBoundary.push(`${getX(x)},${getY(resistanceValue)}`);
+    }
+
+    if (breakingBoundary.length < 2 || resistanceBoundary.length < 2) return '';
+    return [...breakingBoundary, ...resistanceBoundary.reverse()].join(' ');
 });
 
 const shadePoints = computed(() => {
@@ -1050,6 +1231,35 @@ defineExpose({
     stroke: #4988C4;
     stroke-width: 1.5px;
     fill: white;
+}
+
+.breaking-circle {
+    stroke: #ff0000;
+    stroke-width: 2px;
+    fill: white;
+}
+
+.breaking-line {
+    stroke: #ff0000;
+    stroke-width: 2px;
+    fill: none;
+}
+
+.breaking-resistance-shade {
+    fill: red;
+    opacity: 0.06;
+    stroke: none;
+    pointer-events: none;
+}
+
+.retarder-breaking-height-text {
+    fill: #d10000;
+    font-size: 11px;
+    font-weight: 600;
+    text-anchor: middle;
+    dominant-baseline: hanging;
+    user-select: none;
+    pointer-events: none;
 }
 
 .resistance-text {

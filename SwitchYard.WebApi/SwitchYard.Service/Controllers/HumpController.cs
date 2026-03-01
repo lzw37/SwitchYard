@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.Extensions.Logging;
+using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using MySqlX.XDevAPI;
 using SwitchYard.Hump;
 using SwitchYard.Service.Services;
@@ -1291,10 +1292,10 @@ namespace SwitchYard.Service.Controllers
                     sqlStrBuilder.Append($"INSERT INTO humpcalculationdata (InstanceID, HumpSchemeID, HumpCalculationID, X, GravityEnergyHeight, ResistanceEnergyHeight, KineticEnergyHeight, BreakingEnergyHeight, InitTotalEnergyHeight) VALUES ('{data.InstanceID}', '{data.HumpSchemeID}', '{data.HumpCalculationID}', {data.X}, {data.GravityEnergyHeight}, {data.ResistanceEnergyHeight}, {data.KineticEnergyHeight}, {data.BreakingEnergyHeight}, {data.InitTotalEnergyHeight});");
                 }
 
-                if(sqlStrBuilder.Length == 0)
+                if (sqlStrBuilder.Length == 0)
                 {
                     // 返回空
-                LogInformationWithContext("No HumpCalculationData to insert, hump scheme {HumpSchemeID}.", parameters.HumpSchemeID);
+                    LogInformationWithContext("No HumpCalculationData to insert, hump scheme {HumpSchemeID}.", parameters.HumpSchemeID);
                     return NoContent();
                 }
 
@@ -1335,8 +1336,8 @@ namespace SwitchYard.Service.Controllers
 
                 var slopeLayout = LoadSlopeLayout(parameters.InstanceID, parameters.HumpSchemeID);
                 var wagonConceptList = LoadWagonConcept(parameters.InstanceID);
-                
-                
+
+
                 parameters.Wagon = wagonConceptList.Find(w => w.TypeName == parameters.WagonTypeName);
                 parameters.OperationCondition = LoadOperationCondition(parameters.InstanceID, parameters.OperationConditionID);
 
@@ -1363,6 +1364,8 @@ namespace SwitchYard.Service.Controllers
             var slopeLine = dbConnector.Query<SlopeLine>("SELECT * FROM slopeline WHERE InstanceID = @instanceID AND ID = @id", new { instanceID, id }).FirstOrDefault();
             return slopeLine;
         }
+
+        private double resistanceDistanceStep = 20.0;
 
         /// <summary>
         /// 计算阻力能高
@@ -1397,7 +1400,7 @@ namespace SwitchYard.Service.Controllers
                 }
                 else
                 {
-                    for (var i = slopeLayout.PositionList.First().X; i <= slopeLayout.PositionList.Last().X; i += 20)
+                    for (var i = slopeLayout.PositionList.First().X; i <= slopeLayout.PositionList.Last().X; i += resistanceDistanceStep)
                     {
                         var energyHeight = HumpEnergyHeightCalculator.CalculateResistanceEnergyHeight(flatLayout, i, parameters);
                         resistanceEnergyHeightList.Add(new { x = i, height = Math.Round(energyHeight, 3) });
@@ -1430,13 +1433,37 @@ namespace SwitchYard.Service.Controllers
                 var slopeLayout = LoadSlopeLayout(parameters.InstanceID, parameters.HumpSchemeID);
                 var wagonConceptList = LoadWagonConcept(parameters.InstanceID);
 
-                parameters.Wagon = wagonConceptList.Find(w => w.TypeName == parameters.Wagon.TypeName);
+                parameters.Wagon = wagonConceptList.Find(w => w.TypeName == parameters.WagonTypeName);
+                parameters.OperationCondition = LoadOperationCondition(parameters.InstanceID, parameters.OperationConditionID);
 
-                var breakingEnergyHeightDict = new Dictionary<double, double>();
-                foreach (var p in slopeLayout.PositionList)
+                var breakingEnergyHeightDict = new Dictionary<double, object>();
+
+                var retarderXList = new List<double>();
+                retarderXList.Add(flatLayout.PositionList[0].X);
+                retarderXList.AddRange(flatLayout.RetarderList.Select(x => x.BindingPositionSegment.StartPosition.X)
+                    .Union(flatLayout.RetarderList.Select(x => x.BindingPositionSegment.EndPosition.X)));
+                retarderXList.AddRange(flatLayout.PositionList.LastOrDefault()?.X != null ? new List<double> { flatLayout.PositionList.Last().X } : new List<double>());
+
+                var resistanceXList = new List<double>();
+                for (var i = slopeLayout.PositionList.First().X; i <= slopeLayout.PositionList.Last().X; i += resistanceDistanceStep)
                 {
-                    var energyHeight = HumpEnergyHeightCalculator.CalculateBreakingEnergyHeight(flatLayout, p.X, parameters);
-                    breakingEnergyHeightDict.Add(p.X, energyHeight);
+                    resistanceXList.Add(i);
+                }
+
+                foreach (var x in retarderXList.Union(flatLayout.PositionList.Select(p => p.X))
+                    .Union(slopeLayout.PositionList.Select(p => p.X))
+                    .Union(resistanceXList))
+                {
+                    var kineticEnergyHeight = HumpEnergyHeightCalculator.CalculateKineticEnergyHeight(flatLayout, slopeLayout, x, parameters);
+
+                    breakingEnergyHeightDict.Add(x,
+                        new
+                        {
+                            BreakingEnergyHeight = kineticEnergyHeight.BreakingHeight,
+                            GravityEnergyHeight = kineticEnergyHeight.GravitationHeight,
+                            KineticEnergyHeight = kineticEnergyHeight.KineticEnergyHeight,
+                            Display = retarderXList.Contains(x)
+                        });
                 }
                 LogInformationWithContext("Breaking Energy Height calculated for {PositionCount} positions, slope line {SlopeLineID}, hump scheme {HumpSchemeID}.", breakingEnergyHeightDict?.Count ?? 0, parameters.SlopeLineID, parameters.HumpSchemeID);
                 return Ok(breakingEnergyHeightDict);
@@ -2035,9 +2062,9 @@ namespace SwitchYard.Service.Controllers
 
                 var username = User.Identity?.Name;
                 scheme.ID = _snowflakeIdGenerator.NextIdString();
-                
+
                 dbConnector.BeginTransaction();
-                
+
                 var result = dbConnector.ExecuteNonQuery(
                     "INSERT INTO headwaycheckscheme (InstanceID, ID, Name, HumpSchemeID, WagonVelocityOnTop, SlopeLineID) VALUES (@InstanceID, @ID, @Name, @HumpSchemeID, @WagonVelocityOnTop, @SlopeLineID)",
                     new
@@ -2049,14 +2076,14 @@ namespace SwitchYard.Service.Controllers
                         scheme.WagonVelocityOnTop,
                         scheme.SlopeLineID
                     });
-                
+
                 if (result <= 0)
                 {
                     dbConnector.Rollback();
                     _logger.LogWarning("Failed to create HeadwayCheckScheme.", scheme.InstanceID, username);
                     return StatusCode(500, "Failed to create HeadwayCheckScheme.");
                 }
-                
+
                 if (scheme.WagonList != null && scheme.WagonList.Count > 0)
                 {
                     foreach (var wagon in scheme.WagonList)
@@ -2072,7 +2099,7 @@ namespace SwitchYard.Service.Controllers
                             });
                     }
                 }
-                
+
                 dbConnector.Commit();
                 LogInformationWithContext("Created HeadwayCheckScheme with ID {SchemeID} and {WagonCount} wagons.", scheme.ID, scheme.WagonList?.Count ?? 0);
                 return Ok(scheme);
@@ -2110,7 +2137,7 @@ namespace SwitchYard.Service.Controllers
                 if (authResult != null) return authResult;
 
                 dbConnector.BeginTransaction();
-                
+
                 var result = dbConnector.ExecuteNonQuery(
                     "UPDATE headwaycheckscheme SET Name = @Name, HumpSchemeID = @HumpSchemeID, WagonVelocityOnTop = @WagonVelocityOnTop, SlopeLineID = @SlopeLineID WHERE ID = @ID",
                     new
@@ -2121,17 +2148,17 @@ namespace SwitchYard.Service.Controllers
                         scheme.SlopeLineID,
                         scheme.ID
                     });
-                
+
                 if (result <= 0)
                 {
                     dbConnector.Rollback();
                     _logger.LogWarning("Failed to update HeadwayCheckScheme.", existing.InstanceID, username);
                     return StatusCode(500, "Failed to update HeadwayCheckScheme.");
                 }
-                
-                dbConnector.ExecuteNonQuery("DELETE FROM headwaycheckwagon WHERE InstanceID = @instanceID AND HeadwayCheckID = @headwayCheckID", 
+
+                dbConnector.ExecuteNonQuery("DELETE FROM headwaycheckwagon WHERE InstanceID = @instanceID AND HeadwayCheckID = @headwayCheckID",
                     new { instanceID = existing.InstanceID, headwayCheckID = scheme.ID });
-                
+
                 if (scheme.WagonList != null && scheme.WagonList.Count > 0)
                 {
                     foreach (var wagon in scheme.WagonList)
@@ -2147,7 +2174,7 @@ namespace SwitchYard.Service.Controllers
                             });
                     }
                 }
-                
+
                 dbConnector.Commit();
                 LogInformationWithContext("Updated HeadwayCheckScheme with ID {SchemeID} and {WagonCount} wagons.", scheme.ID, scheme.WagonList?.Count ?? 0);
                 return Ok("HeadwayCheckScheme updated successfully.");
@@ -2180,12 +2207,12 @@ namespace SwitchYard.Service.Controllers
                 if (authResult != null) return authResult;
 
                 dbConnector.BeginTransaction();
-                
-                dbConnector.ExecuteNonQuery("DELETE FROM headwaycheckwagon WHERE InstanceID = @instanceID AND HeadwayCheckID = @headwayCheckID", 
+
+                dbConnector.ExecuteNonQuery("DELETE FROM headwaycheckwagon WHERE InstanceID = @instanceID AND HeadwayCheckID = @headwayCheckID",
                     new { instanceID = scheme.InstanceID, headwayCheckID = id });
-                
+
                 var result = dbConnector.ExecuteNonQuery("DELETE FROM headwaycheckscheme WHERE ID = @id", new { id });
-                
+
                 if (result > 0)
                 {
                     dbConnector.Commit();
@@ -2214,14 +2241,14 @@ namespace SwitchYard.Service.Controllers
         {
             DBConnector dbConnector = DBConnector.GetDBConnector();
             var scheme = dbConnector.Query<HeadwayCheckScheme>("SELECT * FROM headwaycheckscheme WHERE InstanceID = @instanceID AND ID = @id", new { instanceID, id }).FirstOrDefault();
-            
+
             if (scheme != null)
             {
-                scheme.WagonList = dbConnector.Query<HeadwayCheckWagon>("SELECT * FROM headwaycheckwagon WHERE InstanceID = @instanceID AND HeadwayCheckID = @headwayCheckID ORDER BY Sequence", 
+                scheme.WagonList = dbConnector.Query<HeadwayCheckWagon>("SELECT * FROM headwaycheckwagon WHERE InstanceID = @instanceID AND HeadwayCheckID = @headwayCheckID ORDER BY Sequence",
                     new { instanceID, headwayCheckID = scheme.ID });
             }
 
-            foreach(var hcWagon in scheme.WagonList)
+            foreach (var hcWagon in scheme.WagonList)
             {
                 hcWagon.HumpCalculation = GetHumpCalculation(instanceID, scheme.HumpSchemeID, hcWagon.HumpCalculationID);
             }
@@ -2245,7 +2272,7 @@ namespace SwitchYard.Service.Controllers
                 {
                     return NotFound("HeadwayCheckScheme not found.");
                 }
-                
+
                 LogInformationWithContext("Retrieved HeadwayCheckScheme with ID {SchemeID} and {WagonCount} wagons.", id, scheme.WagonList?.Count ?? 0);
                 return Ok(scheme);
             }
@@ -2307,7 +2334,7 @@ namespace SwitchYard.Service.Controllers
                 LogInformationWithContext("Calculated speed profile for HeadwayCheckScheme with ID {SchemeID}.", headwayCheckSchemeID);
                 return Ok(speedProfileList);
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
                 LogErrorWithContext(ex, "Error calculating speed profile with HeadwayCheckScheme ID {SchemeID}.", headwayCheckSchemeID);
                 return StatusCode(500, "Internal server error while calculating speed profile.");

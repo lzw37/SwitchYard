@@ -79,7 +79,8 @@
             <HumpSlopeCtrl ref="humpSlopeCtrlRef" v-model:slope-layout="slopeLayout" :flat-layout="flatLayout"
                 :retarder-status-list="currentRetarderStatusList"
                 :resistance-energy-height-data="resistanceEnergyHeightData"
-                :kinetic-energy-height-data="kineticEnergyHeightData" :global-scale-x="globalScaleX"
+                :kinetic-energy-height-data="kineticEnergyHeightData"
+                :breaking-energy-height-data="breakingEnergyHeightData" :global-scale-x="globalScaleX"
                 :global-scale-y="globalScaleY" :element-visibility="elementVisibility" :global-cursor-x="globalCursorX"
                 @updateGlobalCursorX="updateGlobalCursorX" @horizontal-scroll="syncHorizontalScroll"
                 @wheel-scale-x="handleWheelScaleX" @update-retarder-status-list="handleInlineRetarderStatusUpdate" />
@@ -386,6 +387,14 @@ interface HumpCalculation {
     retarderStatusList?: RetarderStatus[]
 }
 
+type BreakingEnergyHeightPoint = {
+    x: number
+    breakingEnergyHeight: number
+    gravityEnergyHeight: number
+    kineticEnergyHeight: number
+    display: boolean
+}
+
 const humpSchemes = ref<HumpScheme[]>([])
 const currentHumpSchemeID = ref("");
 
@@ -481,6 +490,7 @@ function handleWheelScaleX(payload: { scaleX: number, scrollLeft: number }) {
 
 const resistanceEnergyHeightData = ref<{ x: number, height: number }[] | null>(null);
 const kineticEnergyHeightData = ref<{ x: number, result: any }[] | null>(null);
+const breakingEnergyHeightData = ref<BreakingEnergyHeightPoint[] | null>(null);
 
 const selectedCondition = ref('condition1');
 const globalScaleX = ref(3.5);
@@ -520,6 +530,7 @@ const clearSlopeBindingData = () => {
     currentHumpCalculationID.value = ""
     resistanceEnergyHeightData.value = null
     kineticEnergyHeightData.value = null
+    breakingEnergyHeightData.value = null
     currentCalculateCondition.value = defaultCalculateCondition()
 }
 
@@ -713,7 +724,66 @@ function loadKineticEnergyHeight() {
 }
 
 function loadBreakingEnergyHeight() {
+    if (!props.selectedInstanceId || !currentHumpSchemeID.value || !currentHumpCalculationID.value) {
+        breakingEnergyHeightData.value = null;
+        return;
+    }
 
+    const currentCalculation = humpCalculations.value.find(calc => calc.id === currentHumpCalculationID.value);
+    if (!currentCalculation) {
+        console.error("Current hump calculation not found.");
+        return;
+    }
+
+    const params = {
+        instanceID: props.selectedInstanceId,
+        humpSchemeID: currentHumpSchemeID.value,
+        id: currentCalculation.id,
+        slopeLineID: currentCalculation.slopeLineID,
+        wagonTypeName: currentCalculation.wagonType,
+        operationConditionID: currentCalculation.operationConditionID,
+        retarderStatusID: null,
+        retarderStatusList: currentCalculation.retarderStatusList || [],
+        wagon: {
+            typeName: currentCalculation.wagonType
+        }
+    };
+
+    const toFiniteNumber = (value: unknown): number => {
+        const n = Number(value);
+        return Number.isFinite(n) ? n : 0;
+    };
+
+    const normalizeItem = (xValue: unknown, item: any): BreakingEnergyHeightPoint => {
+        const x = toFiniteNumber(xValue);
+        return {
+            x,
+            breakingEnergyHeight: toFiniteNumber(item?.breakingEnergyHeight ?? item?.BreakingEnergyHeight),
+            gravityEnergyHeight: toFiniteNumber(item?.gravityEnergyHeight ?? item?.GravityEnergyHeight),
+            kineticEnergyHeight: toFiniteNumber(item?.kineticEnergyHeight ?? item?.KineticEnergyHeight),
+            display: item.display ?? false
+        };
+    };
+
+    axios.post(`/hump/getbreakingenergyheight`, params)
+        .then(response => {
+            const raw = response.data;
+            if (!raw) {
+                breakingEnergyHeightData.value = [];
+                return;
+            }
+
+            const parsed = Array.isArray(raw)
+                ? raw.map((item: any) => normalizeItem(item?.x, item))
+                : Object.entries(raw as Record<string, any>).map(([x, item]) => normalizeItem(x, item));
+
+            breakingEnergyHeightData.value = parsed
+                .filter(item => Number.isFinite(item.x))
+                .sort((a, b) => a.x - b.x);
+            console.log('Breaking energy height data loaded:', breakingEnergyHeightData.value);
+        }).catch(error => {
+            console.error("Failed to load breaking energy height data:", error);
+        });
 }
 
 // 加载下拉菜单选项数据
