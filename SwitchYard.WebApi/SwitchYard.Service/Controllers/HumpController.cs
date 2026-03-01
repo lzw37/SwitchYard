@@ -2296,7 +2296,7 @@ namespace SwitchYard.Service.Controllers
                         Wagon = wagonConceptList?.Find(w => w.TypeName == humpCalc.WagonType),
                         OperationConditionID = humpCalc.OperationConditionID,
                         OperationCondition = operationCondition,
-                        RetarderStatus = null // TODO: 如果需要减速器状态，需要从HumpCalculation中获取RetarderStatusID并加载
+                        RetarderStatusList = humpCalc.RetarderStatusList // TODO: 如果需要减速器状态，需要从HumpCalculation中获取RetarderStatusID并加载
                     };
 
                     var speedProfile = SpeedProfileGenerator.Generate(hcWagon, flatLayout, slopeLayout);
@@ -2351,7 +2351,7 @@ namespace SwitchYard.Service.Controllers
                         Wagon = wagonConceptList?.Find(w => w.TypeName == humpCalc.WagonType),
                         OperationConditionID = humpCalc.OperationConditionID,
                         OperationCondition = operationCondition,
-                        RetarderStatus = null // TODO: 如果需要减速器状态，需要从HumpCalculation中获取RetarderStatusID并加载
+                        RetarderStatusList = humpCalc.RetarderStatusList
                     };
                 }
 

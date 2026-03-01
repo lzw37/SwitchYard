@@ -59,7 +59,7 @@
             </div>
             <div class="right-section">
                 <el-button @click="toggleRight" size="small" type="primary">{{ t('humpSlopeDesigner.data')
-                }}</el-button>
+                    }}</el-button>
             </div>
         </div>
         <div class="condition-info">
@@ -67,7 +67,7 @@
             <span>{{ t('humpSlopeDesigner.slopeLine') }}{{ currentCalculateCondition.slopeLineName }}</span>
             <span>{{ t('humpSlopeDesigner.humpVelocity') }}{{ currentCalculateCondition.wagonVelocityOnTop }}m/s</span>
             <span>{{ t('humpSlopeDesigner.slopeVelocity') }}{{ currentCalculateCondition.wagonVelocityOnSlope
-            }}m/s</span>
+                }}m/s</span>
             <span>{{ t('humpSlopeDesigner.yardVelocity') }}{{ currentCalculateCondition.wagonVelocityOnYard }}m/s</span>
             <span>{{ t('humpSlopeDesigner.windSpeed') }}{{ currentCalculateCondition.windVelocity }}m/s（{{
                 currentCalculateCondition.isHeadWind ? t('humpSlopeDesigner.headWind') :
@@ -82,8 +82,7 @@
                 :kinetic-energy-height-data="kineticEnergyHeightData" :global-scale-x="globalScaleX"
                 :global-scale-y="globalScaleY" :element-visibility="elementVisibility" :global-cursor-x="globalCursorX"
                 @updateGlobalCursorX="updateGlobalCursorX" @horizontal-scroll="syncHorizontalScroll"
-                @wheel-scale-x="handleWheelScaleX"
-                @update-retarder-status-list="handleInlineRetarderStatusUpdate" />
+                @wheel-scale-x="handleWheelScaleX" @update-retarder-status-list="handleInlineRetarderStatusUpdate" />
             <HumpSlopeSketchBlock ref="humpSlopeSketchBlockRef" v-model:slope-layout="slopeLayout" style="height:auto"
                 :global-scale-x="globalScaleX" :global-cursor-x="globalCursorX"
                 :horizontal-scroll-left="horizontalScrollLeft" @updateGlobalCursorX="updateGlobalCursorX"
@@ -160,7 +159,7 @@
             :close-on-click-modal="false">
             <div style="margin-bottom: 16px;">
                 <el-button type="primary" @click="handleAddScheme">{{ t('humpSlopeDesigner.buttons.addScheme')
-                }}</el-button>
+                    }}</el-button>
             </div>
             <el-table :data="humpSchemes" style="width: 100%" v-loading="tableLoading">
                 <el-table-column prop="id" :label="t('humpSlopeDesigner.table.schemeId')" width="200"></el-table-column>
@@ -178,7 +177,7 @@
                             <el-button type="success" size="small" @click="handleSaveScheme">{{
                                 t('humpSlopeDesigner.buttons.save') }}</el-button>
                             <el-button size="small" @click="handleCancelEdit">{{ t('humpSlopeDesigner.buttons.cancel')
-                            }}</el-button>
+                                }}</el-button>
                         </div>
                         <div v-else>
                             <el-button type="primary" size="small" @click="handleEditScheme(row, $index)">{{
@@ -201,7 +200,7 @@
             :close-on-click-modal="false" @open="loadDropdownData">
             <div style="margin-bottom: 16px;">
                 <el-button type="primary" @click="handleAddCalculation">{{ t('humpSlopeDesigner.buttons.addCondition')
-                }}</el-button>
+                    }}</el-button>
             </div>
             <el-table :data="humpCalculations" style="width: 100%" v-loading="calculationTableLoading">
                 <el-table-column prop="id" :label="t('humpSlopeDesigner.table.calculationConditionID')"
@@ -237,7 +236,7 @@
                                 :label="slopeLine.name || slopeLine.id" :value="slopeLine.id" />
                         </el-select>
                         <span v-else>{{slopeLines.find(s => s.id === row.slopeLineID)?.name || row.slopeLineID
-                        }}</span>
+                            }}</span>
                     </template>
                 </el-table-column>
                 <el-table-column prop="humpSchemeID" :label="t('humpSlopeDesigner.table.humpScheme')" width="180">
@@ -248,7 +247,7 @@
                                 :value="scheme.id" />
                         </el-select>
                         <span v-else>{{humpSchemes.find(s => s.id === row.humpSchemeID)?.name || row.humpSchemeID
-                            }}</span>
+                        }}</span>
                     </template>
                 </el-table-column>
                 <el-table-column :label="t('humpSlopeDesigner.table.retarderStatus')" width="120">
@@ -330,7 +329,7 @@
             </el-table>
             <template #footer>
                 <el-button @click="showRetarderStatusDialog = false">{{ t('humpSlopeDesigner.dialog.close')
-                }}</el-button>
+                    }}</el-button>
                 <el-button type="primary" @click="handleSaveRetarderStatus" :loading="retarderStatusSaving">
                     {{ t('humpSlopeDesigner.buttons.save') }}
                 </el-button>
@@ -657,6 +656,7 @@ function loadResistanceEnergyHeight() {
         wagonTypeName: currentCalculation.wagonType,
         operationConditionID: currentCalculation.operationConditionID,
         retarderStatusID: null, // 如果需要减速器状态，可以从计算条件中获取
+        retarderStatusList: currentCalculation.retarderStatusList || [],
         wagon: {
             typeName: currentCalculation.wagonType
         }
@@ -695,6 +695,7 @@ function loadKineticEnergyHeight() {
         wagonTypeName: currentCalculation.wagonType,
         operationConditionID: currentCalculation.operationConditionID,
         retarderStatusID: null, // 如果需要减速器状态，可以从计算条件中获取
+        retarderStatusList: currentCalculation.retarderStatusList || [],
         wagon: {
             typeName: currentCalculation.wagonType
         }

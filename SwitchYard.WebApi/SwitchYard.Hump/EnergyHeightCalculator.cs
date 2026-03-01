@@ -31,7 +31,29 @@ namespace SwitchYard.Hump
         /// <returns>制动能高/m</returns>
         public static double CalculateBreakingEnergyHeight(FlatLayout flatLayout, double x, EnergyCalculationParams param)
         {
-            return 0.0;
+            double totalEffectiveEnergyHeight = 0.0;
+
+            if(param.RetarderStatusList == null || param.RetarderStatusList.Count == 0)
+            {
+                return totalEffectiveEnergyHeight;
+            }
+
+            foreach (var rs in param.RetarderStatusList)
+            {
+                if (!rs.IsActivated)
+                    continue;
+
+                var retarder = flatLayout.RetarderList.FirstOrDefault(r => r.ID == rs.RetarderID);
+                if (retarder != null && retarder.BindingPositionSegment.StartPosition.X <= x)
+                {
+                    var lengthRate = Math.Max(0, (x - retarder.BindingPositionSegment.StartPosition.X) / retarder.BindingPositionSegment.Length);
+                    var retarderEnergyHeight = rs.TotalEnergyHeight*rs.Output*lengthRate;
+
+                    totalEffectiveEnergyHeight += retarderEnergyHeight;
+                }
+            }
+
+            return totalEffectiveEnergyHeight;
         }
 
         /// <summary>
@@ -50,8 +72,8 @@ namespace SwitchYard.Hump
             var gravitationHeight = CalculateGravitationPotentialEnergyHeight(slopeLayout, x, param);
             var resistanceHeight = CalculateResistanceEnergyHeight(flatLayout, x, param);
             var breakingHeight = CalculateBreakingEnergyHeight(flatLayout, x, param);
-            var kineticEnergyHeight = orgKineticEnergyHeight + (humpHeight- gravitationHeight) - resistanceHeight - breakingHeight;
-            var velocity = Math.Sqrt(2 * param.Wagon.g_ * Math.Max(0,kineticEnergyHeight));
+            var kineticEnergyHeight = Math.Max(0, orgKineticEnergyHeight + (humpHeight- gravitationHeight) - resistanceHeight - breakingHeight);
+            var velocity = Math.Max(0, Math.Sqrt(2 * param.Wagon.g_ * Math.Max(0,kineticEnergyHeight)));
 
             KineticEnergyHeightResult result = new KineticEnergyHeightResult()
             {
@@ -235,7 +257,6 @@ namespace SwitchYard.Hump
         /// <summary>
         /// 减速器工作状态
         /// </summary>
-        [JsonIgnore]
-        public RetarderStatus? RetarderStatus { get; set; }
+        public List<RetarderStatus>? RetarderStatusList { get; set; }
     }
 }

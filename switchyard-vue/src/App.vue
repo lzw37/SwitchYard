@@ -12,7 +12,6 @@ const isIndex = () => route.path === '/'
 </script>
 
 <template>
-    <ScrollBar></ScrollBar>
     <template v-if="isHumpRoute()">
         <HumpMain />
     </template>
