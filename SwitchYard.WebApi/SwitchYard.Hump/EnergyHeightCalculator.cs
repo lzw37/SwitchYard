@@ -46,7 +46,7 @@ namespace SwitchYard.Hump
                 var retarder = flatLayout.RetarderList.FirstOrDefault(r => r.ID == rs.RetarderID);
                 if (retarder != null && retarder.BindingPositionSegment.StartPosition.X <= x)
                 {
-                    var lengthRate = Math.Max(0, (x - retarder.BindingPositionSegment.StartPosition.X) / retarder.BindingPositionSegment.Length);
+                    var lengthRate = Math.Min(1, Math.Max(0, (x - retarder.BindingPositionSegment.StartPosition.X) / retarder.BindingPositionSegment.Length));
                     var retarderEnergyHeight = rs.TotalEnergyHeight*rs.Output*lengthRate;
 
                     totalEffectiveEnergyHeight += retarderEnergyHeight;
