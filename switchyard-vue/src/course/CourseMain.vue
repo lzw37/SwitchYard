@@ -1,14 +1,10 @@
-<template>
+﻿<template>
     <div class="course-shell">
         <header class="hero">
             <div>
-                <p class="eyebrow">课程平台 · 学习快线</p>
-                <h1>精选课程，一站式学习与练习</h1>
-                <p class="subtitle">浏览课程、观看讲解视频、查看PPT、聚焦学习重点，并通过自动评分练习巩固所学。</p>
-            </div>
-            <div class="hero-actions">
-                <div class="pill">实时练习反馈</div>
-                <div class="pill pill-accent">自动评分 · 即时结果</div>
+                <p class="eyebrow">课程平台 · 线上学习</p>
+                <h1>铁路站场与枢纽课程</h1>
+                <p class="subtitle">课程平台一站式学习与练习</p>
             </div>
         </header>
 
@@ -16,153 +12,157 @@
             <aside class="sidebar">
                 <div class="sidebar-header">
                     <h2>课程管理列表</h2>
-                    <input v-model="searchTerm" class="search" placeholder="搜索课程 / 讲师 / 关键词" type="search" />
                 </div>
-                <div class="course-list">
-                    <button v-for="course in filteredCourses" :key="course.id"
-                        :class="['course-item', { active: course.id === selectedCourseId }]"
-                        @click="selectCourse(course.id)">
-                        <div class="course-item__head">
-                            <span class="badge">{{ course.category }}</span>
-                            <span class="duration">{{ course.duration }}</span>
+
+                <div class="tree">
+                    <div v-for="part in courseTree" :key="part.id">
+                        <button class="tree-btn level-1" :class="{ active: isPartSelected(part.id) }"
+                            @click="onPartClick(part)">
+                            <span>{{ isPartExpanded(part.id) ? "▾" : "▸" }}</span>
+                            <span>{{ part.displayName }}</span>
+                        </button>
+
+                        <div v-if="isPartExpanded(part.id)" class="children">
+                            <div v-if="part.chapters.length === 0" class="leaf-empty">暂无章节</div>
+
+                            <div v-for="chapter in part.chapters" :key="chapter.id">
+                                <button class="tree-btn level-2"
+                                    :class="{ active: isChapterSelected(part.id, chapter.id) }"
+                                    @click="onChapterClick(part, chapter)">
+                                    <span>{{ isChapterExpanded(chapter.id) ? "▾" : "▸" }}</span>
+                                    <span>{{ chapter.displayName }}</span>
+                                </button>
+
+                                <div v-if="isChapterExpanded(chapter.id)" class="children">
+                                    <div v-if="chapter.sections.length === 0" class="leaf-empty">暂无小节</div>
+
+                                    <button v-for="section in chapter.sections" :key="section.id"
+                                        class="tree-btn level-3"
+                                        :class="{ active: isSectionSelected(part.id, chapter.id, section.id) }"
+                                        @click="onSectionClick(part, chapter, section)">
+                                        <span>•</span>
+                                        <span>{{ section.displayName }}</span>
+                                    </button>
+                                </div>
+                            </div>
                         </div>
-                        <div class="course-item__title">{{ course.title }}</div>
-                        <div class="course-item__meta">
-                            <span>{{ course.instructor }}</span>
-                            <span>难度 {{ course.level }}</span>
-                            <span>{{ course.lessons }} 节</span>
-                        </div>
-                        <div class="course-item__foot">
-                            <span class="pill-sm">进度 {{ course.progress }}%</span>
-                            <span class="pill-sm ghost">测验 {{ course.quiz.length }} 题</span>
-                        </div>
-                    </button>
+                    </div>
                 </div>
             </aside>
 
             <main class="main">
-                <section v-if="selectedCourse" class="course-details">
-                    <header class="course-head">
+                <section v-if="selected.level === 'none'" class="empty">
+                    <p>当前课程板块未选择任何内容。</p>
+                </section>
+
+                <section v-else-if="selected.level === 'part' || selected.level === 'chapter'" class="focus-only">
+                    <header class="focus-header">
+                        <div class="focus-title-wrap">
+                            <h2>{{ focusTitle }}</h2>
+                        </div>
+                        <div class="tag-row">
+                            <span v-if="selected.level === 'part' && selectedPart" class="pill">{{ selectedPart.displayName }}</span>
+                            <template v-else-if="selected.level === 'chapter' && selectedPart && selectedChapter">
+                                <span class="pill">{{ selectedPart.displayName }}</span>
+                                <span class="pill ghost">{{ selectedChapter.displayName }}</span>
+                            </template>
+                        </div>
+                    </header>
+                    <div v-if="focusLoading" class="muted">正在读取学习指导...</div>
+                    <div v-else class="focus-content">
+                        <section class="focus-block">
+                            <p class="eyebrow">重点知识</p>
+                            <div v-if="displayFocusPoints.length === 0" class="muted">未提取到重点知识。</div>
+                            <ul v-else class="keypoints">
+                                <li v-for="(point, idx) in displayFocusPoints" :key="`k-${idx}`">{{ idx + 1 }}. {{ point }}</li>
+                            </ul>
+                        </section>
+
+                        <section class="focus-block">
+                            <p class="eyebrow">难点知识</p>
+                            <div v-if="displayFocusDifficultPoints.length === 0" class="muted">未提取到难点知识。</div>
+                            <ul v-else class="keypoints">
+                                <li v-for="(point, idx) in displayFocusDifficultPoints" :key="`d-${idx}`">{{ idx + 1 }}. {{ point }}</li>
+                            </ul>
+                        </section>
+                    </div>
+                </section>
+
+                <section v-else-if="selected.level === 'section' && selectedSection" class="section-details">
+                    <header class="section-head">
                         <div>
                             <p class="eyebrow">当前课程</p>
-                            <h2>{{ selectedCourse.title }}</h2>
-                            <div class="tag-row">
-                                <span class="pill">{{ selectedCourse.category }}</span>
-                                <span class="pill ghost">{{ selectedCourse.level }}</span>
-                                <span class="pill ghost">{{ selectedCourse.duration }}</span>
-                            </div>
+                            <h2>{{ selectedSection.displayName }}</h2>
                         </div>
-                        <div class="metrics">
-                            <div class="metric">
-                                <p>完成度</p>
-                                <strong>{{ selectedCourse.progress }}%</strong>
-                            </div>
-                            <div class="metric">
-                                <p>练习得分</p>
-                                <strong>
-                                    <span v-if="currentGrade.graded">{{ currentGrade.correct }}/{{ currentGrade.total
-                                        }}</span>
-                                    <span v-else>待评分</span>
-                                </strong>
-                            </div>
+                        <div class="tag-row">
+                            <span class="pill">{{ selectedPartName }}</span>
+                            <span class="pill ghost">{{ selectedChapterName }}</span>
+                            <span class="pill ghost">{{ selectedSection.displayName }}</span>
                         </div>
                     </header>
 
                     <section class="player-grid">
                         <div class="panel">
                             <div class="panel-head">
-                                <div>
-                                    <p class="eyebrow">讲解视频</p>
-                                    <h3>{{ selectedCourse.title }}</h3>
-                                </div>
-                                <span class="pill-sm">支持倍速与全屏</span>
+                                <h3 class="panel-title">讲解视频</h3>
+                                <span class="pill-sm">支持全屏</span>
                             </div>
-                            <video class="video" controls controlsList="nodownload" :src="selectedCourse.videoUrl">
-                                您的浏览器不支持视频播放。
-                            </video>
-                        </div>
-
-                        <div class="panel">
-                            <div class="panel-head">
-                                <div>
-                                    <p class="eyebrow">PPT 预览</p>
-                                    <h3>{{ selectedCourse.pptTitle }}</h3>
-                                </div>
-                                <span class="pill-sm">第 {{ slideIndex + 1 }} / {{ selectedCourse.pptSlides.length }}
-                                    页</span>
-                            </div>
-                            <div class="ppt-frame">
-                                <img :src="selectedCourse.pptSlides[slideIndex]" :alt="selectedCourse.pptTitle" />
-                            </div>
-                            <div class="ppt-controls">
-                                <button @click="prevSlide" :disabled="slideIndex === 0">上一页</button>
-                                <div class="stepper">{{ slideIndex + 1 }} / {{ selectedCourse.pptSlides.length }}</div>
-                                <button @click="nextSlide"
-                                    :disabled="slideIndex === selectedCourse.pptSlides.length - 1">下一页</button>
-                            </div>
-                            <div class="thumbs">
-                                <button v-for="(slide, idx) in selectedCourse.pptSlides" :key="slide"
-                                    :class="['thumb', { active: idx === slideIndex }]" @click="jumpTo(idx)">
-                                    <img :src="slide" :alt="`幻灯片 ${idx + 1}`" />
-                                    <span>第 {{ idx + 1 }} 页</span>
+                            <div v-if="selectedSection.videoFiles.length > 1" class="video-switch">
+                                <button v-for="(video, idx) in selectedSection.videoFiles" :key="video.url"
+                                    :class="['video-tab', { active: idx === activeVideoIndex }]"
+                                    @click="activeVideoIndex = idx">
+                                    视频 {{ idx + 1 }}
                                 </button>
                             </div>
+                            <video v-if="activeVideo?.url" class="video-player" :src="activeVideo.url" controls preload="metadata"></video>
+                            <div v-else class="video-placeholder">当前节未找到视频</div>
                         </div>
-                    </section>
 
-                    <section class="info-grid">
                         <div class="panel">
                             <div class="panel-head">
-                                <p class="eyebrow">学习重点</p>
-                                <h3>重点笔记</h3>
+                                <h3 class="panel-title">PPT 浏览</h3>
+                                <span class="pill-sm">第{{ pdfPageStatus }}页</span>
                             </div>
-                            <ul class="keypoints">
-                                <li v-for="point in selectedCourse.keyPoints" :key="point">{{ point }}</li>
-                            </ul>
-                        </div>
+                            <div v-if="selectedSection.pdfFiles.length === 0" class="muted">当前节未找到 PDF。</div>
+                            <template v-else>
+                                <div v-if="selectedSection.pdfFiles.length > 1" class="pdf-file-switch">
+                                    <button v-for="(pdf, idx) in selectedSection.pdfFiles" :key="pdf.url"
+                                        :class="['pdf-file-tab', { active: idx === activePdfIndex }]"
+                                        @click="setActivePdf(idx)">
+                                        {{ pdf.name }}
+                                    </button>
+                                </div>
+                                <div class="ppt-frame">
+                                    <img v-if="activePdfPageImage" class="pdf-main-image" :src="activePdfPageImage"
+                                        :alt="`第 ${activePdfPageIndex + 1} 页`" />
+                                    <div v-else-if="pdfRendering" class="empty-frame">正在渲染 PPT 页面...</div>
+                                    <div v-else class="empty-frame">{{ pdfRenderError || "暂无可预览内容" }}</div>
+                                </div>
 
-                        <div class="panel quiz">
-                            <div class="panel-head quiz-head">
-                                <div>
-                                    <p class="eyebrow">习题练习</p>
-                                    <h3>自动评分</h3>
+                                <div class="ppt-nav">
+                                    <button class="ppt-nav-btn" :disabled="!hasPrevPdfPage" @click="goPrevPdfPage">上一页</button>
+                                    <span class="ppt-nav-status">{{ pdfPageStatus }}</span>
+                                    <button class="ppt-nav-btn" :disabled="!hasNextPdfPage" @click="goNextPdfPage">下一页</button>
                                 </div>
-                                <button class="primary" @click="gradeQuiz">评分</button>
-                            </div>
-                            <div class="quiz-summary">
-                                <span>已选 {{ answeredCount }} / {{ selectedCourse.quiz.length }} 题</span>
-                                <span v-if="currentGrade.graded">得分：{{ currentGrade.correct }} / {{ currentGrade.total
-                                    }}</span>
-                                <span v-else>提交后显示得分</span>
-                            </div>
 
-                            <div v-for="(question, qIdx) in selectedCourse.quiz" :key="question.question"
-                                class="question">
-                                <div class="question-title">{{ qIdx + 1 }}. {{ question.question }}</div>
-                                <div class="options">
-                                    <label v-for="(option, oIdx) in question.options" :key="option"
-                                        :class="['option', optionState(qIdx, oIdx)]">
-                                        <input type="radio" :name="`q-${qIdx}`" :value="oIdx"
-                                            :checked="userAnswers[selectedCourseId]?.[qIdx] === oIdx"
-                                            @change="selectOption(qIdx, oIdx)" />
-                                        <span class="option-text">{{ option }}</span>
-                                        <span v-if="isCorrectChoice(qIdx, oIdx)" class="chip good">正确答案</span>
-                                        <span v-else-if="isUserWrong(qIdx, oIdx)" class="chip warn">已选</span>
-                                    </label>
+                                <div v-if="pdfNeighborSlots.length > 0" class="ppt-thumbs">
+                                    <button v-for="slot in pdfNeighborSlots" :key="slot.key"
+                                        :class="['ppt-thumb', { active: slot.pageIndex === activePdfPageIndex, empty: slot.pageIndex === null }]"
+                                        :disabled="slot.pageIndex === null"
+                                        @click="jumpToPdfPage(slot.pageIndex)">
+                                        <img v-if="slot.image" class="ppt-thumb-preview" :src="slot.image" :alt="`缩略图 ${slot.pageText}`" />
+                                        <div v-else class="ppt-thumb-placeholder"></div>
+                                        <span v-if="slot.pageText" class="ppt-thumb-page">{{ slot.pageText }}</span>
+                                    </button>
                                 </div>
-                                <div v-if="showFeedback(qIdx)" class="feedback"
-                                    :class="{ good: isQuestionCorrect(qIdx), warn: !isQuestionCorrect(qIdx) }">
-                                    <span v-if="isQuestionCorrect(qIdx)">回答正确！</span>
-                                    <span v-else>正确答案：{{ question.options[question.correctIndex] }}</span>
-                                    <p class="explain">{{ question.explanation }}</p>
-                                </div>
-                            </div>
+                            </template>
                         </div>
                     </section>
-                </section>
 
-                <section v-else class="empty">
-                    <p>暂无课程，请先创建课程数据。</p>
+                    <CourseFillBlankQuiz
+                        :quizDocUrl="selectedQuizDocUrl"
+                        :cacheKey="selectedSectionId"
+                    />
                 </section>
             </main>
         </div>
@@ -171,284 +171,861 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from "vue";
+import { getDocument, GlobalWorkerOptions } from "pdfjs-dist";
+import pdfWorkerSrc from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+import CourseFillBlankQuiz from "@/course/CourseFillBlankQuiz.vue";
 
-type QuizItem = {
-    question: string;
-    options: string[];
-    correctIndex: number;
-    explanation: string;
-};
-
-type Course = {
+type AssetFile = { name: string; url: string };
+type SectionNode = {
     id: string;
-    title: string;
-    instructor: string;
-    duration: string;
-    category: string;
-    level: string;
-    lessons: number;
-    progress: number;
-    videoUrl: string;
-    pptTitle: string;
-    pptSlides: string[];
-    keyPoints: string[];
-    quiz: QuizItem[];
+    label: string;
+    displayName: string;
+    path: string;
+    textDocUrl?: string;
+    quizDocUrl?: string;
+    pdfFiles: AssetFile[];
+    videoFiles: AssetFile[];
+    keyPoints: string[] | null;
 };
+type ChapterNode = {
+    id: string;
+    label: string;
+    displayName: string;
+    path: string;
+    guideDocUrl?: string;
+    keyPoints: string[] | null;
+    difficultPoints: string[] | null;
+    sections: SectionNode[];
+};
+type PartNode = {
+    id: string;
+    label: string;
+    displayName: string;
+    path: string;
+    guideDocUrl?: string;
+    keyPoints: string[] | null;
+    difficultPoints: string[] | null;
+    chapters: ChapterNode[];
+};
+type SelectionState =
+    | { level: "none" }
+    | { level: "part"; partId: string }
+    | { level: "chapter"; partId: string; chapterId: string }
+    | { level: "section"; partId: string; chapterId: string; sectionId: string };
 
-const courses = ref<Course[]>([
-    {
-        id: "fe-engineering",
-        title: "前端工程化与组件化",
-        instructor: "陈晓帆",
-        duration: "4h 30m",
-        category: "前端",
-        level: "中级",
-        lessons: 12,
-        progress: 65,
-        videoUrl: "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4",
-        pptTitle: "工程化设计要点",
-        pptSlides: [
-            "https://images.unsplash.com/photo-1521737604893-d14cc237f11d?auto=format&fit=crop&w=900&q=80",
-            "https://images.unsplash.com/photo-1504639725590-34d4982c0773?auto=format&fit=crop&w=900&q=80",
-            "https://images.unsplash.com/photo-1521737604893-d14cc237f11d?auto=format&fit=crop&w=900&q=80&sat=-30",
-        ],
-        keyPoints: [
-            "理解构建链路：打包、分发与性能预算",
-            "掌握组件拆分、状态提升与可复用性",
-            "建立设计规范：色板、间距、排版与交互反馈",
-            "掌握自动化测试与 CI/CD 基础",
-            "常见工程化陷阱与回溯手段",
-        ],
-        quiz: [
-            {
-                question: "选择工程化能带来的首要收益",
-                options: ["统一代码风格，减少认知成本", "提升产品上新速度", "让代码更炫酷", "隐藏技术债务"],
-                correctIndex: 0,
-                explanation: "统一标准能降低团队协作摩擦，是工程化的直接收益之一。",
-            },
-            {
-                question: "组件拆分时优先考虑的原则是?",
-                options: ["视觉独特性", "状态与数据流边界", "文件大小", "是否能复用动画"],
-                correctIndex: 1,
-                explanation: "先围绕状态与数据边界拆分，再考虑样式与动画。",
-            },
-            {
-                question: "CI 中最应该最先落地的一步是?",
-                options: ["自动部署生产", "自动化测试", "自动写文档", "生成彩色报表"],
-                correctIndex: 1,
-                explanation: "可靠的测试是所有自动化的基础，没有测试自动部署风险极高。",
-            },
-        ],
-    },
-    {
-        id: "data-viz",
-        title: "数据可视化与叙事",
-        instructor: "林安琪",
-        duration: "3h 10m",
-        category: "数据可视化",
-        level: "中级",
-        lessons: 9,
-        progress: 40,
-        videoUrl: "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4",
-        pptTitle: "视觉编码与版式",
-        pptSlides: [
-            "https://images.unsplash.com/photo-1504384308090-c894fdcc538d?auto=format&fit=crop&w=900&q=80",
-            "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=900&q=80",
-            "https://images.unsplash.com/photo-1483478550801-ceba5fe50e8e?auto=format&fit=crop&w=900&q=80",
-        ],
-        keyPoints: [
-            "选择合适的图形语法与通道映射",
-            "控制信息密度，避免过度装饰",
-            "突出故事线：比较、变化、组成与分布",
-            "用色彩与留白建立节奏感",
-            "可访问性：对比度、标注与键盘操作",
-        ],
-        quiz: [
-            {
-                question: "当需要比较多个类别且总量一致时，首选的图表是?",
-                options: ["饼图", "堆叠面积图", "并列条形图", "气泡图"],
-                correctIndex: 2,
-                explanation: "并列条形图最能清晰比较类别差异，避免角度误判。",
-            },
-            {
-                question: "强调时间趋势时，最需要控制的要素是?",
-                options: ["线条粗细", "图例位置", "坐标刻度与间距", "网格线颜色"],
-                correctIndex: 2,
-                explanation: "均匀刻度与合适间距能保证趋势阅读的稳定性。",
-            },
-        ],
-    },
-    {
-        id: "ml-foundation",
-        title: "机器学习基础模型",
-        instructor: "唐瀚文",
-        duration: "5h 00m",
-        category: "机器学习",
-        level: "进阶",
-        lessons: 14,
-        progress: 20,
-        videoUrl: "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4",
-        pptTitle: "模型选择与评估",
-        pptSlides: [
-            "https://images.unsplash.com/photo-1545239351-1141bd82e8a6?auto=format&fit=crop&w=900&q=80",
-            "https://images.unsplash.com/photo-1555949963-aa79dcee981c?auto=format&fit=crop&w=900&q=80",
-            "https://images.unsplash.com/photo-1531297484001-80022131f5a1?auto=format&fit=crop&w=900&q=80",
-        ],
-        keyPoints: [
-            "监督学习 vs 无监督学习的典型场景",
-            "避免过拟合：正则化、交叉验证、早停",
-            "评估指标：精确率、召回率、F1、AUC",
-            "特征工程与数据清洗的重要性",
-            "常见陷阱：数据泄漏与分布漂移",
-        ],
-        quiz: [
-            {
-                question: "为了防止过拟合，以下哪种方法最直接?",
-                options: ["增加模型深度", "使用交叉验证", "减小训练数据", "只看训练集精度"],
-                correctIndex: 1,
-                explanation: "交叉验证可以稳定评估泛化能力，并帮助选择合适的超参数。",
-            },
-            {
-                question: "在二分类问题中，若正负样本极度不平衡，首选的指标是?",
-                options: ["准确率", "精确率/召回率", "均方误差", "训练时间"],
-                correctIndex: 1,
-                explanation: "不平衡场景应关注精确率与召回率，或 AUC/PR 曲线。",
-            },
-        ],
-    },
-]);
+const partDisplayOrder = ["绪论", "第一篇", "第二篇", "第三篇", "第四篇", "第五篇", "第六篇", "第七篇"];
+const assets = import.meta.glob("/src/assets/教学文档/**/*", {
+  eager: true,
+  query: "?url",
+  import: "default"
+}) as Record<string, string>;
+const fsVideoAssets = import.meta.glob("/@fs/D:/站场视频/**/*.{mp4,webm,m4v,mov,avi,mkv}", {
+  eager: true,
+  query: "?url",
+  import: "default"
+}) as Record<string, string>;
+const bundledVideoAssets = import.meta.glob("/src/assets/站场视频/**/*.{mp4,webm,m4v,mov,avi,mkv}", {
+  eager: true,
+  query: "?url",
+  import: "default"
+}) as Record<string, string>;
 
-const searchTerm = ref("");
-const selectedCourseId = ref(courses.value[0]?.id ?? "");
-const slideIndex = ref(0);
-const userAnswers = reactive<Record<string, Record<number, number | null>>>({});
-const gradeState = reactive<Record<string, { graded: boolean; correct: number; total: number }>>({});
+const courseTree = ref<PartNode[]>(buildTreeFromAssets());
+const selected = ref<SelectionState>({ level: "none" });
+const expandedParts = reactive<Record<string, boolean>>({});
+const expandedChapters = reactive<Record<string, boolean>>({});
+const focusPoints = ref<string[]>([]);
+const focusDifficultPoints = ref<string[]>([]);
+const focusTitle = ref("");
+const focusLoading = ref(false);
+const sectionLoading = ref(false);
+const activeVideoIndex = ref(0);
+const activePdfIndex = ref(0);
+const activePdfPageIndex = ref(0);
+const pdfPageImages = ref<string[]>([]);
+const pdfRendering = ref(false);
+const pdfRenderError = ref("");
+const pdfRenderTicket = ref(0);
+const docSegmentCache = new Map<string, Promise<string[]>>();
+const pdfPageCache = new Map<string, Promise<string[]>>();
 
-watch(
-    () => selectedCourseId.value,
-    (id) => {
-        slideIndex.value = 0;
-        if (!userAnswers[id]) {
-            userAnswers[id] = {};
-        }
-    },
-    { immediate: true }
+GlobalWorkerOptions.workerSrc = pdfWorkerSrc;
+
+void hydratePartTitles();
+
+const selectedPart = computed(() => {
+    const state = selected.value;
+    if (state.level === "none") return null;
+    return courseTree.value.find((part) => part.id === state.partId) ?? null;
+});
+
+const selectedChapter = computed(() => {
+    const state = selected.value;
+    if (state.level === "none" || state.level === "part") return null;
+    return selectedPart.value?.chapters.find((chapter) => chapter.id === state.chapterId) ?? null;
+});
+
+const selectedSection = computed(() => {
+    const state = selected.value;
+    if (state.level !== "section") return null;
+    return selectedChapter.value?.sections.find((section) => section.id === state.sectionId) ?? null;
+});
+const selectedPartName = computed(() => selectedPart.value?.displayName ?? "");
+const selectedChapterName = computed(() => selectedChapter.value?.displayName ?? "");
+const selectedQuizDocUrl = computed(() => selectedSection.value?.quizDocUrl ?? "");
+const selectedSectionId = computed(() => selectedSection.value?.id ?? "");
+const displayFocusPoints = computed(() =>
+    focusPoints.value.map((point) => (typeof point === "string" ? point : String(point ?? "")))
+);
+const displayFocusDifficultPoints = computed(() =>
+    focusDifficultPoints.value.map((point) => (typeof point === "string" ? point : String(point ?? "")))
 );
 
-const filteredCourses = computed(() => {
-    const term = searchTerm.value.trim().toLowerCase();
-    if (!term) return courses.value;
-    return courses.value.filter((course) => {
-        const haystack = [
-            course.title,
-            course.instructor,
-            course.category,
-            course.level,
-            ...course.keyPoints,
-        ].join(" ").toLowerCase();
-        return haystack.includes(term);
+const activePdf = computed(() => {
+    if (!selectedSection.value) return null;
+    return selectedSection.value.pdfFiles[activePdfIndex.value] ?? null;
+});
+const activeVideo = computed(() => {
+    if (!selectedSection.value) return null;
+    return selectedSection.value.videoFiles[activeVideoIndex.value] ?? null;
+});
+const activePdfPageImage = computed(() => pdfPageImages.value[activePdfPageIndex.value] ?? "");
+const hasPrevPdfPage = computed(() => activePdfPageIndex.value > 0);
+const hasNextPdfPage = computed(() => {
+    const total = pdfPageImages.value.length;
+    return total > 0 && activePdfPageIndex.value < total - 1;
+});
+const pdfPageStatus = computed(() => {
+    if (pdfPageImages.value.length === 0) return "0/0";
+    return `${activePdfPageIndex.value + 1}/${pdfPageImages.value.length}`;
+});
+const pdfNeighborSlots = computed(() => {
+    if (pdfPageImages.value.length === 0) return [];
+    const total = pdfPageImages.value.length;
+    const current = activePdfPageIndex.value;
+
+    let indexes: number[] = [];
+    if (total === 1) {
+        indexes = [0, 1, 2];
+    } else if (current === 0) {
+        indexes = [0, 1, 2];
+    } else if (current === total - 1) {
+        indexes = [total - 3, total - 2, total - 1];
+    } else {
+        indexes = [current - 1, current, current + 1];
+    }
+    return indexes.map((pageIndex, slotIndex) => {
+        const valid = pageIndex >= 0 && pageIndex < total;
+        return {
+            key: `slot-${slotIndex}-${pageIndex}`,
+            pageIndex: valid ? pageIndex : null,
+            pageText: valid ? `第${pageIndex + 1}页` : "",
+            image: valid ? pdfPageImages.value[pageIndex] ?? "" : ""
+        };
     });
 });
 
-const selectedCourse = computed(() =>
-    courses.value.find((c) => c.id === selectedCourseId.value)
+const sectionPoints = computed(() => selectedSection.value?.keyPoints ?? []);
+
+watch(
+    () => activePdf.value?.url ?? "",
+    (url) => {
+        void loadPdfPages(url);
+    }
 );
 
-const currentGrade = computed(() => {
-    const grade = gradeState[selectedCourseId.value];
-    const total = selectedCourse.value?.quiz.length ?? 0;
-    if (!grade) {
-        return { graded: false, correct: 0, total };
+function normalizePath(value: string) {
+    return value.replace(/\\/g, "/");
+}
+function toAbsoluteUrl(url: string) {
+    if (/^https?:\/\//i.test(url)) return url;
+    if (typeof window === "undefined") return url;
+    return new URL(url, window.location.origin).href;
+}
+async function loadPdfPages(url: string) {
+    const ticket = ++pdfRenderTicket.value;
+    activePdfPageIndex.value = 0;
+    pdfRenderError.value = "";
+
+    if (!url) {
+        pdfPageImages.value = [];
+        pdfRendering.value = false;
+        return;
     }
-    return grade;
-});
 
-const answeredCount = computed(() => {
-    const answers = userAnswers[selectedCourseId.value] ?? {};
-    return Object.values(answers).filter((v) => v !== null && v !== undefined).length;
-});
+    pdfRendering.value = true;
+    try {
+        const pages = await renderPdfToImages(url);
+        if (ticket !== pdfRenderTicket.value) return;
+        pdfPageImages.value = pages;
+        if (pages.length === 0) pdfRenderError.value = "PDF 解析成功，但未提取到页面。";
+    } catch (error) {
+        if (ticket !== pdfRenderTicket.value) return;
+        pdfPageImages.value = [];
+        pdfRenderError.value = `PDF 渲染失败：${error instanceof Error ? error.message : "未知错误"}`;
+    } finally {
+        if (ticket === pdfRenderTicket.value) pdfRendering.value = false;
+    }
+}
+async function renderPdfToImages(url: string) {
+    if (!pdfPageCache.has(url)) {
+        pdfPageCache.set(
+            url,
+            (async () => {
+                const absoluteUrl = toAbsoluteUrl(url);
+                const loadingTask = getDocument(absoluteUrl);
+                const pdfDocument = await loadingTask.promise;
+                const pages: string[] = [];
 
-function selectCourse(id: string) {
-    selectedCourseId.value = id;
+                for (let pageNumber = 1; pageNumber <= pdfDocument.numPages; pageNumber += 1) {
+                    const page = await pdfDocument.getPage(pageNumber);
+                    const viewport = page.getViewport({ scale: 1.25 });
+                    const canvas = document.createElement("canvas");
+                    const context = canvas.getContext("2d");
+                    if (!context) continue;
+
+                    canvas.width = Math.max(1, Math.floor(viewport.width));
+                    canvas.height = Math.max(1, Math.floor(viewport.height));
+                    await page.render({ canvas, canvasContext: context, viewport }).promise;
+                    pages.push(canvas.toDataURL("image/jpeg", 0.88));
+                }
+                return pages;
+            })()
+        );
+    }
+    return (await pdfPageCache.get(url)) ?? [];
 }
 
-function prevSlide() {
-    slideIndex.value = Math.max(0, slideIndex.value - 1);
+function buildTreeFromAssets() {
+    const partMap = new Map<string, PartNode>();
+    for (const [rawPath, rawUrl] of Object.entries(assets)) {
+        const fullPath = normalizePath(rawPath);
+        const url = normalizePath(rawUrl);
+        const relative = fullPath
+            .replace(/^\/src\/assets\/教学文档\//, "")
+            .replace(/^\/assets\/教学文档\//, "")
+            .replace(/^\/教学文档\//, "");
+        if (relative === fullPath) continue;
+
+        const segments = relative.split("/");
+        if (segments.length < 2) continue;
+
+        const partName = segments[0];
+        const chapterName = segments[1];
+        const sectionName = segments[2];
+        if (!partName) continue;
+        const leafName = segments[segments.length - 1];
+        if (!leafName || leafName.startsWith("~$")) continue;
+
+        const part = ensurePart(partMap, partName);
+        if (segments.length === 2) {
+            if (isGuideDoc(leafName)) part.guideDocUrl = url;
+            else if (isPdf(leafName)) {
+                const chapter = ensureChapter(part, part.label);
+                const section = ensureSection(chapter, stripFileExtension(leafName));
+                section.path = `${part.path}/${chapter.label}/${section.label}`;
+                addPdfFile(section, leafName, url);
+            }
+            continue;
+        }
+        if (segments.length === 3) {
+            if (!chapterName) continue;
+            const chapter = ensureChapter(part, chapterName);
+            if (isGuideDoc(leafName)) chapter.guideDocUrl = url;
+            else if (isPdf(leafName)) {
+                const section = ensureSection(chapter, stripFileExtension(leafName));
+                section.path = `${part.path}/${chapter.label}/${section.label}`;
+                addPdfFile(section, leafName, url);
+            }
+            continue;
+        }
+        if (segments.length === 4) {
+            if (!chapterName || !sectionName) continue;
+            const chapter = ensureChapter(part, chapterName);
+            const section = ensureSection(chapter, sectionName);
+            section.path = `${part.path}/${chapter.label}/${section.label}`;
+            if (isPdf(leafName)) addPdfFile(section, leafName, url);
+            else if (isQuizDoc(leafName)) section.quizDocUrl = url;
+            else if (isTextDoc(leafName)) section.textDocUrl = url;
+        }
+    }
+
+    const parts = Array.from(partMap.values());
+    attachVideosToTree(parts);
+    parts.sort((a, b) => comparePart(a.label, b.label));
+    parts.forEach((part) => {
+        part.chapters.sort((a, b) => compareNumberedLabel(a.label, b.label, "章"));
+        part.chapters.forEach((chapter) => {
+            chapter.sections.sort((a, b) => compareNumberedLabel(a.label, b.label, "节"));
+            chapter.sections.forEach((section) => {
+                section.pdfFiles.sort((aFile, bFile) => aFile.name.localeCompare(bFile.name, "zh-Hans-CN"));
+                section.videoFiles.sort((aFile, bFile) => compareVideoFileByOrder(aFile.name, bFile.name));
+            });
+        });
+    });
+    return parts;
 }
 
-function nextSlide() {
-    if (!selectedCourse.value) return;
-    slideIndex.value = Math.min(
-        selectedCourse.value.pptSlides.length - 1,
-        slideIndex.value + 1
+function ensurePart(map: Map<string, PartNode>, label: string) {
+    if (!map.has(label)) {
+        map.set(label, { id: label, label, displayName: label, path: label, keyPoints: null, difficultPoints: null, chapters: [] });
+    }
+    return map.get(label)!;
+}
+
+function ensureChapter(part: PartNode, label: string) {
+    let chapter = part.chapters.find((item) => item.label === label);
+    if (!chapter) {
+        chapter = { id: `${part.id}/${label}`, label, displayName: label, path: `${part.path}/${label}`, keyPoints: null, difficultPoints: null, sections: [] };
+        part.chapters.push(chapter);
+    }
+    return chapter;
+}
+
+function ensureSection(chapter: ChapterNode, label: string) {
+    let section = chapter.sections.find((item) => item.label === label);
+    if (!section) {
+        section = {
+            id: `${chapter.id}/${label}`,
+            label,
+            displayName: label,
+            path: `${chapter.path}/${label}`,
+            pdfFiles: [],
+            videoFiles: [],
+            keyPoints: null
+        };
+        chapter.sections.push(section);
+    }
+    return section;
+}
+function stripFileExtension(filename: string) {
+    return filename.replace(/\.[^/.]+$/, "");
+}
+function addPdfFile(section: SectionNode, name: string, url: string) {
+    if (section.pdfFiles.some((item) => item.url === url)) return;
+    section.pdfFiles.push({ name, url });
+}
+function addVideoFile(section: SectionNode, name: string, url: string) {
+    if (section.videoFiles.some((item) => item.url === url)) return;
+    section.videoFiles.push({ name, url });
+}
+function attachVideosToTree(parts: PartNode[]) {
+    const allVideoAssets = { ...bundledVideoAssets, ...fsVideoAssets };
+    const partMap = new Map(parts.map((part) => [part.label, part] as const));
+
+    for (const [rawPath, rawUrl] of Object.entries(allVideoAssets)) {
+        const fullPath = normalizePath(rawPath);
+        const url = normalizePath(rawUrl);
+        const relative = normalizeVideoRelativePath(fullPath);
+        if (!relative) continue;
+
+        const segments = relative.split("/").filter(Boolean);
+        if (segments.length < 2) continue;
+
+        const partName = segments[0] ?? "";
+        const part = partMap.get(partName);
+        if (!part) continue;
+
+        const leafName = segments[segments.length - 1] ?? "";
+        if (!leafName || !isVideoFile(leafName)) continue;
+
+        if (partName === "绪论") {
+            const chapter = part.chapters[0] ?? ensureChapter(part, part.label);
+            const section = chapter.sections[0] ?? ensureSection(chapter, "绪论");
+            addVideoFile(section, leafName, url);
+            continue;
+        }
+
+        const chapterFolder = segments[1] ?? "";
+        const parsed = parseVideoRefFromFilename(leafName);
+        const chapterNoByFolder = parseChapterNumberFromLabel(chapterFolder);
+        const chapterNo = chapterNoByFolder ?? parsed.chapterNo;
+        const sectionNo = parsed.sectionNo;
+        if (chapterNo === null || sectionNo === null) continue;
+
+        const chapter = findChapterByOrder(part, chapterNo) ?? part.chapters.find((item) => item.label === chapterFolder);
+        if (!chapter) continue;
+
+        const section = findSectionByOrder(chapter, sectionNo);
+        if (!section) continue;
+
+        addVideoFile(section, leafName, url);
+    }
+}
+function normalizeVideoRelativePath(path: string) {
+    const normalized = path
+        .replace(/^\/@fs\/[A-Za-z]:\/站场视频\//i, "")
+        .replace(/^[A-Za-z]:\/站场视频\//i, "")
+        .replace(/^\/src\/assets\/站场视频\//i, "")
+        .replace(/^\/assets\/站场视频\//i, "");
+    return normalized === path ? "" : normalized;
+}
+function isVideoFile(filename: string) {
+    return /\.(mp4|webm|m4v|mov|avi|mkv)$/i.test(filename);
+}
+function findChapterByOrder(part: PartNode, order: number) {
+    return part.chapters.find((chapter) => extractOrder(chapter.label, "章") === order) ?? null;
+}
+function findSectionByOrder(chapter: ChapterNode, order: number) {
+    return chapter.sections.find((section) => extractOrder(section.label, "节") === order) ?? null;
+}
+function parseChapterNumberFromLabel(label: string) {
+    const match = label.match(/^第(.+?)章/);
+    if (!match || !match[1]) return null;
+    const parsed = parseNumberToken(match[1]);
+    return parsed === null ? null : parsed;
+}
+function parseVideoRefFromFilename(filename: string) {
+    const stem = stripFileExtension(filename).trim();
+    const match = stem.match(/^([一二三四五六七八九十两零\d]+)\s*[.．。]\s*([一二三四五六七八九十两零\d]+)(?:\s*[.．。]\s*([一二三四五六七八九十两零\d]+))?/);
+    const chapterNo = parseNumberToken(match?.[1] ?? "");
+    const sectionNo = parseNumberToken(match?.[2] ?? "");
+    const clipNo = parseNumberToken(match?.[3] ?? "") ?? 0;
+    return { chapterNo, sectionNo, clipNo };
+}
+function parseNumberToken(token: string) {
+    const value = token.trim();
+    if (!value) return null;
+    if (/^\d+$/.test(value)) return Number(value);
+    const parsed = chineseNumberToInt(value);
+    return Number.isFinite(parsed) && parsed !== Number.MAX_SAFE_INTEGER ? parsed : null;
+}
+function compareVideoFileByOrder(aName: string, bName: string) {
+    const aRef = parseVideoRefFromFilename(aName);
+    const bRef = parseVideoRefFromFilename(bName);
+    if (aRef.chapterNo !== bRef.chapterNo) return (aRef.chapterNo ?? 0) - (bRef.chapterNo ?? 0);
+    if (aRef.sectionNo !== bRef.sectionNo) return (aRef.sectionNo ?? 0) - (bRef.sectionNo ?? 0);
+    if (aRef.clipNo !== bRef.clipNo) return aRef.clipNo - bRef.clipNo;
+    return aName.localeCompare(bName, "zh-Hans-CN");
+}
+
+function isGuideDoc(filename: string) {
+    return filename.includes("学习指导") && isDoc(filename);
+}
+function isQuizDoc(filename: string) {
+    return filename.includes("习题测试") && isDoc(filename);
+}
+function isTextDoc(filename: string) {
+    return filename.includes("文字教材") && isDoc(filename);
+}
+function isDoc(filename: string) {
+    return /\.doc$/i.test(filename);
+}
+function isPdf(filename: string) {
+    return /\.pdf$/i.test(filename);
+}
+function comparePart(a: string, b: string) {
+    const aIndex = partDisplayOrder.indexOf(a);
+    const bIndex = partDisplayOrder.indexOf(b);
+    if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
+    if (aIndex !== -1) return -1;
+    if (bIndex !== -1) return 1;
+    return a.localeCompare(b, "zh-Hans-CN");
+}
+function compareNumberedLabel(a: string, b: string, unit: "章" | "节") {
+    return extractOrder(a, unit) - extractOrder(b, unit);
+}
+function extractOrder(label: string, unit: "章" | "节") {
+    const match = label.match(new RegExp(`^第(.+?)${unit}$`));
+    if (!match) return Number.MAX_SAFE_INTEGER;
+    const value = match[1];
+    if (!value) return Number.MAX_SAFE_INTEGER;
+    return chineseNumberToInt(value);
+}
+function chineseNumberToInt(value: string) {
+    if (/^\d+$/.test(value)) return Number(value);
+    const map: Record<string, number> = { 零: 0, 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 };
+    if (value === "十") return 10;
+    if (value.includes("十")) {
+        const [ten, one] = value.split("十");
+        const tenValue = ten ? map[ten] ?? 0 : 1;
+        const oneValue = one ? map[one] ?? 0 : 0;
+        return tenValue * 10 + oneValue;
+    }
+    return map[value] ?? Number.MAX_SAFE_INTEGER;
+}
+
+async function readDocSegments(url: string) {
+    if (!docSegmentCache.has(url)) {
+        docSegmentCache.set(
+            url,
+            (async () => {
+                try {
+                    const response = await fetch(url);
+                    if (!response.ok) return [];
+
+                    const buffer = await response.arrayBuffer();
+                    const text = extractTextFromDocBuffer(buffer);
+                    return extractTeachingSegments(text);
+                } catch (error) {
+                    console.warn("[CourseMain] 读取 doc 失败:", url, error);
+                    return [];
+                }
+            })()
+        );
+    }
+    return (await docSegmentCache.get(url)) ?? [];
+}
+function extractTextFromDocBuffer(buffer: ArrayBuffer) {
+    const bytes = new Uint8Array(buffer);
+    const utf16Snippets = [...extractUtf16Runs(bytes, 0), ...extractUtf16Runs(bytes, 1)];
+    const gbText = decodeBytes(bytes, "gb18030");
+    const utf8Text = decodeBytes(bytes, "utf-8");
+    return [...utf16Snippets, gbText, utf8Text].join("\n");
+}
+function decodeBytes(bytes: Uint8Array, encoding: string) {
+    try {
+        return new TextDecoder(encoding as "utf-8", { fatal: false }).decode(bytes);
+    } catch {
+        return "";
+    }
+}
+function extractUtf16Runs(bytes: Uint8Array, parity: 0 | 1) {
+    const snippets: string[] = [];
+    let start = -1;
+    for (let i = parity; i + 1 < bytes.length; i += 2) {
+        const low = bytes[i] ?? 0;
+        const high = bytes[i + 1] ?? 0;
+        const code = low | (high << 8);
+        if (isLikelyWordChar(code)) {
+            if (start < 0) start = i;
+        } else if (start >= 0) {
+            pushUtf16Run(snippets, bytes, start, i);
+            start = -1;
+        }
+    }
+    if (start >= 0) pushUtf16Run(snippets, bytes, start, bytes.length - ((bytes.length - start) % 2));
+    return snippets;
+}
+function pushUtf16Run(target: string[], bytes: Uint8Array, start: number, end: number) {
+    if (end - start < 16) return;
+    const run = bytes.slice(start, end);
+    const text = decodeBytes(run, "utf-16le")
+        .replace(/\0/g, "")
+        .trim();
+    if (text.length >= 6) target.push(text);
+}
+function isLikelyWordChar(code: number) {
+    return (
+        (code >= 0x4e00 && code <= 0x9fff) ||
+        (code >= 0x3400 && code <= 0x4dbf) ||
+        (code >= 0x20 && code <= 0x7e) ||
+        (code >= 0x3000 && code <= 0x303f) ||
+        (code >= 0xff01 && code <= 0xff5e) ||
+        code === 0x0009 ||
+        code === 0x000a ||
+        code === 0x000d
+    );
+}
+function extractTeachingSegments(text: string) {
+    const lines = text
+        .split(/\r\n|\r|\n/)
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0)
+        .filter((line) => /[\u4e00-\u9fff]/.test(line))
+        .filter((line) => !looksGarbled(line));
+
+    const title = extractGuideTitleFromLines(lines);
+    const keyPoints = extractKeyPointsFromLines(lines);
+    const difficultPoints = extractDifficultPointsFromLines(lines);
+    if (title || keyPoints.length > 0 || difficultPoints.length > 0) {
+        return [title, "重点知识", ...keyPoints, "难点知识", ...difficultPoints].filter(Boolean);
+    }
+    return lines.slice(0, 80);
+}
+function looksGarbled(segment: string) {
+    const noisy = (segment.match(/[^\u4e00-\u9fffA-Za-z0-9，。；：、（）()【】《》“”‘’：:,.!?%\- ]/g) ?? []).length;
+    return noisy > 0 && noisy / segment.length > 0.15;
+}
+function extractGuideTitleFromLines(lines: string[]) {
+    const headLines = lines.slice(0, 5);
+    const preferredLines = headLines.filter((line) => !/学习指导|文字教材|习题测试/.test(line));
+    const sourceLines = preferredLines.length > 0 ? preferredLines : headLines;
+    const section = sourceLines.map((line) => extractUnitTitleFromLine(line, "节")).find(Boolean);
+    if (section) return section;
+    const chapter = sourceLines.map((line) => extractUnitTitleFromLine(line, "章")).find(Boolean);
+    if (chapter) return chapter;
+    const part = sourceLines.map((line) => extractUnitTitleFromLine(line, "篇")).find(Boolean);
+    if (part) return part;
+    return "";
+}
+function extractUnitTitleFromLine(line: string, unit: "篇" | "章" | "节") {
+    const number = "[一二三四五六七八九十百零两\\d]+";
+    const pattern = new RegExp(
+        `([第]?${number}\\s*${unit}(?:\\s*(?![第]?${number}\\s*[篇章节])[^\\r\\n，。；;：:])*)`,
+        "g"
+    );
+    const matched = line.match(pattern);
+    if (!matched || matched.length === 0) return "";
+    const picked = matched[matched.length - 1] ?? "";
+    return picked
+        .replace(/学习指导|文字教材|习题测试/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+function extractKeyPointsFromLines(lines: string[]) {
+    return extractPointsFromLinesByHeader(
+        lines,
+        "重点知识",
+        /难点知识|学习目的|教学要求|学习安排|预备知识/
+    );
+}
+function extractDifficultPointsFromLines(lines: string[]) {
+    return extractPointsFromLinesByHeader(
+        lines,
+        "难点知识",
+        /重点知识|学习目的|教学要求|学习安排|预备知识/
+    );
+}
+function extractPointsFromLinesByHeader(lines: string[], header: "重点知识" | "难点知识", stopPattern: RegExp) {
+    const start = lines.findIndex((line) => line.includes(header));
+    if (start < 0) return [];
+
+    const points: string[] = [];
+    const chunk: string[] = [];
+    for (let i = start; i < lines.length; i += 1) {
+        const line = lines[i];
+        if (!line) continue;
+        if (i > start && stopPattern.test(line)) break;
+        chunk.push(line);
+    }
+    const merged = chunk.join(" ").replace(/\s+/g, " ").trim();
+    const afterHeader = merged.replace(new RegExp(`^.*?${header}[：:]\\s*`), "");
+    const numberedMatches = afterHeader.match(/(?:\d+|[一二三四五六七八九十]+)[、.．]\s*[\s\S]*?(?=(?:\d+|[一二三四五六七八九十]+)[、.．]|$)/g) ?? [];
+    numberedMatches.forEach((item) => {
+        const cleaned = item
+            .replace(/^(?:\d+|[一二三四五六七八九十]+)[、.．]\s*/, "")
+            .replace(/[。；;]+$/, "")
+            .trim();
+        if (cleaned) points.push(cleaned);
+    });
+    if (points.length === 0) {
+        chunk.forEach((line, index) => {
+            const normalized = (index === 0 ? line.replace(new RegExp(`^.*?${header}[：:]\\s*`), "") : line).trim();
+            if (!normalized) return;
+            points.push(...splitToPoints(normalized));
+        });
+    }
+    return points
+        .map((point) => point.replace(/\s+/g, " ").trim())
+        .filter((point) => point.length >= 4 && point.length <= 120);
+}
+function extractGuideTitle(segments: string[], fallback: string) {
+    const start = segments.findIndex((line) => line.includes("学习指导"));
+    const pool = start >= 0 ? segments.slice(start + 1) : segments;
+    return (
+        pool.find((line) =>
+            !line.includes("重点知识") &&
+            !line.includes("难点知识") &&
+            !line.includes("学习目的") &&
+            !line.includes("学习安排") &&
+            line.length <= 40 &&
+            /[\u4e00-\u9fff]/.test(line)
+        ) ?? fallback
     );
 }
 
-function jumpTo(idx: number) {
-    slideIndex.value = idx;
+function splitToPoints(line: string) {
+    return line
+        .split(/[；;。]/)
+        .map((item) => item.replace(/^\d+[、.．]?\s*/, "").trim())
+        .filter((item) => item.length >= 4 && !/学习指导|学习安排|默认段落|页眉|页脚/.test(item));
 }
 
-function selectOption(qIdx: number, oIdx: number) {
-    const courseId = selectedCourseId.value;
-    if (!userAnswers[courseId]) userAnswers[courseId] = {};
-    userAnswers[courseId][qIdx] = oIdx;
-    const total = selectedCourse.value?.quiz.length ?? 0;
-    gradeState[courseId] = { graded: false, correct: 0, total };
+function extractGuidePoints(segments: string[]) {
+    const start = segments.findIndex((line) => line.includes("重点知识"));
+    const points: string[] = [];
+    if (start >= 0) {
+        for (let i = start + 1; i < segments.length; i += 1) {
+            const line = segments[i];
+            if (!line) continue;
+            if (/难点知识|学习目的|预备知识|学习安排/.test(line)) break;
+            points.push(...splitToPoints(line));
+        }
+    }
+    if (points.length === 0) {
+        segments.forEach((line) => {
+            if (/重点知识|难点知识|学习指导/.test(line)) return;
+            points.push(...splitToPoints(line));
+        });
+    }
+    return Array.from(new Set(points)).slice(0, 12);
+}
+function extractGuideDifficultPoints(segments: string[]) {
+    const start = segments.findIndex((line) => line.includes("难点知识"));
+    const points: string[] = [];
+    if (start >= 0) {
+        for (let i = start + 1; i < segments.length; i += 1) {
+            const line = segments[i];
+            if (!line) continue;
+            if (/重点知识|学习目的|预备知识|学习安排/.test(line)) break;
+            points.push(...splitToPoints(line));
+        }
+    }
+    return Array.from(new Set(points)).slice(0, 12);
 }
 
-function gradeQuiz() {
-    const course = selectedCourse.value;
-    if (!course) return;
-    const answers = userAnswers[course.id] ?? {};
-    let correct = 0;
-    course.quiz.forEach((q, idx) => {
-        if (answers[idx] === q.correctIndex) correct += 1;
-    });
-    gradeState[course.id] = { graded: true, correct, total: course.quiz.length };
+function extractSectionPoints(segments: string[]) {
+    const points = extractGuidePoints(segments);
+    return points.length > 0 ? points : segments.filter((line) => line.length <= 60).slice(0, 10);
 }
 
-function optionState(qIdx: number, oIdx: number) {
-    const grade = gradeState[selectedCourseId.value];
-    if (!grade?.graded) return "";
-    const course = selectedCourse.value;
-    if (!course) return "";
-    const isCorrect = course.quiz[qIdx]?.correctIndex === oIdx;
-    const selected = userAnswers[selectedCourseId.value]?.[qIdx] === oIdx;
-    if (isCorrect && selected) return "is-correct";
-    if (!isCorrect && selected) return "is-wrong";
-    if (isCorrect) return "is-answer";
-    return "";
+async function hydratePartTitles() {
+    for (const part of courseTree.value) {
+        if (!part.guideDocUrl) continue;
+        const segments = await readDocSegments(part.guideDocUrl);
+        part.displayName = extractGuideTitle(segments, part.label);
+    }
+}
+async function hydrateChapterTitles(part: PartNode) {
+    for (const chapter of part.chapters) {
+        if (!chapter.guideDocUrl || chapter.displayName !== chapter.label) continue;
+        const segments = await readDocSegments(chapter.guideDocUrl);
+        chapter.displayName = extractGuideTitle(segments, chapter.label);
+    }
+}
+async function hydrateSectionTitles(chapter: ChapterNode) {
+    for (const section of chapter.sections) {
+        if (section.displayName !== section.label) continue;
+        const source = section.textDocUrl ?? section.quizDocUrl;
+        if (!source) continue;
+        const segments = await readDocSegments(source);
+        section.displayName = extractGuideTitle(segments, section.label);
+    }
 }
 
-function isQuestionCorrect(qIdx: number) {
-    const course = selectedCourse.value;
-    if (!course) return false;
-    const selected = userAnswers[selectedCourseId.value]?.[qIdx];
-    return selected === course.quiz[qIdx]?.correctIndex;
+async function loadPartFocus(part: PartNode) {
+    focusTitle.value = part.displayName;
+    focusLoading.value = true;
+    if ((part.keyPoints === null || part.difficultPoints === null) && part.guideDocUrl) {
+        const segments = await readDocSegments(part.guideDocUrl);
+        part.keyPoints = extractGuidePoints(segments);
+        part.difficultPoints = extractGuideDifficultPoints(segments);
+        part.displayName = extractGuideTitle(segments, part.displayName);
+    }
+    focusPoints.value = part.keyPoints ?? [];
+    focusDifficultPoints.value = part.difficultPoints ?? [];
+    focusLoading.value = false;
 }
 
-function showFeedback(qIdx: number) {
-    return gradeState[selectedCourseId.value]?.graded && !!selectedCourse.value?.quiz[qIdx];
+async function loadChapterFocus(part: PartNode, chapter: ChapterNode) {
+    focusTitle.value = chapter.displayName;
+    focusLoading.value = true;
+    if ((chapter.keyPoints === null || chapter.difficultPoints === null) && chapter.guideDocUrl) {
+        const segments = await readDocSegments(chapter.guideDocUrl);
+        chapter.keyPoints = extractGuidePoints(segments);
+        chapter.difficultPoints = extractGuideDifficultPoints(segments);
+        chapter.displayName = extractGuideTitle(segments, chapter.displayName);
+    }
+    focusTitle.value = chapter.displayName;
+    focusPoints.value = chapter.keyPoints ?? [];
+    focusDifficultPoints.value = chapter.difficultPoints ?? [];
+    focusLoading.value = false;
 }
 
-function isCorrectChoice(qIdx: number, oIdx: number) {
-    if (!gradeState[selectedCourseId.value]?.graded) return false;
-    const course = selectedCourse.value;
-    if (!course) return false;
-    return course.quiz[qIdx]?.correctIndex === oIdx;
+async function loadSectionDetails(section: SectionNode) {
+    sectionLoading.value = true;
+    if (section.displayName === section.label) {
+        const titleSource = section.textDocUrl ?? section.quizDocUrl;
+        if (titleSource) section.displayName = extractGuideTitle(await readDocSegments(titleSource), section.displayName);
+    }
+    if (section.keyPoints === null && section.textDocUrl) section.keyPoints = extractSectionPoints(await readDocSegments(section.textDocUrl));
+    if (section.keyPoints === null) section.keyPoints = [];
+    sectionLoading.value = false;
 }
 
-function isUserWrong(qIdx: number, oIdx: number) {
-    const course = selectedCourse.value;
-    if (!course) return false;
-    const selected = userAnswers[selectedCourseId.value]?.[qIdx];
-    const graded = gradeState[selectedCourseId.value]?.graded;
-    return graded && selected === oIdx && oIdx !== course.quiz[qIdx]?.correctIndex;
+function isPartExpanded(partId: string) { return !!expandedParts[partId]; }
+function isChapterExpanded(chapterId: string) { return !!expandedChapters[chapterId]; }
+function isPartSelected(partId: string) {
+    const state = selected.value;
+    return state.level === "part" && state.partId === partId;
+}
+function isChapterSelected(partId: string, chapterId: string) {
+    const state = selected.value;
+    return state.level === "chapter" && state.partId === partId && state.chapterId === chapterId;
+}
+function isSectionSelected(partId: string, chapterId: string, sectionId: string) {
+    const state = selected.value;
+    return (
+        state.level === "section" &&
+        state.partId === partId &&
+        state.chapterId === chapterId &&
+        state.sectionId === sectionId
+    );
+}
+function resolvePartEntrySection(part: PartNode) {
+    if (part.label !== "绪论") return null;
+
+    for (const chapter of part.chapters) {
+        const preferred = chapter.sections.find((section) =>
+            section.videoFiles.length > 0 || section.pdfFiles.length > 0 || !!section.textDocUrl || !!section.quizDocUrl
+        );
+        if (preferred) return { chapter, section: preferred };
+        const firstSection = chapter.sections[0];
+        if (firstSection) return { chapter, section: firstSection };
+    }
+    return null;
+}
+function onPartClick(part: PartNode) {
+    const entry = resolvePartEntrySection(part);
+    if (entry) {
+        expandedParts[part.id] = false;
+        expandedChapters[entry.chapter.id] = false;
+        void hydrateChapterTitles(part);
+        void hydrateSectionTitles(entry.chapter);
+        onSectionClick(part, entry.chapter, entry.section, false);
+        return;
+    }
+
+    expandedParts[part.id] = !expandedParts[part.id];
+    selected.value = { level: "part", partId: part.id };
+    void hydrateChapterTitles(part);
+    void loadPartFocus(part);
+}
+function onChapterClick(part: PartNode, chapter: ChapterNode) {
+    expandedParts[part.id] = true;
+    expandedChapters[chapter.id] = !expandedChapters[chapter.id];
+    selected.value = { level: "chapter", partId: part.id, chapterId: chapter.id };
+    void hydrateSectionTitles(chapter);
+    void loadChapterFocus(part, chapter);
+}
+function onSectionClick(part: PartNode, chapter: ChapterNode, section: SectionNode, shouldExpand = true) {
+    const prevPdfUrl = activePdf.value?.url ?? "";
+    expandedParts[part.id] = shouldExpand;
+    expandedChapters[chapter.id] = shouldExpand;
+    selected.value = { level: "section", partId: part.id, chapterId: chapter.id, sectionId: section.id };
+    activeVideoIndex.value = 0;
+    activePdfIndex.value = 0;
+    activePdfPageIndex.value = 0;
+    pdfPageImages.value = [];
+    pdfRenderError.value = "";
+    void loadSectionDetails(section);
+
+    const nextPdfUrl = section.pdfFiles[0]?.url ?? "";
+    if (nextPdfUrl === prevPdfUrl) void loadPdfPages(nextPdfUrl);
+}
+function setActivePdf(index: number) {
+    if (!selectedSection.value) return;
+    if (index < 0 || index >= selectedSection.value.pdfFiles.length) return;
+    activePdfIndex.value = index;
+}
+function goPrevPdfPage() {
+    if (!hasPrevPdfPage.value) return;
+    activePdfPageIndex.value -= 1;
+}
+function goNextPdfPage() {
+    if (!hasNextPdfPage.value) return;
+    activePdfPageIndex.value += 1;
+}
+function jumpToPdfPage(pageIndex: number | null) {
+    if (pageIndex === null) return;
+    if (pageIndex < 0 || pageIndex >= pdfPageImages.value.length) return;
+    activePdfPageIndex.value = pageIndex;
 }
 </script>
 
 <style scoped>
-/* @import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap"); */
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap");
 
 :global(:root) {
     --bg: #0b1021;
@@ -637,7 +1214,7 @@ function isUserWrong(qIdx: number, oIdx: number) {
     margin-top: 16px;
     display: grid;
     gap: 16px;
-    grid-template-columns: 1.1fr 0.9fr;
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
 }
 
 .panel {
@@ -645,6 +1222,7 @@ function isUserWrong(qIdx: number, oIdx: number) {
     border-radius: 16px;
     padding: 14px;
     background: rgba(255, 255, 255, 0.03);
+    min-width: 0;
 }
 
 .panel-head {
@@ -655,12 +1233,54 @@ function isUserWrong(qIdx: number, oIdx: number) {
     margin-bottom: 10px;
 }
 
-.video {
+.panel-title {
+    margin: 0;
+    font-size: 16px;
+    line-height: 1.25;
+    color: #f1f7ff;
+    letter-spacing: 0.02em;
+    font-weight: 700;
+}
+
+.video-switch {
+    margin-bottom: 10px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.video-tab {
+    border: 1px solid var(--stroke);
+    border-radius: 10px;
+    background: var(--panel-strong);
+    color: var(--text);
+    padding: 6px 10px;
+    cursor: pointer;
+}
+
+.video-tab.active {
+    border-color: var(--accent);
+}
+
+.video-player {
     width: 100%;
     border-radius: 12px;
     border: 1px solid var(--stroke);
     background: #000;
-    min-height: 260px;
+    height: clamp(260px, 42vh, 360px);
+    display: block;
+    object-fit: cover;
+}
+
+.video-placeholder {
+    border: 1px solid var(--stroke);
+    border-radius: 12px;
+    background: #071129;
+    height: clamp(260px, 42vh, 360px);
+    width: 100%;
+    display: grid;
+    place-items: center;
+    color: var(--muted);
 }
 
 .ppt-frame {
@@ -668,70 +1288,149 @@ function isUserWrong(qIdx: number, oIdx: number) {
     border-radius: 12px;
     overflow: hidden;
     background: #0a0f1f;
-    height: 260px;
+    height: clamp(260px, 48vh, 420px);
+    width: 100%;
+    display: grid;
+    place-items: center;
 }
 
-.ppt-frame img {
+.pdf-main-image {
     width: 100%;
     height: 100%;
-    object-fit: cover;
     display: block;
+    object-fit: contain;
+    background: #050a15;
 }
 
-.ppt-controls {
-    margin-top: 10px;
+.pdf-file-switch {
+    margin-bottom: 10px;
     display: flex;
-    align-items: center;
-    justify-content: space-between;
+    flex-wrap: wrap;
     gap: 8px;
 }
 
-.ppt-controls button {
+.pdf-file-tab {
+    border: 1px solid var(--stroke);
+    border-radius: 10px;
     background: var(--panel-strong);
     color: var(--text);
-    border: 1px solid var(--stroke);
-    padding: 8px 12px;
-    border-radius: 10px;
+    padding: 6px 10px;
     cursor: pointer;
 }
 
-.ppt-controls button:disabled {
+.pdf-file-tab.active {
+    border-color: var(--accent);
+}
+
+.empty-frame {
+    display: grid;
+    place-items: center;
+    color: var(--muted);
+}
+
+.ppt-nav {
+    margin-top: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.ppt-nav-btn {
+    background: var(--panel-strong);
+    color: var(--text);
+    border: 1px solid var(--stroke);
+    padding: 10px 14px;
+    border-radius: 10px;
+    cursor: pointer;
+    min-width: 92px;
+    transition: border-color 0.2s ease, opacity 0.2s ease;
+}
+
+.ppt-nav-btn:hover {
+    border-color: var(--accent);
+}
+
+.ppt-nav-btn:disabled {
     opacity: 0.4;
     cursor: not-allowed;
 }
 
-.stepper {
+.ppt-nav-status {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: auto;
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    background: transparent;
     color: var(--muted);
+    font-size: 15px;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    font-variant-numeric: tabular-nums;
 }
 
-.thumbs {
-    margin-top: 10px;
+.ppt-thumbs {
+    margin-top: 14px;
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-    gap: 8px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
 }
 
-.thumb {
+.ppt-thumb {
     border: 1px solid var(--stroke);
     border-radius: 10px;
     background: var(--panel-strong);
-    padding: 6px;
+    padding: 10px;
+    min-height: 82px;
+    display: grid;
+    gap: 8px;
     text-align: left;
     color: var(--text);
     cursor: pointer;
-    transition: border-color 0.2s ease;
+    transition: border-color 0.2s ease, transform 0.12s ease;
 }
 
-.thumb.active {
+.ppt-thumb:hover {
     border-color: var(--accent);
+    transform: translateY(-1px);
 }
 
-.thumb img {
+.ppt-thumb.active {
+    border-color: var(--accent-strong);
+    box-shadow: 0 0 0 2px rgba(110, 231, 255, 0.18);
+}
+
+.ppt-thumb.empty {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+.ppt-thumb-page {
+    font-size: 13px;
+    line-height: 1.2;
+    text-align: center;
+    color: #f2f7ff;
+}
+
+.ppt-thumb-preview {
     width: 100%;
-    height: 70px;
+    aspect-ratio: 4 / 3;
     object-fit: cover;
-    border-radius: 6px;
-    margin-bottom: 4px;
+    border-radius: 8px;
+    border: 1px solid var(--stroke);
+    background: #0a0f1f;
+}
+
+.ppt-thumb-placeholder {
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    display: block;
+    border-radius: 8px;
+    border: 1px solid var(--stroke);
 }
 
 .info-grid {
@@ -756,90 +1455,10 @@ function isUserWrong(qIdx: number, oIdx: number) {
     background: var(--panel-strong);
 }
 
-.quiz-head {
-    align-items: center;
-}
-
-.quiz-summary {
-    display: flex;
-    justify-content: space-between;
-    color: var(--muted);
-    margin-bottom: 8px;
-}
-
-.question {
-    border: 1px solid var(--stroke);
-    border-radius: 12px;
-    padding: 10px 12px;
-    background: var(--panel-strong);
-    margin-bottom: 10px;
-}
-
-.question-title {
-    margin-bottom: 8px;
-    font-weight: 600;
-}
-
-.options {
-    display: grid;
-    gap: 8px;
-}
-
-.option {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    border: 1px solid var(--stroke);
-    border-radius: 10px;
-    padding: 8px 10px;
-    cursor: pointer;
-}
-
-.option input {
-    accent-color: var(--accent);
-}
-
-.option-text {
-    flex: 1;
-}
-
-.option.is-correct {
-    border-color: var(--good);
-    background: rgba(52, 211, 153, 0.1);
-}
-
-.option.is-answer {
-    border-color: var(--accent);
-}
-
-.option.is-wrong {
-    border-color: var(--warn);
-    background: rgba(251, 191, 36, 0.08);
-}
-
-.feedback {
-    margin-top: 8px;
-    border-radius: 8px;
-    padding: 8px 10px;
-    border: 1px solid var(--stroke);
-}
-
-.feedback.good {
-    border-color: var(--good);
-}
-
-.feedback.warn {
-    border-color: var(--warn);
-}
-
-.explain {
-    color: var(--muted);
-    margin: 4px 0 0;
-}
-
 .empty {
     text-align: center;
     color: var(--muted);
+    padding: 56px 12px;
 }
 
 .eyebrow {
@@ -934,6 +1553,130 @@ function isUserWrong(qIdx: number, oIdx: number) {
     color: var(--warn);
 }
 
+.tree {
+    margin-top: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.children {
+    margin-top: 8px;
+    margin-left: 10px;
+    border-left: 1px dashed var(--stroke);
+    padding-left: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.tree-btn {
+    width: 100%;
+    text-align: left;
+    border: 1px solid var(--stroke);
+    border-radius: 12px;
+    color: var(--text);
+    background: var(--panel-strong);
+    cursor: pointer;
+    transition: border-color 0.2s ease, transform 0.12s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.tree-btn:hover {
+    border-color: var(--accent);
+    transform: translateY(-1px);
+}
+
+.tree-btn.active {
+    border-color: var(--accent-strong);
+    box-shadow: 0 0 0 2px rgba(110, 231, 255, 0.18);
+}
+
+.tree-btn.level-1 {
+    padding: 10px 12px;
+    font-weight: 600;
+}
+
+.tree-btn.level-2 {
+    padding: 8px 10px;
+    font-size: 14px;
+}
+
+.tree-btn.level-3 {
+    padding: 7px 10px;
+    font-size: 13px;
+}
+
+.leaf-empty {
+    color: var(--muted);
+    font-size: 12px;
+    padding-left: 4px;
+}
+
+.muted {
+    color: var(--muted);
+}
+
+.focus-only {
+    display: grid;
+    gap: 12px;
+}
+
+.focus-content {
+    display: grid;
+    gap: 12px;
+}
+
+.focus-block {
+    display: grid;
+    gap: 8px;
+}
+
+.focus-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    border-bottom: 1px solid var(--stroke);
+    padding-bottom: 12px;
+}
+
+.focus-header h2 {
+    margin: 0;
+}
+
+.focus-title-wrap {
+    display: flex;
+    align-items: center;
+    min-height: 36px;
+}
+
+.focus-header .tag-row {
+    align-items: center;
+}
+
+.section-head {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 12px;
+    border-bottom: 1px solid var(--stroke);
+    padding-bottom: 12px;
+}
+
+.section-head > div:first-child {
+    min-width: 0;
+}
+
+.section-head .tag-row {
+    justify-content: flex-end;
+    align-self: center;
+    margin-left: auto;
+}
+
 @media (max-width: 1024px) {
     .layout {
         grid-template-columns: 1fr;
@@ -947,6 +1690,41 @@ function isUserWrong(qIdx: number, oIdx: number) {
     .metrics {
         width: 100%;
         justify-content: flex-start;
+    }
+
+    .section-head {
+        grid-template-columns: 1fr;
+        align-items: start;
+    }
+
+    .section-head .tag-row {
+        width: 100%;
+        justify-content: flex-end;
+    }
+
+    .panel-title {
+        font-size: 16px;
+    }
+
+    .ppt-nav-status {
+        font-size: 12px;
+    }
+}
+
+@media (max-width: 1366px) {
+    .player-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-height: 820px) {
+    .video-player,
+    .video-placeholder {
+        height: clamp(220px, 36vh, 320px);
+    }
+
+    .ppt-frame {
+        height: clamp(220px, 40vh, 360px);
     }
 }
 </style>
