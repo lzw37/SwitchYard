@@ -85,6 +85,17 @@ namespace SwitchYard.Hump
         {
             var checkPointList = new List<HeadwayCheckPoint>();
             // 生成检算点
+
+            // 峰顶
+            HeadwayCheckPoint humpTop = new HeadwayCheckPoint
+            {
+                StartPosition = new HPosition() { X = flatLayout.PositionList.FirstOrDefault()?.X??0 },
+                EndPosition = new HPosition() { X = flatLayout.PositionList.FirstOrDefault()?.X ?? 0 },
+                Type = CheckPointTypes.Top,
+                EquipmentID = "Top",
+            };
+            checkPointList.Add(humpTop);
+
             foreach (var sw in flatLayout.SwitchList)
             {
                 // 生成道岔检算点
@@ -117,6 +128,17 @@ namespace SwitchYard.Hump
                 };
                 checkPointList.Add(retarderCheckPoint);
             }
+
+            // 计算点
+            HeadwayCheckPoint humpEnd = new HeadwayCheckPoint
+            {
+                StartPosition = new HPosition() { X = flatLayout.PositionList.LastOrDefault()?.X ?? 0 },
+                EndPosition = new HPosition() { X = flatLayout.PositionList.LastOrDefault()?.X ?? 0 },
+                Type = CheckPointTypes.End,
+                EquipmentID = "End",
+            };
+            checkPointList.Add(humpEnd);
+
             return checkPointList;
         }
 
@@ -138,16 +160,22 @@ namespace SwitchYard.Hump
             };
 
             data.CheckPointDatas = new List<HeadwayCheckRunningTimeData>();
-            foreach (var cp in checkPointList)
-            {
-                foreach (var hcWagon in scheme.WagonList)
+
+            var distanceToFisrtWagon = 0.0;
+            foreach (var hcWagon in scheme.WagonList)
+            {   
+                distanceToFisrtWagon += hcWagon.EnergyCalculationParams.Wagon?.Length / 2 ?? 0;
+                var rollingStartTime = distanceToFisrtWagon / scheme.WagonVelocityOnTop;
+                distanceToFisrtWagon += hcWagon.EnergyCalculationParams.Wagon?.Length / 2 ?? 0;
+
+                foreach (var cp in checkPointList)
                 {
                     // 计算速度曲线
                     var speedProfile = SpeedProfileGenerator.Generate(hcWagon, flatLayout, slopeLayout);
 
                     // 计算至检算点的时间
-                    var enterTime = CalculateCumulativeTime(speedProfile, cp.StartX);
-                    var exitTime = CalculateCumulativeTime(speedProfile, cp.EndX);
+                    var enterTime = CalculateCumulativeTime(speedProfile, cp.StartX)+rollingStartTime;
+                    var exitTime = CalculateCumulativeTime(speedProfile, cp.EndX)+rollingStartTime;
 
                     HeadwayCheckRunningTimeData cpData = new HeadwayCheckRunningTimeData()
                     {
@@ -178,7 +206,7 @@ namespace SwitchYard.Hump
                     break;
 
                 var duration = 2 * (pos1 - pos0) / (v0 + v1);  // 平均速度法计算时间
-                if (x>pos0 && x<pos1)
+                if (x > pos0 && x < pos1)
                 {
                     duration = (x - pos0) / (pos1 - pos0) * duration;
                 }
@@ -236,10 +264,10 @@ namespace SwitchYard.Hump
                     {
                         var wagon = g.First().HeadwayCheckWagon;
                         var sortedData = g.OrderBy(d => d.HeadwayCheckPoint.StartX).ToList();
-                        
+
                         var positionList = new List<double>();
                         var runningTimeList = new List<double>();
-                        
+
                         foreach (var data in sortedData)
                         {
                             positionList.Add(data.HeadwayCheckPoint.StartX);
@@ -247,7 +275,7 @@ namespace SwitchYard.Hump
                             runningTimeList.Add(data.EnterTime);
                             runningTimeList.Add(data.ExitTime);
                         }
-                        
+
                         return new HeadwayCheckWagonRunningTime
                         {
                             Wagon = wagon,
@@ -280,7 +308,7 @@ namespace SwitchYard.Hump
         /// 检算车辆
         /// </summary>
         public HeadwayCheckWagon HeadwayCheckWagon { get; set; }
-        
+
         /// <summary>
         /// 检算点
         /// </summary>
@@ -297,7 +325,7 @@ namespace SwitchYard.Hump
         public double ExitTime { get; set; }
     }
 
-    public abstract class HeadwayCheckPoint
+    public class HeadwayCheckPoint
     {
         /// <summary>
         /// 检算点起点
@@ -383,7 +411,17 @@ namespace SwitchYard.Hump
         /// <summary>
         /// 减速器
         /// </summary>
-        Retarder
+        Retarder,
+
+        /// <summary>
+        /// 峰顶
+        /// </summary>
+        Top,
+
+        /// <summary>
+        /// 难行线计算点
+        /// </summary>
+        End
     }
 
     public class HeadwayCheckResult
