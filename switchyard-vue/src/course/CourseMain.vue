@@ -170,12 +170,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from "vue";
+import { computed, reactive, ref, watch, onMounted } from "vue";
 import { getDocument, GlobalWorkerOptions } from "pdfjs-dist";
 import pdfWorkerSrc from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import CourseFillBlankQuiz from "@/course/CourseFillBlankQuiz.vue";
+import config from "@/config";
 
 type AssetFile = { name: string; url: string };
+type TeachingManifestItem = { name: string; path: string; url: string };
+type VideoManifestItem = { name: string; path: string; url: string };
 type SectionNode = {
     id: string;
     label: string;
@@ -214,23 +217,7 @@ type SelectionState =
     | { level: "section"; partId: string; chapterId: string; sectionId: string };
 
 const partDisplayOrder = ["绪论", "第一篇", "第二篇", "第三篇", "第四篇", "第五篇", "第六篇", "第七篇"];
-const assets = import.meta.glob("/src/assets/教学文档/**/*", {
-  eager: true,
-  query: "?url",
-  import: "default"
-}) as Record<string, string>;
-const fsVideoAssets = import.meta.glob("/@fs/D:/站场视频/**/*.{mp4,webm,m4v,mov,avi,mkv}", {
-  eager: true,
-  query: "?url",
-  import: "default"
-}) as Record<string, string>;
-const bundledVideoAssets = import.meta.glob("/src/assets/站场视频/**/*.{mp4,webm,m4v,mov,avi,mkv}", {
-  eager: true,
-  query: "?url",
-  import: "default"
-}) as Record<string, string>;
-
-const courseTree = ref<PartNode[]>(buildTreeFromAssets());
+const courseTree = ref<PartNode[]>([]);
 const selected = ref<SelectionState>({ level: "none" });
 const expandedParts = reactive<Record<string, boolean>>({});
 const expandedChapters = reactive<Record<string, boolean>>({});
@@ -251,7 +238,9 @@ const pdfPageCache = new Map<string, Promise<string[]>>();
 
 GlobalWorkerOptions.workerSrc = pdfWorkerSrc;
 
-void hydratePartTitles();
+onMounted(() => {
+    void initializeCourseData();
+});
 
 const selectedPart = computed(() => {
     const state = selected.value;
@@ -342,6 +331,63 @@ function toAbsoluteUrl(url: string) {
     if (typeof window === "undefined") return url;
     return new URL(url, window.location.origin).href;
 }
+function toAbsoluteApiUrl(url: string) {
+    if (!url) return url;
+    if (/^https?:\/\//i.test(url)) return url;
+    return new URL(url, config.serverurl).toString();
+}
+function normalizeTeachingRelativePath(path: string) {
+    return normalizePath(path).replace(/^\/+/, "").replace(/^教学文档\//, "");
+}
+function toTeachingAssetMap(manifest: TeachingManifestItem[]) {
+    const map: Record<string, string> = {};
+    for (const item of manifest) {
+        const relative = normalizeTeachingRelativePath(item.path);
+        if (!relative) continue;
+        map[`/教学文档/${relative}`] = toAbsoluteApiUrl(item.url);
+    }
+    return map;
+}
+async function fetchTeachingManifest() {
+    try {
+        const manifestUrl = new URL("/Course/GetTeachingManifest", config.serverurl);
+        const response = await fetch(manifestUrl.toString());
+        if (!response.ok) {
+            console.warn("[CourseMain] 获取教学资源清单失败:", response.status, response.statusText);
+            return [] as TeachingManifestItem[];
+        }
+        return (await response.json()) as TeachingManifestItem[];
+    } catch (error) {
+        console.warn("[CourseMain] 加载教学资源清单异常:", error);
+        return [] as TeachingManifestItem[];
+    }
+}
+async function fetchVideoManifest() {
+    try {
+        const manifestUrl = new URL("/Course/GetVideoManifest", config.serverurl);
+
+        const response = await fetch(manifestUrl.toString());
+        if (!response.ok) {
+            console.warn("[CourseMain] 获取视频清单失败:", response.status, response.statusText);
+            return [] as VideoManifestItem[];
+        }
+
+        return (await response.json()) as VideoManifestItem[];
+    } catch (error) {
+        console.warn("[CourseMain] 加载视频清单异常:", error);
+        return [] as VideoManifestItem[];
+    }
+}
+async function initializeCourseData() {
+    const [teachingManifest, videoManifest] = await Promise.all([fetchTeachingManifest(), fetchVideoManifest()]);
+
+    const nextTree = buildTreeFromAssets(toTeachingAssetMap(teachingManifest));
+    attachVideosToTree(nextTree, videoManifest);
+    sortCourseTree(nextTree);
+    courseTree.value = nextTree;
+
+    void hydratePartTitles();
+}
 async function loadPdfPages(url: string) {
     const ticket = ++pdfRenderTicket.value;
     activePdfPageIndex.value = 0;
@@ -396,9 +442,9 @@ async function renderPdfToImages(url: string) {
     return (await pdfPageCache.get(url)) ?? [];
 }
 
-function buildTreeFromAssets() {
+function buildTreeFromAssets(assetMap: Record<string, string>) {
     const partMap = new Map<string, PartNode>();
-    for (const [rawPath, rawUrl] of Object.entries(assets)) {
+    for (const [rawPath, rawUrl] of Object.entries(assetMap)) {
         const fullPath = normalizePath(rawPath);
         const url = normalizePath(rawUrl);
         const relative = fullPath
@@ -451,18 +497,7 @@ function buildTreeFromAssets() {
     }
 
     const parts = Array.from(partMap.values());
-    attachVideosToTree(parts);
-    parts.sort((a, b) => comparePart(a.label, b.label));
-    parts.forEach((part) => {
-        part.chapters.sort((a, b) => compareNumberedLabel(a.label, b.label, "章"));
-        part.chapters.forEach((chapter) => {
-            chapter.sections.sort((a, b) => compareNumberedLabel(a.label, b.label, "节"));
-            chapter.sections.forEach((section) => {
-                section.pdfFiles.sort((aFile, bFile) => aFile.name.localeCompare(bFile.name, "zh-Hans-CN"));
-                section.videoFiles.sort((aFile, bFile) => compareVideoFileByOrder(aFile.name, bFile.name));
-            });
-        });
-    });
+    sortCourseTree(parts);
     return parts;
 }
 
@@ -509,21 +544,53 @@ function addVideoFile(section: SectionNode, name: string, url: string) {
     if (section.videoFiles.some((item) => item.url === url)) return;
     section.videoFiles.push({ name, url });
 }
-function attachVideosToTree(parts: PartNode[]) {
-    const allVideoAssets = { ...bundledVideoAssets, ...fsVideoAssets };
+function sortCourseTree(parts: PartNode[]) {
+    parts.sort((a, b) => comparePart(a.label, b.label));
+    parts.forEach((part) => {
+        part.chapters.sort((a, b) => compareNumberedLabel(a.label, b.label, "章"));
+        part.chapters.forEach((chapter) => {
+            chapter.sections.sort((a, b) => compareNumberedLabel(a.label, b.label, "节"));
+            chapter.sections.forEach((section) => {
+                section.pdfFiles.sort((aFile, bFile) => aFile.name.localeCompare(bFile.name, "zh-Hans-CN"));
+                section.videoFiles.sort((aFile, bFile) => compareVideoFileByOrder(aFile.name, bFile.name));
+            });
+        });
+    });
+}
+function attachVideosToTree(parts: PartNode[], videoAssets: VideoManifestItem[]) {
     const partMap = new Map(parts.map((part) => [part.label, part] as const));
 
-    for (const [rawPath, rawUrl] of Object.entries(allVideoAssets)) {
-        const fullPath = normalizePath(rawPath);
-        const url = normalizePath(rawUrl);
-        const relative = normalizeVideoRelativePath(fullPath);
+    for (const videoAsset of videoAssets) {
+        const relative = normalizePath(videoAsset.path).replace(/^\/+/, "");
         if (!relative) continue;
 
-        const segments = relative.split("/").filter(Boolean);
+        const url = toAbsoluteApiUrl(videoAsset.url);
+        if (!url) continue;
+
+        let segments = relative.split("/").filter(Boolean);
         if (segments.length < 2) continue;
 
-        const partName = segments[0] ?? "";
-        const part = partMap.get(partName);
+        let partName = segments[0] ?? "";
+        let part = partMap.get(partName);
+        if (!part && segments.length >= 3) {
+            segments = segments.slice(1);
+            partName = segments[0] ?? "";
+            part = partMap.get(partName);
+        }
+        if (!part && partName) {
+            part = {
+                id: partName,
+                label: partName,
+                displayName: partName,
+                path: partName,
+                guideDocUrl: undefined,
+                keyPoints: null,
+                difficultPoints: null,
+                chapters: []
+            };
+            partMap.set(partName, part);
+            parts.push(part);
+        }
         if (!part) continue;
 
         const leafName = segments[segments.length - 1] ?? "";
@@ -543,22 +610,15 @@ function attachVideosToTree(parts: PartNode[]) {
         const sectionNo = parsed.sectionNo;
         if (chapterNo === null || sectionNo === null) continue;
 
-        const chapter = findChapterByOrder(part, chapterNo) ?? part.chapters.find((item) => item.label === chapterFolder);
-        if (!chapter) continue;
+        const chapter =
+            findChapterByOrder(part, chapterNo) ??
+            part.chapters.find((item) => item.label === chapterFolder) ??
+            ensureChapter(part, chapterFolder || `第${chapterNo}章`);
 
-        const section = findSectionByOrder(chapter, sectionNo);
-        if (!section) continue;
+        const section = findSectionByOrder(chapter, sectionNo) ?? ensureSection(chapter, `第${sectionNo}节`);
 
         addVideoFile(section, leafName, url);
     }
-}
-function normalizeVideoRelativePath(path: string) {
-    const normalized = path
-        .replace(/^\/@fs\/[A-Za-z]:\/站场视频\//i, "")
-        .replace(/^[A-Za-z]:\/站场视频\//i, "")
-        .replace(/^\/src\/assets\/站场视频\//i, "")
-        .replace(/^\/assets\/站场视频\//i, "");
-    return normalized === path ? "" : normalized;
 }
 function isVideoFile(filename: string) {
     return /\.(mp4|webm|m4v|mov|avi|mkv)$/i.test(filename);
@@ -609,7 +669,7 @@ function isTextDoc(filename: string) {
     return filename.includes("文字教材") && isDoc(filename);
 }
 function isDoc(filename: string) {
-    return /\.doc$/i.test(filename);
+    return /\.docx?$/i.test(filename);
 }
 function isPdf(filename: string) {
     return /\.pdf$/i.test(filename);
@@ -626,7 +686,7 @@ function compareNumberedLabel(a: string, b: string, unit: "章" | "节") {
     return extractOrder(a, unit) - extractOrder(b, unit);
 }
 function extractOrder(label: string, unit: "章" | "节") {
-    const match = label.match(new RegExp(`^第(.+?)${unit}$`));
+    const match = label.match(new RegExp(`^第(.+?)${unit}`));
     if (!match) return Number.MAX_SAFE_INTEGER;
     const value = match[1];
     if (!value) return Number.MAX_SAFE_INTEGER;
