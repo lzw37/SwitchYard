@@ -6,4 +6,8 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <PackageReference Include="ACadSharp" Version="3.4.29" />
+  </ItemGroup>
+
 </Project>
