@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using ACadSharp.IO;
 using System.Text;
 using System.Text.Json;
 using SwitchYard.Capacity;
@@ -7,6 +8,8 @@ using SwitchYard.Capacity;
 namespace SwitchYard.Service.Controllers
 {
     [ApiController]
+    [Route("[controller]/[action]")]
+    [Authorize]
     public class StationLayoutController : ControllerBase
     {
         private readonly ILogger<StationLayoutController> _logger;
@@ -17,8 +20,8 @@ namespace SwitchYard.Service.Controllers
             _logger = logger;
             _environment = environment;
         }
-
-        [HttpPost("/saveJson")]
+        
+        [HttpPost(Name ="SaveJson")]
         [AllowAnonymous]
         public IActionResult SaveJson([FromBody] StationLayoutSaveRequest? request)
         {
@@ -67,7 +70,7 @@ namespace SwitchYard.Service.Controllers
             }
         }
 
-        [HttpPost("/getJson")]
+        [HttpPost(Name = "GetJson")]
         [AllowAnonymous]
         public IActionResult GetJson()
         {
@@ -177,10 +180,124 @@ namespace SwitchYard.Service.Controllers
             public string Json { get; set; } = string.Empty;
         }
 
-        [HttpGet("/extractDwgFile")]
-
-        public void ExtractDwgFile()
+        [HttpPost(Name = "ExtractDwgFile")]
+        [AllowAnonymous]
+        public async Task<IActionResult> ExtractDwgFile(IFormFile? file, [FromForm] string? layerName = "0")
         {
+            if (file == null || file.Length == 0)
+            {
+                return BadRequest("Please upload a non-empty DWG file.");
+            }
+
+            if (!string.Equals(Path.GetExtension(file.FileName), ".dwg", StringComparison.OrdinalIgnoreCase))
+            {
+                return BadRequest("Only DWG files are supported.");
+            }
+
+            if (string.IsNullOrWhiteSpace(layerName))
+            {
+                layerName = "0";
+            }
+
+            if (!TryResolveStationLayoutFilePath(out var filePath, out var errorMessage))
+            {
+                return StatusCode(500, errorMessage);
+            }
+
+            try
+            {
+                await using var stream = file.OpenReadStream();
+                var document = DwgReader.Read(stream, new DwgReaderConfiguration
+                {
+                    Failsafe = true
+                }, notification: null);
+
+                if (!document.Layers.Any(layer => string.Equals(layer.Name, layerName, StringComparison.OrdinalIgnoreCase)))
+                {
+                    var availableLayers = document.Layers
+                        .Select(layer => layer.Name)
+                        .Order(StringComparer.OrdinalIgnoreCase)
+                        .ToArray();
+                    return BadRequest($"Layer '{layerName}' was not found. Available layers: {string.Join(", ", availableLayers)}");
+                }
+
+                var extractor = new AutoCADLayerLineExtractor();
+                var segments = extractor.ExtractFile(document, layerName);
+                if (segments == null || segments.Count == 0)
+                {
+                    return BadRequest($"No line segments were extracted from layer '{layerName}'.");
+                }
+
+                var stationLayoutJson = BuildStationLayoutJsonFromSegments(segments);
+                var directory = Path.GetDirectoryName(filePath);
+                if (string.IsNullOrWhiteSpace(directory))
+                {
+                    return StatusCode(500, "Unable to resolve the StationLayout.json directory.");
+                }
+
+                Directory.CreateDirectory(directory);
+                await System.IO.File.WriteAllTextAsync(filePath, stationLayoutJson, new UTF8Encoding(false));
+
+                _logger.LogInformation(
+                    "Extracted {SegmentCount} DWG line segments from layer {LayerName} and saved to {FilePath}",
+                    segments.Count,
+                    layerName,
+                    filePath);
+
+                return Ok(new
+                {
+                    message = "OK",
+                    segmentCount = segments.Count
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to extract DWG file {FileName}.", file.FileName);
+                return StatusCode(500, "Failed to extract DWG file.");
+            }
+        }
+
+        private static string BuildStationLayoutJsonFromSegments(IReadOnlyList<AutoCADLayerLineExtractor.LineSegmentRecord> segments)
+        {
+            const double canvasWidth = 1920;
+            const double canvasHeight = 1080;
+            const double padding = 80;
+
+            var minX = segments.Min(segment => Math.Min(segment.StartX, segment.EndX));
+            var maxX = segments.Max(segment => Math.Max(segment.StartX, segment.EndX));
+            var minY = segments.Min(segment => Math.Min(segment.StartY, segment.EndY));
+            var maxY = segments.Max(segment => Math.Max(segment.StartY, segment.EndY));
+            var sourceWidth = Math.Max(maxX - minX, 1);
+            var sourceHeight = Math.Max(maxY - minY, 1);
+            var scale = Math.Min((canvasWidth - padding * 2) / sourceWidth, (canvasHeight - padding * 2) / sourceHeight);
+
+            double MapX(double x) => Math.Round(padding + (x - minX) * scale, 3);
+            double MapY(double y) => Math.Round(padding + (maxY - y) * scale, 3);
+
+            var tracks = segments.Select((segment, index) => new
+            {
+                id = index.ToString(),
+                x1 = MapX(segment.StartX),
+                x2 = MapX(segment.EndX),
+                y1 = MapY(segment.StartY),
+                y2 = MapY(segment.EndY),
+                fromNodeID = string.Empty,
+                toNodeID = string.Empty
+            });
+
+            return JsonSerializer.Serialize(new
+            {
+                metadata = new { latestElementID = segments.Count },
+                tracks,
+                nodes = Array.Empty<object>(),
+                signals = Array.Empty<object>(),
+                insulationJoints = Array.Empty<object>(),
+                platforms = Array.Empty<object>(),
+                switches = Array.Empty<object>()
+            }, new JsonSerializerOptions
+            {
+                WriteIndented = true
+            });
 
         }
     }

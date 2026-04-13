@@ -1,7 +1,8 @@
 <script setup>
 import { ref } from "vue";
 import { useI18n } from 'vue-i18n';
-import axios from "axios";
+import axios from "@/utils/axios";
+import { ElMessage } from "element-plus";
 import SignalInfoTabVue from "./components/SignalInfoTab.vue";
 import StationLayoutEditor from "./components/StationLayoutEditor.vue";
 import {
@@ -16,6 +17,11 @@ import {
 
 const { t } = useI18n();
 const stationLayoutEditorRef = ref(null);
+const extractDwgDialogVisible = ref(false);
+const dwgFileInputRef = ref(null);
+const selectedDwgFile = ref(null);
+const dwgLayerName = ref("0");
+const extractingDwg = ref(false);
 
 function setSelectMode() {
     stationLayoutEditorRef.value?.setEditMode(0);
@@ -50,7 +56,7 @@ function mouseGridSnapChange(e) {
 function saveData() {
     var dataStr = stationLayoutEditorRef.value?.buildJsonData();
     axios
-        .post("http://127.0.0.1:3000/saveJson", {
+        .post("/StationLayout/SaveJson", {
             json: dataStr,
         })
         .then((res) => {
@@ -68,7 +74,7 @@ function saveData() {
 }
 function getData() {
     axios
-        .post("http://127.0.0.1:3000/getJson")
+        .post("/StationLayout/GetJson")
         .then((res) => {
             stationLayoutEditorRef.value?.loadDataFromJson(res.data);
         })
@@ -103,6 +109,66 @@ function autoGenerateNode() {
 function autoGenerateSwitch() {
     stationLayoutEditorRef.value?.autoGenerateSwitches();
 }
+
+function openExtractDwgDialog() {
+    selectedDwgFile.value = null;
+    dwgLayerName.value = "0";
+    extractDwgDialogVisible.value = true;
+    if (dwgFileInputRef.value) {
+        dwgFileInputRef.value.value = "";
+    }
+}
+
+function handleDwgFileChange(event) {
+    const file = event.target.files?.[0];
+    if (!file) {
+        selectedDwgFile.value = null;
+        return;
+    }
+
+    if (!file.name.toLowerCase().endsWith(".dwg")) {
+        selectedDwgFile.value = null;
+        event.target.value = "";
+        ElMessage.error("请选择 DWG 格式文件");
+        return;
+    }
+
+    selectedDwgFile.value = file;
+}
+
+function extractDwgFile() {
+    if (!selectedDwgFile.value) {
+        ElMessage.warning("请先选择 DWG 文件");
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append("file", selectedDwgFile.value);
+    formData.append("layerName", dwgLayerName.value || "0");
+
+    extractingDwg.value = true;
+    axios
+        .post("/StationLayout/ExtractDwgFile", formData, {
+            headers: {
+                "Content-Type": "multipart/form-data",
+            },
+        })
+        .then((res) => {
+            extractDwgDialogVisible.value = false;
+            ElMessage.success(`DWG 提取完成，共生成 ${res.data?.segmentCount || 0} 条线段`);
+            getData();
+        })
+        .catch((err) => {
+            var serverMsg = "";
+            if (err.response != undefined) {
+                serverMsg = err.response.data;
+            }
+            ElMessage.error("DWG 提取失败：" + (serverMsg || err));
+        })
+        .finally(() => {
+            extractingDwg.value = false;
+        });
+}
 </script>
 
 <template>
@@ -124,6 +190,11 @@ function autoGenerateSwitch() {
                     <el-icon>
                         <Upload />
                     </el-icon>{{ t('stationLayout.menu.saveData') }}
+                </el-menu-item>
+                <el-menu-item index="extract-dwg-file" @click="openExtractDwgDialog">
+                    <el-icon>
+                        <Download />
+                    </el-icon> 从DWG文件提取
                 </el-menu-item>
             </el-sub-menu>
 
@@ -211,6 +282,20 @@ function autoGenerateSwitch() {
             </div>
         </div>
         <StationLayoutEditor ref="stationLayoutEditorRef" />
+        <el-dialog v-model="extractDwgDialogVisible" title="从DWG文件提取" width="420px" :close-on-click-modal="false">
+            <div class="dwg-extract-form">
+                <label class="dwg-extract-label">DWG 文件</label>
+                <input ref="dwgFileInputRef" type="file" accept=".dwg" @change="handleDwgFileChange" />
+                <label class="dwg-extract-label">图层名称</label>
+                <el-input v-model="dwgLayerName" placeholder="请输入要提取的图层名称" />
+            </div>
+            <template #footer>
+                <el-button @click="extractDwgDialogVisible = false">取消</el-button>
+                <el-button type="primary" :loading="extractingDwg" @click="extractDwgFile">
+                    上传并提取
+                </el-button>
+            </template>
+        </el-dialog>
         <!-- <div id="equipmentlist" style="
                 width: 400px;
                 position: absolute;
@@ -266,6 +351,17 @@ function autoGenerateSwitch() {
     font-size: 12px;
     color: #909399;
     white-space: nowrap;
+    font-weight: 500;
+}
+
+.dwg-extract-form {
+    display: grid;
+    gap: 10px;
+}
+
+.dwg-extract-label {
+    font-size: 13px;
+    color: #606266;
     font-weight: 500;
 }
 </style>
