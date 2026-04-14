@@ -12,6 +12,7 @@
     fill: none;
     stroke-width: 1px;
     stroke: #fefded;
+    pointer-events: none;
 }
 
 .track {

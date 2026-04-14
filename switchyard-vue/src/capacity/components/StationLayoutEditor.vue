@@ -14,6 +14,7 @@ const mouseGridSnapModeCode = ref(1);
 const mouseObjectSnapModeCode = ref(1);
 const snapDistance = ref(10);
 const autoSeparateLineTolerance = ref(10);
+const autoMergeNodeTolerance = ref(10);
 
 const grid = { visible: true, verticalSpace: 20, horizontalSpace: 20 };
 const cursorParam = ref({ size: 10, barVisible: false, barLength: 100, x: 200, y: 200 });
@@ -300,6 +301,27 @@ function calculatePointDist(p1, p2) {
     return Math.trunc(Math.hypot(Number(p2.x) - Number(p1.x), Number(p2.y) - Number(p1.y)));
 }
 
+function calculatePointSegmentSnap(line, point) {
+    const x1 = Number(line.x1);
+    const y1 = Number(line.y1);
+    const x2 = Number(line.x2);
+    const y2 = Number(line.y2);
+    const x0 = Number(point.x);
+    const y0 = Number(point.y);
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const lengthSquared = dx * dx + dy * dy;
+
+    if (lengthSquared === 0) {
+        return { x: x1, y: y1, dist: Math.hypot(x0 - x1, y0 - y1) };
+    }
+
+    const positionRate = Math.max(0, Math.min(1, ((x0 - x1) * dx + (y0 - y1) * dy) / lengthSquared));
+    const x = x1 + positionRate * dx;
+    const y = y1 + positionRate * dy;
+    return { x, y, dist: Math.hypot(x0 - x, y0 - y) };
+}
+
 function calculateCrossPoint(l1, l2) {
     const denominatorX = (l2.x1 - l2.x2) * (l1.y1 - l1.y2) - (l1.x1 - l1.x2) * (l2.y1 - l2.y2);
     const denominatorY = (l2.y1 - l2.y2) * (l1.x1 - l1.x2) - (l1.y1 - l1.y2) * (l2.x1 - l2.x2);
@@ -308,6 +330,41 @@ function calculateCrossPoint(l1, l2) {
     const x = Math.round(((l2.x1 - l2.x2) * (l1.x2 * l1.y1 - l1.x1 * l1.y2) - (l1.x1 - l1.x2) * (l2.x2 * l2.y1 - l2.x1 * l2.y2)) / denominatorX);
     const y = Math.round(((l2.y1 - l2.y2) * (l1.y2 * l1.x1 - l1.y1 * l1.x2) - (l1.y1 - l1.y2) * (l2.y2 * l2.x1 - l2.y1 * l2.x2)) / denominatorY);
     return { x, y };
+}
+
+function isSamePoint(p1, p2) {
+    return Math.hypot(Number(p2.x) - Number(p1.x), Number(p2.y) - Number(p1.y)) < 1;
+}
+
+function isLineEndpoint(line, point) {
+    return isSamePoint(point, { x: line.x1, y: line.y1 }) || isSamePoint(point, { x: line.x2, y: line.y2 });
+}
+
+function isPointOnLineSegment(line, point) {
+    const x1 = Number(line.x1);
+    const y1 = Number(line.y1);
+    const x2 = Number(line.x2);
+    const y2 = Number(line.y2);
+    const x = Number(point.x);
+    const y = Number(point.y);
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const length = Math.hypot(dx, dy);
+
+    if (length === 0) return isSamePoint(point, { x: x1, y: y1 });
+    if (x < Math.min(x1, x2) - 1 || x > Math.max(x1, x2) + 1) return false;
+    if (y < Math.min(y1, y2) - 1 || y > Math.max(y1, y2) + 1) return false;
+
+    const distanceToLine = Math.abs(dy * x - dx * y + x2 * y1 - y2 * x1) / length;
+    return distanceToLine < 1;
+}
+
+function getLinePointPositionRate(line, point) {
+    const dx = Number(line.x2) - Number(line.x1);
+    const dy = Number(line.y2) - Number(line.y1);
+    const lengthSquared = dx * dx + dy * dy;
+    if (lengthSquared === 0) return 0;
+    return ((Number(point.x) - Number(line.x1)) * dx + (Number(point.y) - Number(line.y1)) * dy) / lengthSquared;
 }
 
 function getCrossPointRelation(l1, l2, crossPoint) {
@@ -384,41 +441,227 @@ function removeCrossPoint() {
     crossPoints.value = [];
 }
 
-function tryLineSnapToCrossPoint(line, pointid, crossPoint) {
-    const target = tracks.value.find((item) => item.id === line.id);
-    if (!target) return;
-    target[`x${pointid}`] = crossPoint.x;
-    target[`y${pointid}`] = crossPoint.y;
-}
-
 function snapLine() {
     executeMutation(() => {
-        const cps = markCrossPoint();
-        for (const cp of cps) {
-            if (cp.relation.snapPointList) {
-                for (const r of cp.relation.snapPointList) {
-                    tryLineSnapToCrossPoint(r.line, r.point, cp);
+        const lineSet = getLineList();
+        const snapOperations = [];
+
+        for (const sourceLine of lineSet) {
+            const endpoints = [
+                { pointid: 1, x: Number(sourceLine.x1), y: Number(sourceLine.y1) },
+                { pointid: 2, x: Number(sourceLine.x2), y: Number(sourceLine.y2) },
+            ];
+
+            for (const endpoint of endpoints) {
+                let closestSnap = null;
+
+                for (const targetLine of lineSet) {
+                    if (targetLine.id === sourceLine.id) continue;
+
+                    const snapPoint = calculatePointSegmentSnap(targetLine, endpoint);
+                    if (snapPoint.dist > autoSeparateLineTolerance.value) continue;
+                    if (!closestSnap || snapPoint.dist < closestSnap.dist) {
+                        closestSnap = snapPoint;
+                    }
+                }
+
+                if (closestSnap) {
+                    snapOperations.push({
+                        lineId: sourceLine.id,
+                        pointid: endpoint.pointid,
+                        x: Math.round(closestSnap.x),
+                        y: Math.round(closestSnap.y),
+                    });
                 }
             }
         }
+
+        for (const op of snapOperations) {
+            const target = tracks.value.find((item) => item.id === op.lineId);
+            if (!target) continue;
+            target[`x${op.pointid}`] = op.x;
+            target[`y${op.pointid}`] = op.y;
+        }
+
+        markCrossPoint();
+    });
+}
+
+function autoMergeNode() {
+    const tolerance = Number(autoMergeNodeTolerance.value);
+    if (!Number.isFinite(tolerance) || tolerance < 0 || nodes.value.length < 2) return;
+
+    const sourceNodes = getNodeList();
+    const visitedNodeIDs = new Set();
+    const mergeGroups = [];
+
+    for (const node of sourceNodes) {
+        if (visitedNodeIDs.has(node.id)) continue;
+
+        const group = [];
+        const pendingNodes = [node];
+        visitedNodeIDs.add(node.id);
+
+        while (pendingNodes.length > 0) {
+            const currentNode = pendingNodes.pop();
+            group.push(currentNode);
+
+            for (const candidateNode of sourceNodes) {
+                if (visitedNodeIDs.has(candidateNode.id)) continue;
+                const distance = Math.hypot(Number(candidateNode.x) - Number(currentNode.x), Number(candidateNode.y) - Number(currentNode.y));
+                if (distance <= tolerance) {
+                    visitedNodeIDs.add(candidateNode.id);
+                    pendingNodes.push(candidateNode);
+                }
+            }
+        }
+
+        if (group.length > 1) {
+            mergeGroups.push(group);
+        }
+    }
+
+    if (mergeGroups.length === 0) return;
+
+    executeMutation(() => {
+        const nodeIDMergeMap = new Map();
+        const removedNodeIDs = new Set();
+
+        for (const group of mergeGroups) {
+            const targetNodeID = group[0].id;
+            for (const node of group) {
+                nodeIDMergeMap.set(node.id, targetNodeID);
+                if (node.id !== targetNodeID) {
+                    removedNodeIDs.add(node.id);
+                }
+            }
+        }
+
+        const resolveNodeID = (nodeID) => nodeIDMergeMap.get(nodeID) || nodeID;
+
+        nodes.value = nodes.value.filter((node) => !removedNodeIDs.has(node.id));
+        const nodeByID = new Map(nodes.value.map((node) => [node.id, node]));
+
+        for (const line of tracks.value) {
+            line.fromNodeID = resolveNodeID(line.fromNodeID);
+            line.toNodeID = resolveNodeID(line.toNodeID);
+
+            const fromNode = nodeByID.get(line.fromNodeID);
+            const toNode = nodeByID.get(line.toNodeID);
+            if (fromNode) {
+                line.x1 = fromNode.x;
+                line.y1 = fromNode.y;
+            }
+            if (toNode) {
+                line.x2 = toNode.x;
+                line.y2 = toNode.y;
+            }
+        }
+
+        const removedLineIDs = new Set();
+        tracks.value = tracks.value.filter((line) => {
+            const isSameNodeLine = line.fromNodeID && line.fromNodeID === line.toNodeID && isSamePoint({ x: line.x1, y: line.y1 }, { x: line.x2, y: line.y2 });
+            if (isSameNodeLine) {
+                removedLineIDs.add(line.id);
+                return false;
+            }
+            return true;
+        });
+
+        const adjacentLineIDSetByNodeID = new Map(nodes.value.map((node) => [node.id, new Set()]));
+        const addAdjacentLine = (nodeID, lineID) => {
+            const lineIDSet = adjacentLineIDSetByNodeID.get(nodeID);
+            if (lineIDSet) {
+                lineIDSet.add(lineID);
+            }
+        };
+
+        for (const line of tracks.value) {
+            addAdjacentLine(line.fromNodeID, line.id);
+            addAdjacentLine(line.toNodeID, line.id);
+        }
+
+        for (const node of nodes.value) {
+            node.adjacentLineIDList = [...(adjacentLineIDSetByNodeID.get(node.id) || [])];
+        }
+
+        const rebindToMergedNode = (equipment, afterRebind) => {
+            const targetNodeID = resolveNodeID(equipment.bindingNodeID);
+            const targetNode = nodeByID.get(targetNodeID);
+            if (!targetNode) return;
+            equipment.bindingNodeID = targetNodeID;
+            if (equipment.position) {
+                equipment.position.x = targetNode.x;
+                equipment.position.y = targetNode.y;
+            }
+            if (afterRebind) {
+                afterRebind(equipment, targetNode);
+            }
+        };
+
+        for (const signal of signals.value) {
+            rebindToMergedNode(signal);
+        }
+        for (const insulationJoint of insulationJoints.value) {
+            rebindToMergedNode(insulationJoint);
+        }
+        for (const sw of switches.value) {
+            rebindToMergedNode(sw, (switchItem, targetNode) => {
+                switchItem.branchVectorList = buildSwitchBranchVectorList(targetNode);
+            });
+        }
+
+        selectedNodeIds.value = new Set([...selectedNodeIds.value].map((nodeID) => resolveNodeID(nodeID)).filter((nodeID) => nodeByID.has(nodeID)));
+        selectedLineIds.value = new Set([...selectedLineIds.value].filter((lineID) => !removedLineIDs.has(lineID)));
+        movingAnchor.value = null;
         markCrossPoint();
     });
 }
 
 function autoSeparateLine() {
     executeMutation(() => {
-        const cps = markCrossPoint();
+        const lineSet = getLineList();
         const candidateLineDict = {};
 
-        for (const p of cps) {
-            if (p.relation.code === 1 || p.relation.code === 2) {
-                if (!p.relation.breakingLineList) continue;
-                for (const bl of p.relation.breakingLineList) {
-                    if (!candidateLineDict[bl.id]) {
-                        candidateLineDict[bl.id] = { line: bl, pointList: [] };
-                    }
-                    candidateLineDict[bl.id].pointList.push(p);
+        const addSplitPoint = (line, point) => {
+            if (!Number.isFinite(Number(point.x)) || !Number.isFinite(Number(point.y))) return;
+            if (!isPointOnLineSegment(line, point)) return;
+            if (isLineEndpoint(line, point)) return;
+            if (!candidateLineDict[line.id]) {
+                candidateLineDict[line.id] = { line, pointList: [] };
+            }
+            if (!candidateLineDict[line.id].pointList.some((p) => isSamePoint(p, point))) {
+                candidateLineDict[line.id].pointList.push({ x: point.x, y: point.y });
+            }
+        };
+
+        const addEndpointBreakPoint = (endpoint, targetLine) => {
+            if (isPointOnLineSegment(targetLine, endpoint)) {
+                addSplitPoint(targetLine, endpoint);
+                return;
+            }
+
+            const snapPoint = calculatePointSegmentSnap(targetLine, endpoint);
+            if (snapPoint.dist < autoSeparateLineTolerance.value) {
+                addSplitPoint(targetLine, { x: snapPoint.x, y: snapPoint.y });
+            }
+        };
+
+        for (let i = 0; i < lineSet.length; i += 1) {
+            for (let j = i + 1; j < lineSet.length; j += 1) {
+                const l1 = lineSet[i];
+                const l2 = lineSet[j];
+                const crossPoint = calculateCrossPoint(l1, l2);
+
+                if (crossPoint && isPointOnLineSegment(l1, crossPoint) && isPointOnLineSegment(l2, crossPoint)) {
+                    addSplitPoint(l1, crossPoint);
+                    addSplitPoint(l2, crossPoint);
                 }
+
+                addEndpointBreakPoint({ x: Number(l1.x1), y: Number(l1.y1) }, l2);
+                addEndpointBreakPoint({ x: Number(l1.x2), y: Number(l1.y2) }, l2);
+                addEndpointBreakPoint({ x: Number(l2.x1), y: Number(l2.y1) }, l1);
+                addEndpointBreakPoint({ x: Number(l2.x2), y: Number(l2.y2) }, l1);
             }
         }
 
@@ -431,13 +674,14 @@ function autoSeparateLine() {
             pList.push({ x: line.x2, y: line.y2 });
 
             for (const p of pList) {
-                p.positionRate = line.x2 === line.x1 ? (p.y - line.y1) / (line.y2 - line.y1 || 1) : (p.x - line.x1) / (line.x2 - line.x1);
+                p.positionRate = getLinePointPositionRate(line, p);
             }
             pList.sort((a, b) => (a.positionRate < b.positionRate ? -1 : 1));
 
             for (let idx = 0; idx < pList.length - 1; idx += 1) {
                 const p1 = pList[idx];
                 const p2 = pList[idx + 1];
+                if (isSamePoint(p1, p2)) continue;
                 nextTracks.push({
                     id: `${line.id}s${idx}`,
                     x1: p1.x,
@@ -617,8 +861,8 @@ function autoGenerateNodes() {
     });
 }
 
-function buildSwitch(node) {
-    const adjacentLines = tracks.value.filter((line) => node.adjacentLineIDList.includes(line.id));
+function buildSwitchBranchVectorList(node) {
+    const adjacentLines = tracks.value.filter((line) => (node.adjacentLineIDList || []).includes(line.id));
     const vectorList = [];
 
     for (const line of adjacentLines) {
@@ -628,6 +872,12 @@ function buildSwitch(node) {
             vectorList.push({ x: Number(line.x1) - Number(line.x2), y: Number(line.y1) - Number(line.y2), lineID: line.id });
         }
     }
+
+    return vectorList;
+}
+
+function buildSwitch(node) {
+    const vectorList = buildSwitchBranchVectorList(node);
 
     let acuteAngleNum = 0;
     let obtuseAngleNum = 0;
@@ -765,33 +1015,39 @@ function handleLineClick(lineId) {
     selectLine(lineId);
 }
 
-function handleNodeClick(nodeId) {
-    if (editModeCode.value !== 0) return;
+function shouldHandleElementMouseDown(event) {
+    if (editModeCode.value !== 0) return false;
+    event?.stopPropagation();
+    return true;
+}
+
+function handleNodeClick(event, nodeId) {
+    if (!shouldHandleElementMouseDown(event)) return;
     selectedNodeIds.value = new Set([...selectedNodeIds.value, nodeId]);
 }
 
-function handleSignalClick(signalId) {
-    if (editModeCode.value !== 0) return;
+function handleSignalClick(event, signalId) {
+    if (!shouldHandleElementMouseDown(event)) return;
     selectedSignalIds.value = new Set([...selectedSignalIds.value, signalId]);
 }
 
-function handleInsulationJointClick(id) {
-    if (editModeCode.value !== 0) return;
+function handleInsulationJointClick(event, id) {
+    if (!shouldHandleElementMouseDown(event)) return;
     selectedInsulationJointIds.value = new Set([...selectedInsulationJointIds.value, id]);
 }
 
-function handleSwitchClick(id) {
-    if (editModeCode.value !== 0) return;
+function handleSwitchClick(event, id) {
+    if (!shouldHandleElementMouseDown(event)) return;
     selectedSwitchIds.value = new Set([...selectedSwitchIds.value, id]);
 }
 
-function handlePlatformClick(id) {
-    if (editModeCode.value !== 0) return;
+function handlePlatformClick(event, id) {
+    if (!shouldHandleElementMouseDown(event)) return;
     selectedPlatformIds.value = new Set([...selectedPlatformIds.value, id]);
 }
 
-function handleAnchorDown(anchor) {
-    if (editModeCode.value !== 0) return;
+function handleAnchorDown(event, anchor) {
+    if (!shouldHandleElementMouseDown(event)) return;
     movingAnchor.value = anchor;
 }
 
@@ -985,6 +1241,7 @@ defineExpose({
     markCrossPoint,
     removeCrossPoint,
     snapLine,
+    autoMergeNode,
     autoGenerateNodes,
     autoGenerateSwitches,
     startDrawingSignal,
@@ -1012,7 +1269,7 @@ defineExpose({
 
             <rect v-for="anchor in anchorRects" :id="anchor.id" :key="anchor.id" class="anchor snapobj" :x="anchor.x"
                 :y="anchor.y" :width="anchorParam.size" :height="anchorParam.size"
-                @mousedown.stop="handleAnchorDown(anchor)" />
+                @mousedown="handleAnchorDown($event, anchor)" />
 
             <circle v-for="(cp, idx) in crossPoints" :key="`cp-${idx}`" class="crosspoint" :class="`rela${cp.code}`"
                 :cx="cp.x" :cy="cp.y" r="4" />
@@ -1024,7 +1281,7 @@ defineExpose({
         <g id="nodegroup">
             <circle v-for="node in nodes" :id="node.id" :key="`node-${node.id}`" class="node snapobj"
                 :class="{ 'node-selected': isNodeSelected(node.id) }" :cx="node.x" :cy="node.y" r="5"
-                @mousedown.stop="handleNodeClick(node.id)" />
+                @mousedown="handleNodeClick($event, node.id)" />
 
             <circle v-if="tempNode.visible" class="node node-temp" :cx="tempNode.x" :cy="tempNode.y" r="5" />
         </g>
@@ -1032,7 +1289,7 @@ defineExpose({
         <g id="signalgroup">
             <g v-for="signal in signals" :id="String(signal.id)" :key="`signal-${signal.id}`"
                 class="signal signal-departure" :class="{ 'signal-selected': isSignalSelected(signal.id) }"
-                :transform="signalTransform(signal)" @mousedown.stop="handleSignalClick(signal.id)">
+                :transform="signalTransform(signal)" @mousedown="handleSignalClick($event, signal.id)">
                 <circle cx="38" cy="17" r="16" style="fill:#fff;" />
                 <circle cx="38" cy="17" r="8" style="fill:#fff;" />
                 <circle cx="70" cy="17" r="16" style="fill:#009a3e;" />
@@ -1058,7 +1315,7 @@ defineExpose({
                 class="insulationjoint insulationjoint-normal"
                 :class="{ 'insulationjoint-selected': isInsulationJointSelected(ij.id) }"
                 :transform="`translate(${ij.position.x},${ij.position.y})`"
-                @mousedown.stop="handleInsulationJointClick(ij.id)">
+                @mousedown="handleInsulationJointClick($event, ij.id)">
                 <line x1="0" y1="-5" x2="0" y2="5" />
             </g>
 
@@ -1071,7 +1328,7 @@ defineExpose({
         <g id="switchgroup">
             <g v-for="sw in switches" :id="String(sw.id)" :key="`sw-${sw.id}`" class="switch"
                 :class="{ 'switch-selected': isSwitchSelected(sw.id) }" :transform="switchTransform(sw)"
-                @mousedown.stop="handleSwitchClick(sw.id)">
+                @mousedown="handleSwitchClick($event, sw.id)">
                 <line v-for="(lineVec, idx) in sw.branchVectorList" :key="`sw-line-${sw.id}-${idx}`"
                     class="switchbranch" :x1="switchBranch(sw, lineVec).x1" :y1="switchBranch(sw, lineVec).y1"
                     :x2="switchBranch(sw, lineVec).x2" :y2="switchBranch(sw, lineVec).y2" />
@@ -1082,7 +1339,7 @@ defineExpose({
         <g id="platformgroup">
             <g v-for="platform in platforms" :id="String(platform.id)" :key="`platform-${platform.id}`" class="platform"
                 :class="{ 'platform-selected': isPlatformSelected(platform.id) }"
-                @mousedown.stop="handlePlatformClick(platform.id)">
+                @mousedown="handlePlatformClick($event, platform.id)">
                 <rect :x="platform.x" :y="platform.y" :width="platform.width" :height="platform.height" />
                 <text class="platformname" :x="platform.x + platform.width / 2" :y="platform.y + platform.height / 2">
                     PLATFORM
