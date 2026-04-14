@@ -82,7 +82,7 @@
                 :kinetic-energy-height-data="kineticEnergyHeightData"
                 :breaking-energy-height-data="breakingEnergyHeightData" :global-scale-x="globalScaleX"
                 :global-scale-y="globalScaleY" :element-visibility="elementVisibility" :global-cursor-x="globalCursorX"
-                @updateGlobalCursorX="updateGlobalCursorX" @horizontal-scroll="syncHorizontalScroll"
+                :g_="currentWagonEffectiveG" @updateGlobalCursorX="updateGlobalCursorX" @horizontal-scroll="syncHorizontalScroll"
                 @wheel-scale-x="handleWheelScaleX" @update-retarder-status-list="handleInlineRetarderStatusUpdate" />
             <HumpSlopeSketchBlock ref="humpSlopeSketchBlockRef" v-model:slope-layout="slopeLayout" style="height:auto"
                 :global-scale-x="globalScaleX" :global-cursor-x="globalCursorX"
@@ -387,6 +387,16 @@ interface HumpCalculation {
     retarderStatusList?: RetarderStatus[]
 }
 
+interface WagonConcept {
+    id?: string
+    typeName: string
+    netMass: number
+    loadingMass: number
+    grossMass?: number
+    axleNumber: number
+    g?: number
+}
+
 type BreakingEnergyHeightPoint = {
     x: number
     breakingEnergyHeight: number
@@ -409,9 +419,28 @@ const currentRetarderStatusList = computed<RetarderStatus[]>(() => {
 })
 
 // 下拉菜单选项数据
-const wagonConcepts = ref<any[]>([])
+const wagonConcepts = ref<WagonConcept[]>([])
 const operationConditions = ref<any[]>([])
 const slopeLines = ref<any[]>([])
+
+const currentWagonEffectiveG = computed(() => {
+    const currentCalculation = humpCalculations.value.find(calc => calc.id === currentHumpCalculationID.value)
+    const currentWagon = wagonConcepts.value.find(wagon => wagon.typeName === currentCalculation?.wagonType)
+    if (!currentWagon) {
+        return undefined
+    }
+
+    const baseG = Number(currentWagon.g)
+    const g = Number.isFinite(baseG) && baseG > 0 ? baseG : 9.8
+    const grossMass = Number(currentWagon.grossMass ?? (Number(currentWagon.netMass) + Number(currentWagon.loadingMass)))
+    const axleNumber = Number(currentWagon.axleNumber)
+
+    if (!Number.isFinite(grossMass) || grossMass <= 0 || !Number.isFinite(axleNumber)) {
+        return g
+    }
+
+    return g / (1 + 0.42 * axleNumber / grossMass)
+})
 
 // 生成计算条件显示标签
 const getCalculationDisplayLabel = (calculation: HumpCalculation) => {
@@ -516,7 +545,7 @@ const defaultCalculateCondition = () => ({
     isHeadWind: "--",
     airDensity: "--",
     temperature: "--",
-    g: "--",
+    g: 9.8,
     retarderActivation: {},
     retarderOutput: {}
 })
@@ -978,7 +1007,7 @@ const updateCurrentCalculateCondition = async () => {
             isHeadWind: operationCondition.isHeadWind !== undefined ? operationCondition.isHeadWind : '--',
             airDensity: operationCondition.airDensity !== undefined ? operationCondition.airDensity : '--',
             temperature: operationCondition.temperature !== undefined ? operationCondition.temperature : '--',
-            g: operationCondition.g || 9.8,
+            g: currentWagonEffectiveG.value ?? 9.8,
             retarderActivation: operationCondition.retarderActivation || {},
             retarderOutput: operationCondition.retarderOutput || {}
         }
@@ -1240,7 +1269,7 @@ const handleAddCalculation = async () => {
         id: '', // 后端会生成
         instanceID: props.selectedInstanceId,
         humpSchemeID: currentHumpSchemeID.value,
-        wagonType: wagonConcepts.value.length > 0 ? (wagonConcepts.value[0].typeName || 'P70H') : 'P70H',
+        wagonType: wagonConcepts.value[0]?.typeName || 'P70H',
         operationConditionID: operationConditions.value.length > 0 ? operationConditions.value[0].id : 'default',
         slopeLineID: slopeLines.value.length > 0 ? slopeLines.value[0].id : 'default',
         data: [] // 提供必需的 Data 字段作为数组

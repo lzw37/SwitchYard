@@ -69,6 +69,7 @@ import axios from '@/utils/axios'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useI18n } from 'vue-i18n'
 import type { FormInstance, FormRules } from 'element-plus'
+import { useAuthStore } from '@/stores/auth'
 
 interface HumpInstance {
     id?: string
@@ -79,6 +80,9 @@ interface HumpInstance {
 }
 
 const { t } = useI18n()
+const authStore = useAuthStore()
+authStore.hydrateFromStorage()
+
 const instances = ref<HumpInstance[]>([])
 const loading = ref(false)
 const saving = ref(false)
@@ -122,7 +126,7 @@ const openCreate = () => {
     Object.assign(formData, {
         id: '',
         name: '',
-        owner: '',
+        owner: authStore.username.trim(),
         createdDate: '',
         isActive: 1
     })
@@ -171,6 +175,7 @@ const createInstance = async () => {
     try {
         const response = await axios.post('/Hump/CreateInstance', {
             name: formData.name,
+            owner: formData.owner || authStore.username.trim(),
             isActive: formData.isActive,
         })
         ElMessage.success(t('humpInstance.messages.createSuccess'))

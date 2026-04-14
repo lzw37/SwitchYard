@@ -116,7 +116,7 @@
                     <text v-if="props.elementVisibility?.kinetic && showKineticNumber" class="kinetic-text" v-for="dataPoint in
                         kineticEnergyHeightData || []" :x="getX(dataPoint.x)"
                         :y="kineticTextPositions.get(dataPoint.x) ?? ((getY(dataPoint.result.gravitationHeight) + getY(dataPoint.result.gravitationHeight + dataPoint.result.kineticEnergyHeight)) / 2)">{{
-                            dataPoint.result.kineticEnergyHeight
+                            formatKineticEnergyHeight(dataPoint.result.kineticEnergyHeight)
                         }}m({{ dataPoint.result.velocity }}m/s)</text>
                 </g>
                 <g class="cursor">
@@ -646,8 +646,9 @@ function updateKineticEnergyHeights(id: string) {
             const resistanceHeight = kineticResultPos.result.resistanceHeight || 0;
             const breakingHeight = kineticResultPos.result.breakingHeight || 0;
 
-            kineticResultPos.result.kineticEnergyHeight = Math.round((orgKineticEnergyHeight + (humpHeight - gravitationHeight) - resistanceHeight - breakingHeight) * 1000) / 1000;
-            kineticResultPos.result.velocity = Math.round(Math.sqrt(2 * (props.g_ ?? 9.81) * kineticResultPos.result.kineticEnergyHeight) * 1000) / 1000;
+            const kineticEnergyHeight = Math.max(0, orgKineticEnergyHeight + (humpHeight - gravitationHeight) - resistanceHeight - breakingHeight);
+            kineticResultPos.result.kineticEnergyHeight = Math.round(kineticEnergyHeight * 1000) / 1000;
+            kineticResultPos.result.velocity = Math.round(Math.sqrt(2 * (props.g_ ?? 9.8) * kineticEnergyHeight) * 100) / 100;
         }
     }
 }
@@ -794,7 +795,7 @@ const kineticTextPositions = computed(() => {
     const placed: { x1: number; x2: number; y1: number; y2: number }[] = [];
 
     for (const dataPoint of props.kineticEnergyHeightData) {
-        const text = `${dataPoint.result.kineticEnergyHeight}m(${dataPoint.result.velocity}m/s)`;
+        const text = `${formatKineticEnergyHeight(dataPoint.result.kineticEnergyHeight)}m(${dataPoint.result.velocity}m/s)`;
         const width = Math.max(12, text.length * charWidth);
         const cx = getX(dataPoint.x);
         const baseY = (getY(dataPoint.result.gravitationHeight) + getY(dataPoint.result.gravitationHeight + dataPoint.result.kineticEnergyHeight)) / 2;
@@ -882,6 +883,12 @@ function interpolateSeriesValue(points: CurveSamplePoint[], x: number): number |
 function formatHeightValue(value: number): string {
     if (!Number.isFinite(value)) return '0';
     return Number(value.toFixed(3)).toString();
+}
+
+function formatKineticEnergyHeight(value: unknown): string {
+    const numericValue = Number(value);
+    if (!Number.isFinite(numericValue)) return '0.000';
+    return numericValue.toFixed(3);
 }
 
 const retarderBreakingHeightLabels = computed<RetarderBreakingHeightLabel[]>(() => {
