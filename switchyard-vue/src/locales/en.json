@@ -50,6 +50,7 @@
             "confirmMismatch": "The two passwords do not match"
         },
         "success": "User created successfully",
+        "adminPendingApproval": "Administrator account created. Another administrator must activate it in user management before login.",
         "failed": "Failed to create user, please try again later",
         "networkError": "Network error, please try again later"
     },

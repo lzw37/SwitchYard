@@ -35,6 +35,18 @@ namespace SwitchYard.Service.Controllers
                 var user = _userService.ValidateUser(request.Username, request.Password);
                 if (user == null)
                 {
+                    var registeredUser = _userService.GetUserByUsername(request.Username);
+                    if (registeredUser != null &&
+                        registeredUser.IsActive != 1 &&
+                        UserService.VerifyPassword(request.Password, registeredUser.PasswordHash))
+                    {
+                        _logger.LogWarning(
+                            "Login failed: inactive user - {Username}, ClientIp: {ClientIp}",
+                            request.Username,
+                            GetClientIpAddress());
+                        return StatusCode(StatusCodes.Status403Forbidden, new { message = "账号未激活，请联系管理员在用户管理中激活" });
+                    }
+
                     _logger.LogWarning(
                         "Login failed: invalid username or password - {Username}, ClientIp: {ClientIp}",
                         request.Username,
@@ -83,7 +95,14 @@ namespace SwitchYard.Service.Controllers
                     return BadRequest(new { message = "请求参数无效", errors = ModelState });
                 }
 
-                var existingUser = _userService.GetUserByUsername(request.Username);
+                var username = request.Username.Trim();
+                var normalizedRole = NormalizeRole(request.Role);
+                if (normalizedRole == null)
+                {
+                    return BadRequest(new { message = "Invalid role. Allowed values are User or Admin." });
+                }
+
+                var existingUser = _userService.GetUserByUsername(username);
                 if (existingUser != null)
                 {
                     _logger.LogWarning(
@@ -93,11 +112,14 @@ namespace SwitchYard.Service.Controllers
                     return Conflict(new { message = "用户名已存在" });
                 }
 
+                var isAdminRegistration = string.Equals(normalizedRole, "Admin", StringComparison.Ordinal);
+                var isActive = isAdminRegistration ? 0u : 1u;
                 var newUser = _userService.CreateUser(
-                    request.Username,
-                    request.Password,
-                    request.Email,
-                    request.Role);
+                    username,
+                    request.Password.Trim(),
+                    string.IsNullOrWhiteSpace(request.Email) ? null : request.Email.Trim(),
+                    normalizedRole,
+                    isActive);
 
                 if (newUser == null)
                 {
@@ -115,6 +137,7 @@ namespace SwitchYard.Service.Controllers
                     Email = newUser.Email,
                     Role = newUser.Role,
                     CreatedAt = newUser.CreateAt,
+                    IsActive = newUser.IsActive,
                     Message = "用户创建成功"
                 };
 
@@ -350,6 +373,21 @@ namespace SwitchYard.Service.Controllers
             }
 
             return true;
+        }
+
+        private static string? NormalizeRole(string role)
+        {
+            if (string.Equals(role, "Admin", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Admin";
+            }
+
+            if (string.Equals(role, "User", StringComparison.OrdinalIgnoreCase))
+            {
+                return "User";
+            }
+
+            return null;
         }
     }
 }

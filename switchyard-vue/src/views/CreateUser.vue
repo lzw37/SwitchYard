@@ -73,6 +73,7 @@ interface CreateUserResponse {
     email?: string
     role: string
     createdAt: string
+    isActive?: number
     message: string
 }
 
@@ -153,7 +154,8 @@ const handleCreateUser = async () => {
                 const response = await axios.post<CreateUserResponse>('/api/Auth/createuser', requestData)
 
                 if (response.data.name) {
-                    ElMessage.success(response.data.message || t('createUser.success'))
+                    const isPendingAdmin = response.data.role === 'Admin' && Number(response.data.isActive) === 0
+                    ElMessage.success(isPendingAdmin ? t('createUser.adminPendingApproval') : (response.data.message || t('createUser.success')))
                 } else {
                     throw new Error(t('createUser.failed'))
                 }

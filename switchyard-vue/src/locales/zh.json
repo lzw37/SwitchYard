@@ -50,6 +50,7 @@
             "confirmMismatch": "两次输入的密码不一致"
         },
         "success": "用户创建成功",
+        "adminPendingApproval": "管理员账号已创建，请等待其他管理员在用户管理中激活后再登录",
         "failed": "创建用户失败，请稍后重试",
         "networkError": "网络错误，请稍后重试"
     },

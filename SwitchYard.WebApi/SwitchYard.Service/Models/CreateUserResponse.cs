@@ -31,6 +31,11 @@ namespace SwitchYard.Service.Models
         public DateTime CreatedAt { get; set; }
 
         /// <summary>
+        /// 激活状态
+        /// </summary>
+        public uint IsActive { get; set; } = 1;
+
+        /// <summary>
         /// 消息
         /// </summary>
         public string Message { get; set; } = string.Empty;
