@@ -106,6 +106,10 @@ function autoGenerateNode() {
     stationLayoutEditorRef.value?.autoGenerateNodes();
 }
 
+function autoMergeNode() {
+    stationLayoutEditorRef.value?.autoMergeNode();
+}   
+
 function autoGenerateSwitch() {
     stationLayoutEditorRef.value?.autoGenerateSwitches();
 }
@@ -276,6 +280,7 @@ function extractDwgFile() {
                         }}</el-button>
                     <el-button :icon="Share" @click="autoGenerateNode">{{ t('stationLayout.tools.generateNode')
                         }}</el-button>
+                        <el-button :icon="Share" @click="autoMergeNode">节点合并</el-button>
                     <el-button :icon="SetUp" @click="autoGenerateSwitch">{{ t('stationLayout.tools.generateSwitch')
                         }}</el-button>
                 </el-button-group>
