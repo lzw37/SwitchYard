@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using ACadSharp.IO;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using SwitchYard.Capacity;
 
 namespace SwitchYard.Service.Controllers
@@ -15,6 +16,9 @@ namespace SwitchYard.Service.Controllers
         private readonly ILogger<StationLayoutController> _logger;
         private readonly IWebHostEnvironment _environment;
 
+        private const long MaxDwgFileSize = 20L * 1024 * 1024; // 20 MB
+        private static readonly Regex LayerNameRegex = new("^[A-Za-z0-9_\\-]{1,255}$", RegexOptions.Compiled);
+
         public StationLayoutController(ILogger<StationLayoutController> logger, IWebHostEnvironment environment)
         {
             _logger = logger;
@@ -22,7 +26,7 @@ namespace SwitchYard.Service.Controllers
         }
         
         [HttpPost(Name ="SaveJson")]
-        [AllowAnonymous]
+        [Authorize(Roles = "Admin")]
         public IActionResult SaveJson([FromBody] StationLayoutSaveRequest? request)
         {
             if (request == null || string.IsNullOrWhiteSpace(request.Json))
@@ -71,7 +75,6 @@ namespace SwitchYard.Service.Controllers
         }
 
         [HttpPost(Name = "GetJson")]
-        [AllowAnonymous]
         public IActionResult GetJson()
         {
             if (!TryResolveStationLayoutFilePath(out var filePath, out var errorMessage))
@@ -114,26 +117,21 @@ namespace SwitchYard.Service.Controllers
 
         private bool TryResolveStationLayoutFilePath(out string filePath, out string errorMessage)
         {
-            foreach (var startDirectory in GetSearchStartDirectories())
-            {
-                var currentDirectory = new DirectoryInfo(startDirectory);
-                for (var depth = 0; currentDirectory != null && depth < 8; depth += 1)
-                {
-                    var candidateDirectory = Path.Combine(currentDirectory.FullName, "LocalData", "Capacity");
-                    if (Directory.Exists(candidateDirectory))
-                    {
-                        filePath = Path.Combine(candidateDirectory, "StationLayout.json");
-                        errorMessage = string.Empty;
-                        return true;
-                    }
-
-                    currentDirectory = currentDirectory.Parent;
-                }
-            }
-
             try
             {
-                filePath = Path.GetFullPath(Path.Combine(_environment.ContentRootPath, "..", "..", "LocalData", "Capacity", "StationLayout.json"));
+                var rootPath = Path.GetFullPath(_environment.ContentRootPath);
+                var targetDirectory = Path.GetFullPath(Path.Combine(rootPath, "LocalData", "Capacity"));
+
+                // Ensure the resolved directory does not escape the content root.
+                if (!targetDirectory.StartsWith(rootPath, StringComparison.OrdinalIgnoreCase))
+                {
+                    _logger.LogError("Resolved StationLayout directory escapes the content root. Target: {Target}", targetDirectory);
+                    filePath = string.Empty;
+                    errorMessage = "Failed to resolve StationLayout.json path.";
+                    return false;
+                }
+
+                filePath = Path.Combine(targetDirectory, "StationLayout.json");
                 errorMessage = string.Empty;
                 return true;
             }
@@ -143,21 +141,6 @@ namespace SwitchYard.Service.Controllers
                 filePath = string.Empty;
                 errorMessage = "Failed to resolve StationLayout.json path.";
                 return false;
-            }
-        }
-
-        private IEnumerable<string> GetSearchStartDirectories()
-        {
-            if (!string.IsNullOrWhiteSpace(_environment.ContentRootPath))
-            {
-                yield return _environment.ContentRootPath;
-            }
-
-            var baseDirectory = AppContext.BaseDirectory;
-            if (!string.IsNullOrWhiteSpace(baseDirectory) &&
-                !string.Equals(baseDirectory, _environment.ContentRootPath, StringComparison.OrdinalIgnoreCase))
-            {
-                yield return baseDirectory;
             }
         }
 
@@ -181,12 +164,19 @@ namespace SwitchYard.Service.Controllers
         }
 
         [HttpPost(Name = "ExtractDwgFile")]
-        [AllowAnonymous]
+        [Authorize(Roles = "Admin")]
+        [RequestSizeLimit(MaxDwgFileSize)]
+        [RequestFormLimits(MultipartBodyLengthLimit = MaxDwgFileSize)]
         public async Task<IActionResult> ExtractDwgFile(IFormFile? file, [FromForm] string? layerName = "0")
         {
             if (file == null || file.Length == 0)
             {
                 return BadRequest("Please upload a non-empty DWG file.");
+            }
+
+            if (file.Length > MaxDwgFileSize)
+            {
+                return BadRequest($"File size exceeds the {MaxDwgFileSize / (1024 * 1024)} MB limit.");
             }
 
             if (!string.Equals(Path.GetExtension(file.FileName), ".dwg", StringComparison.OrdinalIgnoreCase))
@@ -199,6 +189,11 @@ namespace SwitchYard.Service.Controllers
                 layerName = "0";
             }
 
+            if (!LayerNameRegex.IsMatch(layerName))
+            {
+                return BadRequest("Invalid layer name.");
+            }
+
             if (!TryResolveStationLayoutFilePath(out var filePath, out var errorMessage))
             {
                 return StatusCode(500, errorMessage);
@@ -209,7 +204,7 @@ namespace SwitchYard.Service.Controllers
                 await using var stream = file.OpenReadStream();
                 var document = DwgReader.Read(stream, new DwgReaderConfiguration
                 {
-                    Failsafe = true
+                    Failsafe = false
                 }, notification: null);
 
                 if (!document.Layers.Any(layer => string.Equals(layer.Name, layerName, StringComparison.OrdinalIgnoreCase)))
@@ -218,7 +213,11 @@ namespace SwitchYard.Service.Controllers
                         .Select(layer => layer.Name)
                         .Order(StringComparer.OrdinalIgnoreCase)
                         .ToArray();
-                    return BadRequest($"Layer '{layerName}' was not found. Available layers: {string.Join(", ", availableLayers)}");
+                    _logger.LogWarning(
+                        "Requested DWG layer not found. Requested: {LayerName}, Available: {Layers}",
+                        layerName,
+                        string.Join(", ", availableLayers));
+                    return BadRequest("The specified layer was not found in the DWG file.");
                 }
 
                 var extractor = new AutoCADLayerLineExtractor();

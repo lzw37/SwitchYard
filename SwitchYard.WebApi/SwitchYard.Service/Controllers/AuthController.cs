@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using SwitchYard.Service.Models;
 using SwitchYard.Service.Services;
 using System.Security.Claims;
@@ -14,20 +15,24 @@ namespace SwitchYard.Service.Controllers
     public class AuthController : ControllerBase
     {
         private readonly JwtTokenService _jwtTokenService;
+        private readonly RefreshTokenService _refreshTokenService;
         private readonly UserService _userService;
         private readonly ILogger<AuthController> _logger;
 
         public AuthController(
             JwtTokenService jwtTokenService,
+            RefreshTokenService refreshTokenService,
             UserService userService,
             ILogger<AuthController> logger)
         {
             _jwtTokenService = jwtTokenService;
+            _refreshTokenService = refreshTokenService;
             _userService = userService;
             _logger = logger;
         }
 
         [HttpPost("login")]
+        [EnableRateLimiting("auth")]
         public IActionResult Login([FromBody] LoginRequest request)
         {
             try
@@ -35,6 +40,9 @@ namespace SwitchYard.Service.Controllers
                 var user = _userService.ValidateUser(request.Username, request.Password);
                 if (user == null)
                 {
+                    // To prevent username enumeration we return a single generic response
+                    // for all authentication failures (wrong credentials, inactive account, etc.).
+                    // The specific reason is only recorded in server-side logs.
                     var registeredUser = _userService.GetUserByUsername(request.Username);
                     if (registeredUser != null &&
                         registeredUser.IsActive != 1 &&
@@ -44,23 +52,28 @@ namespace SwitchYard.Service.Controllers
                             "Login failed: inactive user - {Username}, ClientIp: {ClientIp}",
                             request.Username,
                             GetClientIpAddress());
-                        return StatusCode(StatusCodes.Status403Forbidden, new { message = "账号未激活，请联系管理员在用户管理中激活" });
+                    }
+                    else
+                    {
+                        _logger.LogWarning(
+                            "Login failed: invalid username or password - {Username}, ClientIp: {ClientIp}",
+                            request.Username,
+                            GetClientIpAddress());
                     }
 
-                    _logger.LogWarning(
-                        "Login failed: invalid username or password - {Username}, ClientIp: {ClientIp}",
-                        request.Username,
-                        GetClientIpAddress());
-                    return Unauthorized(new { message = "用户名或密码错误" });
+                    return Unauthorized(new { message = "用户名或密码错误，或账号尚未激活" });
                 }
 
                 var token = _jwtTokenService.GenerateToken(user);
+                var refreshToken = _refreshTokenService.CreateToken(user.Id);
 
                 var response = new LoginResponse
                 {
                     Token = token,
                     TokenType = "Bearer",
                     ExpiresIn = _jwtTokenService.GetExpirationSeconds(),
+                    RefreshToken = refreshToken.Token,
+                    RefreshTokenExpiresIn = _refreshTokenService.GetExpirationSeconds(),
                     Name = user.Name,
                     UserID = user.Id,
                     Role = user.Role,
@@ -85,7 +98,94 @@ namespace SwitchYard.Service.Controllers
             }
         }
 
+        /// <summary>
+        /// 使用有效的 Refresh Token 换取新的 Access Token 和 Refresh Token（令牌轮换）。
+        /// </summary>
+        [HttpPost("refresh")]
+        [EnableRateLimiting("auth")]
+        public IActionResult Refresh([FromBody] RefreshRequest request)
+        {
+            try
+            {
+                if (!ModelState.IsValid)
+                {
+                    return BadRequest(new { message = "请求参数无效" });
+                }
+
+                // 轮换 Refresh Token（内部已校验是否吊销/过期，并处理疑似盗用情形）
+                var newRefreshToken = _refreshTokenService.Rotate(request.RefreshToken);
+                if (newRefreshToken == null)
+                {
+                    return Unauthorized(new { message = "Refresh Token 无效或已过期" });
+                }
+
+                var user = _userService.GetActiveUserById(newRefreshToken.UserId);
+                if (user == null)
+                {
+                    // 用户已被禁用，吊销刚创建的 token
+                    _refreshTokenService.Revoke(newRefreshToken.Token);
+                    return Unauthorized(new { message = "用户不存在或已被禁用" });
+                }
+
+                var accessToken = _jwtTokenService.GenerateToken(user);
+
+                _logger.LogInformation(
+                    "Token refreshed for user {Username}, ClientIp: {ClientIp}",
+                    user.Name,
+                    GetClientIpAddress());
+
+                return Ok(new
+                {
+                    token = accessToken,
+                    tokenType = "Bearer",
+                    expiresIn = _jwtTokenService.GetExpirationSeconds(),
+                    refreshToken = newRefreshToken.Token,
+                    refreshTokenExpiresIn = _refreshTokenService.GetExpirationSeconds()
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(
+                    ex,
+                    "An error occurred during token refresh, ClientIp: {ClientIp}",
+                    GetClientIpAddress());
+                return StatusCode(500, new { message = "服务器内部错误" });
+            }
+        }
+
+        /// <summary>
+        /// 登出：吊销指定 Refresh Token。
+        /// </summary>
+        [HttpPost("logout")]
+        public IActionResult Logout([FromBody] RefreshRequest request)
+        {
+            try
+            {
+                if (!ModelState.IsValid || string.IsNullOrWhiteSpace(request.RefreshToken))
+                {
+                    return BadRequest(new { message = "请求参数无效" });
+                }
+
+                _refreshTokenService.Revoke(request.RefreshToken);
+
+                _logger.LogInformation(
+                    "User logged out, ClientIp: {ClientIp}",
+                    GetClientIpAddress());
+
+                return Ok(new { message = "已成功登出" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(
+                    ex,
+                    "An error occurred during logout, ClientIp: {ClientIp}",
+                    GetClientIpAddress());
+                return StatusCode(500, new { message = "服务器内部错误" });
+            }
+        }
+
         [HttpPost("createuser")]
+        [EnableRateLimiting("register")]
         public IActionResult CreateUser([FromBody] CreateUserRequest request)
         {
             try
@@ -244,6 +344,7 @@ namespace SwitchYard.Service.Controllers
 
         [Authorize]
         [HttpPost("changepassword")]
+        [EnableRateLimiting("auth")]
         public IActionResult ChangePassword([FromBody] ChangePasswordRequest request)
         {
             try
@@ -305,74 +406,24 @@ namespace SwitchYard.Service.Controllers
 
         private string GetClientIpAddress()
         {
-            var forwardedFor = Request?.Headers["X-Forwarded-For"].FirstOrDefault();
-            if (!string.IsNullOrWhiteSpace(forwardedFor))
-            {
-                var ips = forwardedFor.Split(',', StringSplitOptions.RemoveEmptyEntries);
-                foreach (var ip in ips)
-                {
-                    var trimmedIp = ip.Trim();
-                    if (IsValidIpAddress(trimmedIp))
-                    {
-                        return trimmedIp;
-                    }
-                }
-            }
-
-            var realIp = Request?.Headers["X-Real-IP"].FirstOrDefault();
-            if (!string.IsNullOrWhiteSpace(realIp) && IsValidIpAddress(realIp))
-            {
-                return realIp;
-            }
-
-            var cfConnectingIp = Request?.Headers["CF-Connecting-IP"].FirstOrDefault();
-            if (!string.IsNullOrWhiteSpace(cfConnectingIp) && IsValidIpAddress(cfConnectingIp))
-            {
-                return cfConnectingIp;
-            }
-
-            var xForwardedFor = Request?.Headers["X_FORWARDED_FOR"].FirstOrDefault();
-            if (!string.IsNullOrWhiteSpace(xForwardedFor) && IsValidIpAddress(xForwardedFor))
-            {
-                return xForwardedFor;
-            }
-
-            var trueClientIp = Request?.Headers["True-Client-IP"].FirstOrDefault();
-            if (!string.IsNullOrWhiteSpace(trueClientIp) && IsValidIpAddress(trueClientIp))
-            {
-                return trueClientIp;
-            }
-
+            // Only trust HttpContext.Connection.RemoteIpAddress. The ASP.NET Core
+            // ForwardedHeaders middleware (configured in Program.cs with an explicit
+            // KnownProxies / KnownNetworks list) is responsible for safely replacing
+            // this value from X-Forwarded-For when requests come from trusted proxies.
+            // User-controllable headers MUST NOT be read directly here because they
+            // can be spoofed, allowing audit / rate-limit bypass.
             var remoteIp = HttpContext?.Connection?.RemoteIpAddress?.ToString();
-            if (!string.IsNullOrWhiteSpace(remoteIp))
+            if (string.IsNullOrWhiteSpace(remoteIp))
             {
-                if (remoteIp.StartsWith("::ffff:", StringComparison.Ordinal))
-                {
-                    remoteIp = remoteIp.Substring(7);
-                }
-
-                if (IsValidIpAddress(remoteIp))
-                {
-                    return remoteIp;
-                }
+                return "unknown";
             }
 
-            return "unknown";
-        }
-
-        private static bool IsValidIpAddress(string ipString)
-        {
-            if (!System.Net.IPAddress.TryParse(ipString, out _))
+            if (remoteIp.StartsWith("::ffff:", StringComparison.Ordinal))
             {
-                return false;
+                remoteIp = remoteIp.Substring(7);
             }
 
-            if (ipString == "127.0.0.1" || ipString == "::1" || ipString == "localhost")
-            {
-                return false;
-            }
-
-            return true;
+            return remoteIp;
         }
 
         private static string? NormalizeRole(string role)

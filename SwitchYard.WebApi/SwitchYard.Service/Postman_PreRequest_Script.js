@@ -1,7 +1,7 @@
 /**
- * Postman Pre-request Script for JWT Authentication
- * 用于自动处理JWT Token的获取和刷新
- * 
+ * Postman Pre-request Script for JWT Authentication (with Refresh Token support)
+ * 用于自动处理JWT Token的获取和无感刷新
+ *
  * 使用说明：
  * 1. 在Postman的Collection或Folder级别设置此脚本
  * 2. 配置环境变量：
@@ -9,8 +9,10 @@
  *    - username: 用户名 (例如: admin)
  *    - password: 密码 (例如: admin123)
  * 3. 脚本会自动管理以下环境变量：
- *    - jwt_token: JWT Token
- *    - token_expiry: Token过期时间戳
+ *    - jwt_token:           Access Token
+ *    - token_expiry:        Access Token 过期时间戳（秒）
+ *    - refresh_token:       Refresh Token
+ *    - refresh_token_expiry: Refresh Token 过期时间戳（秒）
  */
 
 // ============================================================================
@@ -23,9 +25,9 @@ const CONFIG = {
     username: pm.environment.get("username") || "admin",
     password: pm.environment.get("password") || "admin123",
     loginEndpoint: "/api/Auth/login",
+    refreshEndpoint: "/api/Auth/refresh",
 
-    // Token过期前提前刷新的时间（秒）
-    // 如果Token在60秒内过期，则重新获取
+    // Access Token 过期前提前刷新的时间（秒）
     refreshBeforeExpiry: 60
 };
 
@@ -78,7 +80,77 @@ return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
 }
 
 /**
- * 登录并获取JWT Token
+ * 检查 Refresh Token 是否有效（存在且未过期）
+ */
+function hasValidRefreshToken() {
+    const refreshToken = pm.environment.get("refresh_token");
+    if (!refreshToken || refreshToken.length === 0) return false;
+    const expiry = pm.environment.get("refresh_token_expiry");
+    if (!expiry) return false;
+    const now = Math.floor(Date.now() / 1000);
+    return parseInt(expiry) > now + 10; // 至少还有10秒
+}
+
+/**
+ * 使用 Refresh Token 无感刷新 Access Token
+ */
+function refreshAccessToken() {
+    const refreshToken = pm.environment.get("refresh_token");
+    const refreshUrl = CONFIG.baseUrl + CONFIG.refreshEndpoint;
+
+    const refreshRequest = {
+        url: refreshUrl,
+        method: 'POST',
+        header: { 'Content-Type': 'application/json' },
+        body: {
+            mode: 'raw',
+            raw: JSON.stringify({ refreshToken: refreshToken })
+        }
+    };
+
+    console.log("[JWT Auth] 正在使用 Refresh Token 刷新 Access Token...");
+
+    pm.sendRequest(refreshRequest, function (err, response) {
+        if (err || response.code !== 200) {
+            console.warn("[JWT Auth] Refresh Token 刷新失败，尝试重新登录...");
+            login();
+            return;
+        }
+
+        try {
+            const body = response.json();
+            saveTokens(body.token || body.Token, body.expiresIn || body.ExpiresIn,
+                       body.refreshToken || body.RefreshToken, body.refreshTokenExpiresIn || body.RefreshTokenExpiresIn);
+            console.log("[JWT Auth] ✅ Access Token 刷新成功");
+        } catch (e) {
+            console.error("[JWT Auth] 解析刷新响应失败:", e);
+            login();
+        }
+    });
+}
+
+/**
+ * 保存 Token 信息到环境变量
+ */
+function saveTokens(accessToken, expiresIn, refreshToken, refreshExpiresIn) {
+    const now = Math.floor(Date.now() / 1000);
+
+    if (accessToken) {
+        const payload = parseJwtPayload(accessToken);
+        const expiry = (payload && payload.exp) ? payload.exp : (now + (expiresIn || 1800));
+        pm.environment.set("jwt_token", accessToken);
+        pm.environment.set("token_expiry", expiry.toString());
+    }
+
+    if (refreshToken) {
+        const refreshExpiry = now + (refreshExpiresIn || 604800); // 默认7天
+        pm.environment.set("refresh_token", refreshToken);
+        pm.environment.set("refresh_token_expiry", refreshExpiry.toString());
+    }
+}
+
+/**
+ * 登录并获取 Access Token + Refresh Token
  */
 function login() {
     const loginUrl = CONFIG.baseUrl + CONFIG.loginEndpoint;
@@ -121,40 +193,11 @@ function login() {
        }
             
             const token = responseBody.token;
-            
-    // 解析Token获取过期时间
-          const payload = parseJwtPayload(token);
-  let expiryTimestamp;
-            
-       if (payload && payload.exp) {
-        // 从Token的exp字段获取过期时间
-       expiryTimestamp = payload.exp;
-  console.log(`[JWT Auth] Token将在 ${new Date(expiryTimestamp * 1000).toLocaleString()} 过期`);
-   } else if (responseBody.expiresIn) {
-   // 从响应的expiresIn字段计算过期时间
-    const now = Math.floor(Date.now() / 1000);
-       expiryTimestamp = now + responseBody.expiresIn;
-    console.log(`[JWT Auth] Token有效期: ${responseBody.expiresIn} 秒`);
-       } else {
-      // 默认60分钟过期
-                const now = Math.floor(Date.now() / 1000);
-   expiryTimestamp = now + 3600;
-      console.warn("[JWT Auth] 无法获取Token过期时间，使用默认值60分钟");
-            }
-            
-            // 保存Token和过期时间到环境变量
-            pm.environment.set("jwt_token", token);
-        pm.environment.set("token_expiry", expiryTimestamp.toString());
-            
-    // 保存用户信息（可选）
-   if (responseBody.username) {
-   pm.environment.set("current_user", responseBody.username);
- }
-  if (responseBody.role) {
-      pm.environment.set("current_role", responseBody.role);
-            }
-            
-            console.log(`[JWT Auth] ? 登录成功！用户: ${responseBody.username || CONFIG.username}, 角色: ${responseBody.role || 'Unknown'}`);
+            const refreshToken = responseBody.refreshToken;
+
+            saveTokens(token, responseBody.expiresIn, refreshToken, responseBody.refreshTokenExpiresIn);
+
+            console.log(`[JWT Auth] ✅ 登录成功！用户: ${responseBody.username || CONFIG.username}, 角色: ${responseBody.role || 'Unknown'}`);
      
         } catch (e) {
           console.error("[JWT Auth] 解析登录响应失败:", e);
@@ -168,31 +211,43 @@ function login() {
 // ============================================================================
 
 try {
-    // 检查是否需要获取或刷新Token
+    // 检查是否需要获取或刷新 Access Token
     if (!hasToken()) {
-      console.log("[JWT Auth] 未找到Token，正在获取...");
-     login();
+        console.log("[JWT Auth] 未找到 Access Token，正在登录...");
+        if (hasValidRefreshToken()) {
+            refreshAccessToken();
+        } else {
+            login();
+        }
     } else if (isTokenExpired()) {
-      console.log("[JWT Auth] Token已过期或即将过期，正在刷新...");
-      login();
+        console.log("[JWT Auth] Access Token 已过期或即将过期...");
+        if (hasValidRefreshToken()) {
+            // 优先用 Refresh Token 静默刷新，无需重新登录
+            refreshAccessToken();
+        } else {
+            console.log("[JWT Auth] Refresh Token 不可用，重新登录...");
+            login();
+        }
     } else {
-  console.log("[JWT Auth] ? Token有效，跳过登录");
-        
+        console.log("[JWT Auth] ✅ Token 有效，跳过登录");
+
         // 显示当前Token信息
         const token = pm.environment.get("jwt_token");
         const payload = parseJwtPayload(token);
         if (payload) {
-    const expiry = pm.environment.get("token_expiry");
+            const expiry = pm.environment.get("token_expiry");
             const now = Math.floor(Date.now() / 1000);
- const remaining = parseInt(expiry) - now;
-            console.log(`[JWT Auth] Token剩余有效时间: ${Math.floor(remaining / 60)}分${remaining % 60}秒`);
+            const remaining = parseInt(expiry) - now;
+            console.log(`[JWT Auth] Access Token 剩余有效时间: ${Math.floor(remaining / 60)}分${remaining % 60}秒`);
         }
     }
 } catch (error) {
-console.error("[JWT Auth] 发生错误:", error.message);
-    // 可以选择清除无效的Token
+    console.error("[JWT Auth] 发生错误:", error.message);
+    // 清除无效的 Token
     pm.environment.unset("jwt_token");
     pm.environment.unset("token_expiry");
+    pm.environment.unset("refresh_token");
+    pm.environment.unset("refresh_token_expiry");
 }
 
 // ============================================================================

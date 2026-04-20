@@ -115,6 +115,25 @@ const hashPassword = (password: string): string => {
     return CryptoJS.SHA256(password).toString();
 };
 
+// 防止 open redirect：只允许跳转到内部路径。
+// 必须以单个 "/" 开头，不允许 "//"（协议相对 URL）或反斜杠。
+const sanitizeRedirect = (value: unknown): string => {
+    if (typeof value !== "string" || value.length === 0) {
+        return "/";
+    }
+    if (!value.startsWith("/")) {
+        return "/";
+    }
+    if (value.startsWith("//") || value.startsWith("/\\")) {
+        return "/";
+    }
+    // 不允许绝对 URL 混入
+    if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(value)) {
+        return "/";
+    }
+    return value;
+};
+
 const handleLogin = async () => {
     if (!loginFormRef.value) return;
 
@@ -150,7 +169,7 @@ const handleLogin = async () => {
                 throw new Error(t("login.incompleteResponse"));
             }
 
-            const redirect = typeof route.query.redirect === "string" ? route.query.redirect : "/";
+            const redirect = sanitizeRedirect(route.query.redirect);
             await router.push(redirect);
         } catch (error: any) {
             console.error("login error:", error);

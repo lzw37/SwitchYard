@@ -178,11 +178,11 @@ namespace SwitchYard.Service.Controllers
         }
 
         [HttpPost(Name = "CreateInstance")]
-        public IActionResult CreateInstance(HumpInstance instance)
+        public IActionResult CreateInstance([FromBody] CreateHumpInstanceRequest request)
         {
             try
             {
-                if (instance == null || string.IsNullOrWhiteSpace(instance.Name))
+                if (request == null || string.IsNullOrWhiteSpace(request.Name))
                 {
                     return BadRequest("Invalid instance payload or missing name.");
                 }
@@ -197,7 +197,7 @@ namespace SwitchYard.Service.Controllers
                 var targetOwner = username;
                 if (isAdmin)
                 {
-                    if (!TryNormalizeOwnerForPersistence(instance.Owner, out var normalizedOwner, out var ownerError))
+                    if (!TryNormalizeOwnerForPersistence(request.Owner, out var normalizedOwner, out var ownerError))
                     {
                         return BadRequest(ownerError);
                     }
@@ -205,12 +205,17 @@ namespace SwitchYard.Service.Controllers
                     targetOwner = normalizedOwner;
                 }
 
-                instance.Name = instance.Name.Trim();
-                instance.Owner = targetOwner;
-                instance.CreatedDate = DateTime.Now;
-                instance.IsActive = instance.IsActive == 0 ? 0 : 1;
+                // All server-controlled fields are explicitly set here to avoid mass assignment.
+                var instance = new HumpInstance
+                {
+                    ID = _snowflakeIdGenerator.NextIdString(),
+                    Name = request.Name.Trim(),
+                    Owner = targetOwner,
+                    CreatedDate = DateTime.Now,
+                    IsActive = 1
+                };
+
                 DBConnector dbConnector = DBConnector.GetDBConnector();
-                instance.ID = _snowflakeIdGenerator.NextIdString();
                 var result = dbConnector.ExecuteNonQuery("INSERT INTO humpinstance (ID, Name, Owner, CreatedDate, IsActive) VALUES (@ID, @Name, @Owner, @CreatedDate, @IsActive)",
                     instance);
                 if (result > 0)
@@ -229,6 +234,21 @@ namespace SwitchYard.Service.Controllers
                 LogErrorWithContext(ex, "Error creating HumpInstance.");
                 return StatusCode(500, "Internal server error while creating HumpInstance.");
             }
+        }
+
+        /// <summary>
+        /// Request DTO for creating a HumpInstance. Only fields intended for
+        /// user input are exposed; server-managed fields (ID, CreatedDate,
+        /// IsActive) cannot be set by the client.
+        /// </summary>
+        public sealed class CreateHumpInstanceRequest
+        {
+            public string Name { get; set; } = string.Empty;
+
+            /// <summary>
+            /// Optional. Only honored when the caller is an administrator.
+            /// </summary>
+            public string? Owner { get; set; }
         }
 
         [HttpPut(Name = "EditInstance")]

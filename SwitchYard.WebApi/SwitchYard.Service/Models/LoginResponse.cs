@@ -21,6 +21,16 @@ namespace SwitchYard.Service.Models
         public int ExpiresIn { get; set; }
 
         /// <summary>
+        /// Refresh Token（长期令牌，用于续签 Access Token）
+        /// </summary>
+        public string RefreshToken { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Refresh Token 有效期（秒）
+        /// </summary>
+        public int RefreshTokenExpiresIn { get; set; }
+
+        /// <summary>
         /// 用户ID
         /// </summary>
         public string UserID { get; set; } = string.Empty;

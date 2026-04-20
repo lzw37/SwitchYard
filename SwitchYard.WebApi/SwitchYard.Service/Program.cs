@@ -1,8 +1,10 @@
 using SwitchYard.Service;
 using SwitchYard.Service.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
+using System.Threading.RateLimiting;
 using SwitchYard.Service.Utils;
 using Serilog;
 using Microsoft.AspNetCore.HttpOverrides;
@@ -143,6 +145,7 @@ try
 
     // 注册JWT服务
     builder.Services.AddSingleton<JwtTokenService>();
+    builder.Services.AddSingleton<RefreshTokenService>();
     builder.Services.AddScoped<UserService>();
     builder.Services.AddScoped<InstanceAuthorizationService>();
     builder.Services.AddSingleton<SnowflakeIdGenerator>();
@@ -174,6 +177,36 @@ try
     });
 
     builder.Services.AddAuthorization();
+
+    // 速率限制：针对认证端点按客户端 IP 限流，防止暴力破解与账号枚举。
+    builder.Services.AddRateLimiter(options =>
+    {
+        options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+        options.AddPolicy("auth", httpContext =>
+        {
+            var partitionKey = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+            return RateLimitPartition.GetFixedWindowLimiter(partitionKey, _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 5,
+                Window = TimeSpan.FromMinutes(1),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0
+            });
+        });
+
+        options.AddPolicy("register", httpContext =>
+        {
+            var partitionKey = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+            return RateLimitPartition.GetFixedWindowLimiter(partitionKey, _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 3,
+                Window = TimeSpan.FromMinutes(10),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0
+            });
+        });
+    });
 
     // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
     builder.Services.AddEndpointsApiExplorer();
@@ -223,6 +256,26 @@ try
     // 必须在所有其他中间件之前添加ForwardedHeaders
     app.UseForwardedHeaders();
     logger.LogInformation("ForwardedHeaders middleware enabled for proxy support");
+
+    // 安全响应头（对所有响应生效）
+    app.Use(async (context, next) =>
+    {
+        var headers = context.Response.Headers;
+        headers["X-Content-Type-Options"] = "nosniff";
+        headers["X-Frame-Options"] = "DENY";
+        headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
+        headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()";
+        if (!context.Request.IsHttps)
+        {
+            // HSTS 仅对 HTTPS 响应有意义，不设置。
+        }
+        await next();
+    });
+
+    if (!app.Environment.IsDevelopment())
+    {
+        app.UseHsts();
+    }
     
     if (app.Environment.IsDevelopment())
     {
@@ -243,10 +296,19 @@ try
     app.UseAuthorization();
     logger.LogInformation("Authentication and Authorization enabled");
 
+    // 启用速率限制（需位于路由之后、端点映射之前）
+    app.UseRateLimiter();
+    logger.LogInformation("RateLimiter enabled");
+
     app.MapControllers();
 
     DBConnector.SetConfiguration(builder.Configuration);
     logger.LogInformation("Database connector configured");
+
+    // 确保 refreshtoken 表已创建
+    var refreshTokenService = app.Services.GetRequiredService<RefreshTokenService>();
+    refreshTokenService.EnsureTableExists();
+    logger.LogInformation("RefreshToken table initialized");
 
     logger.LogInformation("Application configured successfully, starting to listen for requests...");
 

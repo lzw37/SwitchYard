@@ -23,6 +23,8 @@ export default defineConfig(({ mode }) => {
             outDir: "dist",
             // 确保资源文件路径正确
             assetsDir: "assets",
+            // 禁用生产环境 source map，避免源码泄露
+            sourcemap: mode !== "production",
         },
         // 生产构建时移除console.log
         esbuild:
