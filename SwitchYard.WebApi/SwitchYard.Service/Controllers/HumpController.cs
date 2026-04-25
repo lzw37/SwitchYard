@@ -26,6 +26,7 @@ namespace SwitchYard.Service.Controllers
         SnowflakeIdGenerator _snowflakeIdGenerator;
         InstanceAuthorizationService _authService;
         UserService _userService;
+        HumpInstanceCopyService _humpInstanceCopyService;
         private const string UnknownLogValue = "N/A";
         private const string LogInstanceIdKey = "__log_instance_id";
         private const string LogObjectIdKey = "__log_object_id";
@@ -35,13 +36,15 @@ namespace SwitchYard.Service.Controllers
             IConfiguration configuration,
             SnowflakeIdGenerator snowflakeIdGenerator,
             InstanceAuthorizationService authService,
-            UserService userService)
+            UserService userService,
+            HumpInstanceCopyService humpInstanceCopyService)
         {
             _logger = logger;
             _config = configuration;
             _snowflakeIdGenerator = snowflakeIdGenerator;
             _authService = authService;
             _userService = userService;
+            _humpInstanceCopyService = humpInstanceCopyService;
         }
 
         private string NormalizeLogValue(object? value)
@@ -100,6 +103,47 @@ namespace SwitchYard.Service.Controllers
 
             errorMessage = "Owner does not exist.";
             return false;
+        }
+
+        private void EnsureWriteSucceeded(int affectedRows, string operationName)
+        {
+            if (affectedRows <= 0)
+            {
+                throw new InvalidOperationException($"{operationName} failed.");
+            }
+        }
+
+        private string RequireMappedId(Dictionary<string, string> idMap, string? sourceId, string mappingName)
+        {
+            if (string.IsNullOrWhiteSpace(sourceId))
+            {
+                throw new InvalidOperationException($"{mappingName} source ID is empty.");
+            }
+
+            if (!idMap.TryGetValue(sourceId, out var mappedId) || string.IsNullOrWhiteSpace(mappedId))
+            {
+                throw new InvalidOperationException($"{mappingName} mapping is missing for source ID {sourceId}.");
+            }
+
+            return mappedId;
+        }
+
+        private string GenerateUniqueInstanceId(DBConnector dbConnector)
+        {
+            for (var attempt = 0; attempt < 5; attempt++)
+            {
+                var candidate = _snowflakeIdGenerator.NextIdString();
+                var exists = (dbConnector.Query<HumpInstance>(
+                    "SELECT * FROM humpinstance WHERE ID = @id",
+                    new { id = candidate }) ?? new List<HumpInstance>()).Any();
+
+                if (!exists)
+                {
+                    return candidate;
+                }
+            }
+
+            throw new InvalidOperationException("Failed to generate a unique instance ID.");
         }
 
         private void SetLogInstanceId(string? instanceID)
@@ -249,6 +293,58 @@ namespace SwitchYard.Service.Controllers
             /// Optional. Only honored when the caller is an administrator.
             /// </summary>
             public string? Owner { get; set; }
+        }
+
+        public sealed class CopyHumpInstanceRequest
+        {
+            public string SourceInstanceID { get; set; } = string.Empty;
+
+            public string NewInstanceName { get; set; } = string.Empty;
+
+            public string? Owner { get; set; }
+        }
+
+        [HttpPost(Name = "CopyHumpInstance")]
+        [Authorize(Roles = "Admin")]
+        public IActionResult CopyHumpInstance([FromBody] CopyHumpInstanceRequest request)
+        {
+            if (!IsCurrentUserAdmin())
+            {
+                return Forbid();
+            }
+
+            if (request == null)
+            {
+                return BadRequest("Invalid copy request.");
+            }
+
+            var sourceInstanceID = request.SourceInstanceID?.Trim() ?? string.Empty;
+            var newInstanceName = request.NewInstanceName?.Trim() ?? string.Empty;
+
+            if (string.IsNullOrWhiteSpace(sourceInstanceID) || string.IsNullOrWhiteSpace(newInstanceName))
+            {
+                return BadRequest("Source instance ID and new instance name are required.");
+            }
+
+            if (!TryNormalizeOwnerForPersistence(request.Owner, out var normalizedOwner, out var ownerError))
+            {
+                return BadRequest(ownerError);
+            }
+
+            var copyResult = _humpInstanceCopyService.CopyInstance(sourceInstanceID, newInstanceName, normalizedOwner);
+            if (copyResult.Success && copyResult.CopiedInstance != null)
+            {
+                SetLogInstanceId(copyResult.CopiedInstance.ID);
+                LogInformationWithContext("Copied HumpInstance from {SourceInstanceID} to {TargetInstanceID}.", sourceInstanceID, copyResult.CopiedInstance.ID);
+                return Ok(copyResult.CopiedInstance);
+            }
+
+            return copyResult.StatusCode switch
+            {
+                400 => BadRequest(copyResult.ErrorMessage),
+                404 => NotFound(copyResult.ErrorMessage),
+                _ => StatusCode(copyResult.StatusCode, copyResult.ErrorMessage ?? "Internal server error while copying HumpInstance.")
+            };
         }
 
         [HttpPut(Name = "EditInstance")]

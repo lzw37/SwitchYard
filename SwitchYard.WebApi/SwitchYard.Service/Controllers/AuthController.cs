@@ -17,17 +17,21 @@ namespace SwitchYard.Service.Controllers
         private readonly JwtTokenService _jwtTokenService;
         private readonly RefreshTokenService _refreshTokenService;
         private readonly UserService _userService;
+        private readonly HumpInstanceCopyService _humpInstanceCopyService;
         private readonly ILogger<AuthController> _logger;
+        private const string DefaultTemplateInstanceId = "001";
 
         public AuthController(
             JwtTokenService jwtTokenService,
             RefreshTokenService refreshTokenService,
             UserService userService,
+            HumpInstanceCopyService humpInstanceCopyService,
             ILogger<AuthController> logger)
         {
             _jwtTokenService = jwtTokenService;
             _refreshTokenService = refreshTokenService;
             _userService = userService;
+            _humpInstanceCopyService = humpInstanceCopyService;
             _logger = logger;
         }
 
@@ -228,6 +232,35 @@ namespace SwitchYard.Service.Controllers
                         request.Username,
                         GetClientIpAddress());
                     return StatusCode(500, new { message = "创建用户失败" });
+                }
+
+                var defaultInstanceCopyResult = _humpInstanceCopyService.CopyInstance(
+                    DefaultTemplateInstanceId,
+                    string.Empty,
+                    newUser.Name);
+                if (!defaultInstanceCopyResult.Success)
+                {
+                    _logger.LogError(
+                        "Default hump instance initialization failed for user {Username}, UserId: {UserId}, TemplateInstanceId: {TemplateInstanceId}, StatusCode: {StatusCode}, Error: {ErrorMessage}, ClientIp: {ClientIp}",
+                        newUser.Name,
+                        newUser.Id,
+                        DefaultTemplateInstanceId,
+                        defaultInstanceCopyResult.StatusCode,
+                        defaultInstanceCopyResult.ErrorMessage,
+                        GetClientIpAddress());
+
+                    var rollbackSucceeded = _userService.DeleteUser(newUser.Id);
+                    if (!rollbackSucceeded)
+                    {
+                        _logger.LogError(
+                            "User rollback failed after default hump instance initialization error for user {Username}, UserId: {UserId}, ClientIp: {ClientIp}",
+                            newUser.Name,
+                            newUser.Id,
+                            GetClientIpAddress());
+                        return StatusCode(500, new { message = "鍒涘缓榛樿瀹炰緥澶辫触锛岃鑱旂郴绠＄悊鍛?" });
+                    }
+
+                    return StatusCode(500, new { message = "鍒涘缓榛樿瀹炰緥澶辫触锛岃绋嶅悗閲嶈瘯" });
                 }
 
                 var response = new CreateUserResponse

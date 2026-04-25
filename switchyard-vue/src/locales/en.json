@@ -116,6 +116,8 @@
         }
     },
     "common": {
+        "confirm": "Confirm",
+        "cancel": "Cancel",
         "titles": {
             "tip": "Tip",
             "confirm": "Confirm",
@@ -881,6 +883,7 @@
     "humpInstance": {
         "buttons": {
             "create": "Create Instance",
+            "copy": "Copy",
             "edit": "Edit",
             "delete": "Delete",
             "refresh": "Refresh",
@@ -926,6 +929,9 @@
     "humpInstanceManagement": {
         "title": "Instance Administration",
         "subtitle": "Assign owners and keep every hump instance aligned with the database.",
+        "dialogs": {
+            "copyTitle": "Copy Hump Instance"
+        },
         "toolbar": {
             "create": "Add Instance",
             "refresh": "Refresh List"
@@ -933,8 +939,15 @@
         "columns": {
             "id": "ID"
         },
+        "copy": {
+            "source": "Source Instance",
+            "newName": "New Instance Name",
+            "defaultName": "{name} Copy",
+            "generatedIdHint": "The new instance ID will be generated automatically"
+        },
         "placeholder": {
-            "owner": "Select owner"
+            "owner": "Select owner",
+            "newName": "Please enter a new instance name"
         },
         "validation": {
             "ownerRequired": "Please select an owner before saving"
@@ -943,7 +956,9 @@
             "ownerUnknown": "Unassigned"
         },
         "messages": {
-            "userLoadError": "Failed to load user list"
+            "userLoadError": "Failed to load user list",
+            "copySuccess": "Instance copied successfully. New ID: {id}",
+            "copyError": "Failed to copy instance"
         },
         "empty": "No instances yet. Create one to get started."
     },

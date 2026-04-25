@@ -116,6 +116,8 @@
         }
     },
     "common": {
+        "confirm": "确定",
+        "cancel": "取消",
         "titles": {
             "tip": "提示",
             "confirm": "确认",

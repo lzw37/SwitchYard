@@ -154,6 +154,7 @@ try
     builder.Services.AddSingleton<RefreshTokenService>();
     builder.Services.AddScoped<UserService>();
     builder.Services.AddScoped<InstanceAuthorizationService>();
+    builder.Services.AddScoped<HumpInstanceCopyService>();
     builder.Services.AddSingleton<SnowflakeIdGenerator>();
 
     // 配置JWT认证
