@@ -406,7 +406,7 @@ watch(currentInstanceId, async (newInstanceId) => {
         currentConditionId.value = "";
         resetForm();
     }
-});
+}, { immediate: true });
 </script>
 
 <style scoped lang="css">
