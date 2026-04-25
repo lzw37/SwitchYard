@@ -704,6 +704,9 @@
             "output": "\u8f93\u51fa",
             "totalEnergyHeight": "\u603b\u80fd\u9ad8",
             "notConfigured": "\u672a\u914d\u7f6e"
+        },
+        "contextMenu": {
+            "deleteNode": "删除节点"
         }
     },
     "humpSlopeDesigner": {
@@ -798,7 +801,11 @@
             "calculationFailed": "计算失败",
             "calculationUnknownError": "计算过程中发生未知错误",
             "tip": "提示",
-            "error": "错误"
+            "error": "错误",
+            "selectInstanceAndScheme": "请先选择实例和纵断面方案",
+            "slopeLayoutNotExist": "纵断面数据不存在",
+            "slopeLayoutSaveSuccess": "纵断面保存成功",
+            "slopeLayoutSaveFailed": "保存纵断面失败，请稍后重试"
         },
         "calculation": {
             "executeButton": "计算并保存结果",
@@ -828,6 +835,31 @@
             "totalEnergyHeight": "制动能高/m",
             "saveSuccess": "减速器工作状态保存成功",
             "saveError": "减速器工作状态保存失败"
+        },
+        "resistanceDetail": {
+            "title": "阻力能高 (x = {x} m)",
+            "total": "总阻力能高",
+            "loading": "加载中...",
+            "row": {
+                "pure": "基本阻力",
+                "air": "风阻力",
+                "switch": "道岔阻力",
+                "curve": "曲线阻力"
+            },
+            "windParam": {
+                "headWind": "1（逆风）",
+                "tailWind": "0（顺风）"
+            },
+            "tooltip": {
+                "pure": "<div class='resistance-formula-title'>基本阻力能高</div><div class='resistance-formula-line'>h<sub>0</sub> = (r<sub>0,溜</sub> · L<sub>溜</sub> + r<sub>0,场</sub> · L<sub>场</sub>) / 1000</div><div class='resistance-formula-line'>r<sub>0</sub> = 2.439 + (0.00008·<b>Q</b> − 0.01743)·<b>t</b> − 0.015·<b>Q</b> + 0.00017·<b>t</b>² + 0.1·<b>v</b> + <b>n</b>·1.65·σ + (1−<b>k</b>)·0.39</div><div class='resistance-formula-line'>σ = 0.602 − (0.0012 + 0.00002·<b>Q</b>)·<b>t</b> − 0.003·<b>Q</b> + 0.00002·<b>t</b>²</div><div class='resistance-formula-params'><b>Q</b> = {Q} t；<b>t</b> = {temp} °C；<b>n</b> = {n}（车型参数）；<b>v<sub>溜</sub></b> = {vSlope} m/s（k=0）；<b>v<sub>场</sub></b> = {vYard} m/s（k=1）；r<sub>0,溜</sub> = {r0Slope} N/kN；r<sub>0,场</sub> = {r0Yard} N/kN；<b>L<sub>溜</sub></b> = {lSlope} m；<b>L<sub>场</sub></b> = {lYard} m</div>",
+                "air": "<div class='resistance-formula-title'>风阻力能高</div><div class='resistance-formula-line'>h<sub>w</sub> = (r<sub>w,溜</sub> · L<sub>溜</sub> + r<sub>w,场</sub> · L<sub>场</sub>) / 1000</div><div class='resistance-formula-line'>r<sub>w</sub> = (<b>ρ</b> · <b>f</b>) / <b>Q</b> · (<b>v</b> + ξ · <b>v<sub>风</sub></b>)²</div><div class='resistance-formula-params'><b>Q</b> = {Q} t；<b>ρ</b> = {rho} kg·s²/m⁴；<b>f</b> = {f} m²；<b>v<sub>风</sub></b> = {vWind} m/s；ξ = {xi}；<b>v<sub>溜</sub></b> = {vSlope} m/s；<b>v<sub>场</sub></b> = {vYard} m/s；r<sub>w,溜</sub> = {rwSlope} N/kN；r<sub>w,场</sub> = {rwYard} N/kN；<b>L<sub>溜</sub></b> = {lSlope} m；<b>L<sub>场</sub></b> = {lYard} m</div>",
+                "switch": "<div class='resistance-formula-title'>道岔阻力能高</div><div class='resistance-formula-line'>h<sub>s</sub> = E<sub>s</sub> / 1000</div><div class='resistance-formula-line'>E<sub>s</sub> = 24·<b>N<sub>逆</sub></b> + 12·(<b>N<sub>顺</sub></b> + <b>N<sub>菱</sub></b>) + 48·<b>N<sub>交分</sub></b></div><div class='resistance-formula-params'><b>N<sub>逆</sub></b> = {nReverse}；<b>N<sub>顺</sub></b> = {nForward}；<b>N<sub>菱</sub></b> = {nDiamond}；<b>N<sub>交分</sub></b> = {nSlip}；E<sub>s</sub> = {Es} N·m/kN</div>",
+                "curve": "<div class='resistance-formula-title'>曲线阻力能高</div><div class='resistance-formula-line'>h<sub>c</sub> = E<sub>c</sub> / 1000</div><div class='resistance-formula-line'>E<sub>c</sub> = 8 · <b>θ<sub>总</sub></b> = 8 · (<b>θ<sub>曲</sub></b> + <b>θ<sub>岔</sub></b>)</div><div class='resistance-formula-params'><b>θ<sub>曲</sub></b> = {pureCurve} °（曲线转角）；<b>θ<sub>岔</sub></b> = {switchCurve} °（道岔转角）；<b>θ<sub>总</sub></b> = {totalCurve} °；E<sub>c</sub> = {Ec} N·m/kN</div>"
+            },
+            "messages": {
+                "selectFirst": "请先选择实例、纵断面方案和计算条件",
+                "loadDetailFailed": "加载阻力能高分项明细失败"
+            }
         }
     },
     "humpInstance": {

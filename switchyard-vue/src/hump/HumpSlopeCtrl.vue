@@ -17,7 +17,8 @@
                 <g class="background-fill">
                     <polygon :points="polygonPoints" fill="url(#backgroundGradient)" />
                     <polygon v-if="props.elementVisibility?.resistance" :points="shadePoints"
-                        fill="url(#resistanceShadeGradient)"></polygon>
+                        class="resistance-shade-clickable" fill="url(#resistanceShadeGradient)"
+                        @click.stop="handleResistanceShadeClick($event)"></polygon>
                 </g>
                 <g class="axis">
                     <line class="xaxis" :x1="marginLeft" :x2="marginLeft + sketchWidth" :y1="svgHeight - marginBottom"
@@ -68,10 +69,12 @@
                         :x2="getX(getPositionX(seg.endPositionID))" :y2="getY(getPositionHeight(seg.endPositionID))" />
                 </g>
                 <g v-if="props.elementVisibility?.resistance" class="resistance-energy-height">
-                    <polyline :points="resistancePoints" class="resistance-line" />
+                    <polyline :points="resistancePoints" class="resistance-line"
+                        @click.stop="handleResistanceShadeClick($event)" />
                     <g v-for="dataPoint in resistanceEnergyHeightData || []">
-                        <circle class="resistance-circle" :cx="getX(dataPoint.x)"
-                            :cy="getY(orgKineticEnergyY - dataPoint.height)" r="4" />
+                        <circle class="resistance-circle resistance-shade-clickable" :cx="getX(dataPoint.x)"
+                            :cy="getY(orgKineticEnergyY - dataPoint.height)" r="4"
+                            @click.stop="handleResistanceShadeClick($event, dataPoint.x)" />
                         <text v-if="showResistanceNumber" class="resistance-text" :x="getX(dataPoint.x)"
                             :y="(getY(orgKineticEnergyY - dataPoint.height) + getY(orgKineticEnergyY)) / 2">{{
                                 dataPoint.height
@@ -111,7 +114,7 @@
                             :class="{ 'point-circle-longpress': longPressActivatedId === pos.id, 'point-circle-dragging': draggingId === pos.id }"
                             @mousedown="startDrag(pos, $event)" @touchstart.prevent="startTouchDrag(pos, $event)">
                         </circle>
-                        <circle class="point-hit-area" :cx="getX(pos.x)" :cy="getY(pos.height)" r="12"
+                        <circle class="point-hit-area" :cx="getX(pos.x)" :cy="getY(pos.height)" r="4"
                             @mousedown="startDrag(pos, $event)" @touchstart.prevent="startTouchDrag(pos, $event)">
                         </circle>
                     </g>
@@ -130,7 +133,7 @@
         </div>
         <div v-if="contextMenu.visible" class="context-menu"
             :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }">
-            <div class="context-menu-item" @click.stop="deleteContextPos">Delete Node</div>
+            <div class="context-menu-item" @click.stop="deleteContextPos">{{ t('humpSlopeCtrl.contextMenu.deleteNode') }}</div>
         </div>
         <el-dialog v-model="showRetarderStatusDialog" :title="t('humpSlopeCtrl.dialog.retarderSettings')" width="420px"
             :close-on-click-modal="false" append-to-body>
@@ -223,7 +226,19 @@ const emit = defineEmits<{
     'horizontal-scroll': [scrollLeft: number]
     'wheel-scale-x': [payload: { scaleX: number, scrollLeft: number }]
     'update-retarder-status-list': [value: RetarderStatusItem[]]
+    'resistance-click': [payload: { x: number, clientX: number, clientY: number }]
 }>()
+
+function handleResistanceShadeClick(event: MouseEvent, dataX?: number) {
+    const svg = document.getElementById('slope');
+    if (!svg) return;
+    const rect = svg.getBoundingClientRect();
+    const mouseX = event.clientX - rect.left;
+    const computedX = (mouseX - marginLeft.value) / scaleX.value;
+    const x = dataX !== undefined ? dataX : computedX;
+    if (!Number.isFinite(x) || x < 0) return;
+    emit('resistance-click', { x, clientX: event.clientX, clientY: event.clientY });
+}
 const { t } = useI18n();
 const scrollContainerRef = ref<HTMLDivElement | null>(null);
 const minScaleX = 0.1;
@@ -1307,6 +1322,15 @@ defineExpose({
 .resistance-shade {
     /* fill: rgba(0, 0, 255, 0.2); */
     stroke: none;
+}
+
+.resistance-shade-clickable {
+    cursor: pointer;
+    pointer-events: auto !important;
+}
+
+.resistance-shade-clickable:hover {
+    filter: brightness(0.95);
 }
 
 .init-kinetic-energy-line {

@@ -1437,6 +1437,39 @@ namespace SwitchYard.Service.Controllers
         }
 
         /// <summary>
+        /// 计算指定位置阻力能高的明细分解（基本阻力、风阻力、道岔阻力、曲线阻力），并附带计算各项时使用的参数
+        /// </summary>
+        /// <param name="parameters">能高计算参数</param>
+        /// <param name="x">指定位置X坐标</param>
+        /// <returns>阻力能高分项明细</returns>
+        [HttpPost(Name = "GetResistanceEnergyHeightDetail")]
+        public IActionResult GetResistanceEnergyHeightDetail(EnergyCalculationParams parameters, double x)
+        {
+            try
+            {
+                var authResult = ValidateInstanceOwnershipOrFail(parameters.InstanceID);
+                if (authResult != null) return authResult;
+
+                var slopeLine = LoadSlopeLine(parameters.InstanceID, parameters.SlopeLineID);
+                var flatLayout = LoadFlatLayout(parameters.InstanceID, parameters.SlopeLineID);
+                slopeLine.FlatLayout = flatLayout;
+
+                var wagonConceptList = LoadWagonConcept(parameters.InstanceID);
+                parameters.Wagon = wagonConceptList.Find(w => w.TypeName == parameters.WagonTypeName);
+                parameters.OperationCondition = LoadOperationCondition(parameters.InstanceID, parameters.OperationConditionID);
+
+                var detail = HumpEnergyHeightCalculator.CalculateResistanceEnergyHeightDetail(flatLayout, x, parameters);
+                LogInformationWithContext("Resistance Energy Height detail calculated at x={X}, slope line {SlopeLineID}, hump scheme {HumpSchemeID}.", x, parameters.SlopeLineID, parameters.HumpSchemeID);
+                return Ok(detail);
+            }
+            catch (Exception ex)
+            {
+                LogErrorWithContext(ex, "Error calculating Resistance Energy Height detail.");
+                return StatusCode(500, "Internal server error while calculating Resistance Energy Height detail.");
+            }
+        }
+
+        /// <summary>
         /// 计算制动能高
         /// </summary>
         /// <param name="parameters">能高计算参数</param>

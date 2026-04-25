@@ -710,6 +710,9 @@
             "output": "Output",
             "totalEnergyHeight": "Total EH",
             "notConfigured": "Not Configured"
+        },
+        "contextMenu": {
+            "deleteNode": "Delete Node"
         }
     },
     "humpSlopeDesigner": {
@@ -804,7 +807,11 @@
             "calculationFailed": "Calculation Failed",
             "calculationUnknownError": "Unknown error occurred during calculation",
             "tip": "Tip",
-            "error": "Error"
+            "error": "Error",
+            "selectInstanceAndScheme": "Please select an instance and a longitudinal section scheme first",
+            "slopeLayoutNotExist": "Slope layout data does not exist",
+            "slopeLayoutSaveSuccess": "Slope layout saved successfully",
+            "slopeLayoutSaveFailed": "Failed to save slope layout, please try again later"
         },
         "calculation": {
             "executeButton": "Calculate and Save Results",
@@ -834,6 +841,31 @@
             "totalEnergyHeight": "Braking Height/m",
             "saveSuccess": "Retarder status saved successfully",
             "saveError": "Failed to save retarder status"
+        },
+        "resistanceDetail": {
+            "title": "Resistance Energy Height (x = {x} m)",
+            "total": "Total Resistance EH",
+            "loading": "Loading...",
+            "row": {
+                "pure": "Basic Resistance",
+                "air": "Wind Resistance",
+                "switch": "Switch Resistance",
+                "curve": "Curve Resistance"
+            },
+            "windParam": {
+                "headWind": "1 (head wind)",
+                "tailWind": "0 (tail wind)"
+            },
+            "tooltip": {
+                "pure": "<div class='resistance-formula-title'>Basic Resistance EH</div><div class='resistance-formula-line'>h<sub>0</sub> = (r<sub>0,sl</sub> · L<sub>sl</sub> + r<sub>0,yd</sub> · L<sub>yd</sub>) / 1000</div><div class='resistance-formula-line'>r<sub>0</sub> = 2.439 + (0.00008·<b>Q</b> − 0.01743)·<b>t</b> − 0.015·<b>Q</b> + 0.00017·<b>t</b>² + 0.1·<b>v</b> + <b>n</b>·1.65·σ + (1−<b>k</b>)·0.39</div><div class='resistance-formula-line'>σ = 0.602 − (0.0012 + 0.00002·<b>Q</b>)·<b>t</b> − 0.003·<b>Q</b> + 0.00002·<b>t</b>²</div><div class='resistance-formula-params'><b>Q</b> = {Q} t; <b>t</b> = {temp} °C; <b>n</b> = {n} (wagon type); <b>v<sub>sl</sub></b> = {vSlope} m/s (k=0); <b>v<sub>yd</sub></b> = {vYard} m/s (k=1); r<sub>0,sl</sub> = {r0Slope} N/kN; r<sub>0,yd</sub> = {r0Yard} N/kN; <b>L<sub>sl</sub></b> = {lSlope} m; <b>L<sub>yd</sub></b> = {lYard} m</div>",
+                "air": "<div class='resistance-formula-title'>Wind Resistance EH</div><div class='resistance-formula-line'>h<sub>w</sub> = (r<sub>w,sl</sub> · L<sub>sl</sub> + r<sub>w,yd</sub> · L<sub>yd</sub>) / 1000</div><div class='resistance-formula-line'>r<sub>w</sub> = (<b>ρ</b> · <b>f</b>) / <b>Q</b> · (<b>v</b> + ξ · <b>v<sub>w</sub></b>)²</div><div class='resistance-formula-params'><b>Q</b> = {Q} t; <b>ρ</b> = {rho} kg·s²/m⁴; <b>f</b> = {f} m²; <b>v<sub>w</sub></b> = {vWind} m/s; ξ = {xi}; <b>v<sub>sl</sub></b> = {vSlope} m/s; <b>v<sub>yd</sub></b> = {vYard} m/s; r<sub>w,sl</sub> = {rwSlope} N/kN; r<sub>w,yd</sub> = {rwYard} N/kN; <b>L<sub>sl</sub></b> = {lSlope} m; <b>L<sub>yd</sub></b> = {lYard} m</div>",
+                "switch": "<div class='resistance-formula-title'>Switch Resistance EH</div><div class='resistance-formula-line'>h<sub>s</sub> = E<sub>s</sub> / 1000</div><div class='resistance-formula-line'>E<sub>s</sub> = 24·<b>N<sub>rev</sub></b> + 12·(<b>N<sub>fwd</sub></b> + <b>N<sub>dia</sub></b>) + 48·<b>N<sub>slip</sub></b></div><div class='resistance-formula-params'><b>N<sub>rev</sub></b> = {nReverse}; <b>N<sub>fwd</sub></b> = {nForward}; <b>N<sub>dia</sub></b> = {nDiamond}; <b>N<sub>slip</sub></b> = {nSlip}; E<sub>s</sub> = {Es} N·m/kN</div>",
+                "curve": "<div class='resistance-formula-title'>Curve Resistance EH</div><div class='resistance-formula-line'>h<sub>c</sub> = E<sub>c</sub> / 1000</div><div class='resistance-formula-line'>E<sub>c</sub> = 8 · <b>θ<sub>total</sub></b> = 8 · (<b>θ<sub>curve</sub></b> + <b>θ<sub>switch</sub></b>)</div><div class='resistance-formula-params'><b>θ<sub>curve</sub></b> = {pureCurve} ° (curve corner); <b>θ<sub>switch</sub></b> = {switchCurve} ° (switch corner); <b>θ<sub>total</sub></b> = {totalCurve} °; E<sub>c</sub> = {Ec} N·m/kN</div>"
+            },
+            "messages": {
+                "selectFirst": "Please select instance, scheme and calculation condition first",
+                "loadDetailFailed": "Failed to load resistance energy height detail"
+            }
         }
     },
     "humpInstance": {

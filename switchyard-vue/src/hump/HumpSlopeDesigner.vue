@@ -12,7 +12,7 @@
                         style="width: 150px;">
                         <el-option v-for="scheme in humpSchemes" :key="scheme.id" :label="scheme.name"
                             :value="scheme.id" />
-                    </el-select> <el-button type="primary" size="small" @click="editSlopeLayout">保存</el-button>
+                    </el-select> <el-button type="primary" size="small" @click="editSlopeLayout">{{ t('humpSlopeDesigner.buttons.save') }}</el-button>
                     <el-button type="primary" size="small" @click="showSchemeManager = true">...</el-button>
                 </div>
                 <div class="control-group select-group">
@@ -83,7 +83,8 @@
                 :breaking-energy-height-data="breakingEnergyHeightData" :global-scale-x="globalScaleX"
                 :global-scale-y="globalScaleY" :element-visibility="elementVisibility" :global-cursor-x="globalCursorX"
                 :g_="currentWagonEffectiveG" @updateGlobalCursorX="updateGlobalCursorX" @horizontal-scroll="syncHorizontalScroll"
-                @wheel-scale-x="handleWheelScaleX" @update-retarder-status-list="handleInlineRetarderStatusUpdate" />
+                @wheel-scale-x="handleWheelScaleX" @update-retarder-status-list="handleInlineRetarderStatusUpdate"
+                @resistance-click="handleResistanceClick" />
             <HumpSlopeSketchBlock ref="humpSlopeSketchBlockRef" v-model:slope-layout="slopeLayout" style="height:auto"
                 :global-scale-x="globalScaleX" :global-cursor-x="globalCursorX"
                 :horizontal-scroll-left="horizontalScrollLeft" @updateGlobalCursorX="updateGlobalCursorX"
@@ -154,6 +155,65 @@
             </div>
         </div>
         <div class="side-menu-bottom">BOTTOM MENU</div>
+
+        <!-- 阻力能高分项浮窗 -->
+        <div v-if="resistanceDetailPopover.visible" class="resistance-detail-popover"
+            :style="{ left: resistanceDetailPopover.x + 'px', top: resistanceDetailPopover.y + 'px' }"
+            @click.stop>
+            <div class="resistance-detail-header">
+                <span class="resistance-detail-title">{{ t('humpSlopeDesigner.resistanceDetail.title', { x: resistanceDetailPopover.detail?.x ?? '-' }) }}</span>
+                <span class="resistance-detail-close" @click="closeResistanceDetail">×</span>
+            </div>
+            <div class="resistance-detail-body" v-if="resistanceDetailPopover.detail">
+                <div class="resistance-detail-row">
+                    <span class="resistance-detail-label">{{ t('humpSlopeDesigner.resistanceDetail.total') }}</span>
+                    <span class="resistance-detail-value resistance-detail-total">
+                        {{ formatHeight(resistanceDetailPopover.detail.totalHeight) }} m
+                    </span>
+                </div>
+
+                <el-tooltip placement="left" effect="light" :show-arrow="true" :raw-content="false">
+                    <template #content>
+                        <div class="resistance-formula" v-html="t('humpSlopeDesigner.resistanceDetail.tooltip.pure', pureFormulaParams)"></div>
+                    </template>
+                    <div class="resistance-detail-row resistance-detail-hoverable">
+                        <span class="resistance-detail-label">{{ t('humpSlopeDesigner.resistanceDetail.row.pure') }}</span>
+                        <span class="resistance-detail-value">{{ formatHeight(resistanceDetailPopover.detail.pureResistance.energyHeight) }} m</span>
+                    </div>
+                </el-tooltip>
+
+                <el-tooltip placement="left" effect="light" :show-arrow="true">
+                    <template #content>
+                        <div class="resistance-formula" v-html="t('humpSlopeDesigner.resistanceDetail.tooltip.air', airFormulaParams)"></div>
+                    </template>
+                    <div class="resistance-detail-row resistance-detail-hoverable">
+                        <span class="resistance-detail-label">{{ t('humpSlopeDesigner.resistanceDetail.row.air') }}</span>
+                        <span class="resistance-detail-value">{{ formatHeight(resistanceDetailPopover.detail.airResistance.energyHeight) }} m</span>
+                    </div>
+                </el-tooltip>
+
+                <el-tooltip placement="left" effect="light" :show-arrow="true">
+                    <template #content>
+                        <div class="resistance-formula" v-html="t('humpSlopeDesigner.resistanceDetail.tooltip.switch', switchFormulaParams)"></div>
+                    </template>
+                    <div class="resistance-detail-row resistance-detail-hoverable">
+                        <span class="resistance-detail-label">{{ t('humpSlopeDesigner.resistanceDetail.row.switch') }}</span>
+                        <span class="resistance-detail-value">{{ formatHeight(resistanceDetailPopover.detail.switchResistance.energyHeight) }} m</span>
+                    </div>
+                </el-tooltip>
+
+                <el-tooltip placement="left" effect="light" :show-arrow="true">
+                    <template #content>
+                        <div class="resistance-formula" v-html="t('humpSlopeDesigner.resistanceDetail.tooltip.curve', curveFormulaParams)"></div>
+                    </template>
+                    <div class="resistance-detail-row resistance-detail-hoverable">
+                        <span class="resistance-detail-label">{{ t('humpSlopeDesigner.resistanceDetail.row.curve') }}</span>
+                        <span class="resistance-detail-value">{{ formatHeight(resistanceDetailPopover.detail.curveResistance.energyHeight) }} m</span>
+                    </div>
+                </el-tooltip>
+            </div>
+            <div v-else class="resistance-detail-loading">{{ t('humpSlopeDesigner.resistanceDetail.loading') }}</div>
+        </div>
 
         <!-- 驼峰方案管理对话框 -->
         <el-dialog v-model="showSchemeManager" :title="t('humpSlopeDesigner.dialog.schemeManagement')" width="80%"
@@ -628,7 +688,7 @@ const loadSlopeLayout = async () => {
 const editSlopeLayout = async () => {
     if (!props.selectedInstanceId || !currentHumpSchemeID.value) {
         ElMessage.error({
-            message: '请先选择实例和纵断面方案',
+            message: t('humpSlopeDesigner.messages.selectInstanceAndScheme'),
             duration: 3000
         })
         return
@@ -636,7 +696,7 @@ const editSlopeLayout = async () => {
 
     if (!slopeLayout.value) {
         ElMessage.error({
-            message: '纵断面数据不存在',
+            message: t('humpSlopeDesigner.messages.slopeLayoutNotExist'),
             duration: 3000
         })
         return
@@ -658,7 +718,7 @@ const editSlopeLayout = async () => {
 
         if (response.status === 200) {
             ElMessage.success({
-                message: '纵断面保存成功',
+                message: t('humpSlopeDesigner.messages.slopeLayoutSaveSuccess'),
                 duration: 3000
             })
             // 重新加载数据以确保与后端同步
@@ -666,7 +726,7 @@ const editSlopeLayout = async () => {
         }
     } catch (error: any) {
         console.error('保存纵断面失败:', error)
-        const errorMessage = error?.response?.data || '保存纵断面失败，请稍后重试'
+        const errorMessage = error?.response?.data || t('humpSlopeDesigner.messages.slopeLayoutSaveFailed')
         ElMessage.error({
             message: errorMessage,
             duration: 3000
@@ -711,6 +771,187 @@ function loadResistanceEnergyHeight() {
         }).catch(error => {
             console.error("加载阻力能高度数据失败:", error);
         });
+}
+
+// 阻力能高分项明细类型
+interface ResistanceEnergyHeightDetailDto {
+    x: number
+    totalHeight: number
+    pureResistance: {
+        energyHeight: number
+        unitResistanceOnSlope: number
+        unitResistanceOnYard: number
+        lengthOnSlope: number
+        lengthOnYard: number
+        wagonMass: number
+        temperature: number
+        wagonVelocityOnSlope: number
+        wagonVelocityOnYard: number
+        carTypeParam: number
+    }
+    airResistance: {
+        energyHeight: number
+        unitResistanceOnSlope: number
+        unitResistanceOnYard: number
+        lengthOnSlope: number
+        lengthOnYard: number
+        wagonMass: number
+        airDensity: number
+        windwardArea: number
+        wagonVelocityOnSlope: number
+        wagonVelocityOnYard: number
+        windVelocity: number
+        isHeadWind: number
+    }
+    switchResistance: {
+        energyHeight: number
+        power: number
+        reverseCount: number
+        forwardCount: number
+        diamondCount: number
+        slipCount: number
+    }
+    curveResistance: {
+        energyHeight: number
+        power: number
+        pureCurveCorner: number
+        switchCurveDegree: number
+        totalCurveDegree: number
+    }
+}
+
+const resistanceDetailPopover = ref<{
+    visible: boolean
+    x: number
+    y: number
+    detail: ResistanceEnergyHeightDetailDto | null
+}>({ visible: false, x: 0, y: 0, detail: null })
+
+function formatHeight(value: unknown): string {
+    const v = Number(value)
+    return Number.isFinite(v) ? v.toFixed(4) : '0.0000'
+}
+
+function formatNumber(value: unknown): string {
+    const v = Number(value)
+    if (!Number.isFinite(v)) return '0'
+    if (Math.abs(v) >= 100 || Math.abs(v - Math.round(v)) < 1e-9) {
+        return v.toFixed(2)
+    }
+    return v.toFixed(3)
+}
+
+function closeResistanceDetail() {
+    resistanceDetailPopover.value = { visible: false, x: 0, y: 0, detail: null }
+}
+
+const pureFormulaParams = computed(() => {
+    const r = resistanceDetailPopover.value.detail?.pureResistance
+    if (!r) return {}
+    return {
+        Q: r.wagonMass,
+        temp: r.temperature,
+        n: r.carTypeParam,
+        vSlope: r.wagonVelocityOnSlope,
+        vYard: r.wagonVelocityOnYard,
+        r0Slope: formatNumber(r.unitResistanceOnSlope),
+        r0Yard: formatNumber(r.unitResistanceOnYard),
+        lSlope: r.lengthOnSlope,
+        lYard: r.lengthOnYard
+    }
+})
+
+const airFormulaParams = computed(() => {
+    const r = resistanceDetailPopover.value.detail?.airResistance
+    if (!r) return {}
+    return {
+        Q: r.wagonMass,
+        rho: r.airDensity,
+        f: r.windwardArea,
+        vWind: r.windVelocity,
+        xi: r.isHeadWind === 1
+            ? t('humpSlopeDesigner.resistanceDetail.windParam.headWind')
+            : t('humpSlopeDesigner.resistanceDetail.windParam.tailWind'),
+        vSlope: r.wagonVelocityOnSlope,
+        vYard: r.wagonVelocityOnYard,
+        rwSlope: formatNumber(r.unitResistanceOnSlope),
+        rwYard: formatNumber(r.unitResistanceOnYard),
+        lSlope: r.lengthOnSlope,
+        lYard: r.lengthOnYard
+    }
+})
+
+const switchFormulaParams = computed(() => {
+    const r = resistanceDetailPopover.value.detail?.switchResistance
+    if (!r) return {}
+    return {
+        nReverse: r.reverseCount,
+        nForward: r.forwardCount,
+        nDiamond: r.diamondCount,
+        nSlip: r.slipCount,
+        Es: formatNumber(r.power)
+    }
+})
+
+const curveFormulaParams = computed(() => {
+    const r = resistanceDetailPopover.value.detail?.curveResistance
+    if (!r) return {}
+    return {
+        pureCurve: formatNumber(r.pureCurveCorner),
+        switchCurve: formatNumber(r.switchCurveDegree),
+        totalCurve: formatNumber(r.totalCurveDegree),
+        Ec: formatNumber(r.power)
+    }
+})
+
+function handleResistanceClick(payload: { x: number, clientX: number, clientY: number }) {
+    if (!props.selectedInstanceId || !currentHumpSchemeID.value || !currentHumpCalculationID.value) {
+        ElMessage.warning(t('humpSlopeDesigner.resistanceDetail.messages.selectFirst'))
+        return
+    }
+    const currentCalculation = humpCalculations.value.find(calc => calc.id === currentHumpCalculationID.value)
+    if (!currentCalculation) return
+
+    // 弹出位置：相对视口的固定坐标。向右下方稍微偏移以避免遮挡光标点。
+    const popoverWidth = 320
+    const offsetX = 12
+    const offsetY = 12
+    let left = payload.clientX + offsetX
+    let top = payload.clientY + offsetY
+    if (typeof window !== 'undefined') {
+        if (left + popoverWidth > window.innerWidth - 8) {
+            left = Math.max(8, payload.clientX - popoverWidth - offsetX)
+        }
+        if (top + 240 > window.innerHeight - 8) {
+            top = Math.max(8, window.innerHeight - 240 - 8)
+        }
+    }
+
+    resistanceDetailPopover.value = { visible: true, x: left, y: top, detail: null }
+
+    const requestBody = {
+        instanceID: props.selectedInstanceId,
+        humpSchemeID: currentHumpSchemeID.value,
+        id: currentCalculation.id,
+        slopeLineID: currentCalculation.slopeLineID,
+        wagonTypeName: currentCalculation.wagonType,
+        operationConditionID: currentCalculation.operationConditionID,
+        retarderStatusID: null,
+        retarderStatusList: currentCalculation.retarderStatusList || [],
+        wagon: { typeName: currentCalculation.wagonType }
+    }
+
+    axios.post(`/hump/getresistanceenergyheightdetail`, requestBody, {
+        params: { x: payload.x }
+    }).then(response => {
+        if (response.data) {
+            resistanceDetailPopover.value.detail = response.data as ResistanceEnergyHeightDetailDto
+        }
+    }).catch(error => {
+        console.error('加载阻力能高分项明细失败:', error)
+        ElMessage.error(t('humpSlopeDesigner.resistanceDetail.messages.loadDetailFailed'))
+        closeResistanceDetail()
+    })
 }
 
 // 加载动能高线
@@ -1510,6 +1751,111 @@ const handleSaveRetarderStatus = async () => {
 
 </script>
 <style scoped lang="css">
+.resistance-detail-popover {
+    position: fixed;
+    z-index: 2000;
+    width: 320px;
+    background: #ffffff;
+    border: 1px solid #d0d7de;
+    border-radius: 6px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+    font-size: 13px;
+    color: #1f2328;
+}
+
+.resistance-detail-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    border-bottom: 1px solid #eaecef;
+    background: #f6f8fa;
+    border-radius: 6px 6px 0 0;
+}
+
+.resistance-detail-title {
+    font-weight: 600;
+    color: #24292f;
+}
+
+.resistance-detail-close {
+    cursor: pointer;
+    font-size: 18px;
+    line-height: 1;
+    color: #57606a;
+    padding: 0 4px;
+}
+
+.resistance-detail-close:hover {
+    color: #cf222e;
+}
+
+.resistance-detail-body {
+    padding: 6px 0;
+}
+
+.resistance-detail-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 12px;
+}
+
+.resistance-detail-hoverable {
+    cursor: help;
+}
+
+.resistance-detail-hoverable:hover {
+    background: #f6f8fa;
+}
+
+.resistance-detail-label {
+    color: #57606a;
+}
+
+.resistance-detail-value {
+    font-family: 'Consolas', 'Menlo', monospace;
+    color: #1f2328;
+}
+
+.resistance-detail-total {
+    font-weight: 700;
+    color: #0969da;
+}
+
+.resistance-detail-loading {
+    padding: 20px;
+    text-align: center;
+    color: #57606a;
+}
+
+.resistance-formula {
+    max-width: 380px;
+    line-height: 1.6;
+}
+
+.resistance-formula-title {
+    font-weight: 600;
+    margin-bottom: 4px;
+    color: #1f2328;
+}
+
+.resistance-formula-line {
+    font-family: 'Consolas', 'Menlo', monospace;
+    margin: 2px 0;
+}
+
+.resistance-formula-params {
+    margin-top: 6px;
+    font-size: 12px;
+    color: #57606a;
+    line-height: 1.7;
+}
+
+.resistance-formula b {
+    color: #0969da;
+    font-weight: 700;
+}
+
 .container {
     position: relative;
     min-height: 100vh;
@@ -1723,5 +2069,37 @@ const handleSaveRetarderStatus = async () => {
     white-space: normal;
     overflow-wrap: anywhere;
     word-break: break-word;
+}
+</style>
+
+<!-- 阻力能高分项浮窗中 el-tooltip 内容会被 teleport 到 body 之外，使用未 scoped 的样式确保生效 -->
+<style lang="css">
+.resistance-formula {
+    max-width: 420px;
+    line-height: 1.6;
+    color: #1f2328;
+}
+
+.resistance-formula-title {
+    font-weight: 600;
+    margin-bottom: 4px;
+    color: #1f2328;
+}
+
+.resistance-formula-line {
+    font-family: 'Consolas', 'Menlo', monospace;
+    margin: 2px 0;
+}
+
+.resistance-formula-params {
+    margin-top: 6px;
+    font-size: 12px;
+    color: #57606a;
+    line-height: 1.7;
+}
+
+.resistance-formula b {
+    color: #0969da;
+    font-weight: 700;
 }
 </style>

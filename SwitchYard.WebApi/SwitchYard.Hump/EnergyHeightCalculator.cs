@@ -153,6 +153,178 @@ namespace SwitchYard.Hump
 
             return resistanceEnergyHeight * 0.001;
         }
+
+        /// <summary>
+        /// 计算指定位置阻力能高的明细分解（基本阻力、风阻力、道岔阻力、曲线阻力），
+        /// 返回总能高及计算各项时使用的所有原始参数，便于前端浮窗中显示数值与公式。
+        /// </summary>
+        public static ResistanceEnergyHeightDetail CalculateResistanceEnergyHeightDetail(
+            FlatLayout flatLayout, double x, EnergyCalculationParams param)
+        {
+            var orgPosition = flatLayout.PositionList.OrderBy(p => p.X).First();
+
+            var positionSegments = flatLayout.PositionSegmentList.FindAll(s => s.StartPosition.X < x)
+                .OrderBy(s => s.StartPosition.X).ToList();
+
+            double totalLengthOnSlop = 0.0;
+            double totalLengthOnYard = 0.0;
+            if (positionSegments.Count > 0)
+            {
+                totalLengthOnSlop = positionSegments.FindAll(s => s.LocationParam == 0).Sum(s => s.Length);
+                totalLengthOnYard = positionSegments.FindAll(s => s.LocationParam == 1).Sum(s => s.Length);
+                var lastSegmentError = positionSegments.Last().EndPosition.X - x;
+                if (totalLengthOnYard == 0)
+                {
+                    totalLengthOnSlop -= lastSegmentError;
+                }
+                else
+                {
+                    totalLengthOnYard -= lastSegmentError;
+                }
+            }
+
+            var sc = flatLayout.GetSwitchCount(orgPosition.X, x);
+            var switchResistancePower = HumpResistanceCalculator.SwitchResistance(
+                sc.ReverseCount, sc.ForwardCound, sc.DiamondCount, sc.SlipCount);
+
+            var pureCurveCorner = positionSegments.Count > 0 ? flatLayout.GetCurveCornerCount(orgPosition.X, x) : 0.0;
+            var totalCurveDegree = pureCurveCorner + sc.TotalCurveDegree;
+            var curveResistancePower = HumpResistanceCalculator.CalculateCurveResistance(totalCurveDegree);
+
+            var airResistanceOnYard = HumpResistanceCalculator.CalculateAirResistance(
+                param.Wagon.GrossMass, param.OperationCondition.AirDensity, param.Wagon.WindwardArea,
+                param.OperationCondition.WagonVelocityOnYard, param.OperationCondition.WindVelocity, param.OperationCondition.IsHeadWind);
+            var airResistanceOnSlop = HumpResistanceCalculator.CalculateAirResistance(
+                param.Wagon.GrossMass, param.OperationCondition.AirDensity, param.Wagon.WindwardArea,
+                param.OperationCondition.WagonVelocityOnSlope, param.OperationCondition.WindVelocity, param.OperationCondition.IsHeadWind);
+
+            var pureResistanceOnYard = HumpResistanceCalculator.CalculatePureResistance(
+                param.Wagon.GrossMass, param.OperationCondition.Temperature, 1,
+                param.OperationCondition.WagonVelocityOnYard, param.Wagon.CarTypeParam);
+            var pureResistanceOnSlop = HumpResistanceCalculator.CalculatePureResistance(
+                param.Wagon.GrossMass, param.OperationCondition.Temperature, 0,
+                param.OperationCondition.WagonVelocityOnSlope, param.Wagon.CarTypeParam);
+
+            // 各分项阻力能高（单位：m）。原始公式得到 N·m/kN，再乘 0.001 转为 m。
+            var pureHeight = (pureResistanceOnYard * totalLengthOnYard + pureResistanceOnSlop * totalLengthOnSlop) * 0.001;
+            var airHeight = (airResistanceOnYard * totalLengthOnYard + airResistanceOnSlop * totalLengthOnSlop) * 0.001;
+            var switchHeight = switchResistancePower * 0.001;
+            var curveHeight = curveResistancePower * 0.001;
+            var totalHeight = pureHeight + airHeight + switchHeight + curveHeight;
+
+            return new ResistanceEnergyHeightDetail
+            {
+                X = Math.Round(x, 3),
+                TotalHeight = Math.Round(totalHeight, 4),
+                PureResistance = new PureResistanceDetail
+                {
+                    EnergyHeight = Math.Round(pureHeight, 4),
+                    UnitResistanceOnSlope = Math.Round(pureResistanceOnSlop, 4),
+                    UnitResistanceOnYard = Math.Round(pureResistanceOnYard, 4),
+                    LengthOnSlope = Math.Round(totalLengthOnSlop, 3),
+                    LengthOnYard = Math.Round(totalLengthOnYard, 3),
+                    WagonMass = param.Wagon.GrossMass,
+                    Temperature = param.OperationCondition.Temperature,
+                    WagonVelocityOnSlope = param.OperationCondition.WagonVelocityOnSlope,
+                    WagonVelocityOnYard = param.OperationCondition.WagonVelocityOnYard,
+                    CarTypeParam = param.Wagon.CarTypeParam
+                },
+                AirResistance = new AirResistanceDetail
+                {
+                    EnergyHeight = Math.Round(airHeight, 4),
+                    UnitResistanceOnSlope = Math.Round(airResistanceOnSlop, 4),
+                    UnitResistanceOnYard = Math.Round(airResistanceOnYard, 4),
+                    LengthOnSlope = Math.Round(totalLengthOnSlop, 3),
+                    LengthOnYard = Math.Round(totalLengthOnYard, 3),
+                    WagonMass = param.Wagon.GrossMass,
+                    AirDensity = param.OperationCondition.AirDensity,
+                    WindwardArea = param.Wagon.WindwardArea,
+                    WagonVelocityOnSlope = param.OperationCondition.WagonVelocityOnSlope,
+                    WagonVelocityOnYard = param.OperationCondition.WagonVelocityOnYard,
+                    WindVelocity = param.OperationCondition.WindVelocity,
+                    IsHeadWind = param.OperationCondition.IsHeadWind
+                },
+                SwitchResistance = new SwitchResistanceDetail
+                {
+                    EnergyHeight = Math.Round(switchHeight, 4),
+                    Power = Math.Round(switchResistancePower, 4),
+                    ReverseCount = sc.ReverseCount,
+                    ForwardCount = sc.ForwardCound,
+                    DiamondCount = sc.DiamondCount,
+                    SlipCount = sc.SlipCount
+                },
+                CurveResistance = new CurveResistanceDetail
+                {
+                    EnergyHeight = Math.Round(curveHeight, 4),
+                    Power = Math.Round(curveResistancePower, 4),
+                    PureCurveCorner = Math.Round(pureCurveCorner, 4),
+                    SwitchCurveDegree = Math.Round(sc.TotalCurveDegree, 4),
+                    TotalCurveDegree = Math.Round(totalCurveDegree, 4)
+                }
+            };
+        }
+    }
+
+    /// <summary>
+    /// 阻力能高分项明细
+    /// </summary>
+    public class ResistanceEnergyHeightDetail
+    {
+        public double X { get; set; }
+        public double TotalHeight { get; set; }
+        public PureResistanceDetail PureResistance { get; set; } = new PureResistanceDetail();
+        public AirResistanceDetail AirResistance { get; set; } = new AirResistanceDetail();
+        public SwitchResistanceDetail SwitchResistance { get; set; } = new SwitchResistanceDetail();
+        public CurveResistanceDetail CurveResistance { get; set; } = new CurveResistanceDetail();
+    }
+
+    public class PureResistanceDetail
+    {
+        public double EnergyHeight { get; set; }
+        public double UnitResistanceOnSlope { get; set; }
+        public double UnitResistanceOnYard { get; set; }
+        public double LengthOnSlope { get; set; }
+        public double LengthOnYard { get; set; }
+        public double WagonMass { get; set; }
+        public double Temperature { get; set; }
+        public double WagonVelocityOnSlope { get; set; }
+        public double WagonVelocityOnYard { get; set; }
+        public int CarTypeParam { get; set; }
+    }
+
+    public class AirResistanceDetail
+    {
+        public double EnergyHeight { get; set; }
+        public double UnitResistanceOnSlope { get; set; }
+        public double UnitResistanceOnYard { get; set; }
+        public double LengthOnSlope { get; set; }
+        public double LengthOnYard { get; set; }
+        public double WagonMass { get; set; }
+        public double AirDensity { get; set; }
+        public double WindwardArea { get; set; }
+        public double WagonVelocityOnSlope { get; set; }
+        public double WagonVelocityOnYard { get; set; }
+        public double WindVelocity { get; set; }
+        public int IsHeadWind { get; set; }
+    }
+
+    public class SwitchResistanceDetail
+    {
+        public double EnergyHeight { get; set; }
+        public double Power { get; set; }
+        public int ReverseCount { get; set; }
+        public int ForwardCount { get; set; }
+        public int DiamondCount { get; set; }
+        public int SlipCount { get; set; }
+    }
+
+    public class CurveResistanceDetail
+    {
+        public double EnergyHeight { get; set; }
+        public double Power { get; set; }
+        public double PureCurveCorner { get; set; }
+        public double SwitchCurveDegree { get; set; }
+        public double TotalCurveDegree { get; set; }
     }
 
     /// <summary>
