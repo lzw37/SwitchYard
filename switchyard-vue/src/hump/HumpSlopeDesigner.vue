@@ -2,7 +2,6 @@
     <div class="container">
         <div class="side-menu-top">
             <div class="center-section">
-                <el-button @click="toggleLeft" size="small" type="primary">{{ t('humpSlopeDesigner.tool') }}</el-button>
                 <div class="toolbar-section selection-section">
                     <div class="control-group select-group">
                         <span>{{ t('humpSlopeDesigner.longitudinalSectionScheme') }}</span>
@@ -64,8 +63,6 @@
                         </div>
                     </el-popover>
                 </div>
-                <el-button @click="toggleRight" size="small" type="primary">{{ t('humpSlopeDesigner.data')
-                    }}</el-button>
             </div>
         </div>
         <div class="condition-info">
@@ -122,6 +119,14 @@
                 style="height:auto" :global-scale-x="globalScaleX" :global-cursor-x="globalCursorX"
                 @update:global-cursor-x="updateGlobalCursorX" @horizontal-scroll="syncHorizontalScroll" />
         </div>
+        <button class="drawer-tab drawer-tab-left" :class="{ 'drawer-tab-open': leftVisible }"
+            @click="toggleLeft" :title="t('humpSlopeDesigner.tool')" type="button">
+            <span class="drawer-tab-arrow">{{ leftVisible ? '◀' : '▶' }}</span>
+        </button>
+        <button class="drawer-tab drawer-tab-right" :class="{ 'drawer-tab-open': rightVisible }"
+            @click="toggleRight" :title="t('humpSlopeDesigner.data')" type="button">
+            <span class="drawer-tab-arrow">{{ rightVisible ? '▶' : '◀' }}</span>
+        </button>
         <div class="side-menu-left" v-show="leftVisible">
             <div class="side-menu-container">
                 <div class="left-panel-title">{{ t('humpSlopeDesigner.displayElements') }}</div>
@@ -2166,6 +2171,55 @@ const handleSaveRetarderStatus = async () => {
         flex-basis: 100%;
         min-width: 0;
     }
+}
+
+.drawer-tab {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 22px;
+    height: 56px;
+    padding: 0;
+    border: 1px solid #c6d1e8;
+    background: linear-gradient(135deg, #5b8def, #3d6fd8);
+    color: #ffffff;
+    cursor: pointer;
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.18);
+    transition: background 0.2s ease, transform 0.2s ease, left 0.25s ease, right 0.25s ease;
+}
+
+.drawer-tab:hover {
+    background: linear-gradient(135deg, #6ea0ff, #4a7ee8);
+}
+
+.drawer-tab-left {
+    left: 0;
+    border-left: none;
+    border-radius: 0 28px 28px 0;
+}
+
+.drawer-tab-left.drawer-tab-open {
+    left: 200px;
+}
+
+.drawer-tab-right {
+    right: 0;
+    border-right: none;
+    border-radius: 28px 0 0 28px;
+}
+
+.drawer-tab-right.drawer-tab-open {
+    right: 500px;
+}
+
+.drawer-tab-arrow {
+    font-size: 12px;
+    line-height: 1;
+    user-select: none;
 }
 
 .condition-info {
