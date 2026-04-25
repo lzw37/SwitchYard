@@ -313,6 +313,13 @@ onMounted(() => {
     min-width: max-content;
 }
 
+.hump-main-tabs :deep(#pane-simulation3d) {
+    height: calc(100dvh - 104px);
+    max-height: calc(100dvh - 104px);
+    min-height: 0;
+    overflow: hidden;
+}
+
 el-card {
     padding: 18px;
 }

@@ -652,6 +652,8 @@ function initThree() {
     controls.dampingFactor = 0.08
     controls.minDistance = 5
     controls.maxDistance = 1500
+    // Keep the camera above the ground plane so the user can't tumble below it.
+    controls.maxPolarAngle = Math.PI * 0.495
 
     // Lights
     const ambient = new THREE.AmbientLight(0xffffff, 0.55)
@@ -690,6 +692,14 @@ function initThree() {
 
 function disposeObject3D(obj: THREE.Object3D) {
     obj.traverse(child => {
+        // CSS2DObject children attach their HTML element to the labelRenderer's DOM
+        // root on first render; THREE never auto-removes them when the object is
+        // detached from the scene. We must remove the element ourselves to avoid
+        // leftover labels (e.g. when the user switches the headway-check scheme).
+        const css = child as unknown as { isCSS2DObject?: boolean; element?: HTMLElement }
+        if (css && css.isCSS2DObject && css.element && css.element.parentNode) {
+            css.element.parentNode.removeChild(css.element)
+        }
         const mesh = child as THREE.Mesh
         if (mesh.geometry) mesh.geometry.dispose()
         const mat = mesh.material
@@ -1191,14 +1201,33 @@ function fitCameraToSlope() {
 
 function resetCamera() { fitCameraToSlope() }
 
+// Track the wrapper's last laid-out size so we can detect the hidden -> visible
+// transition that happens when the user switches tabs. el-tabs keeps the panel
+// in the DOM with display:none, which collapses the wrapper to 0x0 and makes
+// any user pan/zoom that happened before look "off" once the panel is shown
+// again. When we return from a collapsed state we refit the camera so the
+// slope is fully visible inside the canvas.
+let lastWrapperWidth = 0
+let lastWrapperHeight = 0
+
 function onResize() {
     if (!renderer || !camera || !canvasWrapperRef.value) return
-    const w = Math.max(1, canvasWrapperRef.value.clientWidth)
-    const h = Math.max(1, canvasWrapperRef.value.clientHeight)
+    const rawW = canvasWrapperRef.value.clientWidth
+    const rawH = canvasWrapperRef.value.clientHeight
+    const w = Math.max(1, rawW)
+    const h = Math.max(1, rawH)
     renderer.setSize(w, h, false)
     if (labelRenderer) labelRenderer.setSize(w, h)
     camera.aspect = w / h
     camera.updateProjectionMatrix()
+    const wasCollapsed = lastWrapperWidth < 2 || lastWrapperHeight < 2
+    const nowVisible = rawW > 1 && rawH > 1
+    if (wasCollapsed && nowVisible && slopePoints.value.length >= 2) {
+        // Refit so the slope stays inside the visible canvas after tab activation.
+        fitCameraToSlope()
+    }
+    lastWrapperWidth = rawW
+    lastWrapperHeight = rawH
 }
 
 // ---------- data loading ----------
@@ -1388,11 +1417,14 @@ onBeforeUnmount(() => {
     flex-direction: column;
     width: 100%;
     height: 100%;
-    min-height: 620px;
+    max-height: calc(100dvh - 104px);
+    min-height: 0;
     background: #ffffff;
+    overflow: hidden;
 }
 
 .sim-toolbar {
+    flex: 0 0 auto;
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -1476,13 +1508,14 @@ onBeforeUnmount(() => {
 
 .sim-body {
     position: relative;
-    flex: 1;
+    flex: 1 1 auto;
     margin: 0 6px 8px 6px;
     border: 1px solid #dbe3f1;
     border-radius: 2px;
     background: #eaf2ff;
     overflow: hidden;
-    min-height: 520px;
+    contain: layout paint;
+    min-height: 0;
 }
 
 .sim-canvas {
