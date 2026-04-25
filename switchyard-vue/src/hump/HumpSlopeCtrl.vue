@@ -67,28 +67,6 @@
                         :x1="getX(getPositionX(seg.startPositionID))" :y1="getY(getPositionHeight(seg.startPositionID))"
                         :x2="getX(getPositionX(seg.endPositionID))" :y2="getY(getPositionHeight(seg.endPositionID))" />
                 </g>
-                <g class="points">
-                    <g v-for="pos in slopeLayout?.positionList || []"
-                        @contextmenu.prevent="openContextMenu(pos, $event)">
-                        <circle class="point-circle" :cx="getX(pos.x)" :cy="getY(pos.height)" r="4"
-                            :class="{ 'point-circle-longpress': longPressActivatedId === pos.id, 'point-circle-dragging': draggingId === pos.id }"
-                            @mousedown="startDrag(pos, $event)" @touchstart.prevent="startTouchDrag(pos, $event)">
-                        </circle>
-                        <text v-if="showPointHeightNumber" class="point-height-text" :x="getX(pos.x)"
-                            :y="(textPositions.get(pos.id)?.y ?? (getY(pos.height) - 10))">{{ pos.height }}m</text>
-                        <line
-                            v-if="showPointHeightNumber && Math.abs(getY(pos.height) - (textPositions.get(pos.id)?.y ?? (getY(pos.height) - 10))) >= 15"
-                            class="point-line" :x1="getX(pos.x)"
-                            :y1="textPositions.get(pos.id)?.barStartY ?? (getY(pos.height) - 10)" :x2="getX(pos.x)"
-                            :y2="(textPositions.get(pos.id)?.barEndY ?? (getY(pos.height) - 10))"></line>
-                    </g>
-                </g>
-                <g class="guide-lines" v-if="draggingId">
-                    <line v-if="dragMode === 'horizontal'" class="guide-line horizontal" :x1="marginLeft"
-                        :y1="getY(currentHeight)" :x2="marginLeft + sketchWidth" :y2="getY(currentHeight)" />
-                    <line v-if="dragMode === 'vertical'" class="guide-line vertical" :x1="getX(currentX)"
-                        :y1="marginTop" :x2="getX(currentX)" :y2="svgHeight - marginBottom" />
-                </g>
                 <g v-if="props.elementVisibility?.resistance" class="resistance-energy-height">
                     <polyline :points="resistancePoints" class="resistance-line" />
                     <g v-for="dataPoint in resistanceEnergyHeightData || []">
@@ -118,6 +96,31 @@
                         :y="kineticTextPositions.get(dataPoint.x) ?? ((getY(dataPoint.result.gravitationHeight) + getY(dataPoint.result.gravitationHeight + dataPoint.result.kineticEnergyHeight)) / 2)">{{
                             formatKineticEnergyHeight(dataPoint.result.kineticEnergyHeight)
                         }}m({{ dataPoint.result.velocity }}m/s)</text>
+                </g>
+                <g class="points">
+                    <g v-for="pos in slopeLayout?.positionList || []"
+                        @contextmenu.prevent="openContextMenu(pos, $event)">
+                        <text v-if="showPointHeightNumber" class="point-height-text" :x="getX(pos.x)"
+                            :y="(textPositions.get(pos.id)?.y ?? (getY(pos.height) - 10))">{{ pos.height }}m</text>
+                        <line
+                            v-if="showPointHeightNumber && Math.abs(getY(pos.height) - (textPositions.get(pos.id)?.y ?? (getY(pos.height) - 10))) >= 15"
+                            class="point-line" :x1="getX(pos.x)"
+                            :y1="textPositions.get(pos.id)?.barStartY ?? (getY(pos.height) - 10)" :x2="getX(pos.x)"
+                            :y2="(textPositions.get(pos.id)?.barEndY ?? (getY(pos.height) - 10))"></line>
+                        <circle class="point-circle" :cx="getX(pos.x)" :cy="getY(pos.height)" r="4"
+                            :class="{ 'point-circle-longpress': longPressActivatedId === pos.id, 'point-circle-dragging': draggingId === pos.id }"
+                            @mousedown="startDrag(pos, $event)" @touchstart.prevent="startTouchDrag(pos, $event)">
+                        </circle>
+                        <circle class="point-hit-area" :cx="getX(pos.x)" :cy="getY(pos.height)" r="12"
+                            @mousedown="startDrag(pos, $event)" @touchstart.prevent="startTouchDrag(pos, $event)">
+                        </circle>
+                    </g>
+                </g>
+                <g class="guide-lines" v-if="draggingId">
+                    <line v-if="dragMode === 'horizontal'" class="guide-line horizontal" :x1="marginLeft"
+                        :y1="getY(currentHeight)" :x2="marginLeft + sketchWidth" :y2="getY(currentHeight)" />
+                    <line v-if="dragMode === 'vertical'" class="guide-line vertical" :x1="getX(currentX)"
+                        :y1="marginTop" :x2="getX(currentX)" :y2="svgHeight - marginBottom" />
                 </g>
                 <g class="cursor">
                     <line class="cursor-vline" :y1="marginTop" :y2="svgHeight - marginBottom" :x1="getX(cursorX)"
@@ -1181,6 +1184,15 @@ defineExpose({
     transform-box: fill-box;
     transform-origin: center;
     transition: transform 120ms ease;
+    pointer-events: none;
+}
+
+.points .point-hit-area {
+    fill: transparent;
+    stroke: none;
+    cursor: pointer;
+    touch-action: none;
+    pointer-events: all;
 }
 
 .points .point-circle.point-circle-longpress,
@@ -1191,6 +1203,7 @@ defineExpose({
 .slope-line {
     stroke: #C2A68C;
     stroke-width: 3px;
+    pointer-events: none;
 }
 
 .retarders .retarder-range {
@@ -1219,6 +1232,7 @@ defineExpose({
     stroke: gray;
     stroke-width: 1px;
     stroke-dasharray: 5, 5;
+    pointer-events: none;
 }
 
 .point-height-text {
@@ -1226,30 +1240,35 @@ defineExpose({
     fill: darkred;
     text-anchor: middle;
     user-select: none;
+    pointer-events: none;
 }
 
 .point-line {
     stroke: darkred;
     stroke-width: 1px;
     opacity: 0.5;
+    pointer-events: none;
 }
 
 .resistance-circle {
     stroke: #4988C4;
     stroke-width: 1.5px;
     fill: white;
+    pointer-events: none;
 }
 
 .breaking-circle {
     stroke: #ff0000;
     stroke-width: 2px;
     fill: white;
+    pointer-events: none;
 }
 
 .breaking-line {
     stroke: #ff0000;
     stroke-width: 2px;
     fill: none;
+    pointer-events: none;
 }
 
 .breaking-resistance-shade {
@@ -1275,12 +1294,14 @@ defineExpose({
     text-anchor: middle;
     dominant-baseline: middle;
     user-select: none;
+    pointer-events: none;
 }
 
 .resistance-line {
     stroke: #4988C4;
     stroke-width: 2px;
     fill: none;
+    pointer-events: none;
 }
 
 .resistance-shade {
@@ -1293,18 +1314,21 @@ defineExpose({
     stroke-width: 1px;
     stroke-dasharray: 4 2;
     fill: none;
+    pointer-events: none;
 }
 
 .resistance-vline {
     stroke: #4988C4;
     stroke-width: 1px;
     opacity: 0.2;
+    pointer-events: none;
 }
 
 .kinetic-vline {
     stroke: #016B61;
     stroke-width: 1px;
     opacity: 0.6;
+    pointer-events: none;
 }
 
 .kinetic-text {
@@ -1313,6 +1337,7 @@ defineExpose({
     text-anchor: middle;
     dominant-baseline: middle;
     user-select: none;
+    pointer-events: none;
 }
 
 .addpointbar {
