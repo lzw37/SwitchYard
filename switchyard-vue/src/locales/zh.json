@@ -740,6 +740,7 @@
         "showPointHeightNumber": "变坡点高度",
         "xScale": "X缩放",
         "yScale": "Y缩放",
+        "scale": "缩放",
         "data": "数据",
         "slopeLine": "溜放线:",
         "humpVelocity": "推峰速度：",

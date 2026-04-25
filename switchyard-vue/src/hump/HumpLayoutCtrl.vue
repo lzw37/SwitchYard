@@ -2,16 +2,25 @@
     <div style="width:100%;height:100%">
         <div v-if="props.isToolbarDisplay" class="flatlayout-toolbar">
             <div class="flatlayout-toolbar__group">
-                <label for="leftmargin-slider">{{ t('humpLayoutCtrl.horizontalBaseline') }}</label>
+                <div class="flatlayout-toolbar__group-header">
+                    <label for="leftmargin-slider">{{ t('humpLayoutCtrl.horizontalBaseline') }}</label>
+                    <span class="flatlayout-toolbar__value">{{ leftMarginSliderValue }}</span>
+                </div>
                 <el-slider id="leftmargin-slider" size="small" v-model="leftMarginSliderValue" :min="-50" :max="500"
                     :step="10" />
             </div>
             <div class="flatlayout-toolbar__group">
-                <label for="scalex-slider">{{ t('humpLayoutCtrl.horizontalScale') }}</label>
+                <div class="flatlayout-toolbar__group-header">
+                    <label for="scalex-slider">{{ t('humpLayoutCtrl.horizontalScale') }}</label>
+                    <span class="flatlayout-toolbar__value">{{ scaleXDisplay }}</span>
+                </div>
                 <el-slider id="scalex-slider" size="small" v-model="scaleX" :min="0.1" :max="5" :step="0.01" />
             </div>
             <div class="flatlayout-toolbar__group">
-                <label for="baseline-slider">{{ t('humpLayoutCtrl.verticalBaseline') }}</label>
+                <div class="flatlayout-toolbar__group-header">
+                    <label for="baseline-slider">{{ t('humpLayoutCtrl.verticalBaseline') }}</label>
+                    <span class="flatlayout-toolbar__value">{{ baseLineY }}</span>
+                </div>
                 <el-slider id="baseline-slider" size="small" v-model="baseLineY" :min="0" :max="250" :step="1" />
             </div>
         </div>
@@ -164,6 +173,8 @@ const leftMarginSliderValue = computed({
         leftMargin.value = -val
     }
 })
+
+const scaleXDisplay = computed(() => Number(scaleX.value).toFixed(2))
 
 // 基线y坐标
 const baseLineY = ref(100)
@@ -941,9 +952,8 @@ defineExpose({
 }
 
 .flatlayout-toolbar {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
     gap: 12px;
     padding: 14px 20px;
     margin-top: 5px;
@@ -958,9 +968,10 @@ defineExpose({
 
 .flatlayout-toolbar__group {
     display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 4px 4px;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+    padding: 10px 12px 8px;
     border-radius: 5px;
     border: 1px solid #e3eaf7;
     background: #ffffff;
@@ -973,18 +984,46 @@ defineExpose({
     box-shadow: 0 4px 10px rgba(15, 23, 42, 0.12);
 }
 
+.flatlayout-toolbar__group-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
 .flatlayout-toolbar__group label {
     font-size: 13px;
     font-weight: 600;
     color: #1f2a37;
-    min-width: 70px;
-    text-align: right;
+    min-width: 0;
+    text-align: left;
     letter-spacing: 0.02em;
+    line-height: 1.3;
+}
+
+.flatlayout-toolbar__value {
+    flex-shrink: 0;
+    min-width: 48px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: #eef4ff;
+    color: #315ea8;
+    font-size: 12px;
+    font-weight: 700;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
 }
 
 .flatlayout-toolbar__group .el-slider {
-    flex: 1;
-    min-width: 180px;
-    margin-right: 4px;
+    width: 100%;
+    min-width: 0;
+    margin-right: 0;
+}
+
+@media (max-width: 768px) {
+    .flatlayout-toolbar {
+        grid-template-columns: 1fr;
+        padding: 12px;
+    }
 }
 </style>

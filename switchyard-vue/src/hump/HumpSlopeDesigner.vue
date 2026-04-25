@@ -1,10 +1,8 @@
 <template>
     <div class="container">
         <div class="side-menu-top">
-            <div class="left-section">
-                <el-button @click="toggleLeft" size="small" type="primary">{{ t('humpSlopeDesigner.tool') }}</el-button>
-            </div>
             <div class="center-section">
+                <el-button @click="toggleLeft" size="small" type="primary">{{ t('humpSlopeDesigner.tool') }}</el-button>
                 <div class="toolbar-section selection-section">
                     <div class="control-group select-group">
                         <span>{{ t('humpSlopeDesigner.longitudinalSectionScheme') }}</span>
@@ -50,17 +48,22 @@
                     </div>
                 </div>
                 <div class="toolbar-section scale-section">
-                    <div class="control-group slider-group">
-                        <span>{{ t('humpSlopeDesigner.xScale') }}</span>
-                        <el-slider v-model="globalScaleX" :min="0.1" :max="5" :step="0.01"></el-slider>
-                    </div>
-                    <div class="control-group slider-group">
-                        <span>{{ t('humpSlopeDesigner.yScale') }}</span>
-                        <el-slider v-model="globalScaleY" :min="5" :max="100" :step="0.1"></el-slider>
-                    </div>
+                    <el-popover placement="bottom" :width="280" trigger="click" popper-class="scale-popover">
+                        <template #reference>
+                            <el-button size="small" type="primary">{{ t('humpSlopeDesigner.scale') }}</el-button>
+                        </template>
+                        <div class="scale-popover-body">
+                            <div class="control-group slider-group">
+                                <span>{{ t('humpSlopeDesigner.xScale') }}</span>
+                                <el-slider v-model="globalScaleX" :min="0.1" :max="5" :step="0.01"></el-slider>
+                            </div>
+                            <div class="control-group slider-group">
+                                <span>{{ t('humpSlopeDesigner.yScale') }}</span>
+                                <el-slider v-model="globalScaleY" :min="5" :max="100" :step="0.1"></el-slider>
+                            </div>
+                        </div>
+                    </el-popover>
                 </div>
-            </div>
-            <div class="right-section">
                 <el-button @click="toggleRight" size="small" type="primary">{{ t('humpSlopeDesigner.data')
                     }}</el-button>
             </div>
@@ -1897,10 +1900,9 @@ const handleSaveRetarderStatus = async () => {
     background-color: #f0f0f0;
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 8px 10px;
-    padding: 6px 10px;
+    flex-wrap: nowrap;
+    gap: 6px;
+    padding: 6px 8px;
 }
 
 .left-section,
@@ -1911,22 +1913,23 @@ const handleSaveRetarderStatus = async () => {
 }
 
 .center-section {
-    flex: 1 1 920px;
+    flex: 1 1 auto;
     display: flex;
-    align-items: stretch;
+    align-items: center;
     justify-content: flex-start;
-    flex-wrap: wrap;
-    gap: 8px 10px;
-    padding: 8px 12px;
+    flex-wrap: nowrap;
+    gap: 6px;
+    padding: 6px 8px;
     margin: 0 4px;
     border: 1px solid #dbe3f1;
     border-radius: 2px;
     background: linear-gradient(135deg, #f8fafc, #eef3ff);
     box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
-    min-height: 40px;
+    min-height: 36px;
     height: auto;
     min-width: 0;
     box-sizing: border-box;
+    overflow-x: auto;
 }
 
 .main-ctrl {
@@ -2002,7 +2005,7 @@ const handleSaveRetarderStatus = async () => {
 .control-group {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 4px;
     min-width: 0;
     max-width: 100%;
 }
@@ -2020,32 +2023,31 @@ const handleSaveRetarderStatus = async () => {
     display: flex;
     align-items: center;
     align-content: center;
-    flex-wrap: wrap;
-    gap: 8px;
+    flex-wrap: nowrap;
+    gap: 6px;
     min-width: 0;
 }
 
 .selection-section {
-    flex: 999 1 560px;
+    flex: 1 1 auto;
+    min-width: 0;
 }
 
 .visibility-section {
-    flex: 1 1 430px;
-}
-
-.scale-section {
-    flex: 1 1 390px;
+    flex: 0 1 auto;
+    min-width: 0;
 }
 
 .select-group {
-    flex: 1 1 260px;
+    flex: 1 1 200px;
+    min-width: 0;
 }
 
 .select-group :deep(.el-select) {
-    flex: 1 1 150px;
-    width: clamp(140px, 16vw, 220px);
-    min-width: 140px;
-    max-width: 220px;
+    flex: 1 1 100px;
+    width: clamp(100px, 12vw, 200px);
+    min-width: 100px;
+    max-width: 200px;
 }
 
 .center-section :deep(.el-button + .el-button) {
@@ -2060,29 +2062,43 @@ const handleSaveRetarderStatus = async () => {
     flex: 0 0 auto;
 }
 
+.scale-popover-body {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 4px 2px;
+}
+
+.scale-popover-body .slider-group {
+    width: 100%;
+}
+
+.scale-popover-body .slider-group :deep(.el-slider) {
+    flex: 1 1 auto;
+    width: auto;
+    min-width: 140px;
+}
+
 .slider-group {
-    flex: 1 1 190px;
-    min-width: 190px;
+    flex: 1 1 160px;
+    min-width: 160px;
 }
 
 .slider-group :deep(.el-slider) {
-    flex: 1 1 120px;
+    flex: 1 1 110px;
     width: auto;
-    min-width: 120px;
+    min-width: 110px;
+}
+
+.scale-section {
+    flex: 0 0 auto;
 }
 
 @media (max-width: 1200px) {
     .center-section {
-        flex-basis: 100%;
         margin: 0;
-        padding: 8px 10px;
-        gap: 8px;
-    }
-
-    .selection-section,
-    .visibility-section,
-    .scale-section {
-        flex-basis: 100%;
+        padding: 6px 8px;
+        gap: 6px;
     }
 }
 
