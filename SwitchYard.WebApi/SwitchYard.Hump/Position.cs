@@ -165,10 +165,31 @@ namespace SwitchYard.Hump
         /// <returns>某x坐标处的高度/m</returns>
         public double GetHeight(double x)
         {
+            if (PositionSegmentList == null || PositionSegmentList.Count == 0)
+            {
+                throw new ApplicationException("纵断面图为空，无法获取高度");
+            }
+
+            // 当 x 超出纵断面范围时，按端点钳制（避免因平面图覆盖范围大于纵断面而抛异常）
+            var firstSeg = PositionSegmentList.OrderBy(s => s.StartPosition.X).First();
+            var lastSeg = PositionSegmentList.OrderBy(s => s.StartPosition.X).Last();
+            if (x <= firstSeg.StartPosition.X)
+            {
+                return firstSeg.StartPosition.Height;
+            }
+            if (x >= lastSeg.EndPosition.X)
+            {
+                return lastSeg.EndPosition.Height;
+            }
+
             var seg = PositionSegmentList.Find(s => s.StartPosition.X <= x && s.EndPosition.X >= x);
             if (seg == null)
             {
                 throw new ApplicationException("x坐标错误，找不到区间");
+            }
+            if (seg.Length <= 0)
+            {
+                return seg.StartPosition.Height;
             }
             var rate = (x - seg.StartPosition.X) / seg.Length;
             var height = seg.StartPosition.Height + rate * (seg.EndPosition.Height - seg.StartPosition.Height);

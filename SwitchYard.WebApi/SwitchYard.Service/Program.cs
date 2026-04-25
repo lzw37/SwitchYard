@@ -43,7 +43,13 @@ try
     builder.Host.UseSerilog();
 
     // Add services to the container.
-    builder.Services.AddControllers();
+    builder.Services.AddControllers()
+        .AddJsonOptions(options =>
+        {
+            // 允许序列化 NaN/Infinity 等非有限数（作为兜底，避免计算异常导致 500）
+            options.JsonSerializerOptions.NumberHandling =
+                System.Text.Json.Serialization.JsonNumberHandling.AllowNamedFloatingPointLiterals;
+        });
 
     // 配置代理头部转发 - 用于获取真实客户端IP
     builder.Services.Configure<ForwardedHeadersOptions>(options =>
