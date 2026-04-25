@@ -5,56 +5,59 @@
                 <el-button @click="toggleLeft" size="small" type="primary">{{ t('humpSlopeDesigner.tool') }}</el-button>
             </div>
             <div class="center-section">
-                <div class="control-group select-group">
-                    <span>{{ t('humpSlopeDesigner.longitudinalSectionScheme') }}</span>
-                    <el-select v-model="currentHumpSchemeID"
-                        :placeholder="t('humpSlopeDesigner.placeholder.selectHumpScheme')" size="small"
-                        style="width: 150px;">
-                        <el-option v-for="scheme in humpSchemes" :key="scheme.id" :label="scheme.name"
-                            :value="scheme.id" />
-                    </el-select> <el-button type="primary" size="small" @click="editSlopeLayout">{{ t('humpSlopeDesigner.buttons.save') }}</el-button>
-                    <el-button type="primary" size="small" @click="showSchemeManager = true">...</el-button>
+                <div class="toolbar-section selection-section">
+                    <div class="control-group select-group">
+                        <span>{{ t('humpSlopeDesigner.longitudinalSectionScheme') }}</span>
+                        <el-select v-model="currentHumpSchemeID"
+                            :placeholder="t('humpSlopeDesigner.placeholder.selectHumpScheme')" size="small">
+                            <el-option v-for="scheme in humpSchemes" :key="scheme.id" :label="scheme.name"
+                                :value="scheme.id" />
+                        </el-select>
+                        <el-button type="primary" size="small" @click="editSlopeLayout">{{ t('humpSlopeDesigner.buttons.save') }}</el-button>
+                        <el-button type="primary" size="small" @click="showSchemeManager = true">...</el-button>
+                    </div>
+                    <div class="control-group select-group">
+                        <span>{{ t('humpSlopeDesigner.calculationCondition') }}</span>
+                        <el-select v-model="currentHumpCalculationID"
+                            :placeholder="t('humpSlopeDesigner.selectCalculationCondition')" size="small">
+                            <el-option v-for="calculation in humpCalculations" :key="calculation.id"
+                                :label="getCalculationDisplayLabel(calculation)" :value="calculation.id" />
+                        </el-select>
+                        <el-button type="primary" size="small" @click="showConditionManager = true">...</el-button>
+                    </div>
+                    <el-button class="execute-btn" type="primary" size="small" @click="executeCalculation"
+                        :loading="calculationExecuting" :disabled="calculationExecuting">
+                        {{ calculationExecuting ? t('humpSlopeDesigner.calculation.executing') :
+                            t('humpSlopeDesigner.calculation.executeButton') }}
+                    </el-button>
                 </div>
-                <div class="control-group select-group">
-                    <span>{{ t('humpSlopeDesigner.calculationCondition') }}</span>
-                    <el-select v-model="currentHumpCalculationID"
-                        :placeholder="t('humpSlopeDesigner.selectCalculationCondition')" size="small"
-                        style="width: 150px;">
-                        <el-option v-for="calculation in humpCalculations" :key="calculation.id"
-                            :label="getCalculationDisplayLabel(calculation)" :value="calculation.id" />
-                    </el-select>
-                    <el-button type="primary" size="small" @click="showConditionManager = true">...</el-button>
+                <div class="toolbar-section visibility-section">
+                    <div class="control-group toggle-group">
+                        <span>{{ t('humpSlopeDesigner.initialKineticEnergyLine') }}</span>
+                        <el-switch v-model="showInitialKinetic" size="small"></el-switch>
+                    </div>
+                    <div class="control-group toggle-group">
+                        <span>{{ t('humpSlopeDesigner.resistanceEnergyLine') }}</span>
+                        <el-switch v-model="showResistance" size="small"></el-switch>
+                    </div>
+                    <div class="control-group toggle-group">
+                        <span>{{ t('humpSlopeDesigner.kineticEnergyLine') }}</span>
+                        <el-switch v-model="showKinetic" size="small"></el-switch>
+                    </div>
+                    <div class="control-group toggle-group">
+                        <span>{{ t('humpSlopeDesigner.brakingEnergyLine') }}</span>
+                        <el-switch v-model="showBreaking" size="small"></el-switch>
+                    </div>
                 </div>
-                <el-button class="execute-btn" type="primary" size="small" @click="executeCalculation"
-                    :loading="calculationExecuting" :disabled="calculationExecuting">
-                    {{ calculationExecuting ? t('humpSlopeDesigner.calculation.executing') :
-                        t('humpSlopeDesigner.calculation.executeButton') }}
-                </el-button>
-                <div class="control-group toggle-group">
-                    <span>{{ t('humpSlopeDesigner.initialKineticEnergyLine') }}</span>
-                    <el-switch v-model="showInitialKinetic" size="small"></el-switch>
-                </div>
-                <div class="control-group toggle-group">
-                    <span>{{ t('humpSlopeDesigner.resistanceEnergyLine') }}</span>
-                    <el-switch v-model="showResistance" size="small"></el-switch>
-                </div>
-                <div class="control-group toggle-group">
-                    <span>{{ t('humpSlopeDesigner.kineticEnergyLine') }}</span>
-                    <el-switch v-model="showKinetic" size="small"></el-switch>
-                </div>
-                <div class="control-group toggle-group">
-                    <span>{{ t('humpSlopeDesigner.brakingEnergyLine') }}</span>
-                    <el-switch v-model="showBreaking" size="small"></el-switch>
-                </div>
-                <div class="control-group slider-group" style="width: 100px;">
-                    <span>{{ t('humpSlopeDesigner.xScale') }}</span>
-                    <el-slider v-model="globalScaleX" :min="0.1" :max="5" :step="0.01"
-                        style="display:inline; width: 150px;"></el-slider>
-                </div>
-                <div class="control-group slider-group" style="width: 100px;">
-                    <span>{{ t('humpSlopeDesigner.yScale') }}</span>
-                    <el-slider v-model="globalScaleY" :min="5" :max="100" :step="0.1"
-                        style="display:inline; width: 150px;"></el-slider>
+                <div class="toolbar-section scale-section">
+                    <div class="control-group slider-group">
+                        <span>{{ t('humpSlopeDesigner.xScale') }}</span>
+                        <el-slider v-model="globalScaleX" :min="0.1" :max="5" :step="0.01"></el-slider>
+                    </div>
+                    <div class="control-group slider-group">
+                        <span>{{ t('humpSlopeDesigner.yScale') }}</span>
+                        <el-slider v-model="globalScaleY" :min="5" :max="100" :step="0.1"></el-slider>
+                    </div>
                 </div>
             </div>
             <div class="right-section">
@@ -63,17 +66,40 @@
             </div>
         </div>
         <div class="condition-info">
-            <span>{{ t('humpSlopeDesigner.wagonType') }}{{ currentCalculateCondition.wagonTypeName }}</span>
-            <span>{{ t('humpSlopeDesigner.slopeLine') }}{{ currentCalculateCondition.slopeLineName }}</span>
-            <span>{{ t('humpSlopeDesigner.humpVelocity') }}{{ currentCalculateCondition.wagonVelocityOnTop }}m/s</span>
-            <span>{{ t('humpSlopeDesigner.slopeVelocity') }}{{ currentCalculateCondition.wagonVelocityOnSlope
-                }}m/s</span>
-            <span>{{ t('humpSlopeDesigner.yardVelocity') }}{{ currentCalculateCondition.wagonVelocityOnYard }}m/s</span>
-            <span>{{ t('humpSlopeDesigner.windSpeed') }}{{ currentCalculateCondition.windVelocity }}m/s（{{
-                currentCalculateCondition.isHeadWind ? t('humpSlopeDesigner.headWind') :
-                    t('humpSlopeDesigner.tailWind') }}）</span>
-            <span>{{ t('humpSlopeDesigner.airDensity') }}{{ currentCalculateCondition.airDensity }}kg/m³</span>
-            <span>{{ t('humpSlopeDesigner.temperature') }}{{ currentCalculateCondition.temperature }}°C</span>
+            <span class="condition-item">
+                <span class="condition-label">{{ t('humpSlopeDesigner.wagonType') }}</span>
+                <span class="condition-value">{{ currentCalculateCondition.wagonTypeName }}</span>
+            </span>
+            <span class="condition-item">
+                <span class="condition-label">{{ t('humpSlopeDesigner.slopeLine') }}</span>
+                <span class="condition-value">{{ currentCalculateCondition.slopeLineName }}</span>
+            </span>
+            <span class="condition-item">
+                <span class="condition-label">{{ t('humpSlopeDesigner.humpVelocity') }}</span>
+                <span class="condition-value">{{ currentCalculateCondition.wagonVelocityOnTop }}m/s</span>
+            </span>
+            <span class="condition-item">
+                <span class="condition-label">{{ t('humpSlopeDesigner.slopeVelocity') }}</span>
+                <span class="condition-value">{{ currentCalculateCondition.wagonVelocityOnSlope }}m/s</span>
+            </span>
+            <span class="condition-item">
+                <span class="condition-label">{{ t('humpSlopeDesigner.yardVelocity') }}</span>
+                <span class="condition-value">{{ currentCalculateCondition.wagonVelocityOnYard }}m/s</span>
+            </span>
+            <span class="condition-item">
+                <span class="condition-label">{{ t('humpSlopeDesigner.windSpeed') }}</span>
+                <span class="condition-value">{{ currentCalculateCondition.windVelocity }}m/s（{{
+                    currentCalculateCondition.isHeadWind ? t('humpSlopeDesigner.headWind') :
+                        t('humpSlopeDesigner.tailWind') }}）</span>
+            </span>
+            <span class="condition-item">
+                <span class="condition-label">{{ t('humpSlopeDesigner.airDensity') }}</span>
+                <span class="condition-value">{{ currentCalculateCondition.airDensity }}kg/m³</span>
+            </span>
+            <span class="condition-item">
+                <span class="condition-label">{{ t('humpSlopeDesigner.temperature') }}</span>
+                <span class="condition-value">{{ currentCalculateCondition.temperature }}°C</span>
+            </span>
         </div>
         <div class="main-ctrl">
             <HumpSlopeCtrl ref="humpSlopeCtrlRef" v-model:slope-layout="slopeLayout" :flat-layout="flatLayout"
@@ -1873,24 +1899,26 @@ const handleSaveRetarderStatus = async () => {
     align-items: center;
     justify-content: space-between;
     flex-wrap: wrap;
-    gap: 8px;
-    padding: 0 10px;
+    gap: 8px 10px;
+    padding: 6px 10px;
 }
 
 .left-section,
 .right-section {
     flex: 0 0 auto;
+    display: flex;
+    align-items: center;
 }
 
 .center-section {
-    flex: 1 1 760px;
+    flex: 1 1 920px;
     display: flex;
-    align-items: center;
+    align-items: stretch;
     justify-content: flex-start;
     flex-wrap: wrap;
-    gap: 12px;
-    padding: 8px 16px;
-    margin: 0 10px;
+    gap: 8px 10px;
+    padding: 8px 12px;
+    margin: 0 4px;
     border: 1px solid #dbe3f1;
     border-radius: 2px;
     background: linear-gradient(135deg, #f8fafc, #eef3ff);
@@ -1898,6 +1926,7 @@ const handleSaveRetarderStatus = async () => {
     min-height: 40px;
     height: auto;
     min-width: 0;
+    box-sizing: border-box;
 }
 
 .main-ctrl {
@@ -1971,25 +2000,75 @@ const handleSaveRetarderStatus = async () => {
 }
 
 .control-group {
-    margin-right: 10px;
-    display: inline-flex;
+    display: flex;
     align-items: center;
+    gap: 6px;
     min-width: 0;
+    max-width: 100%;
 }
 
 .control-group span {
     font-size: small;
     font-weight: 600;
-    margin-right: 5px;
+    line-height: 1.2;
+    margin-right: 0;
     white-space: nowrap;
+    flex: 0 0 auto;
+}
+
+.toolbar-section {
+    display: flex;
+    align-items: center;
+    align-content: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    min-width: 0;
+}
+
+.selection-section {
+    flex: 999 1 560px;
+}
+
+.visibility-section {
+    flex: 1 1 430px;
+}
+
+.scale-section {
+    flex: 1 1 390px;
+}
+
+.select-group {
+    flex: 1 1 260px;
+}
+
+.select-group :deep(.el-select) {
+    flex: 1 1 150px;
+    width: clamp(140px, 16vw, 220px);
+    min-width: 140px;
+    max-width: 220px;
+}
+
+.center-section :deep(.el-button + .el-button) {
+    margin-left: 0;
+}
+
+.execute-btn {
+    flex: 0 0 auto;
+}
+
+.toggle-group {
+    flex: 0 0 auto;
 }
 
 .slider-group {
-    min-width: 220px;
+    flex: 1 1 190px;
+    min-width: 190px;
 }
 
 .slider-group :deep(.el-slider) {
-    width: 150px;
+    flex: 1 1 120px;
+    width: auto;
+    min-width: 120px;
 }
 
 @media (max-width: 1200px) {
@@ -1998,6 +2077,12 @@ const handleSaveRetarderStatus = async () => {
         margin: 0;
         padding: 8px 10px;
         gap: 8px;
+    }
+
+    .selection-section,
+    .visibility-section,
+    .scale-section {
+        flex-basis: 100%;
     }
 }
 
@@ -2015,60 +2100,93 @@ const handleSaveRetarderStatus = async () => {
         gap: 8px;
     }
 
+    .toolbar-section {
+        flex: 1 1 100%;
+    }
+
     .select-group {
-        flex: 1 1 260px;
-        margin-right: 0;
+        display: grid;
+        grid-template-columns: max-content minmax(0, 1fr) auto auto;
+        width: 100%;
     }
 
     .select-group :deep(.el-select) {
         width: 100% !important;
-        max-width: 220px;
+        min-width: 0;
+        max-width: none;
     }
 
     .execute-btn {
         flex: 1 1 100%;
+        width: 100%;
     }
 
     .toggle-group {
         flex: 1 1 calc(50% - 8px);
-        margin-right: 0;
+        min-width: 210px;
         justify-content: space-between;
     }
 
     .slider-group {
         flex: 1 1 100%;
-        margin-right: 0;
+        min-width: 0;
     }
 
     .slider-group :deep(.el-slider) {
-        flex: 1;
-        width: auto;
-        min-width: 120px;
+        min-width: 0;
     }
 }
 
 @media (max-width: 480px) {
+    .select-group {
+        grid-template-columns: minmax(0, 1fr) auto auto;
+    }
+
+    .select-group span {
+        grid-column: 1 / -1;
+    }
+
     .toggle-group {
         flex-basis: 100%;
+        min-width: 0;
     }
 }
 
 .condition-info {
-    justify-content: flex-start;
-    margin-top: 5px;
     display: flex;
     flex-wrap: wrap;
-    gap: 6px 16px;
+    justify-content: center;
+    align-items: center;
+    gap: 6px 18px;
+    width: 100%;
+    margin: 5px auto 0;
     padding: 0 10px;
+    box-sizing: border-box;
+    text-align: center;
 }
 
-.condition-info span {
-    font-weight: bold;
-    color: #666;
-    margin-right: 0;
+.condition-item {
+    display: inline-flex;
+    align-items: baseline;
+    justify-content: center;
+    gap: 4px;
+    min-width: 0;
+    line-height: 1.5;
     white-space: normal;
     overflow-wrap: anywhere;
     word-break: break-word;
+}
+
+.condition-label {
+    color: #6b7280;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.condition-value {
+    color: #1f2937;
+    font-size: 14px;
+    font-weight: 700;
 }
 </style>
 

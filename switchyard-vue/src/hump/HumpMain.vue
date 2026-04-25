@@ -1,56 +1,75 @@
 <template>
     <section class="hump-main">
-        <div class="hump-tabs-wrapper">
-            <div class="left-controls">
-                <el-button type="primary" @click="showInstanceManager = true">
-                    {{ t('humpMain.buttons.instanceManager') }}
-                </el-button>
-                <el-select v-model="selectedLine" class="line-select"
-                    :placeholder="t('humpMain.placeholders.selectInstance')" :loading="loadingInstances"
-                    :disabled="loadingInstances">
-                    <el-option v-for="line in activeLines" :key="line.id" :label="line.name" :value="line.id" />
-                </el-select>
+        <div ref="tabsHostRef" class="hump-tabs-wrapper">
+            <div class="hump-main-toolbar">
+                <div class="left-controls">
+                    <el-button type="primary" @click="showInstanceManager = true">
+                        {{ t('humpMain.buttons.instanceManager') }}
+                    </el-button>
+                    <el-select v-model="selectedLine" class="line-select"
+                        :placeholder="t('humpMain.placeholders.selectInstance')" :loading="loadingInstances"
+                        :disabled="loadingInstances">
+                        <el-option v-for="line in activeLines" :key="line.id" :label="line.name" :value="line.id" />
+                    </el-select>
+                </div>
+                <div ref="tabSlotRef" class="tab-nav-slot">
+                    <div v-show="!tabsInDropdown" class="main-tab-nav" role="tablist">
+                        <button v-for="tab in mainTabs" :key="tab.name" type="button" class="main-tab-button"
+                            :class="{ 'is-active': activeTab === tab.name }" role="tab"
+                            :aria-selected="activeTab === tab.name" @click="activeTab = tab.name">
+                            {{ tab.label }}
+                        </button>
+                    </div>
+                    <div v-show="tabsInDropdown" class="tab-dropdown-control">
+                        <el-select v-model="activeTab" class="tab-select" :placeholder="activeTabLabel">
+                            <el-option v-for="tab in mainTabs" :key="tab.name" :label="tab.label" :value="tab.name" />
+                        </el-select>
+                    </div>
+                </div>
+                <div class="right-controls">
+                    <el-button-group class="language-switch">
+                        <el-button size="small" :type="currentLocale === 'zh' ? 'primary' : 'default'"
+                            @click="switchLanguage('zh')">
+                            {{ t('common.language.zh') }}
+                        </el-button>
+                        <el-button size="small" :type="currentLocale === 'en' ? 'primary' : 'default'"
+                            @click="switchLanguage('en')">
+                            {{ t('common.language.en') }}
+                        </el-button>
+                    </el-button-group>
+                    <el-dropdown class="user-dropdown" @command="handleUserMenuCommand">
+                        <span class="user-menu-trigger">
+                            <span class="user-menu-name">{{ userDisplayName }}</span>
+                            <span class="user-menu-role">{{ userDisplayRole }}</span>
+                        </span>
+                        <template #dropdown>
+                            <el-dropdown-menu>
+                                <el-dropdown-item command="userinfo">
+                                    {{ t('userInfo.title') }}
+                                </el-dropdown-item>
+                                <el-dropdown-item v-if="authStore.isAdmin" command="usermanagement">
+                                    {{ t('common.userMenu.userManagement') }}
+                                </el-dropdown-item>
+                                <el-dropdown-item v-if="authStore.isAdmin" command="humpInstanceManagement">
+                                    {{ t('humpMain.menu.instanceManagement') }}
+                                </el-dropdown-item>
+                                <el-dropdown-item divided command="logout">
+                                    {{ t('common.userMenu.logout') }}
+                                </el-dropdown-item>
+                            </el-dropdown-menu>
+                        </template>
+                    </el-dropdown>
+                </div>
             </div>
-            <div class="right-controls">
-                <el-button-group class="language-switch">
-                    <el-button size="small" :type="currentLocale === 'zh' ? 'primary' : 'default'"
-                        @click="switchLanguage('zh')">
-                        {{ t('common.language.zh') }}
-                    </el-button>
-                    <el-button size="small" :type="currentLocale === 'en' ? 'primary' : 'default'"
-                        @click="switchLanguage('en')">
-                        {{ t('common.language.en') }}
-                    </el-button>
-                </el-button-group>
-                <el-dropdown class="user-dropdown" @command="handleUserMenuCommand">
-                    <span class="user-menu-trigger">
-                        <span class="user-menu-name">{{ userDisplayName }}</span>
-                        <span class="user-menu-role">{{ userDisplayRole }}</span>
-                    </span>
-                    <template #dropdown>
-                        <el-dropdown-menu>
-                            <el-dropdown-item command="userinfo">
-                                {{ t('userInfo.title') }}
-                            </el-dropdown-item>
-                            <el-dropdown-item v-if="authStore.isAdmin" command="usermanagement">
-                                {{ t('common.userMenu.userManagement') }}
-                            </el-dropdown-item>
-                            <el-dropdown-item v-if="authStore.isAdmin" command="humpInstanceManagement">
-                                {{ t('humpMain.menu.instanceManagement') }}
-                            </el-dropdown-item>
-                            <el-dropdown-item divided command="logout">
-                                {{ t('common.userMenu.logout') }}
-                            </el-dropdown-item>
-                        </el-dropdown-menu>
-                    </template>
-                </el-dropdown>
+            <div ref="tabMeasureRef" class="tab-measure" aria-hidden="true">
+                <span v-for="tab in mainTabs" :key="tab.name" class="tab-measure-item">{{ tab.label }}</span>
             </div>
             <el-tabs v-model="activeTab" class="hump-main-tabs">
-                <el-tab-pane :label="t('humpMain.tabs.plan')" name="plan" lazy>
+                <el-tab-pane :label="getTabLabel('plan')" name="plan" lazy>
                     <HumpLayout v-if="hasSelectedInstance" :selectedInstanceId="selectedLine" />
                     <el-empty v-else :description="t('humpMain.placeholders.selectInstance')" />
                 </el-tab-pane>
-                <el-tab-pane :label="t('humpMain.tabs.vehicle')" name="vehicle" lazy>
+                <el-tab-pane :label="getTabLabel('vehicle')" name="vehicle" lazy>
                     <template v-if="hasSelectedInstance">
                         <el-card class="param-card" shadow="hover">
                             <h3>{{ t('humpMain.headings.wagonParams') }}</h3>
@@ -63,19 +82,19 @@
                     </template>
                     <el-empty v-else :description="t('humpMain.placeholders.selectInstance')" />
                 </el-tab-pane>
-                <el-tab-pane :label="t('humpMain.tabs.profile')" name="profile" lazy>
+                <el-tab-pane :label="getTabLabel('profile')" name="profile" lazy>
                     <HumpSlopeDesigner v-if="hasSelectedInstance" :selectedInstanceId="selectedLine" />
                     <el-empty v-else :description="t('humpMain.placeholders.selectInstance')" />
                 </el-tab-pane>
-                <el-tab-pane :label="t('humpMain.tabs.release')" name="release" lazy>
+                <el-tab-pane :label="getTabLabel('release')" name="release" lazy>
                     <HumpHeadwayCheck v-if="hasSelectedInstance" :selectedInstanceId="selectedLine" />
                     <el-empty v-else :description="t('humpMain.placeholders.selectInstance')" />
                 </el-tab-pane>
-                <el-tab-pane :label="t('humpMain.tabs.simulation')" name="simulation" lazy>
+                <el-tab-pane :label="getTabLabel('simulation')" name="simulation" lazy>
                     <HumpSim v-if="hasSelectedInstance" :selectedInstanceId="selectedLine" />
                     <el-empty v-else :description="t('humpMain.placeholders.selectInstance')" />
                 </el-tab-pane>
-                <el-tab-pane :label="t('humpMain.tabs.simulation3d')" name="simulation3d" lazy>
+                <el-tab-pane :label="getTabLabel('simulation3d')" name="simulation3d" lazy>
                     <HumpSim3D v-if="hasSelectedInstance" :selectedInstanceId="selectedLine" />
                     <el-empty v-else :description="t('humpMain.placeholders.selectInstance')" />
                 </el-tab-pane>
@@ -89,7 +108,7 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, nextTick, onBeforeUnmount, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import axios from '@/utils/axios'
@@ -123,8 +142,21 @@ const selectedLine = ref<string | null>(null)
 const lines = ref<HumpInstance[]>([])
 const showInstanceManager = ref(false)
 const loadingInstances = ref(false)
+const tabsHostRef = ref<HTMLElement | null>(null)
+const tabSlotRef = ref<HTMLElement | null>(null)
+const tabMeasureRef = ref<HTMLElement | null>(null)
+const tabsInDropdown = ref(false)
 const activeLines = computed(() => lines.value.filter((item) => Number(item.isActive) === 1))
 const hasSelectedInstance = computed(() => Boolean(selectedLine.value))
+const mainTabs = computed(() => [
+    { name: 'plan', label: t('humpMain.tabs.plan') },
+    { name: 'vehicle', label: t('humpMain.tabs.vehicle') },
+    { name: 'profile', label: t('humpMain.tabs.profile') },
+    { name: 'release', label: t('humpMain.tabs.release') },
+    { name: 'simulation', label: t('humpMain.tabs.simulation') },
+    { name: 'simulation3d', label: t('humpMain.tabs.simulation3d') },
+])
+const activeTabLabel = computed(() => getTabLabel(activeTab.value))
 const userDisplayName = computed(() => authStore.username.trim() || t('common.userMenu.guest'))
 const userDisplayRole = computed(() => {
     const role = authStore.role.trim()
@@ -139,6 +171,35 @@ const userDisplayRole = computed(() => {
 
 // Current language
 const currentLocale = computed(() => locale.value)
+
+const getTabLabel = (tabName: string) => {
+    return mainTabs.value.find((tab) => tab.name === tabName)?.label || tabName
+}
+
+const updateTabDisplayMode = () => {
+    nextTick(() => {
+        const hostWidth = Math.floor(tabSlotRef.value?.clientWidth || tabsHostRef.value?.clientWidth || 0)
+        const measureItems = Array.from(tabMeasureRef.value?.children || []) as HTMLElement[]
+
+        if (hostWidth <= 0 || measureItems.length === 0) {
+            tabsInDropdown.value = false
+            return
+        }
+
+        const availableWidth = Math.max(0, hostWidth - 8)
+        let visibleCount = 0
+        let usedWidth = 0
+
+        for (const item of measureItems) {
+            const itemWidth = Math.ceil(item.getBoundingClientRect().width)
+            if (usedWidth + itemWidth > availableWidth) break
+            usedWidth += itemWidth
+            visibleCount += 1
+        }
+
+        tabsInDropdown.value = visibleCount < 2
+    })
+}
 
 // Switch language
 function switchLanguage(lang: string) {
@@ -204,51 +265,166 @@ const handleCloseInstanceManager = (done: () => void) => {
 }
 
 // Load instances when component is mounted
+let tabsResizeObserver: ResizeObserver | null = null
+
 onMounted(() => {
     void loadInstances()
+    updateTabDisplayMode()
+
+    nextTick(() => {
+        if (typeof ResizeObserver !== 'undefined' && tabsHostRef.value) {
+            tabsResizeObserver = new ResizeObserver(() => updateTabDisplayMode())
+            tabsResizeObserver.observe(tabsHostRef.value)
+            if (tabSlotRef.value) tabsResizeObserver.observe(tabSlotRef.value)
+            if (tabMeasureRef.value) tabsResizeObserver.observe(tabMeasureRef.value)
+        } else {
+            window.addEventListener('resize', updateTabDisplayMode)
+        }
+    })
+})
+
+onBeforeUnmount(() => {
+    if (tabsResizeObserver) {
+        tabsResizeObserver.disconnect()
+        tabsResizeObserver = null
+    }
+    window.removeEventListener('resize', updateTabDisplayMode)
+})
+
+watch(currentLocale, () => {
+    updateTabDisplayMode()
 })
 </script>
 
 <style scoped lang="css">
 .hump-main {
     width: 100%;
-    min-height: 1000px;
+    min-height: 100dvh;
     padding: 24px;
     background-color: white;
     box-sizing: border-box;
-    overflow-x: auto;
+    overflow-x: hidden;
     overflow-y: auto;
 }
 
 .hump-tabs-wrapper {
     position: relative;
-    min-width: 1000px;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+}
+
+.hump-main-toolbar {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0 14px;
+    width: 100%;
+    margin-bottom: 10px;
+    border-bottom: 1px solid #e4e7ed;
 }
 
 .left-controls {
-    position: absolute;
-    left: 0;
-    top: 0;
-    z-index: 1;
     display: flex;
     align-items: center;
-    height: 40px;
+    flex-wrap: nowrap;
+    gap: 10px;
+    min-width: 0;
 }
 
 .line-select {
-    margin-left: 12px;
-    width: 200px;
+    flex: 0 1 200px;
+    width: clamp(150px, 18vw, 200px);
+    min-width: 0;
+    max-width: 200px;
+}
+
+.tab-nav-slot {
+    display: flex;
+    align-self: stretch;
+    align-items: flex-end;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.main-tab-nav {
+    display: flex;
+    align-items: flex-end;
+    min-width: 0;
+    max-width: 100%;
+    height: 40px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    white-space: nowrap;
+    scrollbar-width: thin;
+}
+
+.main-tab-button {
+    flex: 0 0 auto;
+    height: 40px;
+    padding: 0 20px;
+    border: none;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    color: #303133;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 40px;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.main-tab-button:hover {
+    color: #409eff;
+}
+
+.main-tab-button.is-active {
+    color: #409eff;
+    border-bottom-color: #409eff;
+}
+
+.tab-dropdown-control {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    min-width: 0;
+}
+
+.tab-select {
+    width: min(320px, 100%);
+}
+
+.tab-measure {
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 0;
+    overflow: hidden;
+    visibility: hidden;
+    white-space: nowrap;
+    pointer-events: none;
+}
+
+.tab-measure-item {
+    display: inline-flex;
+    align-items: center;
+    height: 40px;
+    padding: 0 20px;
+    box-sizing: border-box;
+    color: #303133;
+    font-size: 14px;
+    font-weight: 500;
 }
 
 .right-controls {
-    position: absolute;
-    right: 0;
-    top: 0;
-    z-index: 1;
     display: flex;
     align-items: center;
+    justify-content: flex-end;
+    flex-wrap: nowrap;
     gap: 10px;
-    height: 40px;
+    min-width: 0;
 }
 
 .language-switch {
@@ -280,7 +456,7 @@ onMounted(() => {
 }
 
 .user-menu-name {
-    max-width: 120px;
+    max-width: clamp(64px, 14vw, 120px);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -298,19 +474,20 @@ onMounted(() => {
 
 .hump-main-tabs {
     margin: 0 auto;
+    min-width: 0;
+    max-width: 100%;
 }
 
 .hump-main-tabs> :deep(.el-tabs__header) {
-    padding-left: 450px;
-    padding-right: 380px;
+    display: none;
 }
 
 .hump-main-tabs> :deep(.el-tabs__header .el-tabs__nav-wrap) {
-    overflow-x: auto;
+    min-width: 0;
 }
 
-.hump-main-tabs> :deep(.el-tabs__header .el-tabs__nav-scroll) {
-    min-width: max-content;
+.hump-main-tabs> :deep(.el-tabs__content) {
+    min-width: 0;
 }
 
 .hump-main-tabs :deep(#pane-simulation3d) {
@@ -352,5 +529,63 @@ el-card {
 
 .param-card {
     margin-bottom: 24px;
+    max-width: 100%;
+    overflow-x: auto;
+}
+
+@media (max-width: 768px) {
+    .hump-main {
+        padding: 12px;
+    }
+
+    .hump-main-toolbar {
+        grid-template-columns: auto minmax(96px, 1fr) auto;
+        gap: 0 8px;
+    }
+
+    .left-controls {
+        gap: 8px;
+    }
+
+    .right-controls {
+        gap: 8px;
+    }
+
+    .line-select {
+        width: clamp(128px, 20vw, 170px);
+    }
+
+    .main-tab-button,
+    .tab-measure-item {
+        padding: 0 14px;
+    }
+
+    .user-menu-trigger {
+        padding: 0 8px;
+        gap: 6px;
+    }
+}
+
+@media (max-width: 560px) {
+    .hump-main-toolbar {
+        grid-template-columns: minmax(0, 1fr) minmax(92px, 120px) auto;
+    }
+
+    .left-controls {
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+
+    .line-select {
+        width: 120px;
+    }
+
+    .tab-select {
+        width: 100%;
+    }
+
+    .user-menu-role {
+        display: none;
+    }
 }
 </style>

@@ -208,6 +208,7 @@ const { t } = useI18n()
     flex: 1;
     display: flex;
     flex-direction: column;
+    min-width: 0;
     border: 1px solid #dbe3f1;
     border-radius: 2px;
     background: #ffffff;
@@ -224,6 +225,8 @@ const { t } = useI18n()
     color: #1f2a37;
     letter-spacing: 0.02em;
     align-items: center;
+    gap: 10px;
+    min-width: 0;
 }
 
 .chart-header span {
@@ -237,15 +240,17 @@ const { t } = useI18n()
     display: flex;
     gap: 8px;
     flex: 1;
-    margin-left: 16px;
+    min-width: 0;
     align-items: center;
     flex-wrap: wrap;
 }
 
 .chart-content {
     flex: 1;
+    min-width: 0;
     padding: 16px;
-    overflow: auto;
+    overflow-x: hidden;
+    overflow-y: auto;
     display: flex;
     justify-content: center;
     color: #9ca3af;
@@ -258,6 +263,7 @@ const { t } = useI18n()
 }
 
 .curve-chart {
+    max-width: 100%;
     border: 1px solid #e5e7eb;
     border-radius: 4px;
 }
@@ -265,6 +271,8 @@ const { t } = useI18n()
 .chart-fullscreen {
     flex: 1 !important;
     width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
 }
 
 .chart-hidden {
@@ -273,9 +281,35 @@ const { t } = useI18n()
     min-width: 0 !important;
     opacity: 0;
     overflow: hidden;
+    display: none !important;
     padding: 0;
     margin: 0;
     border: none;
+}
+
+@media (max-width: 560px) {
+    .chart-header {
+        align-items: flex-start;
+        flex-wrap: wrap;
+        padding: 10px 12px;
+    }
+
+    .chart-header span {
+        font-size: 14px;
+    }
+
+    .chart-tags {
+        order: 3;
+        flex: 1 1 100%;
+    }
+
+    .fullscreen-btn {
+        margin-left: auto;
+    }
+
+    .chart-content {
+        padding: 10px;
+    }
 }
 
 .curve-chart .x-axis,

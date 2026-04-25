@@ -1155,7 +1155,9 @@ onBeforeUnmount(() => {
     flex-direction: column;
     width: 100%;
     height: 100%;
+    min-width: 0;
     background-color: #ffffff;
+    overflow-x: hidden;
 }
 
 /* 工具栏样式 */
@@ -1246,12 +1248,56 @@ onBeforeUnmount(() => {
 
 /* 图表容器样式 */
 .charts-container {
-    display: flex;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     flex: 1;
     gap: 16px;
     padding: 16px 20px;
-    overflow: auto;
-    min-width: 800px;
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    overflow-x: hidden;
+    overflow-y: auto;
     transition: all 0.3s ease-in-out;
+}
+
+.charts-container.velocity-fullscreen,
+.charts-container.time-fullscreen {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+}
+
+.charts-container :deep(.chart-hidden) {
+    display: none !important;
+}
+
+@media (max-width: 900px) {
+    .charts-container {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 12px;
+        padding: 12px 10px;
+    }
+}
+
+@media (max-width: 560px) {
+    .headway-toolbar {
+        margin: 4px 4px 10px 4px;
+        padding: 8px;
+    }
+
+    .headway-toolbar__group {
+        flex: 1 1 100%;
+    }
+
+    .headway-toolbar__group label {
+        min-width: 86px;
+        text-align: left;
+    }
+
+    .headway-toolbar__group :deep(.el-select),
+    .headway-toolbar__group :deep(.el-input-number) {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
 }
 </style>
