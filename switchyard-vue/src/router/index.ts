@@ -1,5 +1,4 @@
 import { createRouter, createWebHistory } from "vue-router";
-import HomeView from "../views/HomeView.vue";
 import pinia from "@/stores";
 import { useAuthStore } from "@/stores/auth";
 
@@ -11,7 +10,7 @@ const router = createRouter({
         {
             path: "/",
             name: "home",
-            component: HomeView,
+            component: () => import("../components/HelloWorld.vue"),
         },
         {
             path: "/about",

@@ -174,8 +174,19 @@ namespace SwitchYard.Hump
                     var speedProfile = SpeedProfileGenerator.Generate(hcWagon, flatLayout, slopeLayout);
 
                     // 计算至检算点的时间
-                    var enterTime = CalculateCumulativeTime(speedProfile, cp.StartX)+rollingStartTime;
-                    var exitTime = CalculateCumulativeTime(speedProfile, cp.EndX)+rollingStartTime;
+                    var enterTime = CalculateCumulativeTime(speedProfile, cp.StartX);
+                    var exitTime = CalculateCumulativeTime(speedProfile, cp.EndX);
+
+                    // 若车辆在到达检算点之前已停止（速度为 0），则跳过该检算点，
+                    // 后续位置-时间曲线不再绘制。
+                    if (double.IsNaN(enterTime) || double.IsInfinity(enterTime) ||
+                        double.IsNaN(exitTime) || double.IsInfinity(exitTime))
+                    {
+                        break;
+                    }
+
+                    enterTime += rollingStartTime;
+                    exitTime += rollingStartTime;
 
                     HeadwayCheckRunningTimeData cpData = new HeadwayCheckRunningTimeData()
                     {
@@ -194,7 +205,19 @@ namespace SwitchYard.Hump
         private static double CalculateCumulativeTime(HeadwayCheckWagonSpeedProfile speedProfile, double x)
         {
             double cumulativeTime = 0;
-            for (int i = 0; i < speedProfile.PositionList.Count - 1; i++)
+            int count = speedProfile.PositionList.Count;
+            if (count == 0)
+            {
+                return double.NaN;
+            }
+
+            // 若目标位置超出速度曲线终点（速度为 0 后曲线会被截断），表示车辆无法到达该位置
+            if (x > speedProfile.PositionList[count - 1] + 1e-9)
+            {
+                return double.NaN;
+            }
+
+            for (int i = 0; i < count - 1; i++)
             {
                 var pos0 = speedProfile.PositionList[i];
                 var v0 = speedProfile.SpeedList[i];
@@ -205,7 +228,14 @@ namespace SwitchYard.Hump
                 if (pos0 > x)
                     break;
 
-                var duration = 2 * (pos1 - pos0) / (v0 + v1);  // 平均速度法计算时间
+                var sumV = v0 + v1;
+                if (sumV <= 0)
+                {
+                    // 车辆已停止，无法继续向前推进
+                    return double.NaN;
+                }
+
+                var duration = 2 * (pos1 - pos0) / sumV;  // 平均速度法计算时间
                 if (x > pos0 && x < pos1)
                 {
                     duration = (x - pos0) / (pos1 - pos0) * duration;

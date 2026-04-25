@@ -1,31 +1,9 @@
 <script setup lang="ts">
-import { RouterLink, RouterView, useRoute } from 'vue-router'
-import HelloWorld from './components/HelloWorld.vue'
-import HumpMain from './hump/HumpMain.vue'
-import CourseMain from './course/CourseMain.vue'
-import type ScrollBar from 'element-plus/es/components/virtual-list/src/components/scrollbar.mjs'
-
-const route = useRoute()
-const isHumpRoute = () => route.path === '/hump'
-const isCourseMainRoute = () => route.path === '/courses'
-const isIndex = () => route.path === '/'
+import { RouterView } from 'vue-router'
 </script>
 
 <template>
-    <template v-if="isHumpRoute()">
-        <HumpMain />
-    </template>
-    <template v-else-if="isCourseMainRoute()">
-        <CourseMain />
-    </template>
-
-    <template v-else-if="isIndex()">
-        <HelloWorld />
-    </template>
-
-    <template v-else>
-        <RouterView />
-    </template>
+    <RouterView />
 </template>
 
 <style scoped>

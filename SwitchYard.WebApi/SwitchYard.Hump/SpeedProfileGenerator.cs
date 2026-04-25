@@ -34,6 +34,12 @@ namespace SwitchYard.Hump
                 var velocity = kineticEnergyResult.Velocity;
                 speedProfile.PositionList.Add(x);
                 speedProfile.SpeedList.Add(velocity);
+
+                // 车辆已减速至 0，无法继续溜放，停止后续速度曲线计算
+                if (velocity <= 0)
+                {
+                    break;
+                }
             }
 
             return speedProfile;

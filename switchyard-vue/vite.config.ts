@@ -25,6 +25,16 @@ export default defineConfig(({ mode }) => {
             assetsDir: "assets",
             // 禁用生产环境 source map，避免源码泄露
             sourcemap: mode !== "production",
+            chunkSizeWarningLimit: 1000,
+            rollupOptions: {
+                output: {
+                    manualChunks: {
+                        vue: ["vue", "vue-router", "pinia", "vue-i18n"],
+                        elementPlus: ["element-plus", "@element-plus/icons-vue"],
+                        pdf: ["pdfjs-dist"],
+                    },
+                },
+            },
         },
         // 生产构建时移除console.log
         esbuild:
