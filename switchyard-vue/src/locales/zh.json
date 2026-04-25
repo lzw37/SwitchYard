@@ -464,6 +464,15 @@
             "units": {
                 "speed": "m/s"
             }
+        },
+        "sim3d": {
+            "labels": {
+                "follow": "跟随车辆",
+                "showLabels": "显示标签"
+            },
+            "buttons": {
+                "resetView": "重置视角"
+            }
         }
     },
     "humpChart": {
@@ -484,7 +493,8 @@
             "vehicle": "计算参数",
             "profile": "纵断面设计",
             "release": "车辆溜放检算",
-            "simulation": "车辆溜放仿真"
+            "simulation": "车辆溜放仿真",
+            "simulation3d": "3D 溜放仿真"
         },
         "headings": {
             "wagonParams": "车辆参数",

@@ -75,6 +75,10 @@
                     <HumpSim v-if="hasSelectedInstance" :selectedInstanceId="selectedLine" />
                     <el-empty v-else :description="t('humpMain.placeholders.selectInstance')" />
                 </el-tab-pane>
+                <el-tab-pane :label="t('humpMain.tabs.simulation3d')" name="simulation3d" lazy>
+                    <HumpSim3D v-if="hasSelectedInstance" :selectedInstanceId="selectedLine" />
+                    <el-empty v-else :description="t('humpMain.placeholders.selectInstance')" />
+                </el-tab-pane>
             </el-tabs>
         </div>
         <el-dialog v-model="showInstanceManager" :title="t('humpMain.dialogs.instanceManagerTitle')" width="90%"
@@ -97,6 +101,7 @@ import Wagon from './Wagon.vue';
 import HumpCalculationCondition from './HumpCalculationCondition.vue';
 import HumpHeadwayCheck from './HumpHeadwayCheck.vue';
 import HumpSim from './HumpSim.vue';
+import HumpSim3D from './HumpSim3D.vue';
 import HumpInstanceManager from './HumpInstanceManager.vue';
 
 const router = useRouter()

@@ -470,6 +470,15 @@
             "units": {
                 "speed": "m/s"
             }
+        },
+        "sim3d": {
+            "labels": {
+                "follow": "Follow wagons",
+                "showLabels": "Show labels"
+            },
+            "buttons": {
+                "resetView": "Reset view"
+            }
         }
     },
     "humpChart": {
@@ -535,7 +544,8 @@
             "vehicle": "Calculation Parameters",
             "profile": "Profile Design",
             "release": "Headway Check",
-            "simulation": "Simulation"
+            "simulation": "Simulation",
+            "simulation3d": "3D Simulation"
         },
         "headings": {
             "wagonParams": "Wagon Parameters",

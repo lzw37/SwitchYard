@@ -19,6 +19,7 @@
     },
     "dependencies": {
         "@element-plus/icons-vue": "^2.3.2",
+        "@types/three": "^0.184.0",
         "axios": "^1.13.2",
         "crypto-js": "^4.2.0",
         "element-plus": "^2.13.0",
@@ -26,6 +27,7 @@
         "mammoth": "^1.11.0",
         "pdfjs-dist": "^5.4.624",
         "pinia": "^3.0.4",
+        "three": "^0.184.0",
         "vue": "^3.5.25",
         "vue-i18n": "^11.2.8",
         "vue-router": "^4.6.3"
