@@ -1905,7 +1905,7 @@ const handleSaveRetarderStatus = async () => {
     background-color: #f0f0f0;
     display: flex;
     align-items: center;
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
     gap: 6px;
     padding: 6px 8px;
 }
@@ -1922,7 +1922,9 @@ const handleSaveRetarderStatus = async () => {
     display: flex;
     align-items: center;
     justify-content: flex-start;
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
+    row-gap: 6px;
+    column-gap: 6px;
     gap: 6px;
     padding: 6px 8px;
     margin: 0 4px;
@@ -1934,7 +1936,6 @@ const handleSaveRetarderStatus = async () => {
     height: auto;
     min-width: 0;
     box-sizing: border-box;
-    overflow-x: auto;
 }
 
 .main-ctrl {
@@ -2028,7 +2029,7 @@ const handleSaveRetarderStatus = async () => {
     display: flex;
     align-items: center;
     align-content: center;
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
     gap: 6px;
     min-width: 0;
 }
