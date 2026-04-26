@@ -1,5 +1,5 @@
 <template>
-    <div style="width:100%;height:100%">
+    <div class="flatlayout-root">
         <div v-if="props.isToolbarDisplay" class="flatlayout-toolbar">
             <div class="flatlayout-toolbar__group">
                 <div class="flatlayout-toolbar__group-header">
@@ -937,8 +937,18 @@ defineExpose({
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
+.flatlayout-root {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
 .flatlayout-scroll-container {
     width: 100%;
+    flex: 1 1 auto;
+    min-height: 200px;
     overflow-x: auto;
     overflow-y: hidden;
     -ms-overflow-style: none;
@@ -952,8 +962,9 @@ defineExpose({
 }
 
 .flatlayout-toolbar {
+    flex: 0 0 auto;
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 12px;
     padding: 14px 20px;
     margin-top: 5px;
@@ -1020,10 +1031,24 @@ defineExpose({
     margin-right: 0;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 600px) {
     .flatlayout-toolbar {
-        grid-template-columns: 1fr;
-        padding: 12px;
+        padding: 10px 12px;
+        gap: 8px;
+    }
+
+    .flatlayout-toolbar__group {
+        padding: 6px 8px 4px;
+    }
+
+    .flatlayout-toolbar__group label {
+        font-size: 12px;
+    }
+
+    .flatlayout-toolbar__value {
+        min-width: 36px;
+        padding: 1px 6px;
+        font-size: 11px;
     }
 }
 </style>

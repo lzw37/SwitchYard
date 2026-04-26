@@ -86,7 +86,7 @@
                                     </el-table-column>
                                     <el-table-column :label="t('hump.xCoord')" width="150">
                                         <template #default="scope">
-                                            <el-input v-model="scope.row.x" size="small" type="number"
+                                            <el-input v-model.number="scope.row.x" size="small" type="number"
                                                 @input="onPositionXChange(scope.row)" />
                                         </template>
                                     </el-table-column>
@@ -916,6 +916,24 @@ function saveFlatLayout() {
         console.warn('No flat layout data to save.')
         return
     }
+    // 防御性数值规范化：el-input type="number" 在 v-model 上会保持字符串值，
+    // 后端 System.Text.Json 默认不会把 JSON 字符串解析为 double，导致保存失败。
+    if (flatLayout.value.positionList) {
+        flatLayout.value.positionList.forEach((p: any) => {
+            const nx = Number(p.x)
+            p.x = Number.isFinite(nx) ? nx : 0
+            const nh = Number(p.height)
+            p.height = Number.isFinite(nh) ? nh : 0
+        })
+    }
+    if (flatLayout.value.positionSegmentList) {
+        flatLayout.value.positionSegmentList.forEach((s: any) => {
+            const nl = Number(s.length)
+            s.length = Number.isFinite(nl) ? nl : 0
+            const nc = Number(s.curveDegree)
+            s.curveDegree = Number.isFinite(nc) ? nc : 0
+        })
+    }
     axios.put('/hump/editflatlayout', flatLayout.value).then(response => {
         ElMessage.success(t('hump.messages.flatLayoutSaved'))
         console.log('Flat layout data saved successfully.')
@@ -941,11 +959,11 @@ function saveFlatLayout() {
 }
 
 .graphic-placeholder {
-    height: 300px;
+    min-height: 300px;
     border: 2px dashed #d6e5ef;
     border-radius: 8px;
     display: flex;
-    align-items: center;
+    align-items: stretch;
     justify-content: center;
     color: #5d6d7a;
     background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
