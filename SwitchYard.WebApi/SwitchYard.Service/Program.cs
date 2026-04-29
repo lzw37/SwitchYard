@@ -152,6 +152,7 @@ try
     // 注册JWT服务
     builder.Services.AddSingleton<JwtTokenService>();
     builder.Services.AddSingleton<RefreshTokenService>();
+    builder.Services.AddSingleton<DatabaseSchemaInitializer>();
     builder.Services.AddScoped<UserService>();
     builder.Services.AddScoped<InstanceAuthorizationService>();
     builder.Services.AddScoped<HumpInstanceCopyService>();
@@ -313,9 +314,9 @@ try
     logger.LogInformation("Database connector configured");
 
     // 确保 refreshtoken 表已创建
-    var refreshTokenService = app.Services.GetRequiredService<RefreshTokenService>();
-    refreshTokenService.EnsureTableExists();
-    logger.LogInformation("RefreshToken table initialized");
+    var databaseSchemaInitializer = app.Services.GetRequiredService<DatabaseSchemaInitializer>();
+    databaseSchemaInitializer.EnsureSchemaCreated();
+    logger.LogInformation("Database schema initialized");
 
     logger.LogInformation("Application configured successfully, starting to listen for requests...");
 

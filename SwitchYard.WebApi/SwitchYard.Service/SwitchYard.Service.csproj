@@ -24,4 +24,10 @@
     <ProjectReference Include="..\SwitchYard.Hump\SwitchYard.Hump.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="Database\*.sql">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
 </Project>

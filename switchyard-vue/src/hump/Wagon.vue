@@ -291,7 +291,10 @@ const deleteRow = async (index: number) => {
 
         try {
             await axios.delete('/Hump/DeleteWagonConcept', {
-                params: { typeName: wagon.typeName }
+                params: {
+                    instanceID: currentInstanceId.value,
+                    typeName: wagon.typeName
+                }
             });
 
             wagonData.value.splice(index, 1);

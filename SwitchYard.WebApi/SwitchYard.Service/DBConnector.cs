@@ -1,32 +1,48 @@
 ﻿using System;
 using Dapper;
 using Microsoft.Data.Sqlite;
-using System.Data;
 using System.Collections.Generic;
 using MySqlConnector;
 using System.Data.Common;
-using Org.BouncyCastle.Bcpg;
 using Microsoft.Extensions.Configuration;
-using System.Runtime.CompilerServices;
 
 namespace SwitchYard.Service
 {
-    public class DBConnector
+    public abstract class DBConnector
     {
         // Transaction support fields shared by connectors
-        protected DbConnection _transactionConnection;
-        protected DbTransaction _transaction;
-        protected static IConfiguration _configuration;
+        protected DbConnection? _transactionConnection;
+        protected DbTransaction? _transaction;
+        protected static IConfiguration? _configuration;
 
         public static void SetConfiguration(IConfiguration configuration)
         {
             _configuration = configuration;
         }
 
-        protected virtual DbConnection GetConnection()
+        public static string GetConfiguredDatabaseType()
         {
-            return null;
+            if (_configuration == null)
+            {
+                throw new InvalidOperationException("Database configuration has not been initialized.");
+            }
+
+            return _configuration["HumpDatabase:DatabaseType"] ?? "Sqllite";
         }
+
+        public static bool IsSqlite()
+        {
+            var dbType = GetConfiguredDatabaseType();
+            return dbType == "SQLite" || dbType == "Sqllite";
+        }
+
+        public static bool IsMySql()
+        {
+            var dbType = GetConfiguredDatabaseType();
+            return dbType == "MySQL" || dbType == "Mysql";
+        }
+
+        protected abstract DbConnection GetConnection();
 
         public virtual List<T>? Query<T>(string querySqlString, object? parameters = null)
         {
@@ -96,12 +112,11 @@ namespace SwitchYard.Service
                     conn.Close();
                 }
             }
-            return 0;
         }
 
         public static DBConnector GetDBConnector()
         {
-            var dbType = _configuration["HumpDatabase:DatabaseType"];
+            var dbType = GetConfiguredDatabaseType();
             if (dbType == "SQLite" || dbType == "Sqllite")
             {
                 return new SqlLiteConnector();
@@ -180,13 +195,30 @@ namespace SwitchYard.Service
         {
             protected override DbConnection GetConnection()
             {
-                var host = _configuration["HumpDatabase:MysqlConfig:Host"];
-                var port = _configuration.GetValue<int>("HumpDatabase:MysqlConfig:Port");
-                var db = _configuration["HumpDatabase:MysqlConfig:Database"];
-                var user = _configuration["HumpDatabase:MysqlConfig:Username"];
-                var pass = _configuration["HumpDatabase:MysqlConfig:Password"];
-                var connStr = $"Server={host};Port={port};Database={db};User Id={user};Password={pass};Charset=utf8;";
-                return new MySqlConnection(connStr);
+                var connectionStringBuilder = new MySqlConnectionStringBuilder
+                {
+                    Server = _configuration["HumpDatabase:MysqlConfig:Host"],
+                    Port = (uint)_configuration.GetValue("HumpDatabase:MysqlConfig:Port", 3306),
+                    Database = _configuration["HumpDatabase:MysqlConfig:Database"],
+                    UserID = _configuration["HumpDatabase:MysqlConfig:Username"],
+                    Password = _configuration["HumpDatabase:MysqlConfig:Password"],
+                    CharacterSet = _configuration["HumpDatabase:MysqlConfig:CharSet"] ?? "utf8mb4",
+                    ConnectionTimeout = (uint)_configuration.GetValue("HumpDatabase:MysqlConfig:ConnectionTimeout", 15)
+                };
+
+                var sslMode = _configuration["HumpDatabase:MysqlConfig:SslMode"];
+                if (!string.IsNullOrWhiteSpace(sslMode) &&
+                    Enum.TryParse<MySqlSslMode>(sslMode, ignoreCase: true, out var parsedSslMode))
+                {
+                    connectionStringBuilder.SslMode = parsedSslMode;
+                }
+
+                if (_configuration.GetValue<bool?>("HumpDatabase:MysqlConfig:AllowPublicKeyRetrieval") is bool allowPublicKeyRetrieval)
+                {
+                    connectionStringBuilder.AllowPublicKeyRetrieval = allowPublicKeyRetrieval;
+                }
+
+                return new MySqlConnection(connectionStringBuilder.ConnectionString);
             }
         }
     }

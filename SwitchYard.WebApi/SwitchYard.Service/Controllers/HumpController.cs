@@ -785,16 +785,26 @@ namespace SwitchYard.Service.Controllers
         {
             try
             {
-                if (wagonConcept == null || string.IsNullOrEmpty(wagonConcept.InstanceID))
+                if (wagonConcept == null ||
+                    string.IsNullOrWhiteSpace(wagonConcept.InstanceID) ||
+                    string.IsNullOrWhiteSpace(wagonConcept.TypeName))
                 {
-                    return BadRequest("Invalid WagonConcept or missing InstanceID.");
+                    return BadRequest("Invalid WagonConcept or missing required fields.");
                 }
+
+                wagonConcept.InstanceID = wagonConcept.InstanceID.Trim();
+                wagonConcept.TypeName = wagonConcept.TypeName.Trim();
 
                 var authResult = ValidateInstanceOwnershipOrFail(wagonConcept.InstanceID);
                 if (authResult != null) return authResult;
 
                 var username = User.Identity?.Name;
                 DBConnector dbConnector = DBConnector.GetDBConnector();
+                var existing = LoadWagonConceptByTypeName(dbConnector, wagonConcept.InstanceID, wagonConcept.TypeName);
+                if (existing != null)
+                {
+                    return Conflict("WagonConcept already exists.");
+                }
 
                 var result = dbConnector.ExecuteNonQuery(
                     "INSERT INTO wagonconcept (InstanceID, TypeName, Length, NetMass, LoadingMass, WindwardArea, AxleNumber, Label, g) VALUES (@InstanceID, @TypeName, @Length, @NetMass, @LoadingMass, @WindwardArea, @AxleNumber, @Label, @g)",
@@ -818,7 +828,11 @@ namespace SwitchYard.Service.Controllers
                 }
                 else
                 {
-                    _logger.LogWarning("Failed to create WagonConcept.", wagonConcept.InstanceID, username);
+                    _logger.LogWarning(
+                        "Failed to create WagonConcept {TypeName} for instance {InstanceID} by user {Username}.",
+                        wagonConcept.TypeName,
+                        wagonConcept.InstanceID,
+                        username);
                     return StatusCode(500, "Failed to create WagonConcept.");
                 }
             }
@@ -837,21 +851,26 @@ namespace SwitchYard.Service.Controllers
         {
             try
             {
-                if (wagonConcept == null || string.IsNullOrEmpty(wagonConcept.TypeName))
+                if (wagonConcept == null ||
+                    string.IsNullOrWhiteSpace(wagonConcept.InstanceID) ||
+                    string.IsNullOrWhiteSpace(wagonConcept.TypeName))
                 {
-                    return BadRequest("Invalid WagonConcept or missing TypeName.");
+                    return BadRequest("Invalid WagonConcept or missing required fields.");
                 }
+
+                wagonConcept.InstanceID = wagonConcept.InstanceID.Trim();
+                wagonConcept.TypeName = wagonConcept.TypeName.Trim();
+
+                var authResult = ValidateInstanceOwnershipOrFail(wagonConcept.InstanceID);
+                if (authResult != null) return authResult;
 
                 var username = User.Identity?.Name;
                 DBConnector dbConnector = DBConnector.GetDBConnector();
-                var existing = dbConnector.Query<WagonConcept>("SELECT * FROM wagonconcept WHERE TypeName = @typeName", new { typeName = wagonConcept.TypeName }).FirstOrDefault();
+                var existing = LoadWagonConceptByTypeName(dbConnector, wagonConcept.InstanceID, wagonConcept.TypeName);
                 if (existing == null)
                 {
                     return NotFound("WagonConcept not found.");
                 }
-
-                var authResult = ValidateInstanceOwnershipOrFail(existing.InstanceID);
-                if (authResult != null) return authResult;
 
                 var result = dbConnector.ExecuteNonQuery(
                     "UPDATE wagonconcept SET Length = @Length, NetMass = @NetMass, LoadingMass = @LoadingMass, WindwardArea = @WindwardArea, AxleNumber = @AxleNumber, Label = @Label, g = @g WHERE TypeName = @TypeName AND InstanceID = @InstanceID",
@@ -875,7 +894,11 @@ namespace SwitchYard.Service.Controllers
                 }
                 else
                 {
-                    _logger.LogWarning("Failed to update WagonConcept {TypeName}.", wagonConcept.TypeName, existing.InstanceID, username);
+                    _logger.LogWarning(
+                        "Failed to update WagonConcept {TypeName} for instance {InstanceID} by user {Username}.",
+                        wagonConcept.TypeName,
+                        existing.InstanceID,
+                        username);
                     return StatusCode(500, "Failed to update WagonConcept.");
                 }
             }
@@ -890,22 +913,32 @@ namespace SwitchYard.Service.Controllers
         /// 删除车辆概念
         /// </summary>
         [HttpDelete(Name = "DeleteWagonConcept")]
-        public IActionResult DeleteWagonConcept(string typeName)
+        public IActionResult DeleteWagonConcept(string instanceID, string typeName)
         {
             try
             {
+                if (string.IsNullOrWhiteSpace(instanceID) || string.IsNullOrWhiteSpace(typeName))
+                {
+                    return BadRequest("InstanceID and TypeName are required.");
+                }
+
+                instanceID = instanceID.Trim();
+                typeName = typeName.Trim();
+
+                var authResult = ValidateInstanceOwnershipOrFail(instanceID);
+                if (authResult != null) return authResult;
+
                 var username = User.Identity?.Name;
                 DBConnector dbConnector = DBConnector.GetDBConnector();
-                var existing = dbConnector.Query<WagonConcept>("SELECT * FROM wagonconcept WHERE TypeName = @typeName", new { typeName }).FirstOrDefault();
+                var existing = LoadWagonConceptByTypeName(dbConnector, instanceID, typeName);
                 if (existing == null)
                 {
                     return NotFound("WagonConcept not found.");
                 }
 
-                var authResult = ValidateInstanceOwnershipOrFail(existing.InstanceID);
-                if (authResult != null) return authResult;
-
-                var result = dbConnector.ExecuteNonQuery("DELETE FROM wagonconcept WHERE TypeName = @typeName", new { typeName });
+                var result = dbConnector.ExecuteNonQuery(
+                    "DELETE FROM wagonconcept WHERE InstanceID = @instanceID AND TypeName = @typeName",
+                    new { instanceID, typeName });
                 if (result > 0)
                 {
                     LogInformationWithContext("Deleted WagonConcept {TypeName}.", typeName);
@@ -913,7 +946,11 @@ namespace SwitchYard.Service.Controllers
                 }
                 else
                 {
-                    _logger.LogWarning("Failed to delete WagonConcept {TypeName}.", typeName, existing.InstanceID, username);
+                    _logger.LogWarning(
+                        "Failed to delete WagonConcept {TypeName} for instance {InstanceID} by user {Username}.",
+                        typeName,
+                        existing.InstanceID,
+                        username);
                     return StatusCode(500, "Failed to delete WagonConcept.");
                 }
             }
@@ -930,6 +967,14 @@ namespace SwitchYard.Service.Controllers
             var wagonConceptList = dbConnector.Query<SwitchYard.Hump.WagonConcept>("SELECT * FROM wagonconcept WHERE InstanceID = @instanceID",
                 new { instanceID = instanceID });
             return wagonConceptList;
+        }
+
+        private WagonConcept? LoadWagonConceptByTypeName(DBConnector dbConnector, string instanceID, string typeName)
+        {
+            var wagonConceptList = dbConnector.Query<WagonConcept>(
+                "SELECT * FROM wagonconcept WHERE InstanceID = @instanceID AND TypeName = @typeName",
+                new { instanceID, typeName });
+            return wagonConceptList?.FirstOrDefault();
         }
 
         /// <summary>
@@ -1402,13 +1447,7 @@ namespace SwitchYard.Service.Controllers
                 }
 
                 // 写入数据库
-                StringBuilder sqlStrBuilder = new StringBuilder();
-                foreach (var data in humpCalculation.Data)
-                {
-                    sqlStrBuilder.Append($"INSERT INTO humpcalculationdata (InstanceID, HumpSchemeID, HumpCalculationID, X, GravityEnergyHeight, ResistanceEnergyHeight, KineticEnergyHeight, BreakingEnergyHeight, InitTotalEnergyHeight) VALUES ('{data.InstanceID}', '{data.HumpSchemeID}', '{data.HumpCalculationID}', {data.X}, {data.GravityEnergyHeight}, {data.ResistanceEnergyHeight}, {data.KineticEnergyHeight}, {data.BreakingEnergyHeight}, {data.InitTotalEnergyHeight});");
-                }
-
-                if (sqlStrBuilder.Length == 0)
+                if (humpCalculation.Data.Count == 0)
                 {
                     // 返回空
                     LogInformationWithContext("No HumpCalculationData to insert, hump scheme {HumpSchemeID}.", parameters.HumpSchemeID);
@@ -1416,8 +1455,32 @@ namespace SwitchYard.Service.Controllers
                 }
 
                 dbConnector.BeginTransaction();
-                dbConnector.ExecuteNonQuery($"DELETE FROM humpcalculationdata WHERE InstanceID = '{parameters.InstanceID}' AND HumpSchemeID = '{parameters.HumpSchemeID}' AND HumpCalculationID = '{parameters.ID}';");
-                dbConnector.ExecuteNonQuery(sqlStrBuilder.ToString());
+                dbConnector.ExecuteNonQuery(
+                    "DELETE FROM humpcalculationdata WHERE InstanceID = @InstanceID AND HumpSchemeID = @HumpSchemeID AND HumpCalculationID = @HumpCalculationID",
+                    new
+                    {
+                        parameters.InstanceID,
+                        parameters.HumpSchemeID,
+                        HumpCalculationID = parameters.ID
+                    });
+
+                foreach (var data in humpCalculation.Data)
+                {
+                    dbConnector.ExecuteNonQuery(
+                        "INSERT INTO humpcalculationdata (InstanceID, HumpSchemeID, HumpCalculationID, X, GravityEnergyHeight, ResistanceEnergyHeight, KineticEnergyHeight, BreakingEnergyHeight, InitTotalEnergyHeight) VALUES (@InstanceID, @HumpSchemeID, @HumpCalculationID, @X, @GravityEnergyHeight, @ResistanceEnergyHeight, @KineticEnergyHeight, @BreakingEnergyHeight, @InitTotalEnergyHeight)",
+                        new
+                        {
+                            data.InstanceID,
+                            data.HumpSchemeID,
+                            data.HumpCalculationID,
+                            data.X,
+                            data.GravityEnergyHeight,
+                            data.ResistanceEnergyHeight,
+                            data.KineticEnergyHeight,
+                            data.BreakingEnergyHeight,
+                            data.InitTotalEnergyHeight
+                        });
+                }
                 dbConnector.Commit();
                 LogInformationWithContext("Inserted {DataCount} HumpCalculationData records, hump scheme {HumpSchemeID}, hump calculation {HumpCalculationID}.", humpCalculation.Data?.Count ?? 0, parameters.HumpSchemeID, parameters.ID);
 
