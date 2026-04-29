@@ -65,6 +65,8 @@ interface LoginResponse {
     token: string;
     tokenType: string;
     expiresIn: number;
+    refreshToken: string;
+    refreshTokenExpiresIn: number;
     name: string;
     role: string;
     mustChangePassword?: boolean;
@@ -154,6 +156,9 @@ const handleLogin = async () => {
                 authStore.setAuth({
                     token: data.token,
                     tokenType: data.tokenType || "Bearer",
+                    expiresIn: data.expiresIn,
+                    refreshToken: data.refreshToken,
+                    refreshTokenExpiresIn: data.refreshTokenExpiresIn,
                     username: data.name,
                     role: data.role || "User",
                     mustChangePassword: data.mustChangePassword === true,
