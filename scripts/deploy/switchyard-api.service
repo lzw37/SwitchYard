@@ -1,0 +1,45 @@
+[Unit]
+Description=SwitchYard WebAPI Service
+Documentation=https://github.com/your-org/SwitchYard
+After=network-online.target mysql.service
+Wants=network-online.target
+
+[Service]
+Type=notify
+# 运行账号（请预先创建：sudo adduser --system --group --no-create-home switchyard）
+User=switchyard
+Group=switchyard
+
+# 部署目录（按实际部署路径修改）
+WorkingDirectory=/opt/switchyard/api
+ExecStart=/usr/bin/dotnet /opt/switchyard/api/SwitchYard.Service.dll
+
+# 敏感配置仅通过受限的环境变量文件加载；该文件由 install-secrets.sh 创建，权限 600。
+EnvironmentFile=/etc/switchyard/api.env
+
+# 进程行为
+Restart=always
+RestartSec=5
+KillSignal=SIGINT
+TimeoutStopSec=30
+SyslogIdentifier=switchyard-api
+
+# 安全加固
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+# 应用需要写入的目录（日志、SQLite 文件等）；按实际情况调整
+ReadWritePaths=/opt/switchyard/api/logs /var/log/switchyard
+
+# 仅允许常规网络协议
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

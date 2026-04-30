@@ -249,6 +249,39 @@ try
 
     var app = builder.Build();
 
+    // 生产环境敏感配置校验：必须由环境变量注入，appsettings 不应保留明文。
+    if (app.Environment.IsProduction())
+    {
+        var missingSecrets = new List<string>();
+
+        if (string.IsNullOrWhiteSpace(builder.Configuration["Jwt:SecretKey"]))
+        {
+            missingSecrets.Add("Jwt__SecretKey");
+        }
+
+        var dbType = builder.Configuration["HumpDatabase:DatabaseType"] ?? "Sqllite";
+        if (dbType.Equals("Mysql", StringComparison.OrdinalIgnoreCase) ||
+            dbType.Equals("MySQL", StringComparison.OrdinalIgnoreCase))
+        {
+            if (string.IsNullOrWhiteSpace(builder.Configuration["HumpDatabase:MysqlConfig:Username"]))
+            {
+                missingSecrets.Add("HumpDatabase__MysqlConfig__Username");
+            }
+            if (string.IsNullOrWhiteSpace(builder.Configuration["HumpDatabase:MysqlConfig:Password"]))
+            {
+                missingSecrets.Add("HumpDatabase__MysqlConfig__Password");
+            }
+        }
+
+        if (missingSecrets.Count > 0)
+        {
+            throw new InvalidOperationException(
+                "Production startup aborted: missing required secret environment variable(s): " +
+                string.Join(", ", missingSecrets) +
+                ". See scripts/deploy/switchyard-api.env.example.");
+        }
+    }
+
     // 添加启动日志
     var logger = app.Services.GetRequiredService<ILogger<Program>>();
     logger.LogInformation("=== SwitchYard Service Starting ===");
