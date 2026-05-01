@@ -9,6 +9,15 @@
             />
             <el-button type="primary" :loading="loading" @click="loadUsers">刷新</el-button>
             <el-button type="success" @click="openCreate">新增用户</el-button>
+            <el-button type="warning" :loading="importing" @click="triggerImport">导入用户</el-button>
+            <el-button type="info" plain @click="downloadTemplate">下载导入模板</el-button>
+            <input
+                ref="importFileInput"
+                type="file"
+                accept=".xlsx"
+                style="display: none"
+                @change="handleImportFile"
+            />
         </div>
 
         <el-table :data="filteredUsers" v-loading="loading" stripe style="width: 100%">
@@ -117,6 +126,32 @@
             </template>
         </el-dialog>
 
+        <el-dialog v-model="importResultVisible" title="批量导入结果" width="700px" :close-on-click-modal="false">
+            <div v-if="importResult">
+                <el-alert
+                    :title="`导入完成：成功 ${importResult.successCount} 条，失败 ${importResult.failedCount} 条（共 ${importResult.totalCount} 条）`"
+                    :type="importResult.failedCount === 0 ? 'success' : 'warning'"
+                    :closable="false"
+                    style="margin-bottom: 16px"
+                />
+                <el-table :data="importResult.results" max-height="360" stripe style="width: 100%">
+                    <el-table-column prop="row" label="行号" width="70" />
+                    <el-table-column prop="username" label="用户名" min-width="130" />
+                    <el-table-column label="状态" width="80">
+                        <template #default="{ row }">
+                            <el-tag :type="row.success ? 'success' : 'danger'">
+                                {{ row.success ? '成功' : '失败' }}
+                            </el-tag>
+                        </template>
+                    </el-table-column>
+                    <el-table-column prop="error" label="错误信息" min-width="200" />
+                </el-table>
+            </div>
+            <template #footer>
+                <el-button type="primary" @click="closeImportResult">返回</el-button>
+            </template>
+        </el-dialog>
+
         <el-dialog v-model="resetPasswordVisible" title="重置密码" width="520px">
             <el-form :model="resetForm" label-width="120px">
                 <el-form-item label="用户ID">
@@ -147,6 +182,20 @@ import { useAuthStore } from '@/stores/auth'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import CryptoJS from 'crypto-js'
 
+interface ImportRowResult {
+    row: number
+    username: string
+    success: boolean
+    error?: string | null
+}
+
+interface ImportResult {
+    totalCount: number
+    successCount: number
+    failedCount: number
+    results: ImportRowResult[]
+}
+
 interface UserRecord {
     id: string
     name: string
@@ -175,7 +224,12 @@ const keyword = ref('')
 const createVisible = ref(false)
 const editVisible = ref(false)
 const resetPasswordVisible = ref(false)
+const importResultVisible = ref(false)
 const editingSourceId = ref('')
+
+const importing = ref(false)
+const importResult = ref<ImportResult | null>(null)
+const importFileInput = ref<HTMLInputElement | null>(null)
 
 const createForm = reactive({
     username: '',
@@ -420,6 +474,55 @@ const submitResetPassword = async () => {
         ElMessage.error(error?.response?.data?.message || '重置密码失败')
     } finally {
         resettingPassword.value = false
+    }
+}
+
+const triggerImport = () => {
+    if (importFileInput.value) {
+        importFileInput.value.value = ''
+        importFileInput.value.click()
+    }
+}
+
+const handleImportFile = async (event: Event) => {
+    const input = event.target as HTMLInputElement
+    const file = input.files?.[0]
+    if (!file) return
+
+    importing.value = true
+    try {
+        const formData = new FormData()
+        formData.append('file', file)
+        const resp = await axios.post<ImportResult>('/api/Admin/users/import', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+        })
+        importResult.value = resp.data
+        importResultVisible.value = true
+    } catch (error: any) {
+        ElMessage.error(error?.response?.data?.message || '导入失败')
+    } finally {
+        importing.value = false
+    }
+}
+
+const closeImportResult = async () => {
+    importResultVisible.value = false
+    await loadUsers()
+}
+
+const downloadTemplate = async () => {
+    try {
+        const resp = await axios.get('/api/Admin/users/import-template', { responseType: 'blob' })
+        const url = URL.createObjectURL(new Blob([resp.data]))
+        const a = document.createElement('a')
+        a.href = url
+        a.download = 'user_info_template.xlsx'
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+    } catch (error: any) {
+        ElMessage.error(error?.response?.data?.message || '下载模板失败')
     }
 }
 
