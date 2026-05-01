@@ -92,7 +92,7 @@ prompt_plain() {
 }
 
 write_env_file() {
-    local db_host="$1" db_port="$2" db_name="$3" db_user="$4" db_pwd="$5" jwt_secret="$6" listen_url="$7"
+    local db_host="$1" db_port="$2" db_name="$3" db_user="$4" db_pwd="$5" jwt_secret="$6"
 
     # 备份旧文件
     if [[ -f "${ENV_FILE}" ]]; then
@@ -111,7 +111,6 @@ write_env_file() {
 # 由 install-secrets.sh 自动生成于 $(date -Iseconds)
 # 切勿将本文件加入版本控制。
 ASPNETCORE_ENVIRONMENT=Production
-ASPNETCORE_URLS=${listen_url}
 
 HumpDatabase__DatabaseType=Mysql
 HumpDatabase__MysqlConfig__Host=${db_host}
@@ -177,14 +176,13 @@ main() {
     echo "提示：密码输入时不会显示。"
     echo
 
-    local db_host db_port db_name db_user db_pwd listen_url jwt_secret
+    local db_host db_port db_name db_user db_pwd jwt_secret
 
     prompt_plain  db_host    "MySQL Host"      "127.0.0.1"
     prompt_plain  db_port    "MySQL Port"      "3306"
     prompt_plain  db_name    "MySQL Database"  "hump"
     prompt_plain  db_user    "MySQL Username"  ""
     prompt_secret db_pwd     "MySQL Password"  ""
-    prompt_plain  listen_url "Kestrel 监听地址" "http://127.0.0.1:7297"
 
     if [[ "${JWT_AUTOGEN:-0}" == "1" ]]; then
         if ! command -v openssl >/dev/null 2>&1; then
@@ -199,7 +197,7 @@ main() {
         prompt_secret jwt_secret "Jwt__SecretKey" ""
     fi
 
-    write_env_file "${db_host}" "${db_port}" "${db_name}" "${db_user}" "${db_pwd}" "${jwt_secret}" "${listen_url}"
+    write_env_file "${db_host}" "${db_port}" "${db_name}" "${db_user}" "${db_pwd}" "${jwt_secret}"
     install_unit
 
     echo

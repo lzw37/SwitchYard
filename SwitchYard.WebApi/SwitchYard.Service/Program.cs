@@ -9,8 +9,79 @@ using SwitchYard.Service.Utils;
 using Serilog;
 using Microsoft.AspNetCore.HttpOverrides;
 using System.Net;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
+using System.Net.NetworkInformation;
+using System.Net.Sockets;
 
 using IPNetwork = Microsoft.AspNetCore.HttpOverrides.IPNetwork;
+static string[] GetDisplayAddresses(string address)
+{
+    if (!Uri.TryCreate(address, UriKind.Absolute, out var uri))
+    {
+        return Array.Empty<string>();
+    }
+
+    var scheme = uri.Scheme;
+    var port = uri.IsDefaultPort
+        ? string.Equals(scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ? 443 : 80
+        : uri.Port;
+    var host = uri.Host;
+
+    if (string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase))
+    {
+        return
+        [
+            $"{scheme}://localhost:{port}",
+            $"{scheme}://127.0.0.1:{port}"
+        ];
+    }
+
+    if (host is "0.0.0.0" or "::" or "[::]" or "*" or "+")
+    {
+        return GetLocalIPv4Addresses()
+            .Select(ip => $"{scheme}://{ip}:{port}")
+            .ToArray();
+    }
+
+    if (IPAddress.TryParse(host, out var ipAddress) && ipAddress.AddressFamily == AddressFamily.InterNetworkV6)
+    {
+        return [$"{scheme}://[{ipAddress}]:{port}"];
+    }
+
+    return [$"{scheme}://{host}:{port}"];
+}
+
+static string[] GetLocalIPv4Addresses()
+{
+    var addresses = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        IPAddress.Loopback.ToString()
+    };
+
+    foreach (var networkInterface in NetworkInterface.GetAllNetworkInterfaces())
+    {
+        if (networkInterface.OperationalStatus != OperationalStatus.Up)
+        {
+            continue;
+        }
+
+        foreach (var unicastAddress in networkInterface.GetIPProperties().UnicastAddresses)
+        {
+            var address = unicastAddress.Address;
+            if (address.AddressFamily != AddressFamily.InterNetwork || IPAddress.IsLoopback(address))
+            {
+                continue;
+            }
+
+            addresses.Add(address.ToString());
+        }
+    }
+
+    return addresses
+        .OrderBy(address => address, StringComparer.OrdinalIgnoreCase)
+        .ToArray();
+}
 
 // 配置 Serilog - 在创建 builder 之前
 var logDirectory = Path.Combine(AppContext.BaseDirectory, "logs");
@@ -38,6 +109,21 @@ try
     Log.Information("Starting SwitchYard Service");
 
     var builder = WebApplication.CreateBuilder(args);
+    var configuredHosts = builder.Configuration
+        .GetSection("WebApi:Hosts")
+        .Get<string[]>()?
+        .Where(host => !string.IsNullOrWhiteSpace(host))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .ToArray()
+        ?? Array.Empty<string>();
+
+    if (configuredHosts.Length == 0)
+    {
+        throw new InvalidOperationException(
+            "No host bindings were configured. Set WebApi:Hosts in appsettings.json or the active environment-specific appsettings file.");
+    }
+
+    builder.WebHost.UseUrls(configuredHosts);
 
     // 使用 Serilog 作为日志提供程序
     builder.Host.UseSerilog();
@@ -289,6 +375,7 @@ try
     logger.LogInformation("Content Root: {ContentRoot}", app.Environment.ContentRootPath);
     logger.LogInformation("Web Root: {WebRoot}", app.Environment.WebRootPath);
     logger.LogInformation("Log Directory: {LogDirectory}", logDirectory);
+    logger.LogInformation("Configured server host bindings: {Hosts}", string.Join(", ", configuredHosts));
     logger.LogInformation("Allowed CORS Origins: {Origins}", string.Join(", ", allowedOrigins));
     logger.LogInformation("JWT Issuer: {Issuer}, Audience: {Audience}", issuer, audience);
 
@@ -350,6 +437,31 @@ try
     var databaseSchemaInitializer = app.Services.GetRequiredService<DatabaseSchemaInitializer>();
     databaseSchemaInitializer.EnsureSchemaCreated();
     logger.LogInformation("Database schema initialized");
+
+    app.Lifetime.ApplicationStarted.Register(() =>
+    {
+        var server = app.Services.GetRequiredService<IServer>();
+        var addresses = server.Features.Get<IServerAddressesFeature>()?.Addresses?.ToArray()
+            ?? app.Urls.ToArray();
+
+        if (addresses.Length == 0)
+        {
+            logger.LogWarning("No server addresses were reported after startup");
+            return;
+        }
+
+        logger.LogInformation("Server bound addresses: {Addresses}", string.Join(", ", addresses));
+
+        var displayAddresses = addresses
+            .SelectMany(GetDisplayAddresses)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        foreach (var displayAddress in displayAddresses)
+        {
+            logger.LogInformation("Service is available at {Address}", displayAddress);
+        }
+    });
 
     logger.LogInformation("Application configured successfully, starting to listen for requests...");
 
