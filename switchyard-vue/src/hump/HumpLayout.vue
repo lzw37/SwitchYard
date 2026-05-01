@@ -123,7 +123,8 @@
                                     <el-table-column :label="t('hump.curvature')" width="100">
                                         <template #default="scope">
                                             <input class="table-native-input" :value="scope.row.curveDegree"
-                                                type="number" @input="onCurveDegreeInput(scope.row, $event)" />
+                                                inputmode="decimal" @input="onCurveDegreeInput(scope.row, $event)"
+                                                @blur="onCurveDegreeBlur(scope.row, $event)" />
                                         </template>
                                     </el-table-column>
                                     <el-table-column :label="t('hump.direction')" width="100">
@@ -175,7 +176,7 @@
                                     </el-select>
                                 </template>
                             </el-table-column>
-                            <el-table-column :label="t('hump.bindingSegment')" width="160">
+                            <el-table-column v-if="showSwitchBindingSegmentColumn" :label="t('hump.bindingSegment')" width="160">
                                 <template #default="scope">
                                     <el-select v-model="scope.row.bindingPositionSegmentID"
                                         :placeholder="t('hump.chooseSegment')" size="small" clearable
@@ -191,6 +192,16 @@
                                         :placeholder="t('hump.chooseType') || t('hump.type')" size="small"
                                         style="width:100px">
                                         <el-option v-for="opt in getSwitchTypeOptions()" :key="opt.value"
+                                            :label="opt.label" :value="opt.value" />
+                                    </el-select>
+                                </template>
+                            </el-table-column>
+                            <el-table-column label="道岔辙叉号码" width="150">
+                                <template #default="scope">
+                                    <el-select :model-value="getSwitchFrogNumberValue(scope.row)"
+                                        @change="onSwitchFrogNumberChange(scope.row, $event)"
+                                        placeholder="请选择辙叉号码" size="small" style="width:130px">
+                                        <el-option v-for="opt in getSwitchFrogNumberOptions()" :key="opt.value"
                                             :label="opt.label" :value="opt.value" />
                                     </el-select>
                                 </template>
@@ -217,7 +228,7 @@
                             </el-table-column>
                             <el-table-column :label="t('hump.curveRadius')" width="120">
                                 <template #default="scope">
-                                    <el-input v-model="scope.row.curveDegree" size="small" type="number" />
+                                    <span class="table-cell-number">{{ formatSwitchCurveDegree(scope.row) }}</span>
                                 </template>
                             </el-table-column>
                             <el-table-column :label="t('hump.operation')" width="100">
@@ -309,6 +320,18 @@ interface EditableSlopeLine extends SlopeLine {
     _originalName: string
 }
 
+type SwitchFrogNumberValue =
+    | '9'
+    | '12'
+    | 'symmetric-6'
+    | 'symmetric-6-5'
+
+interface SwitchFrogNumberOption {
+    label: string
+    value: SwitchFrogNumberValue
+    curveDegree: number
+}
+
 interface Props {
     selectedInstanceId?: string | null
 }
@@ -321,6 +344,7 @@ const { t } = useI18n()
 const selectedLine = ref<string | null>(null)
 const lines = ref<SlopeLine[]>([])
 const planSubTab = ref('ctrl')
+const showSwitchBindingSegmentColumn = false
 const slopeLineManagerVisible = ref(false)
 const slopeLineEditList = ref<EditableSlopeLine[]>([])
 
@@ -328,6 +352,35 @@ const ctrlRef = ref<InstanceType<typeof HumpLayoutCtrl> | null>(null)
 const flatLayout = ref<FlatLayout | null>(null)
 const globalCursorX = ref<number | undefined>(undefined)
 const isPositionListDirty = ref(false)
+
+function dmsToDecimal(degrees: number, minutes: number, seconds: number) {
+    const sign = degrees < 0 ? -1 : 1
+    return sign * (Math.abs(degrees) + minutes / 60 + seconds / 3600)
+}
+
+const switchFrogNumberDefinitions: SwitchFrogNumberOption[] = [
+    {
+        label: '9号单开',
+        value: '9',
+        curveDegree: dmsToDecimal(6, 20, 25)
+    },
+    {
+        label: '12号单开',
+        value: '12',
+        curveDegree: dmsToDecimal(4, 45, 49)
+    },
+    {
+        label: '6号对称',
+        value: 'symmetric-6',
+        curveDegree: dmsToDecimal(9, 27, 44) / 2
+    },
+    {
+        label: '6.5号对称道岔',
+        value: 'symmetric-6-5',
+        curveDegree: dmsToDecimal(8, 44, 46) / 2
+    }
+]
+const switchDegreeMatchTolerance = 1e-4
 
 // 加载溜放线列�?
 async function loadSlopeLines() {
@@ -532,6 +585,8 @@ const switchTypeOptions = computed(() => [
     { label: getSwitchTypeLabel(SwitchTypes.None), value: SwitchTypes.None }
 ])
 
+const switchFrogNumberOptions = computed(() => switchFrogNumberDefinitions)
+
 const switchDirectionOptions = computed(() => [
     { label: getSwitchDirectionLabel(SwitchDirections.Reverse), value: SwitchDirections.Reverse },
     { label: getSwitchDirectionLabel(SwitchDirections.Forward), value: SwitchDirections.Forward },
@@ -582,6 +637,65 @@ function getPositionSegmentOptions() {
 
 function getSwitchTypeOptions() {
     return switchTypeOptions.value
+}
+
+function getSwitchFrogNumberOptions() {
+    return switchFrogNumberOptions.value
+}
+
+function findSwitchFrogNumber(value: unknown) {
+    return switchFrogNumberDefinitions.find(opt => opt.value === value)
+}
+
+function isSameDegree(left: unknown, right: number) {
+    const leftDegree = parseDegreeInput(left)
+    return leftDegree !== null && Math.abs(leftDegree - right) < switchDegreeMatchTolerance
+}
+
+function getSwitchFrogNumberValue(row: any): SwitchFrogNumberValue | '' {
+    const matchedFrogNumber = switchFrogNumberDefinitions.find(opt =>
+        isSameDegree(row?.curveDegree, opt.curveDegree)
+    )
+    return matchedFrogNumber?.value ?? ''
+}
+
+function applySwitchFrogNumber(row: any, frogNumber: SwitchFrogNumberOption) {
+    row.curveDegree = frogNumber.curveDegree
+}
+
+function onSwitchFrogNumberChange(row: any, value: unknown) {
+    const frogNumber = findSwitchFrogNumber(value)
+    if (!frogNumber) return
+
+    applySwitchFrogNumber(row, frogNumber)
+}
+
+function formatDegreeDms(value: unknown) {
+    const degreeDecimal = parseDegreeInput(value)
+    if (degreeDecimal === null) return ''
+
+    const sign = degreeDecimal < 0 ? '-' : ''
+    const absDegree = Math.abs(degreeDecimal)
+    let degrees = Math.floor(absDegree)
+    let minutes = Math.floor((absDegree - degrees) * 60)
+    let seconds = Math.round(((absDegree - degrees) * 60 - minutes) * 60)
+
+    if (seconds === 60) {
+        seconds = 0
+        minutes += 1
+    }
+
+    if (minutes === 60) {
+        minutes = 0
+        degrees += 1
+    }
+
+    return `${sign}${degrees}°${minutes.toString().padStart(2, '0')}'${seconds.toString().padStart(2, '0')}"`
+}
+
+function formatSwitchCurveDegree(row: any) {
+    const frogNumber = findSwitchFrogNumber(getSwitchFrogNumberValue(row))
+    return formatDegreeDms(frogNumber?.curveDegree ?? row?.curveDegree)
 }
 
 function getSwitchDirectionOptions() {
@@ -641,15 +755,48 @@ function formatNumberCell(value: unknown) {
     return Number.isFinite(numberValue) ? numberValue : ''
 }
 
+function parseDegreeInput(value: unknown): number | null {
+    const rawValue = value?.toString().trim()
+    if (!rawValue) return 0
+
+    const numericValue = Number(rawValue)
+    if (Number.isFinite(numericValue)) return numericValue
+
+    const dmsMatch = rawValue.match(/^([+-]?\d+(?:\.\d+)?)\s*(?:°|º|度|d|D)\s*(\d+(?:\.\d+)?)\s*(?:'|′|’|‘|＇|分)\s*(\d+(?:\.\d+)?)\s*(?:"|″|”|“|秒)\s*$/)
+    if (!dmsMatch) return null
+
+    const degreePart = Number(dmsMatch[1])
+    const minutePart = Number(dmsMatch[2])
+    const secondPart = Number(dmsMatch[3])
+    if (!Number.isFinite(degreePart) || !Number.isFinite(minutePart) || !Number.isFinite(secondPart)) return null
+    if (minutePart >= 60 || secondPart >= 60) return null
+
+    const sign = degreePart < 0 ? -1 : 1
+    return sign * (Math.abs(degreePart) + minutePart / 60 + secondPart / 3600)
+}
+
+function setCurveDegree(row: any, degree: number) {
+    row.curveDegree = degree
+    if (degree === 0) {
+        row.curveDirection = CurveDirections.None
+    }
+}
+
 function onCurveDegreeInput(row: any, valueOrEvent: string | number | Event) {
     const rawValue = valueOrEvent instanceof Event
         ? (valueOrEvent.target as HTMLInputElement | null)?.value ?? ''
         : valueOrEvent
-    const degree = parseFloat(rawValue.toString());
-    row.curveDegree = degree;
-    if (degree === 0) {
-        row.curveDirection = CurveDirections.None;
-    }
+    row.curveDegree = rawValue.toString()
+}
+
+function onCurveDegreeBlur(row: any, valueOrEvent: string | number | Event) {
+    const rawValue = valueOrEvent instanceof Event
+        ? (valueOrEvent.target as HTMLInputElement | null)?.value ?? ''
+        : valueOrEvent
+    const degree = parseDegreeInput(rawValue)
+    if (degree === null) return
+
+    setCurveDegree(row, degree)
 }
 
 function onPositionXChange(position: any) {
@@ -734,6 +881,7 @@ function addSwitch() {
     const maxId = existingIds.length > 0 ? Math.max(...existingIds) : 0
     const newId = (maxId + 1).toString()
 
+    const defaultFrogNumber = switchFrogNumberDefinitions[0]!
     flatLayout.value.switchList.push({
         id: newId,
         bindingPositionID: '',
@@ -741,7 +889,7 @@ function addSwitch() {
         type: SwitchTypes.Single,
         direction: SwitchDirections.Forward,
         side: SwitchSides.Left,
-        curveDegree: 0
+        curveDegree: defaultFrogNumber.curveDegree
     })
 }
 
@@ -966,6 +1114,18 @@ function saveFlatLayout() {
             s.length = Number.isFinite(nl) ? nl : 0
             const nc = Number(s.curveDegree)
             s.curveDegree = Number.isFinite(nc) ? nc : 0
+        })
+    }
+    if (flatLayout.value.switchList) {
+        flatLayout.value.switchList.forEach((sw: any) => {
+            const frogNumber = findSwitchFrogNumber(getSwitchFrogNumberValue(sw))
+            if (frogNumber) {
+                applySwitchFrogNumber(sw, frogNumber)
+                return
+            }
+
+            const curveDegree = parseDegreeInput(sw.curveDegree)
+            sw.curveDegree = curveDegree !== null ? curveDegree : 0
         })
     }
     axios.put('/hump/editflatlayout', flatLayout.value).then(response => {

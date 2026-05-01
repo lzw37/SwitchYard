@@ -227,6 +227,7 @@ const emit = defineEmits<{
     'wheel-scale-x': [payload: { scaleX: number, scrollLeft: number }]
     'update-retarder-status-list': [value: RetarderStatusItem[]]
     'resistance-click': [payload: { x: number, clientX: number, clientY: number }]
+    'control-point-drag-end': []
 }>()
 
 function handleResistanceShadeClick(event: MouseEvent, dataX?: number) {
@@ -632,6 +633,7 @@ function endDrag() {
     window.removeEventListener('touchcancel', endTouchDrag);
     // updateKineticEnergyHeights(finishedId);
     draggingId.value = null;
+    emit('control-point-drag-end');
 }
 
 function endTouchDrag(event: TouchEvent) {

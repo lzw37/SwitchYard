@@ -110,7 +110,8 @@
                 :global-scale-y="globalScaleY" :element-visibility="elementVisibility" :global-cursor-x="globalCursorX"
                 :g_="currentWagonEffectiveG" @updateGlobalCursorX="updateGlobalCursorX" @horizontal-scroll="syncHorizontalScroll"
                 @wheel-scale-x="handleWheelScaleX" @update-retarder-status-list="handleInlineRetarderStatusUpdate"
-                @resistance-click="handleResistanceClick" />
+                @resistance-click="handleResistanceClick"
+                @control-point-drag-end="handleControlPointDragEnd" />
             <HumpSlopeSketchBlock ref="humpSlopeSketchBlockRef" v-model:slope-layout="slopeLayout" style="height:auto"
                 :global-scale-x="globalScaleX" :global-cursor-x="globalCursorX"
                 :horizontal-scroll-left="horizontalScrollLeft" @updateGlobalCursorX="updateGlobalCursorX"
@@ -435,7 +436,7 @@
 <script setup lang="ts">
 import HumpSlopeCtrl from './HumpSlopeCtrl.vue';
 import HumpSlopeSketchBlock from './HumpSlopeSketchBlock.vue';
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import HumpLayoutCtrl from './HumpLayoutCtrl.vue';
@@ -628,6 +629,35 @@ const showRetarder = ref(true);
 const showResistanceNumber = ref(true);
 const showKineticNumber = ref(true);
 const showPointHeightNumber = ref(true);
+const suppressEnergyLineAutoLoad = ref(false);
+const handlingSchemeSelectionChange = ref(false);
+let energyHeightRefreshSequence = 0;
+
+const clearEnergyHeightData = () => {
+    resistanceEnergyHeightData.value = null
+    kineticEnergyHeightData.value = null
+    breakingEnergyHeightData.value = null
+    closeResistanceDetail()
+}
+
+const setAllEnergyLinesVisible = async (visible: boolean) => {
+    suppressEnergyLineAutoLoad.value = true
+    showInitialKinetic.value = visible
+    showResistance.value = visible
+    showKinetic.value = visible
+    showBreaking.value = visible
+    await nextTick()
+    suppressEnergyLineAutoLoad.value = false
+}
+
+const hideAllEnergyLinesForRecalculation = async () => {
+    clearEnergyHeightData()
+    await setAllEnergyLinesVisible(false)
+}
+
+const showAllEnergyLinesAfterRecalculation = async () => {
+    await setAllEnergyLinesVisible(true)
+}
 
 const defaultCalculateCondition = () => ({
     wagonTypeName: "--",
@@ -651,31 +681,33 @@ const clearSlopeBindingData = () => {
     flatLayout.value = null
     humpCalculations.value = []
     currentHumpCalculationID.value = ""
-    resistanceEnergyHeightData.value = null
-    kineticEnergyHeightData.value = null
-    breakingEnergyHeightData.value = null
+    clearEnergyHeightData()
     currentCalculateCondition.value = defaultCalculateCondition()
 }
 
 watch(showInitialKinetic, (newVal) => {
+    if (suppressEnergyLineAutoLoad.value) return
     if (newVal === true) {
         loadKineticEnergyHeight();
     }
 });
 
 watch(showResistance, (newVal) => {
+    if (suppressEnergyLineAutoLoad.value) return
     if (newVal === true) {
         loadResistanceEnergyHeight();
     }
 });
 
 watch(showKinetic, (newVal) => {
+    if (suppressEnergyLineAutoLoad.value) return
     if (newVal === true) {
         loadKineticEnergyHeight();
     }
 });
 
 watch(showBreaking, (newVal) => {
+    if (suppressEnergyLineAutoLoad.value) return
     if (newVal === true) {
         loadBreakingEnergyHeight();
     }
@@ -768,43 +800,137 @@ const editSlopeLayout = async () => {
     }
 }
 
-// 加载阻力能高线数据
-function loadResistanceEnergyHeight() {
-    if (!props.selectedInstanceId || !currentHumpSchemeID.value || !currentHumpCalculationID.value) {
-        resistanceEnergyHeightData.value = null;
-        return;
-    }
+function getCurrentCalculation(): HumpCalculation | undefined {
+    return humpCalculations.value.find(calc => calc.id === currentHumpCalculationID.value)
+}
 
-    // 根据当前选择的计算条件ID获取完整的计算条件信息
-    const currentCalculation = humpCalculations.value.find(calc => calc.id === currentHumpCalculationID.value);
-    if (!currentCalculation) {
-        console.error("未找到当前选择的计算条件");
-        return;
+function buildEnergyHeightRequestData(currentCalculation: HumpCalculation) {
+    return {
+        ID: currentHumpCalculationID.value,
+        InstanceID: props.selectedInstanceId,
+        HumpSchemeID: currentHumpSchemeID.value,
+        WagonTypeName: currentCalculation.wagonType,
+        OperationConditionID: currentCalculation.operationConditionID,
+        SlopeLineID: currentCalculation.slopeLineID
     }
+}
 
-    const params = {
+function buildEnergyHeightLineParams(currentCalculation: HumpCalculation) {
+    return {
         instanceID: props.selectedInstanceId,
         humpSchemeID: currentHumpSchemeID.value,
         id: currentCalculation.id,
         slopeLineID: currentCalculation.slopeLineID,
         wagonTypeName: currentCalculation.wagonType,
         operationConditionID: currentCalculation.operationConditionID,
-        retarderStatusID: null, // 如果需要减速器状态，可以从计算条件中获取
+        retarderStatusID: null,
         retarderStatusList: currentCalculation.retarderStatusList || [],
         wagon: {
             typeName: currentCalculation.wagonType
         }
-    };
+    }
+}
 
-    axios.post(`/hump/getresistanceenergyheight`, params)
-        .then(response => {
-            if (response.data) {
-                console.log('Resistance energy height data loaded:', response.data);
-                resistanceEnergyHeightData.value = response.data as { x: number, height: number }[];
-            }
-        }).catch(error => {
-            console.error("加载阻力能高度数据失败:", error);
-        });
+function buildEnergyHeightRequestKey(currentCalculation?: HumpCalculation) {
+    return [
+        props.selectedInstanceId ?? '',
+        currentHumpSchemeID.value,
+        currentHumpCalculationID.value,
+        currentCalculation?.id ?? '',
+        currentCalculation?.slopeLineID ?? '',
+        currentCalculation?.wagonType ?? '',
+        currentCalculation?.operationConditionID ?? ''
+    ].join('|')
+}
+
+function isCurrentEnergyHeightRequest(requestKey: string) {
+    return requestKey === buildEnergyHeightRequestKey(getCurrentCalculation())
+}
+
+async function runCurrentEnergyHeightCalculation() {
+    const currentCalculation = getCurrentCalculation()
+    if (!currentCalculation || !props.selectedInstanceId || !currentHumpSchemeID.value || !currentHumpCalculationID.value) {
+        return false
+    }
+
+    const requestData = buildEnergyHeightRequestData(currentCalculation)
+    console.log('执行驼峰计算，请求参数:', requestData)
+    await axios.post('/Hump/ExecuteEnergyHeightCalculation', requestData)
+    return true
+}
+
+async function loadAllEnergyHeightData() {
+    await Promise.all([
+        loadResistanceEnergyHeight(),
+        loadKineticEnergyHeight(),
+        loadBreakingEnergyHeight()
+    ])
+}
+
+function invalidateEnergyHeightRefresh() {
+    energyHeightRefreshSequence += 1
+}
+
+async function recalculateAndShowAllEnergyLines(options: { hideFirst?: boolean } = {}) {
+    const refreshSequence = ++energyHeightRefreshSequence
+    if (options.hideFirst ?? true) {
+        await hideAllEnergyLinesForRecalculation()
+    }
+
+    if (!props.selectedInstanceId || !currentHumpSchemeID.value || !currentHumpCalculationID.value || !getCurrentCalculation()) {
+        if (refreshSequence === energyHeightRefreshSequence) {
+            calculationExecuting.value = false
+        }
+        return
+    }
+
+    try {
+        calculationExecuting.value = true
+        const calculated = await runCurrentEnergyHeightCalculation()
+        if (!calculated || refreshSequence !== energyHeightRefreshSequence) return
+
+        await loadAllEnergyHeightData()
+        if (refreshSequence !== energyHeightRefreshSequence) return
+
+        await showAllEnergyLinesAfterRecalculation()
+    } catch (error: any) {
+        console.error('自动刷新能高线失败:', error)
+        const errorMessage = error.response?.data?.message || error.message || t('humpSlopeDesigner.messages.calculationUnknownError')
+        ElMessage.error(`${t('humpSlopeDesigner.messages.calculationFailed')}: ${errorMessage}`)
+    } finally {
+        if (refreshSequence === energyHeightRefreshSequence) {
+            calculationExecuting.value = false
+        }
+    }
+}
+
+// 加载阻力能高线数据
+async function loadResistanceEnergyHeight() {
+    if (!props.selectedInstanceId || !currentHumpSchemeID.value || !currentHumpCalculationID.value) {
+        resistanceEnergyHeightData.value = null;
+        return;
+    }
+
+    // 根据当前选择的计算条件ID获取完整的计算条件信息
+    const currentCalculation = getCurrentCalculation();
+    if (!currentCalculation) {
+        console.error("未找到当前选择的计算条件");
+        return;
+    }
+
+    const params = buildEnergyHeightLineParams(currentCalculation);
+    const requestKey = buildEnergyHeightRequestKey(currentCalculation);
+
+    try {
+        const response = await axios.post(`/hump/getresistanceenergyheight`, params)
+        if (!isCurrentEnergyHeightRequest(requestKey)) return
+        if (response.data) {
+            console.log('Resistance energy height data loaded:', response.data);
+            resistanceEnergyHeightData.value = response.data as { x: number, height: number }[];
+        }
+    } catch (error) {
+        console.error("加载阻力能高度数据失败:", error);
+    }
 }
 
 // 阻力能高分项明细类型
@@ -989,69 +1115,48 @@ function handleResistanceClick(payload: { x: number, clientX: number, clientY: n
 }
 
 // 加载动能高线
-function loadKineticEnergyHeight() {
+async function loadKineticEnergyHeight() {
     if (!props.selectedInstanceId || !currentHumpSchemeID.value || !currentHumpCalculationID.value) {
         kineticEnergyHeightData.value = null;
         return;
     }
 
     // 根据当前选择的计算条件ID获取完整的计算条件信息
-    const currentCalculation = humpCalculations.value.find(calc => calc.id === currentHumpCalculationID.value);
+    const currentCalculation = getCurrentCalculation();
     if (!currentCalculation) {
         console.error("未找到当前选择的计算条件");
         return;
     }
 
-    const params = {
-        instanceID: props.selectedInstanceId,
-        humpSchemeID: currentHumpSchemeID.value,
-        id: currentCalculation.id,
-        slopeLineID: currentCalculation.slopeLineID,
-        wagonTypeName: currentCalculation.wagonType,
-        operationConditionID: currentCalculation.operationConditionID,
-        retarderStatusID: null, // 如果需要减速器状态，可以从计算条件中获取
-        retarderStatusList: currentCalculation.retarderStatusList || [],
-        wagon: {
-            typeName: currentCalculation.wagonType
-        }
-    };
+    const params = buildEnergyHeightLineParams(currentCalculation);
+    const requestKey = buildEnergyHeightRequestKey(currentCalculation);
 
-    axios.post(`/hump/getkineticenergyheight`, params)
-        .then(response => {
-            if (response.data) {
-                console.log('Kinetic energy height data loaded:', response.data);
-                kineticEnergyHeightData.value = response.data as { x: number, result: any }[];
-            }
-        }).catch(error => {
-            console.error("加载动能高度数据失败:", error);
-        });
+    try {
+        const response = await axios.post(`/hump/getkineticenergyheight`, params)
+        if (!isCurrentEnergyHeightRequest(requestKey)) return
+        if (response.data) {
+            console.log('Kinetic energy height data loaded:', response.data);
+            kineticEnergyHeightData.value = response.data as { x: number, result: any }[];
+        }
+    } catch (error) {
+        console.error("加载动能高度数据失败:", error);
+    }
 }
 
-function loadBreakingEnergyHeight() {
+async function loadBreakingEnergyHeight() {
     if (!props.selectedInstanceId || !currentHumpSchemeID.value || !currentHumpCalculationID.value) {
         breakingEnergyHeightData.value = null;
         return;
     }
 
-    const currentCalculation = humpCalculations.value.find(calc => calc.id === currentHumpCalculationID.value);
+    const currentCalculation = getCurrentCalculation();
     if (!currentCalculation) {
         console.error("Current hump calculation not found.");
         return;
     }
 
-    const params = {
-        instanceID: props.selectedInstanceId,
-        humpSchemeID: currentHumpSchemeID.value,
-        id: currentCalculation.id,
-        slopeLineID: currentCalculation.slopeLineID,
-        wagonTypeName: currentCalculation.wagonType,
-        operationConditionID: currentCalculation.operationConditionID,
-        retarderStatusID: null,
-        retarderStatusList: currentCalculation.retarderStatusList || [],
-        wagon: {
-            typeName: currentCalculation.wagonType
-        }
-    };
+    const params = buildEnergyHeightLineParams(currentCalculation);
+    const requestKey = buildEnergyHeightRequestKey(currentCalculation);
 
     const toFiniteNumber = (value: unknown): number => {
         const n = Number(value);
@@ -1069,25 +1174,27 @@ function loadBreakingEnergyHeight() {
         };
     };
 
-    axios.post(`/hump/getbreakingenergyheight`, params)
-        .then(response => {
-            const raw = response.data;
-            if (!raw) {
-                breakingEnergyHeightData.value = [];
-                return;
-            }
+    try {
+        const response = await axios.post(`/hump/getbreakingenergyheight`, params)
+        if (!isCurrentEnergyHeightRequest(requestKey)) return
 
-            const parsed = Array.isArray(raw)
-                ? raw.map((item: any) => normalizeItem(item?.x, item))
-                : Object.entries(raw as Record<string, any>).map(([x, item]) => normalizeItem(x, item));
+        const raw = response.data;
+        if (!raw) {
+            breakingEnergyHeightData.value = [];
+            return;
+        }
 
-            breakingEnergyHeightData.value = parsed
-                .filter(item => Number.isFinite(item.x))
-                .sort((a, b) => a.x - b.x);
-            console.log('Breaking energy height data loaded:', breakingEnergyHeightData.value);
-        }).catch(error => {
-            console.error("Failed to load breaking energy height data:", error);
-        });
+        const parsed = Array.isArray(raw)
+            ? raw.map((item: any) => normalizeItem(item?.x, item))
+            : Object.entries(raw as Record<string, any>).map(([x, item]) => normalizeItem(x, item));
+
+        breakingEnergyHeightData.value = parsed
+            .filter(item => Number.isFinite(item.x))
+            .sort((a, b) => a.x - b.x);
+        console.log('Breaking energy height data loaded:', breakingEnergyHeightData.value);
+    } catch (error) {
+        console.error("Failed to load breaking energy height data:", error);
+    }
 }
 
 // 加载下拉菜单选项数据
@@ -1229,23 +1336,50 @@ watch(() => props.selectedInstanceId, (newInstanceId) => {
 }, { immediate: true })
 
 // 监听 currentHumpSchemeID 变化
-watch(currentHumpSchemeID, (newSchemeId, oldSchemeId) => {
+watch(currentHumpSchemeID, async (newSchemeId, oldSchemeId) => {
     console.log('Current hump scheme changed from', oldSchemeId, 'to', newSchemeId)
+    invalidateEnergyHeightRefresh()
+    await hideAllEnergyLinesForRecalculation()
+
     if (newSchemeId && props.selectedInstanceId) {
-        loadSlopeLayout()
-        loadFlatLayout()
-        loadHumpCalculations()
+        handlingSchemeSelectionChange.value = true
+        try {
+            await Promise.all([
+                loadSlopeLayout(),
+                loadHumpCalculations()
+            ])
+            await Promise.all([
+                loadFlatLayout(),
+                updateCurrentCalculateCondition()
+            ])
+            await recalculateAndShowAllEnergyLines({ hideFirst: false })
+        } finally {
+            handlingSchemeSelectionChange.value = false
+        }
     } else {
         clearSlopeBindingData()
+        calculationExecuting.value = false
     }
 })
 
 // 监听 currentHumpCalculationID 变化
-watch(currentHumpCalculationID, (newCalculationId, oldCalculationId) => {
+watch(currentHumpCalculationID, async (newCalculationId, oldCalculationId) => {
     console.log('Current hump calculation changed from', oldCalculationId, 'to', newCalculationId)
+    if (handlingSchemeSelectionChange.value) {
+        return
+    }
+
+    invalidateEnergyHeightRefresh()
+    await hideAllEnergyLinesForRecalculation()
+
     if (newCalculationId && props.selectedInstanceId) {
-        loadFlatLayout()
-        updateCurrentCalculateCondition()
+        await Promise.all([
+            loadFlatLayout(),
+            updateCurrentCalculateCondition()
+        ])
+        await recalculateAndShowAllEnergyLines({ hideFirst: false })
+    } else {
+        calculationExecuting.value = false
     }
 })
 
@@ -1431,6 +1565,52 @@ const executeCalculation = async () => {
         )
     } finally {
         calculationExecuting.value = false
+    }
+}
+
+// 拖动控制点松开后自动保存并重新计算
+const handleControlPointDragEnd = async () => {
+    if (!props.selectedInstanceId || !currentHumpSchemeID.value || !slopeLayout.value) return
+
+    // 1. 保存纵断面
+    try {
+        const requestData = {
+            PositionList: slopeLayout.value.positionList,
+            PositionSegmentList: slopeLayout.value.positionSegmentList
+        }
+        await axios.put('/Hump/EditSlopeLayout', requestData, {
+            params: {
+                instanceID: props.selectedInstanceId,
+                humpSchemeID: currentHumpSchemeID.value
+            }
+        })
+        await loadSlopeLayout()
+        ElMessage.success({ message: t('humpSlopeDesigner.messages.slopeLayoutSaveSuccess'), duration: 2000 })
+    } catch (error: any) {
+        console.error('自动保存纵断面失败:', error)
+        return
+    }
+
+    // 2. 执行计算（静默，不弹对话框）
+    if (!currentHumpCalculationID.value) return
+    const currentCalculation = humpCalculations.value.find(calc => calc.id === currentHumpCalculationID.value)
+    if (!currentCalculation) return
+
+    try {
+        const requestData = {
+            ID: currentHumpCalculationID.value,
+            InstanceID: props.selectedInstanceId,
+            HumpSchemeID: currentHumpSchemeID.value,
+            WagonTypeName: currentCalculation.wagonType,
+            OperationConditionID: currentCalculation.operationConditionID,
+            SlopeLineID: currentCalculation.slopeLineID
+        }
+        await axios.post('/Hump/ExecuteEnergyHeightCalculation', requestData)
+        if (showResistance.value) loadResistanceEnergyHeight()
+        if (showKinetic.value || showInitialKinetic.value) loadKineticEnergyHeight()
+        if (showBreaking.value) loadBreakingEnergyHeight()
+    } catch (error: any) {
+        console.error('自动计算失败:', error)
     }
 }
 
