@@ -2,25 +2,19 @@
     <div class="flatlayout-root">
         <div v-if="props.isToolbarDisplay" class="flatlayout-toolbar">
             <div class="flatlayout-toolbar__group">
-                <div class="flatlayout-toolbar__group-header">
-                    <label for="leftmargin-slider">{{ t('humpLayoutCtrl.horizontalBaseline') }}</label>
-                    <span class="flatlayout-toolbar__value">{{ leftMarginSliderValue }}</span>
-                </div>
+                <label for="leftmargin-slider">{{ t('humpLayoutCtrl.horizontalBaseline') }}</label>
+                <span class="flatlayout-toolbar__value">{{ leftMarginSliderValue }}</span>
                 <el-slider id="leftmargin-slider" size="small" v-model="leftMarginSliderValue" :min="-50" :max="500"
                     :step="10" />
             </div>
             <div class="flatlayout-toolbar__group">
-                <div class="flatlayout-toolbar__group-header">
-                    <label for="scalex-slider">{{ t('humpLayoutCtrl.horizontalScale') }}</label>
-                    <span class="flatlayout-toolbar__value">{{ scaleXDisplay }}</span>
-                </div>
+                <label for="scalex-slider">{{ t('humpLayoutCtrl.horizontalScale') }}</label>
+                <span class="flatlayout-toolbar__value">{{ scaleXDisplay }}</span>
                 <el-slider id="scalex-slider" size="small" v-model="scaleX" :min="0.1" :max="5" :step="0.01" />
             </div>
             <div class="flatlayout-toolbar__group">
-                <div class="flatlayout-toolbar__group-header">
-                    <label for="baseline-slider">{{ t('humpLayoutCtrl.verticalBaseline') }}</label>
-                    <span class="flatlayout-toolbar__value">{{ baseLineY }}</span>
-                </div>
+                <label for="baseline-slider">{{ t('humpLayoutCtrl.verticalBaseline') }}</label>
+                <span class="flatlayout-toolbar__value">{{ baseLineY }}</span>
                 <el-slider id="baseline-slider" size="small" v-model="baseLineY" :min="0" :max="250" :step="1" />
             </div>
         </div>
@@ -1258,7 +1252,6 @@ defineExpose({
 .flatlayout-scroll-container {
     width: 100%;
     flex: 1 1 auto;
-    min-height: 200px;
     overflow-x: auto;
     overflow-y: hidden;
     -ms-overflow-style: none;
@@ -1273,92 +1266,62 @@ defineExpose({
 
 .flatlayout-toolbar {
     flex: 0 0 auto;
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 12px;
-    padding: 14px 20px;
-    margin-top: 5px;
-    margin-left: 5px;
-    margin-right: 5px;
-    margin-bottom: 16px;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 6px 10px;
+    margin: 4px 5px 6px;
     border: 1px solid #dbe3f1;
     border-radius: 2px;
     background: linear-gradient(135deg, #f8fafc, #eef3ff);
-    box-shadow: 0 5px 15px rgba(15, 23, 42, 0.08);
+    box-shadow: 0 3px 8px rgba(15, 23, 42, 0.06);
 }
 
 .flatlayout-toolbar__group {
+    flex: 1 1 200px;
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
+    align-items: center;
     gap: 8px;
     min-width: 0;
-    padding: 10px 12px 8px;
-    border-radius: 5px;
+    padding: 4px 10px;
+    border-radius: 4px;
     border: 1px solid #e3eaf7;
     background: #ffffff;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
-    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+    transition: border-color 0.2s ease;
 }
 
 .flatlayout-toolbar__group:hover {
     border-color: #c3d4f7;
-    box-shadow: 0 4px 10px rgba(15, 23, 42, 0.12);
-}
-
-.flatlayout-toolbar__group-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
 }
 
 .flatlayout-toolbar__group label {
-    font-size: 13px;
+    flex-shrink: 0;
+    font-size: 12px;
     font-weight: 600;
     color: #1f2a37;
-    min-width: 0;
-    text-align: left;
+    white-space: nowrap;
     letter-spacing: 0.02em;
-    line-height: 1.3;
+    line-height: 1.2;
 }
 
 .flatlayout-toolbar__value {
     flex-shrink: 0;
-    min-width: 48px;
-    padding: 2px 8px;
+    min-width: 40px;
+    padding: 1px 6px;
     border-radius: 999px;
     background: #eef4ff;
     color: #315ea8;
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 700;
     text-align: center;
     font-variant-numeric: tabular-nums;
 }
 
 .flatlayout-toolbar__group .el-slider {
-    width: 100%;
+    flex: 1 1 auto;
     min-width: 0;
-    margin-right: 0;
-}
-
-@media (max-width: 600px) {
-    .flatlayout-toolbar {
-        padding: 10px 12px;
-        gap: 8px;
-    }
-
-    .flatlayout-toolbar__group {
-        padding: 6px 8px 4px;
-    }
-
-    .flatlayout-toolbar__group label {
-        font-size: 12px;
-    }
-
-    .flatlayout-toolbar__value {
-        min-width: 36px;
-        padding: 1px 6px;
-        font-size: 11px;
-    }
+    margin: 0;
 }
 </style>

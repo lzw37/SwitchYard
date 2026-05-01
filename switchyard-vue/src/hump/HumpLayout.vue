@@ -993,7 +993,6 @@ function saveFlatLayout() {
 }
 
 .graphic-placeholder {
-    min-height: 300px;
     border: 2px dashed #d6e5ef;
     border-radius: 8px;
     display: flex;
