@@ -76,7 +76,7 @@
                                         style="margin-left:20px;" @click="addPosition">{{ t('hump.buttons.add')
                                         }}</el-button>
                                 </div>
-                                <el-table :data="flatLayout?.positionList || []" stripe :max-height="400"
+                                <el-table :data="flatLayout?.positionList || []" row-key="id" stripe :max-height="400"
                                     style="width: 100%">
                                     <el-table-column :label="t('hump.id')" width="100">
                                         <template #default="scope">
@@ -108,7 +108,7 @@
                                         @click="updatePositionSegmentList" style="margin-left:20px">{{ t('hump.update')
                                         }}</el-button>
                                 </div>
-                                <el-table :data="flatLayout?.positionSegmentList || []" stripe :max-height="400"
+                                <el-table :data="flatLayout?.positionSegmentList || []" row-key="id" stripe :max-height="400"
                                     style="width: 100%">
                                     <el-table-column prop="id" :label="t('hump.id')" width="100"></el-table-column>
                                     <el-table-column prop="startPositionID" :label="t('hump.startID')"
@@ -117,31 +117,33 @@
                                         width="120"></el-table-column>
                                     <el-table-column :label="t('hump.length')" width="100">
                                         <template #default="scope">
-                                            <el-input v-model="scope.row.length" size="small" type="number" disabled />
+                                            <span class="table-cell-number">{{ formatNumberCell(scope.row.length) }}</span>
                                         </template>
                                     </el-table-column>
                                     <el-table-column :label="t('hump.curvature')" width="100">
                                         <template #default="scope">
-                                            <el-input v-model="scope.row.curveDegree" size="small" type="number"
-                                                @input="onCurveDegreeInput(scope.row, $event)" />
+                                            <input class="table-native-input" :value="scope.row.curveDegree"
+                                                type="number" @input="onCurveDegreeInput(scope.row, $event)" />
                                         </template>
                                     </el-table-column>
                                     <el-table-column :label="t('hump.direction')" width="100">
                                         <template #default="scope">
-                                            <el-select v-model="scope.row.curveDirection"
-                                                :disabled="scope.row.curveDegree === 0" size="small">
-                                                <el-option
-                                                    v-for="opt in getCurveDirectionOptions(scope.row.curveDegree)"
-                                                    :key="opt.value" :label="opt.label" :value="opt.value" />
-                                            </el-select>
+                                            <span v-if="Number(scope.row.curveDegree) === 0" class="table-cell-muted">
+                                                {{ curveDirectionNoneLabel }}
+                                            </span>
+                                            <select v-else v-model.number="scope.row.curveDirection"
+                                                class="table-native-select">
+                                                <option v-for="opt in editableCurveDirectionOptions" :key="opt.value"
+                                                    :value="opt.value">{{ opt.label }}</option>
+                                            </select>
                                         </template>
                                     </el-table-column>
                                     <el-table-column :label="t('hump.location')" width="120">
                                         <template #default="scope">
-                                            <el-select v-model="scope.row.locationParam" size="small">
-                                                <el-option v-for="opt in locationParamOptions" :key="opt.value"
-                                                    :label="opt.label" :value="opt.value" />
-                                            </el-select>
+                                            <select v-model.number="scope.row.locationParam" class="table-native-select">
+                                                <option v-for="opt in locationParamOptions" :key="opt.value"
+                                                    :value="opt.value">{{ opt.label }}</option>
+                                            </select>
                                         </template>
                                     </el-table-column>
                                 </el-table>
@@ -149,7 +151,7 @@
                         </div>
                     </el-card>
                 </el-tab-pane>
-                <el-tab-pane :label="t('hump.tabs.switch')" name="switch">
+                <el-tab-pane :label="t('hump.tabs.switch')" name="switch" lazy>
                     <el-card>
                         <div style="display:flex; align-items: center; justify-content:left; margin-bottom: 10px;">
                             <h3>{{ t('hump.switchList') }}</h3>
@@ -157,7 +159,7 @@
                                 @click="addSwitch">{{ t('hump.buttons.add')
                                 }}</el-button>
                         </div>
-                        <el-table :data="flatLayout?.switchList || []" stripe :max-height="400" style="width: 100%">
+                        <el-table :data="flatLayout?.switchList || []" row-key="id" stripe :max-height="400" style="width: 100%">
                             <el-table-column :label="t('hump.id')" width="100">
                                 <template #default="scope">
                                     {{ scope.row.id }}
@@ -227,7 +229,7 @@
                         </el-table>
                     </el-card>
                 </el-tab-pane>
-                <el-tab-pane :label="t('hump.tabs.retarder')" name="retarder">
+                <el-tab-pane :label="t('hump.tabs.retarder')" name="retarder" lazy>
                     <el-card>
                         <div style="display:flex; align-items: center; justify-content:left; margin-bottom: 10px;">
                             <h3>{{ t('hump.retarderList') }}</h3>
@@ -235,7 +237,7 @@
                                 @click="addRetarder">{{ t('hump.buttons.add')
                                 }}</el-button>
                         </div>
-                        <el-table :data="flatLayout?.retarderList || []" stripe :max-height="400" style="width: 100%">
+                        <el-table :data="flatLayout?.retarderList || []" row-key="id" stripe :max-height="400" style="width: 100%">
                             <el-table-column :label="t('hump.retarder.index')" width="80">
                                 <template #default="scope">{{ scope.row.id }}</template>
                             </el-table-column>
@@ -325,15 +327,7 @@ const slopeLineEditList = ref<EditableSlopeLine[]>([])
 const ctrlRef = ref<InstanceType<typeof HumpLayoutCtrl> | null>(null)
 const flatLayout = ref<FlatLayout | null>(null)
 const globalCursorX = ref<number | undefined>(undefined)
-const originalPositionListJson = ref<string>('')
-const isPositionListDirty = computed(() => {
-    if (!flatLayout.value) return false
-    try {
-        return JSON.stringify(flatLayout.value.positionList || []) !== originalPositionListJson.value
-    } catch (e) {
-        return false
-    }
-})
+const isPositionListDirty = ref(false)
 
 // 加载溜放线列�?
 async function loadSlopeLines() {
@@ -508,18 +502,46 @@ function updateGlobalCursorX(value: number) {
     globalCursorX.value = value
 }
 
-function getCurveDirectionOptions(degree: number) {
-    const opts = [
-        { label: t('hump.curveDirections.Left'), value: CurveDirections.Left },
-        { label: t('hump.curveDirections.Right'), value: CurveDirections.Right },
-        { label: t('hump.curveDirections.None'), value: CurveDirections.None }
-    ]
-    return opts.filter(opt => opt.value !== CurveDirections.None || degree <= 0)
-}
-
 const locationParamOptions = computed(() => [
     { label: t('hump.locationParams.HumpSection'), value: LocationParam.HumpSection },
     { label: t('hump.locationParams.YardSection'), value: LocationParam.YardSection }
+])
+
+const editableCurveDirectionOptions = computed(() => [
+    { label: t('hump.curveDirections.Left'), value: CurveDirections.Left },
+    { label: t('hump.curveDirections.Right'), value: CurveDirections.Right }
+])
+
+const curveDirectionNoneLabel = computed(() => t('hump.curveDirections.None'))
+
+const positionOptions = computed(() =>
+    (flatLayout.value?.positionList ?? []).map(p => ({ label: p.id, value: p.id }))
+)
+
+const positionSegmentOptions = computed(() =>
+    (flatLayout.value?.positionSegmentList ?? []).map(s => ({
+        label: s.id || `${s.startPositionID}-${s.endPositionID}`,
+        value: s.id
+    }))
+)
+
+const switchTypeOptions = computed(() => [
+    { label: getSwitchTypeLabel(SwitchTypes.Single), value: SwitchTypes.Single },
+    { label: getSwitchTypeLabel(SwitchTypes.Slip), value: SwitchTypes.Slip },
+    { label: getSwitchTypeLabel(SwitchTypes.Diamond), value: SwitchTypes.Diamond },
+    { label: getSwitchTypeLabel(SwitchTypes.None), value: SwitchTypes.None }
+])
+
+const switchDirectionOptions = computed(() => [
+    { label: getSwitchDirectionLabel(SwitchDirections.Reverse), value: SwitchDirections.Reverse },
+    { label: getSwitchDirectionLabel(SwitchDirections.Forward), value: SwitchDirections.Forward },
+    { label: getSwitchDirectionLabel(SwitchDirections.None), value: SwitchDirections.None }
+])
+
+const switchSideOptions = computed(() => [
+    { label: getSwitchSideLabel(SwitchSides.Left), value: SwitchSides.Left },
+    { label: getSwitchSideLabel(SwitchSides.Right), value: SwitchSides.Right },
+    { label: getSwitchSideLabel(SwitchSides.None), value: SwitchSides.None }
 ])
 
 function getSwitchTypeLabel(type: SwitchTypes): string {
@@ -551,36 +573,23 @@ function getSwitchSideLabel(side: SwitchSides): string {
 }
 
 function getPositionOptions() {
-    return (flatLayout.value?.positionList ?? []).map(p => ({ label: p.id, value: p.id }))
+    return positionOptions.value
 }
 
 function getPositionSegmentOptions() {
-    return (flatLayout.value?.positionSegmentList ?? []).map(s => ({ label: s.id || `${s.startPositionID}-${s.endPositionID}`, value: s.id }))
+    return positionSegmentOptions.value
 }
 
 function getSwitchTypeOptions() {
-    return [
-        { label: getSwitchTypeLabel(SwitchTypes.Single), value: SwitchTypes.Single },
-        { label: getSwitchTypeLabel(SwitchTypes.Slip), value: SwitchTypes.Slip },
-        { label: getSwitchTypeLabel(SwitchTypes.Diamond), value: SwitchTypes.Diamond },
-        { label: getSwitchTypeLabel(SwitchTypes.None), value: SwitchTypes.None }
-    ]
+    return switchTypeOptions.value
 }
 
 function getSwitchDirectionOptions() {
-    return [
-        { label: getSwitchDirectionLabel(SwitchDirections.Reverse), value: SwitchDirections.Reverse },
-        { label: getSwitchDirectionLabel(SwitchDirections.Forward), value: SwitchDirections.Forward },
-        { label: getSwitchDirectionLabel(SwitchDirections.None), value: SwitchDirections.None }
-    ]
+    return switchDirectionOptions.value
 }
 
 function getSwitchSideOptions() {
-    return [
-        { label: getSwitchSideLabel(SwitchSides.Left), value: SwitchSides.Left },
-        { label: getSwitchSideLabel(SwitchSides.Right), value: SwitchSides.Right },
-        { label: getSwitchSideLabel(SwitchSides.None), value: SwitchSides.None }
-    ]
+    return switchSideOptions.value
 }
 
 function onRetarderParamsInput(row: any, value: string) {
@@ -627,8 +636,16 @@ function cancelNewRetarderInput(row: any) {
     row._showNewRetarderInput = false
 }
 
-function onCurveDegreeInput(row: any, value: string) {
-    const degree = parseFloat(value);
+function formatNumberCell(value: unknown) {
+    const numberValue = Number(value)
+    return Number.isFinite(numberValue) ? numberValue : ''
+}
+
+function onCurveDegreeInput(row: any, valueOrEvent: string | number | Event) {
+    const rawValue = valueOrEvent instanceof Event
+        ? (valueOrEvent.target as HTMLInputElement | null)?.value ?? ''
+        : valueOrEvent
+    const degree = parseFloat(rawValue.toString());
     row.curveDegree = degree;
     if (degree === 0) {
         row.curveDirection = CurveDirections.None;
@@ -637,10 +654,12 @@ function onCurveDegreeInput(row: any, value: string) {
 
 function onPositionXChange(position: any) {
     if (!flatLayout.value?.positionSegmentList || !flatLayout.value?.positionList) return
+    isPositionListDirty.value = true
+    const positionById = new Map(flatLayout.value.positionList.map(p => [p.id.toString(), p]))
     flatLayout.value.positionSegmentList.forEach(seg => {
         if (seg.startPositionID === position.id.toString() || seg.endPositionID === position.id.toString()) {
-            const startPos = flatLayout?.value?.positionList.find(p => p.id.toString() === seg.startPositionID)
-            const endPos = flatLayout?.value?.positionList.find(p => p.id.toString() === seg.endPositionID)
+            const startPos = positionById.get(seg.startPositionID)
+            const endPos = positionById.get(seg.endPositionID)
             if (startPos && endPos) {
                 seg.length = Math.abs(endPos.x - startPos.x).toFixed(3) as unknown as number
             }
@@ -649,6 +668,7 @@ function onPositionXChange(position: any) {
 }
 
 function onPositionIdBlur(position: any) {
+    isPositionListDirty.value = true
     // 当position ID输入框失去焦点时，检查ID是否发生变化
     if (ctrlRef.value) {
         ctrlRef.value.checkPositionIdChange(position.id.toString())
@@ -676,6 +696,7 @@ async function insertPositionAfter(index: number) {
         const nextX = next !== undefined ? Number(next.x) : currentX + 1
         const newX = next !== undefined ? Math.round(((currentX + nextX) / 2) * 1000) / 1000 : Math.round(nextX * 1000) / 1000
         list.splice(index + 1, 0, { id: newId, x: newX, height: 0, instanceID: props.selectedInstanceId ?? '' })
+        isPositionListDirty.value = true
     } catch (error) {
         // 用户取消操作，不执行任何操作
     }
@@ -694,6 +715,7 @@ function addPosition() {
         newX = Number(currentX) + 10
     }
     list.push({ id: 'P', x: newX, height: 0, instanceID: props.selectedInstanceId ?? '' })
+    isPositionListDirty.value = true
 }
 
 function addSwitch() {
@@ -806,6 +828,7 @@ async function confirmRemovePosition(index: number) {
 
         // 删除控制�?
         flatLayout.value.positionList.splice(index, 1)
+        isPositionListDirty.value = true
 
         // 删除引用该控制点的区�?
         if (flatLayout.value.positionSegmentList) {
@@ -839,6 +862,9 @@ function updatePositionSegmentList() {
         idSet.add(pos.id)
     }
 
+    const segmentByEndpoint = new Map(
+        flatLayout.value.positionSegmentList.map(s => [`${s.startPositionID}\u0000${s.endPositionID}`, s])
+    )
     const newPositionSegmentList = [] as any[]
 
     for (var i = 0; i < flatLayout.value.positionList.length - 1; i++) {
@@ -847,7 +873,7 @@ function updatePositionSegmentList() {
 
         if (!startPos || !endPos) continue;
 
-        let seg = flatLayout.value.positionSegmentList.find(s => s.startPositionID === startPos.id.toString() && s.endPositionID === endPos.id.toString())
+        let seg = segmentByEndpoint.get(`${startPos.id.toString()}\u0000${endPos.id.toString()}`)
         if (!seg) {
             // 不存在则创建新的区段
             seg = {
@@ -871,7 +897,24 @@ function updatePositionSegmentList() {
 
     // 更新区段列表并重置加载快照（认为列表已更新）
     flatLayout.value.positionSegmentList = newPositionSegmentList
-    originalPositionListJson.value = JSON.stringify(flatLayout.value.positionList || [])
+    isPositionListDirty.value = false
+}
+
+function normalizeFlatLayoutResponse(data: FlatLayout | null | undefined): FlatLayout | null {
+    if (!data) return null
+
+    data.positionList = data.positionList ?? []
+    data.positionSegmentList = data.positionSegmentList ?? []
+    data.switchList = data.switchList ?? []
+    data.retarderList = data.retarderList ?? []
+
+    for (const seg of data.positionSegmentList) {
+        if (Number(seg.curveDegree) === 0) {
+            seg.curveDirection = CurveDirections.None
+        }
+    }
+
+    return data
 }
 
 function loadFlatLayout() {
@@ -891,17 +934,8 @@ function loadFlatLayout() {
             slopeLineID: selectedLine.value
         }
     }).then(response => {
-        flatLayout.value = response.data
-        // 保存加载时的 positionList 快照，用于判断是否发生更�?
-        originalPositionListJson.value = JSON.stringify(flatLayout.value?.positionList || [])
-        if (flatLayout.value?.positionSegmentList) {
-            flatLayout.value.positionSegmentList.forEach(seg => {
-                if (seg.curveDegree === 0) {
-                    seg.curveDirection = CurveDirections.None
-                }
-            })
-        }
-        console.log('Flat layout data loaded:', flatLayout.value)
+        flatLayout.value = normalizeFlatLayoutResponse(response.data)
+        isPositionListDirty.value = false
         ElMessage.success(t('hump.messages.flatLayoutLoaded'))
         // child will react to flatLayout prop change and load data
     }).catch(error => {
@@ -971,5 +1005,45 @@ function saveFlatLayout() {
 
 .plan-subtabs {
     margin-top: 12px;
+}
+
+.table-cell-number,
+.table-cell-muted {
+    display: inline-flex;
+    align-items: center;
+    min-height: 24px;
+    font-size: 12px;
+    line-height: 1.2;
+}
+
+.table-cell-muted {
+    color: #7a8494;
+}
+
+.table-native-input,
+.table-native-select {
+    width: 100%;
+    height: 24px;
+    box-sizing: border-box;
+    border: 1px solid #dcdfe6;
+    border-radius: 4px;
+    background: #fff;
+    color: #303133;
+    font-size: 12px;
+    line-height: 22px;
+    outline: none;
+}
+
+.table-native-input {
+    padding: 0 6px;
+}
+
+.table-native-select {
+    padding: 0 22px 0 6px;
+}
+
+.table-native-input:focus,
+.table-native-select:focus {
+    border-color: #409eff;
 }
 </style>

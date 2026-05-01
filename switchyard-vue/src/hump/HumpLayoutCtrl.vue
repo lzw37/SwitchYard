@@ -26,35 +26,26 @@
         </div>
         <div class="flatlayout-scroll-container" ref="scrollContainerRef" @scroll.passive="handleHorizontalScroll">
             <svg id="hump-layout-ctrl" ref="svgRef" :style="{ width: svgWidth + 'px' }" @mousedown="handleDragStart"
-                @mousemove="(event) => { handleDragMove(event); updateCursorX(event); }" @mouseup="handleDragEnd"
+                @mousemove="handleMouseMove" @mouseup="handleDragEnd"
                 @mouseleave="handleDragEnd" @click.self="handleSvgClick">
             <g id="baseline-group">
-                <g v-for="seg in props.flatLayout?.positionSegmentList" :key="seg.id"
-                    :class="{ 'flatlayout-segment-selected': selectedElements.segments.includes(seg.id) }"
+                <g v-for="seg in renderedSegments" :key="seg.id"
+                    :class="{ 'flatlayout-segment-selected': selectedSegmentIdSet.has(seg.id) }"
                     @mouseover="handlePositionSegmentMouseOver($event)"
                     @mouseout="handlePositionSegmentMouseOut($event)" @click.stop="toggleSegment(seg.id)">
-                    <line class="flatlayout-baseline" :x1="getX(getPositionBySegmentID(seg.id)?.startPosition?.x)"
-                        :x2="getX(getPositionBySegmentID(seg.id)?.endPosition?.x)"
-                        :y1="baseLineY + getPositionSegmentDeltaY(seg)" :y2="baseLineY + getPositionSegmentDeltaY(seg)">
+                    <line class="flatlayout-baseline" :x1="seg.startX" :x2="seg.endX" :y1="seg.y" :y2="seg.y">
                     </line>
-                    <line class="flatlayout-baselinecurve" v-if="seg.curveDegree > 0"
-                        :x1="getX(getPositionBySegmentID(seg.id)?.startPosition?.x)" :y1="baseLineY"
-                        :x2="getX(getPositionBySegmentID(seg.id)?.startPosition?.x)"
-                        :y2="baseLineY + getPositionSegmentDeltaY(seg)" />
-                    <line class="flatlayout-baselinecurve" v-if="seg.curveDegree > 0"
-                        :x1="getX(getPositionBySegmentID(seg.id)?.endPosition?.x)" :y1="baseLineY"
-                        :x2="getX(getPositionBySegmentID(seg.id)?.endPosition?.x)"
-                        :y2="baseLineY + getPositionSegmentDeltaY(seg)" />
-                    <text v-if="seg.curveDegree > 0"
-                        :x="(getX(getPositionBySegmentID(seg.id)?.startPosition?.x) + getX(getPositionBySegmentID(seg.id)?.endPosition.x)) / 2"
-                        :y="curveDegreePositions.find(p => p.id === seg.id)?.y || (baseLineY + getPositionSegmentDeltaY(seg) + 15)"
-                        class="flatlayout-curve-degree">{{
-                            getDegreeStr(seg.curveDegree) }}</text>
+                    <line class="flatlayout-baselinecurve" v-if="seg.hasCurve" :x1="seg.startX" :y1="baseLineY"
+                        :x2="seg.startX" :y2="seg.y" />
+                    <line class="flatlayout-baselinecurve" v-if="seg.hasCurve" :x1="seg.endX" :y1="baseLineY"
+                        :x2="seg.endX" :y2="seg.y" />
+                    <text v-if="seg.hasCurve" :x="seg.centerX" :y="seg.curveDegreeY"
+                        class="flatlayout-curve-degree">{{ seg.curveDegreeLabel }}</text>
                 </g>
-                <text v-for="ltp in lengthTextPositions" :key="ltp.id" :x="ltp.x" :y="ltp.y"
-                    class="flatlayout-baseline-length">{{ getLengthById(ltp.id) }}</text>
-                <g v-for="tp in textPositions" :key="tp.id"
-                    :class="{ 'flatlayout-position-selected': selectedElements.positions.includes(tp.id) }"
+                <text v-for="seg in renderedSegments" :key="`length-${seg.id}`" :x="seg.centerX" :y="seg.lengthY"
+                    class="flatlayout-baseline-length">{{ seg.lengthText }}</text>
+                <g v-for="tp in renderedPositionLabels" :key="tp.id"
+                    :class="{ 'flatlayout-position-selected': selectedPositionIdSet.has(tp.id) }"
                     @click.stop="togglePosition(tp.id)">
                     <text :x="tp.x" :y="tp.y" class="flatlayout-positionid">{{
                         tp.id }}</text>
@@ -62,35 +53,24 @@
                 </g>
             </g>
             <g id="switch-group">
-                <g v-for="sw in props.flatLayout?.switchList" :key="sw.bindingPositionID" class="flatlayout-switch"
-                    :class="{ 'flatlayout-switch-selected': selectedElements.switches.includes(sw.bindingPositionID) }"
+                <g v-for="sw in switchRenderItems" :key="sw.key" class="flatlayout-switch"
+                    :class="{ 'flatlayout-switch-selected': selectedSwitchIdSet.has(sw.bindingPositionID) }"
                     @mouseover="handleSwitchMouseOver($event)" @mouseout="handleSwitchMouseOut($event)"
                     @click.stop="toggleSwitch(sw.bindingPositionID)">
-                    <line :x1="getX(getPositionByPositionID(sw.bindingPositionID))"
-                        :x2="getX(getPositionByPositionID(sw.bindingPositionID))" :y1="baseLineY - 5"
-                        :y2="baseLineY + 5">
+                    <line :x1="sw.x" :x2="sw.x" :y1="baseLineY - 5" :y2="baseLineY + 5">
                     </line>
-                    <line :x1="getX(getPositionByPositionID(sw.bindingPositionID))" :y1="baseLineY"
-                        :x2="getX(getPositionByPositionID(sw.bindingPositionID)) + getSwitchTailPosition(sw).deltaX"
-                        :y2="baseLineY + getSwitchTailPosition(sw).deltaY">
+                    <line :x1="sw.x" :y1="baseLineY" :x2="sw.tailX" :y2="sw.tailY">
                     </line>
                 </g>
             </g>
             <g id="retarder-group">
-                <g v-for="re in props.flatLayout?.retarderList" :key="re.bindingPositionSegmentID"
+                <g v-for="re in retarderRenderItems" :key="re.key"
                     class="flatlayout-retarder"
-                    :class="{ 'flatlayout-retarder-selected': selectedElements.retarders.includes(re.bindingPositionSegmentID) }"
+                    :class="{ 'flatlayout-retarder-selected': selectedRetarderIdSet.has(re.bindingPositionSegmentID) }"
                     @mouseover="handleRetarderMouseOver($event)" @mouseout="handleRetarderMouseOut($event)"
                     @click.stop="toggleRetarder(re.bindingPositionSegmentID)">
-                    <rect :x="getX(getPositionBySegmentID(re.bindingPositionSegmentID)?.startPosition.x)"
-                        :y="baseLineY - 10"
-                        :width="(getPositionBySegmentID(re.bindingPositionSegmentID)?.endPosition.x - getPositionBySegmentID(re.bindingPositionSegmentID)?.startPosition.x) * scaleX"
-                        height="20"></rect>
-                    <text
-                        :x="getX(getPositionBySegmentID(re.bindingPositionSegmentID)?.startPosition.x) + ((getPositionBySegmentID(re.bindingPositionSegmentID)?.endPosition.x - getPositionBySegmentID(re.bindingPositionSegmentID)?.startPosition.x) * scaleX) / 2"
-                        :y="baseLineY + 25" class="flatlayout-retarder-numbers">{{ re.numberArray ?
-                            re.numberArray.join('+') :
-                            '' }}</text>
+                    <rect :x="re.x" :y="re.y" :width="re.width" height="20"></rect>
+                    <text :x="re.labelX" :y="re.labelY" class="flatlayout-retarder-numbers">{{ re.label }}</text>
                 </g>
             </g>
             <g id="interaction-group">
@@ -130,7 +110,9 @@ const svgRef = ref<SVGSVGElement | null>(null)
 const scrollContainerRef = ref<HTMLDivElement | null>(null)
 
 // 存储原始position列表的JSON字符串，用于检测ID变化
-const originalPositionMap = ref<Map<string, string>>(new Map())
+type PositionSnapshot = { id: string; x: number }
+
+const originalPositionMap = ref<Map<string, PositionSnapshot>>(new Map())
 
 const localScaleX = ref(3.5) // 本地的x轴横向缩放比例，当全局scaleX不设置时使用这个
 // x轴横向缩放比例
@@ -187,6 +169,8 @@ const isDragging = ref(false)
 const suppressClickClear = ref(false)
 let dragStartX = 0
 let dragStartY = 0
+let pendingCursorX: number | null = null
+let cursorFrameId: number | null = null
 
 // 选中状态
 const selectedElements = ref({
@@ -209,18 +193,107 @@ function toFiniteNumber(value: unknown, fallback = 0): number {
     return Number.isFinite(num) ? num : fallback
 }
 
-const positionXStats = computed(() => {
-    const positions = props.flatLayout?.positionList || []
-    const xs = positions
-        .map((pos: any) => toFiniteNumber(pos?.x, NaN))
-        .filter((x: number) => Number.isFinite(x))
+function toId(value: unknown): string {
+    return String(value ?? '')
+}
 
-    if (xs.length === 0) {
+type LayoutPosition = { id?: unknown; x?: unknown; [key: string]: any }
+type LayoutSegment = PositionSegment & { id?: unknown; startPositionID?: unknown; endPositionID?: unknown; length?: unknown }
+type RenderedSegmentBase = {
+    id: string
+    raw: LayoutSegment
+    startX: number
+    endX: number
+    centerX: number
+    y: number
+    deltaY: number
+    hasCurve: boolean
+    curveDegreeLabel: string
+    lengthText: string
+}
+type RenderedSegment = RenderedSegmentBase & { lengthY: number; curveDegreeY: number }
+
+function createPositionSnapshotMap(positions: any[] | undefined): Map<string, PositionSnapshot> {
+    const map = new Map<string, PositionSnapshot>()
+
+    for (const position of positions ?? []) {
+        const id = toId(position?.id)
+        if (!id) continue
+
+        map.set(id, {
+            id,
+            x: toFiniteNumber(position?.x),
+        })
+    }
+
+    return map
+}
+
+const positionList = computed<LayoutPosition[]>(() => {
+    const list = props.flatLayout?.positionList
+    return Array.isArray(list) ? list : []
+})
+
+const positionSegmentList = computed<LayoutSegment[]>(() => {
+    const list = props.flatLayout?.positionSegmentList
+    return Array.isArray(list) ? list : []
+})
+
+const switchList = computed<Switch[]>(() => {
+    const list = props.flatLayout?.switchList
+    return Array.isArray(list) ? list : []
+})
+
+const retarderList = computed<any[]>(() => {
+    const list = props.flatLayout?.retarderList
+    return Array.isArray(list) ? list : []
+})
+
+const positionById = computed(() => {
+    const map = new Map<string, LayoutPosition>()
+    for (const position of positionList.value) {
+        const id = toId(position?.id)
+        if (id) {
+            map.set(id, position)
+        }
+    }
+    return map
+})
+
+const segmentById = computed(() => {
+    const map = new Map<string, LayoutSegment>()
+    for (const segment of positionSegmentList.value) {
+        const id = toId(segment?.id)
+        if (id) {
+            map.set(id, segment)
+        }
+    }
+    return map
+})
+
+const positionXStats = computed(() => {
+    let hasValue = false
+    let minX = 0
+    let maxX = 0
+
+    for (const position of positionList.value) {
+        const x = toFiniteNumber(position?.x, NaN)
+        if (!Number.isFinite(x)) continue
+
+        if (!hasValue) {
+            minX = x
+            maxX = x
+            hasValue = true
+        } else {
+            minX = Math.min(minX, x)
+            maxX = Math.max(maxX, x)
+        }
+    }
+
+    if (!hasValue) {
         return { minX: 0, maxX: 0, spanX: 0 }
     }
 
-    const minX = Math.min(...xs)
-    const maxX = Math.max(...xs)
     return { minX, maxX, spanX: Math.max(0, maxX - minX) }
 })
 
@@ -275,8 +348,8 @@ const lengthTextPositions = computed(() => {
         const segB = getPositionBySegmentID(b.id);
         if (!segA?.startPosition || !segA?.endPosition) return 1;
         if (!segB?.startPosition || !segB?.endPosition) return -1;
-        const ax = (getX(segA.startPosition.x) + getX(segA.endPosition.x)) / 2;
-        const bx = (getX(segB.startPosition.x) + getX(segB.endPosition.x)) / 2;
+        const ax = (getX(toFiniteNumber(segA.startPosition.x)) + getX(toFiniteNumber(segA.endPosition.x))) / 2;
+        const bx = (getX(toFiniteNumber(segB.startPosition.x)) + getX(toFiniteNumber(segB.endPosition.x))) / 2;
         return ax - bx;
     });
     const result: { id: string; x: number; y: number }[] = [];
@@ -285,8 +358,8 @@ const lengthTextPositions = computed(() => {
     for (const seg of sorted) {
         const positions = getPositionBySegmentID(seg.id);
         if (!positions?.startPosition || !positions?.endPosition) continue;
-        const startX = getX(positions.startPosition.x);
-        const endX = getX(positions.endPosition.x);
+        const startX = getX(toFiniteNumber(positions.startPosition.x));
+        const endX = getX(toFiniteNumber(positions.endPosition.x));
         const x = (startX + endX) / 2;
         if (x - lastX < textWidth + 5) {
             currentY -= lineHeight; // 往上移动
@@ -308,8 +381,8 @@ const curveDegreePositions = computed(() => {
         const segB = getPositionBySegmentID(b.id);
         if (!segA?.startPosition || !segA?.endPosition) return 1;
         if (!segB?.startPosition || !segB?.endPosition) return -1;
-        const ax = (getX(segA.startPosition.x) + getX(segA.endPosition.x)) / 2;
-        const bx = (getX(segB.startPosition.x) + getX(segB.endPosition.x)) / 2;
+        const ax = (getX(toFiniteNumber(segA.startPosition.x)) + getX(toFiniteNumber(segA.endPosition.x))) / 2;
+        const bx = (getX(toFiniteNumber(segB.startPosition.x)) + getX(toFiniteNumber(segB.endPosition.x))) / 2;
         return ax - bx;
     });
     const result: { id: string; y: number }[] = [];
@@ -318,8 +391,8 @@ const curveDegreePositions = computed(() => {
     for (const seg of sorted) {
         const positions = getPositionBySegmentID(seg.id);
         if (!positions?.startPosition || !positions?.endPosition) continue;
-        const startX = getX(positions.startPosition.x);
-        const endX = getX(positions.endPosition.x);
+        const startX = getX(toFiniteNumber(positions.startPosition.x));
+        const endX = getX(toFiniteNumber(positions.endPosition.x));
         const x = (startX + endX) / 2;
         if (x - lastX < textWidth + 5) {
             currentY += lineHeight; // 往下移动
@@ -331,6 +404,175 @@ const curveDegreePositions = computed(() => {
     }
     return result;
 })
+
+// Precompute SVG-ready geometry so rendering stays linear in layout size.
+const renderedPositionLabels = computed(() => {
+    const textWidth = 20
+    const lineHeight = 15
+    const sorted = positionList.value
+        .map((position) => ({
+            id: toId(position?.id),
+            x: getX(toFiniteNumber(position?.x)),
+        }))
+        .filter((position) => position.id)
+        .sort((a, b) => a.x - b.x)
+
+    const result: { id: string; x: number; y: number }[] = []
+    let currentY = baseLineY.value - 50
+    let lastX = -Infinity
+
+    for (const position of sorted) {
+        if (position.x - lastX < textWidth + 5) {
+            currentY -= lineHeight
+        } else {
+            currentY = baseLineY.value - 50
+        }
+
+        result.push({ id: position.id, x: position.x, y: currentY })
+        lastX = position.x
+    }
+
+    return result
+})
+
+const renderedSegmentBaseList = computed<RenderedSegmentBase[]>(() => {
+    const items: RenderedSegmentBase[] = []
+    const positions = positionById.value
+
+    for (const segment of positionSegmentList.value) {
+        const id = toId(segment?.id)
+        if (!id) continue
+
+        const startPosition = positions.get(toId(segment?.startPositionID))
+        const endPosition = positions.get(toId(segment?.endPositionID))
+        if (!startPosition || !endPosition) continue
+
+        const startX = getX(toFiniteNumber(startPosition.x))
+        const endX = getX(toFiniteNumber(endPosition.x))
+        const curveDegree = toFiniteNumber(segment?.curveDegree, 0)
+        const hasCurve = curveDegree > 0
+        const deltaY = getPositionSegmentDeltaY(segment)
+
+        items.push({
+            id,
+            raw: segment,
+            startX,
+            endX,
+            centerX: (startX + endX) / 2,
+            y: baseLineY.value + deltaY,
+            deltaY,
+            hasCurve,
+            curveDegreeLabel: hasCurve ? getDegreeStr(curveDegree) : '',
+            lengthText: String(segment?.length ?? ''),
+        })
+    }
+
+    return items
+})
+
+const segmentLabelYMaps = computed(() => {
+    const lineHeight = 15
+    const sorted = renderedSegmentBaseList.value.slice().sort((a, b) => a.centerX - b.centerX)
+    const lengthYById = new Map<string, number>()
+    const curveYById = new Map<string, number>()
+
+    let lengthY = baseLineY.value - 10
+    let lastLengthX = -Infinity
+    for (const segment of sorted) {
+        if (segment.centerX - lastLengthX < 35) {
+            lengthY -= lineHeight
+        } else {
+            lengthY = baseLineY.value - 10
+        }
+
+        lengthYById.set(segment.id, lengthY)
+        lastLengthX = segment.centerX
+    }
+
+    let curveY = baseLineY.value + 15
+    let lastCurveX = -Infinity
+    for (const segment of sorted) {
+        if (!segment.hasCurve) continue
+
+        if (segment.centerX - lastCurveX < 55) {
+            curveY += lineHeight
+        } else {
+            curveY = baseLineY.value + 14 + segment.deltaY
+        }
+
+        curveYById.set(segment.id, curveY)
+        lastCurveX = segment.centerX
+    }
+
+    return { lengthYById, curveYById }
+})
+
+const renderedSegments = computed<RenderedSegment[]>(() => {
+    const { lengthYById, curveYById } = segmentLabelYMaps.value
+
+    return renderedSegmentBaseList.value.map((segment) => ({
+        ...segment,
+        lengthY: lengthYById.get(segment.id) ?? (baseLineY.value - 10),
+        curveDegreeY: curveYById.get(segment.id) ?? (baseLineY.value + segment.deltaY + 15),
+    }))
+})
+
+const renderedSegmentById = computed(() => {
+    const map = new Map<string, RenderedSegment>()
+    for (const segment of renderedSegments.value) {
+        map.set(segment.id, segment)
+    }
+    return map
+})
+
+const switchRenderItems = computed(() => {
+    return switchList.value.flatMap((sw, index) => {
+        const bindingPositionID = toId(sw?.bindingPositionID)
+        const position = positionById.value.get(bindingPositionID)
+        if (!bindingPositionID || !position) return []
+
+        const x = getX(toFiniteNumber(position.x))
+        const tail = getSwitchTailPosition(sw)
+        const id = toId(sw?.id)
+
+        return [{
+            key: `${bindingPositionID}-${id || index}`,
+            bindingPositionID,
+            x,
+            tailX: x + tail.deltaX,
+            tailY: baseLineY.value + tail.deltaY,
+        }]
+    })
+})
+
+const retarderRenderItems = computed(() => {
+    return retarderList.value.flatMap((retarder, index) => {
+        const bindingPositionSegmentID = toId(retarder?.bindingPositionSegmentID ?? retarder?.bindingPositionSegment?.id)
+        const segment = renderedSegmentById.value.get(bindingPositionSegmentID)
+        if (!bindingPositionSegmentID || !segment) return []
+
+        const x = Math.min(segment.startX, segment.endX)
+        const width = Math.abs(segment.endX - segment.startX)
+        const label = Array.isArray(retarder?.numberArray) ? retarder.numberArray.join('+') : ''
+        const id = toId(retarder?.id)
+
+        return [{
+            key: `${bindingPositionSegmentID}-${id || index}`,
+            bindingPositionSegmentID,
+            x,
+            y: baseLineY.value - 10,
+            width,
+            labelX: segment.centerX,
+            labelY: baseLineY.value + 25,
+            label,
+        }]
+    })
+})
+
+const selectedSegmentIdSet = computed(() => new Set(selectedElements.value.segments))
+const selectedPositionIdSet = computed(() => new Set(selectedElements.value.positions))
+const selectedSwitchIdSet = computed(() => new Set(selectedElements.value.switches))
+const selectedRetarderIdSet = computed(() => new Set(selectedElements.value.retarders))
 
 /**
  * 将位置坐标转换为SVG的X坐标
@@ -357,7 +599,7 @@ function getPositionByX(x: number): number {
  * @returns 位置的X坐标，如果未找到则返回0
  */
 function getPositionByPositionID(positionID: string): number {
-    const pos = props.flatLayout?.positionList.find((p: { id: { toString: () => string; }; }) => p.id.toString() === positionID)
+    const pos = positionById.value.get(toId(positionID))
     return toFiniteNumber(pos?.x, 0);
 }
 
@@ -367,10 +609,10 @@ function getPositionByPositionID(positionID: string): number {
  * @returns 包含startPosition和endPosition的对象，如果未找到则返回null
  */
 function getPositionBySegmentID(positionSegmentID: string) {
-    const segment = props.flatLayout?.positionSegmentList.find((seg: any) => seg.id === positionSegmentID);
+    const segment = segmentById.value.get(toId(positionSegmentID));
     if (!segment) return null;
-    const startPosition = props.flatLayout?.positionList.find((pos: any) => pos.id.toString() === segment.startPositionID);
-    const endPosition = props.flatLayout?.positionList.find((pos: any) => pos.id.toString() === segment.endPositionID);
+    const startPosition = positionById.value.get(toId(segment.startPositionID));
+    const endPosition = positionById.value.get(toId(segment.endPositionID));
     return { startPosition, endPosition };
 }
 
@@ -380,7 +622,7 @@ function getPositionBySegmentID(positionSegmentID: string) {
  * @returns 区段长度，如果未找到则返回空字符串
  */
 function getLengthById(id: string) {
-    return props.flatLayout?.positionSegmentList.find((s: any) => s.id === id)?.length || '';
+    return segmentById.value.get(toId(id))?.length || '';
 }
 
 /**
@@ -393,9 +635,7 @@ async function checkPositionIdChange(positionId: string) {
 
     // 如果originalPositionMap为空，初始化它
     if (originalPositionMap.value.size === 0) {
-        originalPositionMap.value = new Map(
-            newPositionList.map((p: any) => [p.id.toString(), JSON.stringify(p)])
-        )
+        originalPositionMap.value = createPositionSnapshotMap(newPositionList)
         return
     }
 
@@ -407,8 +647,7 @@ async function checkPositionIdChange(positionId: string) {
     let oldId: string | null = null
 
     // 查找是否有position的其他属性匹配但ID不同
-    for (const [origId, oldPosJson] of originalPositionMap.value.entries()) {
-        const oldPos = JSON.parse(oldPosJson)
+    for (const [origId, oldPos] of originalPositionMap.value.entries()) {
         // 如果x坐标相同但ID不同，认为是ID被修改了
         if (oldPos.x === newPos.x && origId !== newId) {
             // 检查新ID是否在旧列表中存在
@@ -456,9 +695,7 @@ async function checkPositionIdChange(positionId: string) {
             }
 
             // 更新原始position映射
-            originalPositionMap.value = new Map(
-                newPositionList.map((p: any) => [p.id.toString(), JSON.stringify(p)])
-            )
+            originalPositionMap.value = createPositionSnapshotMap(newPositionList)
         } catch (error) {
             // 用户取消，恢复原来的ID
             const restoredPositionList = newPositionList.map((pos: any) => {
@@ -476,7 +713,10 @@ async function checkPositionIdChange(positionId: string) {
         }
     } else {
         // 没有ID变化，更新原始position映射中的该position
-        originalPositionMap.value.set(newId, JSON.stringify(newPos))
+        originalPositionMap.value.set(newId, {
+            id: newId,
+            x: toFiniteNumber(newPos.x),
+        })
     }
 }
 
@@ -485,9 +725,9 @@ async function checkPositionIdChange(positionId: string) {
  */
 function initializePositionMap() {
     if (props.flatLayout?.positionList) {
-        originalPositionMap.value = new Map(
-            props.flatLayout.positionList.map((p: any) => [p.id.toString(), JSON.stringify(p)])
-        )
+        originalPositionMap.value = createPositionSnapshotMap(props.flatLayout.positionList)
+    } else {
+        originalPositionMap.value = new Map()
     }
 }
 
@@ -498,15 +738,16 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
     document.removeEventListener('keydown', handleKeyDown)
+    if (cursorFrameId !== null) {
+        cancelAnimationFrame(cursorFrameId)
+    }
 })
 
 // 监听flatLayout变化，初始化position映射
 watch(
     () => props.flatLayout,
     () => {
-        if (originalPositionMap.value.size === 0) {
-            initializePositionMap()
-        }
+        initializePositionMap()
     }
 )
 
@@ -685,7 +926,7 @@ function getSwitchTailPosition(sw: Switch) {
  * @returns Y轴偏移量
  */
 function getPositionSegmentDeltaY(ps: PositionSegment) {
-    if (ps.curveDegree === 0) {
+    if (toFiniteNumber(ps.curveDegree, 0) === 0) {
         return 0;
     }
     if (ps.curveDirection === CurveDirections.Left) {
@@ -748,15 +989,57 @@ function handleKeyDown(event: KeyboardEvent) {
     }
 }
 
+function getSvgLocalPoint(event: MouseEvent) {
+    if (!svgRef.value) return null
+    const rect = svgRef.value.getBoundingClientRect()
+    return {
+        x: event.clientX - rect.left,
+        y: event.clientY - rect.top,
+    }
+}
+
+function updateDragRect(currentX: number, currentY: number) {
+    if (!isDragging.value) return
+
+    const x = Math.min(dragStartX, currentX)
+    const width = Math.abs(currentX - dragStartX)
+    const y = Math.min(dragStartY, currentY)
+    const height = Math.abs(currentY - dragStartY)
+    dragRect.value = { ...dragRect.value, x, y, width, height }
+}
+
+function scheduleCursorXUpdate(mouseX: number) {
+    pendingCursorX = (mouseX - effectiveLeftMargin.value) / scaleX.value + xDomainMin.value
+
+    if (cursorFrameId !== null) return
+
+    cursorFrameId = requestAnimationFrame(() => {
+        if (pendingCursorX !== null) {
+            cursorX.value = pendingCursorX
+            pendingCursorX = null
+        }
+        cursorFrameId = null
+    })
+}
+
+function handleMouseMove(event: MouseEvent) {
+    const point = getSvgLocalPoint(event)
+    if (!point) return
+
+    updateDragRect(point.x, point.y)
+    scheduleCursorXUpdate(point.x)
+}
+
 /**
  * 处理鼠标拖拽开始事件
  * @param event 鼠标事件
  */
 function handleDragStart(event: MouseEvent) {
-    if (!svgRef.value) return
-    const rect = svgRef.value.getBoundingClientRect()
-    dragStartX = event.clientX - rect.left
-    dragStartY = event.clientY - rect.top
+    const point = getSvgLocalPoint(event)
+    if (!point) return
+
+    dragStartX = point.x
+    dragStartY = point.y
     dragRect.value = { ...dragRect.value, x: dragStartX, y: dragStartY, width: 0, height: 0 }
     isDragging.value = true
 }
@@ -766,23 +1049,15 @@ function handleDragStart(event: MouseEvent) {
  * @param event 鼠标事件
  */
 function handleDragMove(event: MouseEvent) {
-    if (!isDragging.value || !svgRef.value) return
-    const rect = svgRef.value.getBoundingClientRect()
-    const currentX = event.clientX - rect.left
-    const currentY = event.clientY - rect.top
-    const x = Math.min(dragStartX, currentX)
-    const width = Math.abs(currentX - dragStartX)
-    const y = Math.min(dragStartY, currentY)
-    const height = Math.abs(currentY - dragStartY)
-    dragRect.value = { ...dragRect.value, x, y, width, height }
+    const point = getSvgLocalPoint(event)
+    if (!point) return
+    updateDragRect(point.x, point.y)
 }
 
 function updateCursorX(event: MouseEvent) {
-    if (!svgRef.value) return
-    const rect = svgRef.value.getBoundingClientRect()
-    const mouseX = event.clientX - rect.left
-    const posX = (mouseX - effectiveLeftMargin.value) / scaleX.value + xDomainMin.value
-    cursorX.value = posX
+    const point = getSvgLocalPoint(event)
+    if (!point) return
+    cursorX.value = (point.x - effectiveLeftMargin.value) / scaleX.value + xDomainMin.value
 }
 
 /**
@@ -793,7 +1068,6 @@ function handleDragEnd(event: MouseEvent) {
     if (!isDragging.value) return
     handleDragMove(event)
     isDragging.value = false
-    console.log('drag-rect', { positionStart: getPositionByX(dragRect.value.x), positionEnd: getPositionByX(dragRect.value.x + dragRect.value.width) })
 
     // 只有当拖拽矩形有面积时，才选中框住的对象
     if (dragRect.value.width > 0 || dragRect.value.height > 0) {
@@ -820,8 +1094,11 @@ function handleSvgClick() {
  * @returns 是否在矩形内
  */
 function isPositionSegmentInRect(seg: any, rect: { x: number; y: number; width: number; height: number }): boolean {
-    const startX = getX(getPositionBySegmentID(seg.id)?.startPosition.x);
-    const endX = getX(getPositionBySegmentID(seg.id)?.endPosition.x);
+    const positions = getPositionBySegmentID(seg.id);
+    if (!positions?.startPosition || !positions?.endPosition) return false;
+
+    const startX = getX(toFiniteNumber(positions.startPosition.x));
+    const endX = getX(toFiniteNumber(positions.endPosition.x));
     const y = baseLineY.value + getPositionSegmentDeltaY(seg);
     const rectLeft = rect.x;
     const rectRight = rect.x + rect.width;
@@ -858,8 +1135,11 @@ function isSwitchInRect(sw: any, rect: { x: number; y: number; width: number; he
  * @returns 是否在矩形内
  */
 function isRetarderInRect(re: any, rect: { x: number; y: number; width: number; height: number }): boolean {
-    const startX = getX(getPositionBySegmentID(re.bindingPositionSegmentID)?.startPosition.x);
-    const width = (getPositionBySegmentID(re.bindingPositionSegmentID)?.endPosition.x - getPositionBySegmentID(re.bindingPositionSegmentID)?.startPosition.x) * scaleX.value;
+    const positions = getPositionBySegmentID(re.bindingPositionSegmentID);
+    if (!positions?.startPosition || !positions?.endPosition) return false;
+
+    const startX = getX(toFiniteNumber(positions.startPosition.x));
+    const width = (toFiniteNumber(positions.endPosition.x) - toFiniteNumber(positions.startPosition.x)) * scaleX.value;
     const y = baseLineY.value - 10;
     const height = 20;
     const rectLeft = rect.x;
@@ -880,9 +1160,40 @@ function isRetarderInRect(re: any, rect: { x: number; y: number; width: number; 
  * @param rect 矩形对象
  */
 function selectObjectsInRect(rect: { x: number; y: number; width: number; height: number }) {
-    const segments = props.flatLayout?.positionSegmentList.filter((seg: any) => isPositionSegmentInRect(seg, rect)).map((seg: any) => seg.id) || [];
-    const switches = props.flatLayout?.switchList.filter((sw: any) => isSwitchInRect(sw, rect)).map((sw: any) => sw.bindingPositionID) || [];
-    const retarders = props.flatLayout?.retarderList.filter((re: any) => isRetarderInRect(re, rect)).map((re: any) => re.bindingPositionSegmentID) || [];
+    const rectLeft = rect.x;
+    const rectRight = rect.x + rect.width;
+    const rectTop = rect.y;
+    const rectBottom = rect.y + rect.height;
+
+    const segments = renderedSegments.value
+        .filter((seg) => {
+            const segLeft = Math.min(seg.startX, seg.endX);
+            const segRight = Math.max(seg.startX, seg.endX);
+            const xFullyContained = segLeft >= rectLeft && segRight <= rectRight;
+            const yIn = seg.y >= rectTop && seg.y <= rectBottom;
+            return xFullyContained && yIn;
+        })
+        .map((seg) => seg.id);
+
+    const switches = switchRenderItems.value
+        .filter((sw) => {
+            const xIn = sw.x >= rectLeft && sw.x <= rectRight;
+            const yOverlap = (baseLineY.value - 5 <= rectBottom && baseLineY.value + 5 >= rectTop);
+            return xIn && yOverlap;
+        })
+        .map((sw) => sw.bindingPositionID);
+
+    const retarders = retarderRenderItems.value
+        .filter((re) => {
+            const reLeft = re.x;
+            const reRight = re.x + re.width;
+            const reTop = re.y;
+            const reBottom = re.y + 20;
+            const xOverlap = reLeft < rectRight && reRight > rectLeft;
+            const yOverlap = reTop < rectBottom && reBottom > rectTop;
+            return xOverlap && yOverlap;
+        })
+        .map((re) => re.bindingPositionSegmentID);
 
     selectedElements.value.segments = segments;
     selectedElements.value.switches = switches;
@@ -895,7 +1206,6 @@ function selectObjectsInRect(rect: { x: number; y: number; width: number; height
     //     switches,
     //     retarders,
     // };
-    console.log('Selected elements after drag:', selectedElements.value);
 }
 
 function setScrollLeft(scrollLeft: number) {
