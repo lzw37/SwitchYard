@@ -744,6 +744,7 @@
         "showResistanceNumber": "Resistance Height",
         "showKineticNumber": "Kinetic Height",
         "showPointHeightNumber": "Slope Point Height",
+        "showCursorPositionLabel": "Cursor Position Label",
         "xScale": "X",
         "yScale": "Y",
         "scale": "Scale",

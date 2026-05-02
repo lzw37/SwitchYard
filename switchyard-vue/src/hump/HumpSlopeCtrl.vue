@@ -63,6 +63,10 @@
                         {{ label.text }}
                     </text>
                 </g>
+                <g v-if="props.elementVisibility?.kinetic && temporaryKineticHitAreaPoints" class="temporary-kinetic-hit-layer">
+                    <polygon :points="temporaryKineticHitAreaPoints" class="temporary-kinetic-hit-area"
+                        @click.stop="handleTemporaryKineticAreaClick($event)" />
+                </g>
                 <g class="slopelines">
                     <line v-for="seg in slopeLayout?.positionSegmentList || []" class="slope-line"
                         :x1="getX(getPositionX(seg.startPositionID))" :y1="getY(getPositionHeight(seg.startPositionID))"
@@ -99,6 +103,14 @@
                         :y="kineticTextPositions.get(dataPoint.x) ?? ((getY(dataPoint.result.gravitationHeight) + getY(dataPoint.result.gravitationHeight + dataPoint.result.kineticEnergyHeight)) / 2)">{{
                             formatKineticEnergyHeight(dataPoint.result.kineticEnergyHeight)
                         }}m({{ dataPoint.result.velocity }}m/s)</text>
+                    <line v-if="props.elementVisibility?.kinetic && temporaryKineticEnergyPoint" class="kinetic-vline temporary-kinetic-vline"
+                        :x1="getX(temporaryKineticEnergyPoint.x)" :y1="getY(temporaryKineticEnergyPoint.gravitationHeight)"
+                        :x2="getX(temporaryKineticEnergyPoint.x)"
+                        :y2="getY(temporaryKineticEnergyPoint.gravitationHeight + temporaryKineticEnergyPoint.kineticEnergyHeight)"></line>
+                    <text v-if="props.elementVisibility?.kinetic && temporaryKineticEnergyPoint" class="kinetic-text temporary-kinetic-text"
+                        :x="getX(temporaryKineticEnergyPoint.x)" :y="temporaryKineticTextY">{{
+                            formatKineticEnergyHeight(temporaryKineticEnergyPoint.kineticEnergyHeight)
+                        }}m({{ formatKineticVelocity(temporaryKineticEnergyPoint.velocity) }}m/s)</text>
                 </g>
                 <g class="points">
                     <g v-for="pos in slopeLayout?.positionList || []"
@@ -129,18 +141,36 @@
                     <line class="cursor-vline" :y1="marginTop" :y2="svgHeight - marginBottom" :x1="getX(cursorX)"
                         :x2="getX(cursorX)"></line>
                     <g v-if="cursorSlopeInfo" class="cursor-slope-info">
-                        <circle class="cursor-slope-point" :cx="cursorSlopeInfo.pointX" :cy="cursorSlopeInfo.pointY"
-                            r="2"></circle>
+                        <circle class="cursor-slope-point-halo" :cx="cursorSlopeInfo.pointX" :cy="cursorSlopeInfo.pointY"
+                            r="8"></circle>
+                        <!-- <circle class="cursor-slope-point" :cx="cursorSlopeInfo.pointX" :cy="cursorSlopeInfo.pointY"
+                            r="3.5"></circle> -->
+                        <line class="cursor-slope-connector" :x1="cursorSlopeInfo.pointX" :y1="cursorSlopeInfo.pointY"
+                            :x2="cursorSlopeInfo.connectorX" :y2="cursorSlopeInfo.connectorY"></line>
+                        <rect class="cursor-slope-label-shadow" :x="cursorSlopeInfo.shadowX" :y="cursorSlopeInfo.shadowY"
+                            :width="cursorSlopeInfo.labelWidth" :height="cursorSlopeInfo.labelHeight" rx="4"
+                            ry="4"></rect>
                         <rect class="cursor-slope-label-box" :x="cursorSlopeInfo.labelX" :y="cursorSlopeInfo.labelY"
                             :width="cursorSlopeInfo.labelWidth" :height="cursorSlopeInfo.labelHeight" rx="4"
                             ry="4"></rect>
-                        <text class="cursor-slope-label-text" :x="cursorSlopeInfo.textX"
-                            :y="cursorSlopeInfo.labelY + 14">
-                            X: {{ cursorSlopeInfo.xText }} m
+                        <line class="cursor-slope-label-divider" :x1="cursorSlopeInfo.labelX + 12"
+                            :x2="cursorSlopeInfo.labelX + cursorSlopeInfo.labelWidth - 12"
+                            :y1="cursorSlopeInfo.dividerY" :y2="cursorSlopeInfo.dividerY"></line>
+                        <text class="cursor-slope-label-caption" :x="cursorSlopeInfo.textX"
+                            :y="cursorSlopeInfo.firstRowY">
+                            X
                         </text>
-                        <text class="cursor-slope-label-text" :x="cursorSlopeInfo.textX"
-                            :y="cursorSlopeInfo.labelY + 28">
-                            H: {{ cursorSlopeInfo.heightText }} m
+                        <text class="cursor-slope-label-value" :x="cursorSlopeInfo.valueX"
+                            :y="cursorSlopeInfo.firstRowY">
+                            {{ cursorSlopeInfo.xText }} m
+                        </text>
+                        <text class="cursor-slope-label-caption" :x="cursorSlopeInfo.textX"
+                            :y="cursorSlopeInfo.secondRowY">
+                            H
+                        </text>
+                        <text class="cursor-slope-label-value" :x="cursorSlopeInfo.valueX"
+                            :y="cursorSlopeInfo.secondRowY">
+                            {{ cursorSlopeInfo.heightText }} m
                         </text>
                     </g>
                 </g>
@@ -181,7 +211,7 @@
 </template>
 <script setup lang="ts">
 import { CurveDirections, FlatLayout, LocationParam, SlopeLayout, VPosition, VPositionSegment } from './humplayoutctrl';
-import { ref, computed, onBeforeUnmount, onMounted } from 'vue';
+import { ref, computed, onBeforeUnmount, onMounted, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 
 type RetarderStatusItem = {
@@ -213,6 +243,13 @@ type BreakingEnergyHeightPoint = {
     display: boolean
 }
 
+type TemporaryKineticEnergyPoint = {
+    x: number
+    gravitationHeight: number
+    kineticEnergyHeight: number
+    velocity: number
+}
+
 const props = defineProps<{
     flatLayout?: FlatLayout | null
     slopeLayout?: SlopeLayout | null
@@ -231,6 +268,7 @@ const props = defineProps<{
         resistanceNumber: boolean
         kineticNumber: boolean
         pointHeightNumber: boolean
+        cursorPositionLabel: boolean
     }
     g_?: number
     globalCursorX?: number
@@ -246,17 +284,15 @@ const emit = defineEmits<{
 }>()
 
 function handleResistanceShadeClick(event: MouseEvent, dataX?: number) {
-    const svg = document.getElementById('slope');
-    if (!svg) return;
-    const rect = svg.getBoundingClientRect();
-    const mouseX = event.clientX - rect.left;
-    const computedX = (mouseX - marginLeft.value) / scaleX.value;
+    const computedX = getDataXFromMouseEvent(event);
     const x = dataX !== undefined ? dataX : computedX;
+    if (x === null) return;
     if (!Number.isFinite(x) || x < 0) return;
     emit('resistance-click', { x, clientX: event.clientX, clientY: event.clientY });
 }
 const { t } = useI18n();
 const scrollContainerRef = ref<HTMLDivElement | null>(null);
+const temporaryKineticEnergyPoint = ref<TemporaryKineticEnergyPoint | null>(null);
 const minScaleX = 0.1;
 const maxScaleX = 5;
 
@@ -326,6 +362,7 @@ const showRetarder = computed(() => props.elementVisibility?.retarder ?? true);
 const showResistanceNumber = computed(() => props.elementVisibility?.resistanceNumber ?? true);
 const showKineticNumber = computed(() => props.elementVisibility?.kineticNumber ?? true);
 const showPointHeightNumber = computed(() => props.elementVisibility?.pointHeightNumber ?? true);
+const showCursorPositionLabel = computed(() => props.elementVisibility?.cursorPositionLabel ?? true);
 const draggingId = ref<string | null>(null);
 const startMouseY = ref(0);
 const startHeight = ref(0);
@@ -339,6 +376,10 @@ const touchStartClientX = ref(0);
 const touchStartClientY = ref(0);
 const touchCurrentClientX = ref(0);
 const touchCurrentClientY = ref(0);
+
+function notifyControlPointChanged() {
+    emit('control-point-drag-end');
+}
 const touchLongPressDelay = 550;
 const touchMoveThreshold = 8;
 const longPressActivatedId = ref<string | null>(null);
@@ -369,6 +410,15 @@ function closeContextMenu() {
 
 function getX(posX: number): number {
     return posX * scaleX.value + marginLeft.value;
+}
+
+function getDataXFromMouseEvent(event: MouseEvent): number | null {
+    const svg = document.getElementById('slope');
+    if (!svg) return null;
+    const rect = svg.getBoundingClientRect();
+    const mouseX = event.clientX - rect.left;
+    const computedX = (mouseX - marginLeft.value) / scaleX.value;
+    return Number.isFinite(computedX) ? computedX : null;
 }
 
 function getY(height: number): number {
@@ -551,6 +601,7 @@ function startTouchDrag(pos: { id: string; height: number; x: number }, event: T
 }
 
 function beginDrag(pos: { id: string; height: number; x: number }, clientX: number, clientY: number, isHorizontal: boolean) {
+    clearTemporaryKineticEnergyPoint();
     draggingId.value = pos.id;
     currentX.value = pos.x;
     currentHeight.value = pos.height;
@@ -648,7 +699,7 @@ function endDrag() {
     window.removeEventListener('touchcancel', endTouchDrag);
     // updateKineticEnergyHeights(finishedId);
     draggingId.value = null;
-    emit('control-point-drag-end');
+    notifyControlPointChanged();
 }
 
 function endTouchDrag(event: TouchEvent) {
@@ -926,6 +977,12 @@ function formatKineticEnergyHeight(value: unknown): string {
     return numericValue.toFixed(3);
 }
 
+function formatKineticVelocity(value: unknown): string {
+    const numericValue = Number(value);
+    if (!Number.isFinite(numericValue)) return '0';
+    return Number(numericValue.toFixed(2)).toString();
+}
+
 type SlopeSamplePoint = {
     x: number
     height: number
@@ -970,23 +1027,83 @@ function getSlopeHeightAtX(x: number): number | null {
     return Math.abs(x - last.x) < 1e-9 ? last.height : null;
 }
 
+const breakingDisplaySeries = computed<CurveSamplePoint[]>(() => {
+    if (!props.breakingEnergyHeightData?.length) return [];
+
+    return [...props.breakingEnergyHeightData]
+        .filter(dataPoint => Number.isFinite(dataPoint.x))
+        .map(dataPoint => ({
+            x: dataPoint.x,
+            value: dataPoint.gravityEnergyHeight + dataPoint.kineticEnergyHeight
+        }))
+        .filter(point => Number.isFinite(point.value))
+        .sort((a, b) => a.x - b.x);
+});
+
+const temporaryKineticHitAreaPoints = computed(() => {
+    if (!props.elementVisibility?.kinetic) return '';
+
+    const breakingSeries = breakingDisplaySeries.value;
+    const slopeSeries = slopeSamplePoints.value;
+    if (breakingSeries.length < 2 || slopeSeries.length < 2) return '';
+
+    const startX = Math.max(breakingSeries[0]!.x, slopeSeries[0]!.x);
+    const endX = Math.min(breakingSeries[breakingSeries.length - 1]!.x, slopeSeries[slopeSeries.length - 1]!.x);
+    if (endX <= startX) return '';
+
+    const sampleXRaw = [...breakingSeries.map(point => point.x), ...slopeSeries.map(point => point.x)]
+        .filter(x => x >= startX && x <= endX)
+        .sort((a, b) => a - b);
+
+    const sampleX: number[] = [];
+    for (const x of sampleXRaw) {
+        const last = sampleX[sampleX.length - 1];
+        if (last === undefined || Math.abs(x - last) > 1e-6) {
+            sampleX.push(x);
+        }
+    }
+    if (sampleX.length < 2) return '';
+
+    const upperBoundary: string[] = [];
+    const lowerBoundary: string[] = [];
+    for (const x of sampleX) {
+        const breakingValue = interpolateSeriesValue(breakingSeries, x);
+        const slopeValue = getSlopeHeightAtX(x);
+        if (breakingValue === null || slopeValue === null || breakingValue <= slopeValue) continue;
+
+        upperBoundary.push(`${getX(x)},${getY(breakingValue)}`);
+        lowerBoundary.push(`${getX(x)},${getY(slopeValue)}`);
+    }
+
+    if (upperBoundary.length < 2 || lowerBoundary.length < 2) return '';
+    return [...upperBoundary, ...lowerBoundary.reverse()].join(' ');
+});
+
 const cursorSlopeInfo = computed(() => {
+    if (!showCursorPositionLabel.value) return null;
+
     const height = getSlopeHeightAtX(cursorX.value);
     if (height === null) return null;
 
-    const labelWidth = 128;
-    const labelHeight = 36;
+    const labelWidth = 80;
+    const labelHeight = 34;
+    const labelGap = 10;
     const pointX = getX(cursorX.value);
     const pointY = getY(height);
+    const xText = formatKineticEnergyHeight(cursorX.value);
+    const heightText = formatKineticEnergyHeight(height);
     const maxLabelX = svgWidth.value - marginRight.value - labelWidth;
-    const preferredRightX = pointX + 10;
-    const preferredLeftX = pointX - labelWidth - 10;
-    let labelX = preferredRightX <= maxLabelX ? preferredRightX : preferredLeftX;
+    const preferredRightX = pointX + labelGap;
+    const preferredLeftX = pointX - labelWidth - labelGap;
+    const isRightSide = preferredRightX <= maxLabelX;
+    let labelX = isRightSide ? preferredRightX : preferredLeftX;
     labelX = Math.max(marginLeft.value, Math.min(labelX, maxLabelX));
 
     const minLabelY = marginTop.value;
     const maxLabelY = svgHeight.value - marginBottom.value - labelHeight;
-    const labelY = Math.max(minLabelY, Math.min(pointY - labelHeight - 10, maxLabelY));
+    const labelY = Math.max(minLabelY, Math.min(pointY - labelHeight - labelGap, maxLabelY));
+    const connectorX = isRightSide ? labelX : labelX + labelWidth;
+    const connectorY = Math.max(labelY + 8, Math.min(pointY, labelY + labelHeight - 8));
 
     return {
         pointX,
@@ -995,10 +1112,63 @@ const cursorSlopeInfo = computed(() => {
         labelY,
         labelWidth,
         labelHeight,
-        textX: labelX + 8,
-        xText: formatKineticEnergyHeight(cursorX.value),
-        heightText: formatKineticEnergyHeight(height)
+        shadowX: labelX + 1.5,
+        shadowY: labelY + 2,
+        connectorX,
+        connectorY,
+        dividerY: labelY + labelHeight / 2,
+        textX: labelX + 10,
+        valueX: labelX + 24,
+        firstRowY: labelY + 11.5,
+        secondRowY: labelY + 24.5,
+        xText,
+        heightText
     };
+});
+
+const temporaryKineticTextY = computed(() => {
+    const dataPoint = temporaryKineticEnergyPoint.value;
+    if (!dataPoint) return 0;
+
+    const charWidth = fontSize.value * 0.6;
+    const textHeight = fontSize.value;
+    const step = textHeight + 4;
+    const text = `${formatKineticEnergyHeight(dataPoint.kineticEnergyHeight)}m(${formatKineticVelocity(dataPoint.velocity)}m/s)`;
+    const width = Math.max(12, text.length * charWidth);
+    const cx = getX(dataPoint.x);
+    const baseY = (getY(dataPoint.gravitationHeight) + getY(dataPoint.gravitationHeight + dataPoint.kineticEnergyHeight)) / 2;
+
+    const getRect = (y: number) => ({
+        x1: cx - width / 2,
+        x2: cx + width / 2,
+        y1: y - textHeight,
+        y2: y
+    });
+
+    const existingRects = (props.kineticEnergyHeightData || []).map((item) => {
+        const itemText = `${formatKineticEnergyHeight(item.result.kineticEnergyHeight)}m(${item.result.velocity}m/s)`;
+        const itemWidth = Math.max(12, itemText.length * charWidth);
+        const itemX = getX(item.x);
+        const itemBaseY = (getY(item.result.gravitationHeight) + getY(item.result.gravitationHeight + item.result.kineticEnergyHeight)) / 2;
+        const itemY = kineticTextPositions.value.get(item.x) ?? itemBaseY;
+        return {
+            x1: itemX - itemWidth / 2,
+            x2: itemX + itemWidth / 2,
+            y1: itemY - textHeight,
+            y2: itemY
+        };
+    });
+
+    let ty = baseY;
+    let rect = getRect(ty);
+    let iter = 0;
+    while (existingRects.some(p => !(p.x2 < rect.x1 || p.x1 > rect.x2 || p.y2 < rect.y1 || p.y1 > rect.y2))) {
+        ty -= step;
+        rect = getRect(ty);
+        if (++iter > 30) break;
+    }
+
+    return Math.round(Math.max(marginTop.value + textHeight, ty) * 1000) / 1000;
 });
 
 const retarderBreakingHeightLabels = computed<RetarderBreakingHeightLabel[]>(() => {
@@ -1143,6 +1313,38 @@ const orgKineticEnergyY = computed(() => {
     return safeKed[0]!.result.kineticEnergyHeight + safeSl.positionList[0]!.height;
 });
 
+function clearTemporaryKineticEnergyPoint() {
+    temporaryKineticEnergyPoint.value = null;
+}
+
+function handleTemporaryKineticAreaClick(event: MouseEvent) {
+    if (temporaryKineticEnergyPoint.value) {
+        clearTemporaryKineticEnergyPoint();
+        return;
+    }
+
+    const x = getDataXFromMouseEvent(event);
+    if (x === null || x < 0) return;
+
+    const gravitationHeight = getSlopeHeightAtX(x);
+    const breakingDisplayHeight = interpolateSeriesValue(breakingDisplaySeries.value, x);
+    if (gravitationHeight === null || breakingDisplayHeight === null) return;
+
+    const rawKineticEnergyHeight = breakingDisplayHeight - gravitationHeight;
+    if (!Number.isFinite(rawKineticEnergyHeight) || rawKineticEnergyHeight <= 0) {
+        clearTemporaryKineticEnergyPoint();
+        return;
+    }
+
+    const g = Number.isFinite(props.g_ ?? NaN) ? Number(props.g_) : 9.8;
+    temporaryKineticEnergyPoint.value = {
+        x: Math.round(x * 1000) / 1000,
+        gravitationHeight: Math.round(gravitationHeight * 1000) / 1000,
+        kineticEnergyHeight: Math.round(rawKineticEnergyHeight * 1000) / 1000,
+        velocity: Math.round(Math.sqrt(2 * g * rawKineticEnergyHeight) * 100) / 100
+    };
+}
+
 function addCursorXListener() {
     const svgElement = document.getElementById('slope');
     if (!svgElement) return;
@@ -1186,10 +1388,12 @@ function buildSegments(positions: VPosition[]): VPositionSegment[] {
 }
 
 function removePosition(posId: string) {
+    clearTemporaryKineticEnergyPoint();
     const sl = props.slopeLayout;
     if (!sl || !Array.isArray(sl.positionList)) return;
     sl.positionList = sl.positionList.filter(p => p.id !== posId).sort((a, b) => a.x - b.x);
     sl.positionSegmentList = buildSegments(sl.positionList);
+    notifyControlPointChanged();
 }
 
 function deleteContextPos() {
@@ -1200,6 +1404,7 @@ function deleteContextPos() {
 }
 
 function addVPosition(posX: number) {
+    clearTemporaryKineticEnergyPoint();
     const sl = props.slopeLayout;
     if (!sl) return;
     if (!Array.isArray(sl.positionList)) sl.positionList = [];
@@ -1216,6 +1421,7 @@ function addVPosition(posX: number) {
         const updated = [...positions, newPos1, newPos2].sort((a, b) => a.x - b.x);
         sl.positionList = updated;
         sl.positionSegmentList = buildSegments(updated);
+        notifyControlPointChanged();
         return;
     }
     else if (positions.length === 1) {
@@ -1223,6 +1429,7 @@ function addVPosition(posX: number) {
         const updated = [...positions, newPos1].sort((a, b) => a.x - b.x);
         sl.positionList = updated;
         sl.positionSegmentList = buildSegments(updated);
+        notifyControlPointChanged();
         return;
     }
 
@@ -1231,7 +1438,13 @@ function addVPosition(posX: number) {
 
     let height = 0;
     if (left && right && left !== right) {
-        height = (left.height + right.height) / 2;
+        const deltaX = right.x - left.x;
+        if (Math.abs(deltaX) < 1e-6) {
+            height = left.height;
+        } else {
+            const ratio = (posX - left.x) / deltaX;
+            height = left.height + (right.height - left.height) * ratio;
+        }
     } else if (left) {
         height = left.height;
     } else if (right) {
@@ -1242,10 +1455,25 @@ function addVPosition(posX: number) {
     const updated = [...positions, newPos].sort((a, b) => a.x - b.x);
     sl.positionList = updated;
     sl.positionSegmentList = buildSegments(updated);
+    notifyControlPointChanged();
 }
 
 onMounted(() => {
     addCursorXListener();
+});
+
+watch(() => props.breakingEnergyHeightData, () => {
+    clearTemporaryKineticEnergyPoint();
+});
+
+watch(() => props.slopeLayout, () => {
+    clearTemporaryKineticEnergyPoint();
+});
+
+watch(() => props.elementVisibility?.kinetic, (visible) => {
+    if (!visible) {
+        clearTemporaryKineticEnergyPoint();
+    }
 });
 
 onBeforeUnmount(() => {
@@ -1271,27 +1499,63 @@ defineExpose({
 }
 
 .cursor-slope-point {
-    fill: none;
-    opacity: 0.6;
-    stroke: #9a6700;
+    fill: #fffaf0;
+    stroke: #d97706;
+    stroke-width: 2px;
+    pointer-events: none;
+}
+
+.cursor-slope-point-halo {
+    fill: rgba(245, 158, 11, 0.16);
+    pointer-events: none;
+}
+
+.cursor-slope-connector {
+    stroke: rgba(217, 119, 6, 0.72);
     stroke-width: 1.5px;
+    stroke-linecap: round;
+    pointer-events: none;
+}
+
+.cursor-slope-label-shadow {
+    fill: rgba(15, 23, 42, 0.08);
+    opacity: 0.6;
     pointer-events: none;
 }
 
 .cursor-slope-label-box {
-    fill: rgba(255, 250, 230, 0.96);
-    stroke: #d4a017;
-    opacity: 0.6;
+    fill: rgba(255, 252, 245, 0.6);
+    stroke: rgba(217, 119, 6, 0.6);
     stroke-width: 1px;
     pointer-events: none;
 }
 
-.cursor-slope-label-text {
-    fill: #5b3b00;
+.cursor-slope-label-divider {
+    stroke: rgba(217, 119, 6, 0.24);
+    stroke-width: 1px;
     opacity: 0.6;
-    font-size: 11px;
-    font-family: 'Consolas', 'Menlo', monospace;
+    pointer-events: none;
+}
+
+.cursor-slope-label-caption {
+    fill: #b45309;
+    font-size: 9px;
+    font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    font-weight: 700;
+    letter-spacing: 0.04em;
     dominant-baseline: middle;
+    opacity: 0.6;
+    pointer-events: none;
+    user-select: none;
+}
+
+.cursor-slope-label-value {
+    fill: #4a3410;
+    font-size: 10px;
+    font-family: 'Consolas', 'Menlo', monospace;
+    font-weight: 600;
+    dominant-baseline: middle;
+    opacity: 0.6;
     pointer-events: none;
     user-select: none;
 }
@@ -1421,6 +1685,13 @@ defineExpose({
     pointer-events: none;
 }
 
+.temporary-kinetic-hit-area {
+    fill: transparent;
+    stroke: none;
+    cursor: default;
+    pointer-events: all;
+}
+
 .retarder-breaking-height-text {
     fill: #d10000;
     font-size: 11px;
@@ -1490,6 +1761,15 @@ defineExpose({
     dominant-baseline: middle;
     user-select: none;
     pointer-events: none;
+}
+
+.temporary-kinetic-vline,
+.temporary-kinetic-text {
+    opacity: 0.9;
+}
+
+.temporary-kinetic-vline {
+    stroke-dasharray: 4 2;
 }
 
 .addpointbar {

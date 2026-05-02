@@ -147,6 +147,10 @@
                     <span>{{ t('humpSlopeDesigner.showPointHeightNumber') }}</span>
                     <el-switch v-model="showPointHeightNumber" size="small"></el-switch>
                 </div>
+                <div class="left-toggle-item">
+                    <span>{{ t('humpSlopeDesigner.showCursorPositionLabel') }}</span>
+                    <el-switch v-model="showCursorPositionLabel" size="small"></el-switch>
+                </div>
             </div>
         </div>
         <div class="side-menu-right" v-show="rightVisible">
@@ -629,6 +633,7 @@ const showRetarder = ref(true);
 const showResistanceNumber = ref(true);
 const showKineticNumber = ref(true);
 const showPointHeightNumber = ref(true);
+const showCursorPositionLabel = ref(true);
 const suppressEnergyLineAutoLoad = ref(false);
 const handlingSchemeSelectionChange = ref(false);
 let energyHeightRefreshSequence = 0;
@@ -722,7 +727,8 @@ const elementVisibility = computed(() => {
         retarder: showRetarder.value,
         resistanceNumber: showResistanceNumber.value,
         kineticNumber: showKineticNumber.value,
-        pointHeightNumber: showPointHeightNumber.value
+        pointHeightNumber: showPointHeightNumber.value,
+        cursorPositionLabel: showCursorPositionLabel.value
     };
 });
 

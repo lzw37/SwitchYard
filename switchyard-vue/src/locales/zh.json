@@ -738,6 +738,7 @@
         "showResistanceNumber": "阻力能高",
         "showKineticNumber": "动能高",
         "showPointHeightNumber": "变坡点高度",
+        "showCursorPositionLabel": "光标位置标签",
         "xScale": "X缩放",
         "yScale": "Y缩放",
         "scale": "缩放",
