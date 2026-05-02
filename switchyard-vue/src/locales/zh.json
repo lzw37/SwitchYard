@@ -977,6 +977,10 @@
             "file": "文件",
             "loadData": "载入数据",
             "saveData": "保存数据",
+            "loadFromDatabase": "从数据库读取",
+            "loadingFromDatabase": "正在从数据库读取...",
+            "saveToDatabase": "\u4fdd\u5b58\u5230\u6570\u636e\u5e93",
+            "savingToDatabase": "\u6b63\u5728\u4fdd\u5b58\u5230\u6570\u636e\u5e93...",
             "gridSnap": "网格追踪",
             "objectSnap": "对象追踪",
             "undo": "撤销",
@@ -1014,7 +1018,12 @@
         "messages": {
             "saveSuccess": "保存成功：",
             "saveFailed": "保存失败：",
-            "loadFailed": "获取失败："
+            "loadFailed": "获取失败：",
+            "loadFromDatabaseSuccess": "已成功从数据库读取",
+            "loadFromDatabaseFailed": "从数据库读取失败：",
+            "saveToDatabaseSuccess": "\u5df2\u6210\u529f\u4fdd\u5b58\u5230\u6570\u636e\u5e93",
+            "saveToDatabaseFailed": "\u4fdd\u5b58\u5230\u6570\u636e\u5e93\u5931\u8d25\uff1a",
+            "emptyLayout": "\u5f53\u524d\u6ca1\u6709\u53ef\u4fdd\u5b58\u7684\u7ad9\u573a\u6570\u636e"
         }
     }
 }

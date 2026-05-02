@@ -22,6 +22,8 @@ const dwgFileInputRef = ref(null);
 const selectedDwgFile = ref(null);
 const dwgLayerName = ref("0");
 const extractingDwg = ref(false);
+const savingToDatabase = ref(false);
+const loadingFromDatabase = ref(false);
 
 function setSelectMode() {
     stationLayoutEditorRef.value?.setEditMode(0);
@@ -72,6 +74,33 @@ function saveData() {
             alert(t('stationLayout.messages.saveFailed') + err + "\r\n" + serverMsg);
         });
 }
+function saveToDatabase() {
+    const dataStr = stationLayoutEditorRef.value?.buildJsonData();
+    if (!dataStr) {
+        ElMessage.warning(t('stationLayout.messages.emptyLayout'));
+        return;
+    }
+
+    savingToDatabase.value = true;
+    axios
+        .post("/StationLayout/SaveToDatabase", {
+            json: dataStr,
+        })
+        .then((res) => {
+            ElMessage.success(t('stationLayout.messages.saveToDatabaseSuccess'));
+            console.log(res);
+        })
+        .catch((err) => {
+            let serverMsg = "";
+            if (err.response != undefined) {
+                serverMsg = err.response.data;
+            }
+            ElMessage.error(`${t('stationLayout.messages.saveToDatabaseFailed')}${serverMsg || err}`);
+        })
+        .finally(() => {
+            savingToDatabase.value = false;
+        });
+}
 function getData() {
     axios
         .post("/StationLayout/GetJson")
@@ -84,6 +113,25 @@ function getData() {
                 serverMsg = err.response.data;
             }
             alert(t('stationLayout.messages.loadFailed') + err + "\r\n" + serverMsg);
+        });
+}
+function loadFromDatabase() {
+    loadingFromDatabase.value = true;
+    axios
+        .post("/StationLayout/GetDatabaseJson", {})
+        .then((res) => {
+            stationLayoutEditorRef.value?.loadDataFromJson(res.data);
+            ElMessage.success(t('stationLayout.messages.loadFromDatabaseSuccess'));
+        })
+        .catch((err) => {
+            let serverMsg = "";
+            if (err.response != undefined) {
+                serverMsg = err.response.data;
+            }
+            ElMessage.error(`${t('stationLayout.messages.loadFromDatabaseFailed')}${serverMsg || err}`);
+        })
+        .finally(() => {
+            loadingFromDatabase.value = false;
         });
 }
 function autoSeparateLine() {
@@ -194,6 +242,16 @@ function extractDwgFile() {
                     <el-icon>
                         <Upload />
                     </el-icon>{{ t('stationLayout.menu.saveData') }}
+                </el-menu-item>
+                <el-menu-item index="file-save-db" :disabled="savingToDatabase" @click="saveToDatabase">
+                    <el-icon>
+                        <Upload />
+                    </el-icon>{{ savingToDatabase ? t('stationLayout.menu.savingToDatabase') : t('stationLayout.menu.saveToDatabase') }}
+                </el-menu-item>
+                <el-menu-item index="file-load-db" :disabled="loadingFromDatabase" @click="loadFromDatabase">
+                    <el-icon>
+                        <Download />
+                    </el-icon>{{ loadingFromDatabase ? t('stationLayout.menu.loadingFromDatabase') : t('stationLayout.menu.loadFromDatabase') }}
                 </el-menu-item>
                 <el-menu-item index="extract-dwg-file" @click="openExtractDwgDialog">
                     <el-icon>

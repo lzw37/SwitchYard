@@ -996,6 +996,10 @@
             "file": "File",
             "loadData": "Load",
             "saveData": "Save",
+            "loadFromDatabase": "Load from DB",
+            "loadingFromDatabase": "Loading from DB...",
+            "saveToDatabase": "Save to DB",
+            "savingToDatabase": "Saving to DB...",
             "gridSnap": "Grid Snap",
             "objectSnap": "Obj Snap",
             "undo": "Undo",
@@ -1033,7 +1037,12 @@
         "messages": {
             "saveSuccess": "Save successful: ",
             "saveFailed": "Save failed: ",
-            "loadFailed": "Load failed: "
+            "loadFailed": "Load failed: ",
+            "loadFromDatabaseSuccess": "Loaded from database successfully",
+            "loadFromDatabaseFailed": "Load from database failed: ",
+            "saveToDatabaseSuccess": "Saved to database successfully",
+            "saveToDatabaseFailed": "Save to database failed: ",
+            "emptyLayout": "No station layout data to save"
         }
     }
 }

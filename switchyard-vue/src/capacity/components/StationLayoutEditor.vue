@@ -21,6 +21,7 @@ const cursorParam = ref({ size: 10, barVisible: false, barLength: 100, x: 200, y
 const anchorParam = { size: 10 };
 
 const latestElementID = ref(0);
+const layoutMetadata = ref({ instanceID: "", stationSchemeID: "", id: "", name: "" });
 
 const tracks = ref([]);
 const nodes = ref([]);
@@ -84,6 +85,7 @@ function cloneState() {
     return JSON.parse(
         JSON.stringify({
             latestElementID: latestElementID.value,
+            layoutMetadata: layoutMetadata.value,
             tracks: tracks.value,
             nodes: nodes.value,
             signals: signals.value,
@@ -102,6 +104,7 @@ function cloneState() {
 
 function applyState(state) {
     latestElementID.value = state.latestElementID;
+    layoutMetadata.value = state.layoutMetadata || { instanceID: "", stationSchemeID: "", id: "", name: "" };
     tracks.value = state.tracks || [];
     nodes.value = state.nodes || [];
     signals.value = state.signals || [];
@@ -975,7 +978,13 @@ const tempPlatformView = computed(() => {
 
 function buildJsonData() {
     return JSON.stringify({
-        metadata: { latestElementID: latestElementID.value },
+        metadata: {
+            latestElementID: latestElementID.value,
+            instanceID: layoutMetadata.value.instanceID || undefined,
+            stationSchemeID: layoutMetadata.value.stationSchemeID || undefined,
+            id: layoutMetadata.value.id || undefined,
+            name: layoutMetadata.value.name || undefined,
+        },
         tracks: tracks.value,
         nodes: nodes.value,
         signals: signals.value,
@@ -986,6 +995,7 @@ function buildJsonData() {
 }
 
 function clearElements() {
+    layoutMetadata.value = { instanceID: "", stationSchemeID: "", id: "", name: "" };
     tracks.value = [];
     nodes.value = [];
     signals.value = [];
@@ -1001,6 +1011,12 @@ function loadDataFromJson(jsonObj) {
     executeMutation(() => {
         clearElements();
         latestElementID.value = Number(jsonObj?.metadata?.latestElementID || 0);
+        layoutMetadata.value = {
+            instanceID: String(jsonObj?.metadata?.instanceID || ""),
+            stationSchemeID: String(jsonObj?.metadata?.stationSchemeID || ""),
+            id: String(jsonObj?.metadata?.id || ""),
+            name: String(jsonObj?.metadata?.name || ""),
+        };
         tracks.value = (jsonObj?.tracks || []).map((track) => ({ ...track }));
         nodes.value = (jsonObj?.nodes || []).map((node) => ({ ...node }));
         signals.value = (jsonObj?.signals || []).map((signal) => ({ ...signal }));
