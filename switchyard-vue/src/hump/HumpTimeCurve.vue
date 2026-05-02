@@ -52,8 +52,16 @@
                     <line v-for="i in 6" :key="i" class="grid-line-v" :x1="plotLeft + plotWidth * i / 6"
                         :x2="plotLeft + plotWidth * i / 6" :y1="marginTop" :y2="chartHeight - marginBottom" />
                 </g>
+                <g class="headway-annotations">
+                    <g v-for="annotation in renderedHeadwayAnnotations" :key="annotation.id" class="headway-annotation"
+                        :class="{ 'headway-annotation--conflict': annotation.isConflict }">
+                        <polyline :points="annotation.pathPoints" fill="none" />
+                        <text :x="annotation.labelX" :y="annotation.labelY" text-anchor="middle">{{ annotation.label
+                        }}</text>
+                        <title>{{ annotation.tooltip }}</title>
+                    </g>
+                </g>
             </svg>
-            <div>{{ t('humpChart.placeholderInterval') }}</div>
             <hump-slope-sketch-block v-model:slope-layout="slopeLayout" v-if="fullscreenChart === 'time'"
                 :global-scale-x="sharedScaleX" :global-min-x="sharedXExtent.min" :global-left-margin="plotLeft"
                 :global-domain-span="sharedXExtent.span" />
@@ -86,6 +94,20 @@ interface TimeCurveData {
     data: TimePoint[]
 }
 
+interface HeadwayAnnotation {
+    id: string
+    frontSeriesName: string
+    rearSeriesName: string
+    frontSequence: number
+    rearSequence: number
+    equipmentID: string
+    startX: number
+    endX: number
+    frontExitTime: number
+    rearEnterTime: number
+    headway: number
+}
+
 interface TimeTab {
     name: string
     label: string
@@ -94,6 +116,7 @@ interface TimeTab {
 const props = defineProps<{
     timeCurveData: TimeCurveData[]
     timeTabs: TimeTab[]
+    headwayAnnotations: HeadwayAnnotation[]
     chartWidth: number
     chartHeight: number
     marginLeft: number
@@ -254,6 +277,49 @@ const getTimeY = (time: number): number => {
 const getTimePolylinePoints = (data: TimePoint[]): string => {
     return data.map(point => `${getTimeX(point.x)},${getTimeY(point.time)}`).join(' ')
 }
+
+const formatHeadwayLabel = (headway: number): string => {
+    if (!Number.isFinite(headway)) return ''
+    const precision = Math.abs(headway) >= 10 ? 1 : 2
+    return `${headway.toFixed(precision)}s`
+}
+
+const renderedHeadwayAnnotations = computed(() => {
+    const minLabelY = props.marginTop + 12
+    const maxLabelY = props.chartHeight - props.marginBottom - 6
+
+    return props.headwayAnnotations
+        .filter(annotation =>
+            Number.isFinite(annotation.startX) &&
+            Number.isFinite(annotation.endX) &&
+            Number.isFinite(annotation.frontExitTime) &&
+            Number.isFinite(annotation.rearEnterTime) &&
+            Number.isFinite(annotation.headway)
+        )
+        .map((annotation, index) => {
+            const exitX = getTimeX(annotation.endX)
+            const exitY = getTimeY(annotation.frontExitTime)
+            const enterX = getTimeX(annotation.startX)
+            const enterY = getTimeY(annotation.rearEnterTime)
+            const offsetY = index % 2 === 0 ? -8 : 12
+            const rawLabelY = exitY + offsetY
+            const labelY = Math.min(maxLabelY, Math.max(minLabelY, rawLabelY))
+
+            return {
+                ...annotation,
+                exitX,
+                exitY,
+                enterX,
+                enterY,
+                pathPoints: `${exitX},${exitY} ${enterX},${exitY} ${enterX},${enterY}`,
+                labelX: (exitX + enterX) / 2,
+                labelY,
+                label: formatHeadwayLabel(annotation.headway),
+                tooltip: `#${annotation.frontSequence} -> #${annotation.rearSequence}, ${annotation.equipmentID || 'checkpoint'}, ${annotation.headway.toFixed(2)} s`,
+                isConflict: annotation.headway < 0
+            }
+        })
+})
 
 const handleRemoveTag = (tagName: string) => {
     emit('removeTab', tagName)
@@ -497,5 +563,30 @@ const { t } = useI18n()
     r: 4;
     stroke-width: 2;
     cursor: pointer;
+}
+
+.headway-annotation polyline {
+    stroke: #0f766e;
+    stroke-width: 1.5;
+    stroke-dasharray: 4 3;
+    opacity: 0.9;
+}
+
+.headway-annotation text {
+    fill: #115e59;
+    font-size: 11px;
+    font-weight: 600;
+    paint-order: stroke;
+    stroke: rgba(255, 255, 255, 0.95);
+    stroke-width: 3px;
+    stroke-linejoin: round;
+}
+
+.headway-annotation--conflict polyline {
+    stroke: #dc2626;
+}
+
+.headway-annotation--conflict text {
+    fill: #b91c1c;
 }
 </style>

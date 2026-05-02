@@ -62,6 +62,7 @@
 
             <!-- 时间-距离曲线 -->
             <HumpTimeCurve ref="timeCurveRef" :time-curve-data="timeCurveData" :time-tabs="timeTabs"
+                :headway-annotations="visibleHeadwayAnnotations"
                 :chart-width="chartWidth" :chart-height="chartHeight" :margin-left="marginLeft"
                 :margin-right="marginRight" :margin-top="marginTop" :margin-bottom="marginBottom"
                 :selected-instance-id="props.selectedInstanceId" :selected-slope-line-id="selectedSlopeLineID"
@@ -214,6 +215,19 @@ interface RunningTimeResponseItem {
     wagon?: SpeedProfileWagon
     positionList?: Array<number | string>
     runningTimeList?: Array<number | string>
+}
+
+interface HeadwayIntervalResponseItem {
+    frontSequence?: number
+    rearSequence?: number
+    frontHumpCalculationID?: string
+    rearHumpCalculationID?: string
+    equipmentID?: string
+    startX?: number
+    endX?: number
+    frontExitTime?: number
+    rearEnterTime?: number
+    headway?: number
 }
 
 interface OperationCondition {
@@ -778,6 +792,32 @@ const normalizeRunningTimeItem = (item: any): RunningTimeResponseItem => {
     }
 }
 
+const normalizeHeadwayIntervalItem = (item: any): HeadwayIntervalResponseItem => {
+    const toFiniteOrUndefined = (value: unknown) => {
+        const num = Number(value)
+        return Number.isFinite(num) ? num : undefined
+    }
+
+    const frontSequence = toFiniteOrUndefined(item?.frontSequence ?? item?.FrontSequence)
+    const rearSequence = toFiniteOrUndefined(item?.rearSequence ?? item?.RearSequence)
+    const frontHumpCalculationIDRaw = item?.frontHumpCalculationID ?? item?.FrontHumpCalculationID
+    const rearHumpCalculationIDRaw = item?.rearHumpCalculationID ?? item?.RearHumpCalculationID
+    const equipmentIDRaw = item?.equipmentID ?? item?.EquipmentID
+
+    return {
+        frontSequence,
+        rearSequence,
+        frontHumpCalculationID: typeof frontHumpCalculationIDRaw === 'string' ? frontHumpCalculationIDRaw : undefined,
+        rearHumpCalculationID: typeof rearHumpCalculationIDRaw === 'string' ? rearHumpCalculationIDRaw : undefined,
+        equipmentID: typeof equipmentIDRaw === 'string' ? equipmentIDRaw : undefined,
+        startX: toFiniteOrUndefined(item?.startX ?? item?.StartX),
+        endX: toFiniteOrUndefined(item?.endX ?? item?.EndX),
+        frontExitTime: toFiniteOrUndefined(item?.frontExitTime ?? item?.FrontExitTime),
+        rearEnterTime: toFiniteOrUndefined(item?.rearEnterTime ?? item?.RearEnterTime),
+        headway: toFiniteOrUndefined(item?.headway ?? item?.Headway)
+    }
+}
+
 const extractRunningTimeItems = (payload: any): RunningTimeResponseItem[] => {
     if (Array.isArray(payload)) {
         return payload.map(item => normalizeRunningTimeItem(item))
@@ -787,6 +827,13 @@ const extractRunningTimeItems = (payload: any): RunningTimeResponseItem[] => {
     if (!Array.isArray(runningTimes)) return []
 
     return runningTimes.map(item => normalizeRunningTimeItem(item))
+}
+
+const extractHeadwayIntervals = (payload: any): HeadwayIntervalResponseItem[] => {
+    const adjacentIntervals = Array.isArray(payload?.adjacentIntervals) ? payload.adjacentIntervals : payload?.AdjacentIntervals
+    if (!Array.isArray(adjacentIntervals)) return []
+
+    return adjacentIntervals.map(item => normalizeHeadwayIntervalItem(item))
 }
 
 const getSpeedProfileLabel = (wagon: SpeedProfileWagon | undefined, index: number): string => {
@@ -842,6 +889,7 @@ const renderSpeedProfiles = (rawProfiles: SpeedProfileResponseItem[]) => {
 const renderRunningTimes = (rawRunningTimes: RunningTimeResponseItem[]) => {
     const nextTimeCurveData: TimeCurveData[] = []
     const nextTimeTabs: CurveTab[] = []
+    const seriesNameBySequence = new Map<number, string>()
 
     rawRunningTimes.forEach((rawRunningTime, index) => {
         const positionList = toNumericList(rawRunningTime.positionList)
@@ -870,10 +918,68 @@ const renderRunningTimes = (rawRunningTimes: RunningTimeResponseItem[]) => {
             name: seriesName,
             label: getSpeedProfileLabel(rawRunningTime.wagon, index)
         })
+
+        const sequence = Number(rawRunningTime.wagon?.sequence)
+        if (Number.isFinite(sequence)) {
+            seriesNameBySequence.set(sequence, seriesName)
+        }
     })
 
     timeCurveData.value = nextTimeCurveData
     timeTabs.value = nextTimeTabs
+    return seriesNameBySequence
+}
+
+const renderHeadwayAnnotations = (
+    rawIntervals: HeadwayIntervalResponseItem[],
+    seriesNameBySequence: Map<number, string>
+) => {
+    const nextHeadwayAnnotations: TimeHeadwayAnnotation[] = []
+
+    rawIntervals.forEach((rawInterval, index) => {
+        const frontSequence = Number(rawInterval.frontSequence)
+        const rearSequence = Number(rawInterval.rearSequence)
+        const startX = Number(rawInterval.startX)
+        const endX = Number(rawInterval.endX)
+        const frontExitTime = Number(rawInterval.frontExitTime)
+        const rearEnterTime = Number(rawInterval.rearEnterTime)
+        const headway = Number(rawInterval.headway)
+
+        if (
+            !Number.isFinite(frontSequence) ||
+            !Number.isFinite(rearSequence) ||
+            !Number.isFinite(startX) ||
+            !Number.isFinite(endX) ||
+            !Number.isFinite(frontExitTime) ||
+            !Number.isFinite(rearEnterTime) ||
+            !Number.isFinite(headway)
+        ) {
+            return
+        }
+
+        const frontSeriesName = seriesNameBySequence.get(frontSequence)
+        const rearSeriesName = seriesNameBySequence.get(rearSequence)
+        if (!frontSeriesName || !rearSeriesName) {
+            return
+        }
+
+        const equipmentKey = rawInterval.equipmentID || 'checkpoint'
+        nextHeadwayAnnotations.push({
+            id: `${frontSequence}-${rearSequence}-${equipmentKey}-${startX}-${endX}-${index}`,
+            frontSeriesName,
+            rearSeriesName,
+            frontSequence,
+            rearSequence,
+            equipmentID: rawInterval.equipmentID || '',
+            startX,
+            endX,
+            frontExitTime,
+            rearEnterTime,
+            headway
+        })
+    })
+
+    headwayAnnotations.value = nextHeadwayAnnotations
 }
 
 const calculateAndRenderSpeedProfiles = async () => {
@@ -900,6 +1006,7 @@ const calculateAndRenderRunningTimes = async () => {
     if (!props.selectedInstanceId || !selectedHeadwayCheckSchemeID.value) {
         timeCurveData.value = []
         timeTabs.value = []
+        headwayAnnotations.value = []
         return
     }
 
@@ -910,8 +1017,10 @@ const calculateAndRenderRunningTimes = async () => {
         }
     })
 
-    const runningTimeItems = extractRunningTimeItems(response.data)
-    renderRunningTimes(runningTimeItems)
+    const payload = response.data
+    const runningTimeItems = extractRunningTimeItems(payload)
+    const seriesNameBySequence = renderRunningTimes(runningTimeItems)
+    renderHeadwayAnnotations(extractHeadwayIntervals(payload), seriesNameBySequence)
 }
 
 const handleExecuteHeadwayCheck = async () => {
@@ -1015,6 +1124,11 @@ watch(() => props.selectedInstanceId, (val) => {
         humpCalculationsRaw.value = []
         humpCalculationsByScheme.value = {}
         headwaySchemeManagerRows.value = []
+        velocityCurveData.value = []
+        velocityTabs.value = []
+        timeCurveData.value = []
+        timeTabs.value = []
+        headwayAnnotations.value = []
         showHeadwaySchemeManager.value = false
         return
     }
@@ -1106,6 +1220,20 @@ interface TimeCurveData {
     data: TimePoint[]
 }
 
+interface TimeHeadwayAnnotation {
+    id: string
+    frontSeriesName: string
+    rearSeriesName: string
+    frontSequence: number
+    rearSequence: number
+    equipmentID: string
+    startX: number
+    endX: number
+    frontExitTime: number
+    rearEnterTime: number
+    headway: number
+}
+
 interface CurveTab {
     name: string
     label: string
@@ -1113,6 +1241,13 @@ interface CurveTab {
 
 const velocityCurveData = ref<VelocityCurveData[]>([])
 const timeCurveData = ref<TimeCurveData[]>([])
+const headwayAnnotations = ref<TimeHeadwayAnnotation[]>([])
+const visibleHeadwayAnnotations = computed(() => {
+    const visibleSeries = new Set(timeCurveData.value.map(curve => curve.seriesName))
+    return headwayAnnotations.value.filter(annotation =>
+        visibleSeries.has(annotation.frontSeriesName) && visibleSeries.has(annotation.rearSeriesName)
+    )
+})
 
 // 更新容器宽度
 const updateContainerWidth = () => {

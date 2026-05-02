@@ -167,12 +167,10 @@ namespace SwitchYard.Hump
                 distanceToFisrtWagon += hcWagon.EnergyCalculationParams.Wagon?.Length / 2 ?? 0;
                 var rollingStartTime = distanceToFisrtWagon / scheme.WagonVelocityOnTop;
                 distanceToFisrtWagon += hcWagon.EnergyCalculationParams.Wagon?.Length / 2 ?? 0;
+                var speedProfile = SpeedProfileGenerator.Generate(hcWagon, flatLayout, slopeLayout);
 
                 foreach (var cp in checkPointList)
                 {
-                    // 计算速度曲线
-                    var speedProfile = SpeedProfileGenerator.Generate(hcWagon, flatLayout, slopeLayout);
-
                     // 计算至检算点的时间
                     var enterTime = CalculateCumulativeTime(speedProfile, cp.StartX);
                     var exitTime = CalculateCumulativeTime(speedProfile, cp.EndX);
@@ -201,7 +199,6 @@ namespace SwitchYard.Hump
 
             return data;
         }
-
         private static double CalculateCumulativeTime(HeadwayCheckWagonSpeedProfile speedProfile, double x)
         {
             double cumulativeTime = 0;
@@ -258,6 +255,11 @@ namespace SwitchYard.Hump
 
     public class HeadwayCheckRunningTime
     {
+        private static (CheckPointTypes Type, string EquipmentID, double StartX, double EndX) GetCheckPointKey(HeadwayCheckPoint checkPoint)
+        {
+            return (checkPoint.Type, checkPoint.EquipmentID ?? string.Empty, checkPoint.StartX, checkPoint.EndX);
+        }
+
         /// <summary>
         /// 驼峰实例ID
         /// </summary>
@@ -318,6 +320,74 @@ namespace SwitchYard.Hump
             }
         }
 
+        public List<HeadwayCheckAdjacentInterval> AdjacentIntervals
+        {
+            get
+            {
+                if (CheckPointDatas == null || CheckPointDatas.Count == 0)
+                {
+                    return new List<HeadwayCheckAdjacentInterval>();
+                }
+
+                var wagonDatas = CheckPointDatas
+                    .GroupBy(d => d.HeadwayCheckWagon.Sequence)
+                    .Select(g => new
+                    {
+                        Sequence = g.Key,
+                        Wagon = g.First().HeadwayCheckWagon,
+                        Datas = g.OrderBy(d => d.HeadwayCheckPoint.StartX).ToList()
+                    })
+                    .OrderBy(x => x.Sequence)
+                    .ToList();
+
+                var intervals = new List<HeadwayCheckAdjacentInterval>();
+
+                for (int i = 0; i < wagonDatas.Count - 1; i++)
+                {
+                    var frontWagon = wagonDatas[i];
+                    var rearWagon = wagonDatas[i + 1];
+                    var rearDataByCheckPoint = rearWagon.Datas
+                        .GroupBy(d => GetCheckPointKey(d.HeadwayCheckPoint))
+                        .ToDictionary(g => g.Key, g => g.First());
+
+                    foreach (var frontData in frontWagon.Datas)
+                    {
+                        var checkPoint = frontData.HeadwayCheckPoint;
+                        if (Math.Abs(checkPoint.EndX - checkPoint.StartX) <= 1e-9)
+                        {
+                            continue;
+                        }
+
+                        var key = GetCheckPointKey(checkPoint);
+                        if (!rearDataByCheckPoint.TryGetValue(key, out var rearData))
+                        {
+                            continue;
+                        }
+
+                        intervals.Add(new HeadwayCheckAdjacentInterval
+                        {
+                            FrontSequence = frontWagon.Sequence,
+                            RearSequence = rearWagon.Sequence,
+                            FrontHumpCalculationID = frontWagon.Wagon.HumpCalculationID,
+                            RearHumpCalculationID = rearWagon.Wagon.HumpCalculationID,
+                            CheckPointType = checkPoint.Type,
+                            EquipmentID = checkPoint.EquipmentID,
+                            StartX = checkPoint.StartX,
+                            EndX = checkPoint.EndX,
+                            FrontExitTime = frontData.ExitTime,
+                            RearEnterTime = rearData.EnterTime,
+                            Headway = rearData.EnterTime - frontData.ExitTime
+                        });
+                    }
+                }
+
+                return intervals
+                    .OrderBy(x => x.RearSequence)
+                    .ThenBy(x => x.StartX)
+                    .ToList();
+            }
+        }
+
         /// <summary>
         /// 检算点列表
         /// </summary>
@@ -330,6 +400,21 @@ namespace SwitchYard.Hump
         public HeadwayCheckWagon Wagon { get; set; }
         public List<double> PositionList { get; set; } = new List<double>();
         public List<double> RunningTimeList { get; set; } = new List<double>();
+    }
+
+    public class HeadwayCheckAdjacentInterval
+    {
+        public int FrontSequence { get; set; }
+        public int RearSequence { get; set; }
+        public string FrontHumpCalculationID { get; set; }
+        public string RearHumpCalculationID { get; set; }
+        public CheckPointTypes CheckPointType { get; set; }
+        public string EquipmentID { get; set; }
+        public double StartX { get; set; }
+        public double EndX { get; set; }
+        public double FrontExitTime { get; set; }
+        public double RearEnterTime { get; set; }
+        public double Headway { get; set; }
     }
 
     public class HeadwayCheckRunningTimeData
