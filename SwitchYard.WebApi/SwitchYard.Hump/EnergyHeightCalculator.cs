@@ -44,20 +44,30 @@ namespace SwitchYard.Hump
                     continue;
 
                 var retarder = flatLayout.RetarderList.FirstOrDefault(r => r.ID == rs.RetarderID);
-                if (retarder != null && retarder.BindingPositionSegment.StartPosition.X <= x)
+                var segment = retarder?.BindingPositionSegment;
+                var startX = segment?.StartPosition?.X;
+                var endX = segment?.EndPosition?.X;
+                if (startX == null || endX == null)
                 {
-                    var segLength = retarder.BindingPositionSegment.Length;
-                    if (segLength <= 0)
-                    {
-                        continue;
-                    }
-                    var lengthRate = Math.Min(1, Math.Max(0, (x - retarder.BindingPositionSegment.StartPosition.X) / segLength));
-                    var retarderEnergyHeight = rs.TotalEnergyHeight*rs.Output*lengthRate;
+                    continue;
+                }
 
-                    if (double.IsFinite(retarderEnergyHeight))
-                    {
-                        totalEffectiveEnergyHeight += retarderEnergyHeight;
-                    }
+                var entryX = Math.Min(startX.Value, endX.Value);
+                var exitX = Math.Max(startX.Value, endX.Value);
+                if (x < entryX)
+                {
+                    continue;
+                }
+
+                var retarderSpan = exitX - entryX;
+                var lengthRate = retarderSpan <= 0
+                    ? 1.0
+                    : Math.Min(1, Math.Max(0, (x - entryX) / retarderSpan));
+                var retarderEnergyHeight = rs.TotalEnergyHeight * rs.Output * lengthRate;
+
+                if (double.IsFinite(retarderEnergyHeight))
+                {
+                    totalEffectiveEnergyHeight += retarderEnergyHeight;
                 }
             }
 

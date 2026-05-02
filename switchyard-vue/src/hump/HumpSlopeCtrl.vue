@@ -918,7 +918,15 @@ const retarderBreakingHeightLabels = computed<RetarderBreakingHeightLabel[]>(() 
         return [];
     }
 
-    const breakingSeries: CurveSamplePoint[] = props.breakingEnergyHeightData
+    const breakingEnergySeries: CurveSamplePoint[] = props.breakingEnergyHeightData
+        .filter(dataPoint => dataPoint.display && Number.isFinite(dataPoint.x))
+        .map(dataPoint => ({
+            x: dataPoint.x,
+            value: dataPoint.breakingEnergyHeight
+        }))
+        .filter(point => Number.isFinite(point.value))
+        .sort((a, b) => a.x - b.x);
+    const breakingDisplaySeries: CurveSamplePoint[] = props.breakingEnergyHeightData
         .filter(dataPoint => dataPoint.display && Number.isFinite(dataPoint.x))
         .map(dataPoint => ({
             x: dataPoint.x,
@@ -927,7 +935,7 @@ const retarderBreakingHeightLabels = computed<RetarderBreakingHeightLabel[]>(() 
         .filter(point => Number.isFinite(point.value))
         .sort((a, b) => a.x - b.x);
 
-    if (breakingSeries.length === 0) return [];
+    if (breakingEnergySeries.length === 0) return [];
 
     return retarderList.map((retarder, index) => {
         const segmentId = retarder?.bindingPositionSegmentID ?? retarder?.bindingPositionSegment?.id;
@@ -937,13 +945,15 @@ const retarderBreakingHeightLabels = computed<RetarderBreakingHeightLabel[]>(() 
         const endX = getFlatPositionX(segment?.endPositionID);
         if (startX === null || endX === null) return null;
 
-        const startHeight = interpolateSeriesValue(breakingSeries, startX);
-        const endHeight = interpolateSeriesValue(breakingSeries, endX);
-        if (startHeight === null || endHeight === null) return null;
+        const startHeight = interpolateSeriesValue(breakingEnergySeries, startX);
+        const endHeight = interpolateSeriesValue(breakingEnergySeries, endX);
+        const startDisplayHeight = interpolateSeriesValue(breakingDisplaySeries, startX);
+        const endDisplayHeight = interpolateSeriesValue(breakingDisplaySeries, endX);
+        if (startHeight === null || endHeight === null || startDisplayHeight === null || endDisplayHeight === null) return null;
 
         const heightDiff = Math.round(Math.abs(startHeight - endHeight) * 1000) / 1000;
         const midX = (startX + endX) / 2;
-        const midY = (startHeight + endHeight) / 2;
+        const midY = (startDisplayHeight + endDisplayHeight) / 2;
 
         return {
             key: `retarder-breaking-${retarder?.id ?? segmentId ?? index}`,
