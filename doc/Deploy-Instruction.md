@@ -67,6 +67,49 @@ sudo journalctl -u switchyard-api -f
 - 建议在 API 前面放置 Nginx、Caddy 或 Apache 以提供 TLS 和公网访问
 - 除非显式覆盖，否则课程资源默认位于 `/data/switchyardvid`
 
+## 手动调试启动
+
+如果你想不通过 `systemd`，直接在工作目录中手动启动服务，可以这样做：
+
+1. 进入发布目录。
+
+```bash
+cd /opt/switchyard/api
+```
+
+2. 如果正式服务正在运行，先停掉它，避免占用默认端口。
+
+```bash
+sudo systemctl stop switchyard-api
+```
+
+3. 加载生产环境变量，然后手动启动应用。
+
+```bash
+set -a
+source /etc/switchyard/api.env
+set +a
+dotnet SwitchYard.Service.dll
+```
+
+如果你只是想临时调试，但不想停掉正式服务，可以改用其他端口：
+
+```bash
+cd /opt/switchyard/api
+set -a
+source /etc/switchyard/api.env
+set +a
+export WebApi__Hosts__0=http://127.0.0.1:5033
+export WebApi__Hosts__1=
+dotnet SwitchYard.Service.dll
+```
+
+调试结束后，如果需要恢复托管方式，可以重新启动服务：
+
+```bash
+sudo systemctl start switchyard-api
+```
+
 ## 更新已有部署
 
 ```bash
