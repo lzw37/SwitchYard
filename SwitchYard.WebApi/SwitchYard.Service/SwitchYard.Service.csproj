@@ -31,4 +31,12 @@
     </Content>
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="..\..\scripts\deploy\**\*">
+      <Link>scripts\deploy\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+
 </Project>
