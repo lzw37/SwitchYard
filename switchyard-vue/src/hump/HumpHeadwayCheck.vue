@@ -57,7 +57,10 @@
             <HumpVelocityCurve ref="velocityCurveRef" :velocity-curve-data="velocityCurveData"
                 :velocity-tabs="velocityTabs" :chart-width="chartWidth" :chart-height="chartHeight"
                 :margin-left="marginLeft" :margin-right="marginRight" :margin-top="marginTop"
-                :margin-bottom="marginBottom" :fullscreen-chart="fullscreenChart" @remove-tab="handleRemoveVelocityTab"
+                :margin-bottom="marginBottom" :fullscreen-chart="fullscreenChart"
+                :selected-instance-id="props.selectedInstanceId" :selected-slope-line-id="selectedSlopeLineID"
+                :selected-hump-scheme-id="selectedHumpSchemeID"
+                @remove-tab="handleRemoveVelocityTab"
                 @toggle-fullscreen="toggleFullscreen('velocity')" />
 
             <!-- 时间-距离曲线 -->
@@ -66,7 +69,8 @@
                 :chart-width="chartWidth" :chart-height="chartHeight" :margin-left="marginLeft"
                 :margin-right="marginRight" :margin-top="marginTop" :margin-bottom="marginBottom"
                 :selected-instance-id="props.selectedInstanceId" :selected-slope-line-id="selectedSlopeLineID"
-                :selected-hump-scheme-id="selectedHumpSchemeID" :fullscreen-chart="fullscreenChart"
+                :selected-hump-scheme-id="selectedHumpSchemeID"
+                :fullscreen-chart="fullscreenChart"
                 @remove-tab="handleRemoveTimeTab" @toggle-fullscreen="toggleFullscreen('time')" />
         </div>
 

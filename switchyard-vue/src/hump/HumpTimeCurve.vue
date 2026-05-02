@@ -30,11 +30,28 @@
                         :y2="chartHeight - marginBottom" />
                     <line class="y-axis" :x1="marginLeft" :x2="marginLeft" :y1="marginTop"
                         :y2="chartHeight - marginBottom" />
+                    <g v-for="(tick, index) in xTicks" :key="`x-tick-${index}`">
+                        <line class="axis-tick" :x1="tick.x" :x2="tick.x" :y1="chartHeight - marginBottom"
+                            :y2="chartHeight - marginBottom + 5" />
+                        <text class="axis-tick-label" :x="tick.x" :y="chartHeight - marginBottom + 20"
+                            text-anchor="middle">
+                            {{ tick.label }}
+                        </text>
+                    </g>
+                    <g v-for="(tick, index) in yTicks" :key="`y-tick-${index}`">
+                        <line class="axis-tick" :x1="plotLeft - 5" :x2="plotLeft" :y1="tick.y" :y2="tick.y" />
+                        <text class="axis-tick-label" :x="plotLeft - 10" :y="tick.y + 4" text-anchor="end">
+                            {{ tick.label }}
+                        </text>
+                    </g>
                     <text class="axis-label" :x="plotLeft + plotWidth / 2" :y="chartHeight - 5" text-anchor="middle">
                         {{ t('humpChart.axis.distance') }}
                     </text>
-                    <text class="axis-label" :x="15" :y="marginTop + (chartHeight - marginBottom - marginTop) / 2"
-                        text-anchor="middle" transform="rotate(-90, 15, 100)">{{ t('humpChart.axis.time') }}</text>
+                    <text class="axis-label" :x="verticalAxisLabelX" :y="verticalAxisLabelY" text-anchor="middle"
+                        dominant-baseline="middle"
+                        :transform="`rotate(-90, ${verticalAxisLabelX}, ${verticalAxisLabelY})`">
+                        {{ t('humpChart.axis.time') }}
+                    </text>
                 </g>
                 <g class="time-curves">
                     <polyline v-for="curve in timeCurveData" :key="curve.seriesName"
@@ -46,11 +63,10 @@
                     </g>
                 </g>
                 <g class="grid-lines">
-                    <line v-for="i in 5" :key="i" class="grid-line-h" :x1="plotLeft" :x2="plotRight"
-                        :y1="marginTop + (chartHeight - marginBottom - marginTop) * i / 5"
-                        :y2="marginTop + (chartHeight - marginBottom - marginTop) * i / 5" />
-                    <line v-for="i in 6" :key="i" class="grid-line-v" :x1="plotLeft + plotWidth * i / 6"
-                        :x2="plotLeft + plotWidth * i / 6" :y1="marginTop" :y2="chartHeight - marginBottom" />
+                    <line v-for="(tick, index) in yTicks" :key="`grid-y-${index}`" class="grid-line-h" :x1="plotLeft"
+                        :x2="plotRight" :y1="tick.y" :y2="tick.y" />
+                    <line v-for="(tick, index) in xTicks" :key="`grid-x-${index}`" class="grid-line-v" :x1="tick.x"
+                        :x2="tick.x" :y1="marginTop" :y2="chartHeight - marginBottom" />
                 </g>
                 <g class="headway-annotations">
                     <g v-for="annotation in renderedHeadwayAnnotations" :key="annotation.id" class="headway-annotation"
@@ -62,12 +78,18 @@
                     </g>
                 </g>
             </svg>
-            <hump-slope-sketch-block v-model:slope-layout="slopeLayout" v-if="fullscreenChart === 'time'"
-                :global-scale-x="sharedScaleX" :global-min-x="sharedXExtent.min" :global-left-margin="plotLeft"
-                :global-domain-span="sharedXExtent.span" />
-            <hump-layout-ctrl v-model:flat-layout="flatLayout" v-if="fullscreenChart === 'time'"
-                :global-scale-x="sharedScaleX" :global-min-x="sharedXExtent.min" :global-left-margin="plotLeft"
-                :global-domain-span="sharedXExtent.span" />
+            <div v-if="showFullscreenAuxLayouts" class="fullscreen-aux-layouts">
+                <div v-if="showFullscreenSlopeSketch" class="fullscreen-slope-sketch">
+                    <HumpSlopeSketchBlock :slope-layout="slopeLayout" :global-scale-x="sharedScaleX"
+                        :global-min-x="sharedXExtent.min" :global-left-margin="plotLeft"
+                        :global-domain-span="sharedXExtent.span" />
+                </div>
+                <div v-if="showFullscreenFlatLayout" class="fullscreen-flat-layout">
+                    <HumpLayoutCtrl :flat-layout="flatLayout" :is-toolbar-display="false" style="height: auto"
+                        :global-scale-x="sharedScaleX" :global-min-x="sharedXExtent.min" :global-left-margin="plotLeft"
+                        :global-domain-span="sharedXExtent.span" />
+                </div>
+            </div>
         </div>
     </div>
 </template>
@@ -75,13 +97,13 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import axios from '@/utils/axios'
 import HumpSlopeSketchBlock from './HumpSlopeSketchBlock.vue'
 import HumpLayoutCtrl from './HumpLayoutCtrl.vue'
-import axios from '@/utils/axios'
-import { FlatLayout, SlopeLayout, CurveDirections } from './humplayoutctrl';
+import { CurveDirections, FlatLayout, SlopeLayout } from './humplayoutctrl'
 
-const slopeLayout = ref<SlopeLayout | null>(null);
-const flatLayout = ref<FlatLayout | null>(null);
+const slopeLayout = ref<SlopeLayout | null>(null)
+const flatLayout = ref<FlatLayout | null>(null)
 
 interface TimePoint {
     x: number
@@ -110,6 +132,12 @@ interface HeadwayAnnotation {
 
 interface TimeTab {
     name: string
+    label: string
+}
+
+interface AxisTick {
+    x: number
+    y: number
     label: string
 }
 
@@ -166,6 +194,12 @@ const effectiveChartWidth = computed(() => {
 const plotLeft = computed(() => props.marginLeft)
 const plotRight = computed(() => Math.max(plotLeft.value + 1, effectiveChartWidth.value - props.marginRight))
 const plotWidth = computed(() => Math.max(1, plotRight.value - plotLeft.value))
+const plotHeight = computed(() => Math.max(1, props.chartHeight - props.marginTop - props.marginBottom))
+const verticalAxisLabelX = computed(() => Math.max(16, plotLeft.value - 42))
+const verticalAxisLabelY = computed(() => props.marginTop + plotHeight.value / 2)
+const showFullscreenAuxLayouts = computed(() => props.fullscreenChart === 'time' && (!!slopeLayout.value || !!flatLayout.value))
+const showFullscreenSlopeSketch = computed(() => props.fullscreenChart === 'time' && !!slopeLayout.value)
+const showFullscreenFlatLayout = computed(() => props.fullscreenChart === 'time' && !!flatLayout.value)
 
 const timeXValues = computed(() => {
     return props.timeCurveData
@@ -270,13 +304,51 @@ const getTimeX = (x: number): number => {
 }
 
 const getTimeY = (time: number): number => {
-    const chartAreaHeight = props.chartHeight - props.marginTop - props.marginBottom
-    return props.chartHeight - props.marginBottom - (time / timeMaxTime.value) * chartAreaHeight
+    return props.chartHeight - props.marginBottom - (time / timeMaxTime.value) * plotHeight.value
 }
 
 const getTimePolylinePoints = (data: TimePoint[]): string => {
     return data.map(point => `${getTimeX(point.x)},${getTimeY(point.time)}`).join(' ')
 }
+
+const formatAxisTickValue = (value: number, fractionDigits: number) => {
+    if (!Number.isFinite(value)) return ''
+    const fixedValue = value.toFixed(fractionDigits)
+    return fractionDigits > 0 ? fixedValue.replace(/\.?0+$/, '') : fixedValue
+}
+
+const xTicks = computed<AxisTick[]>(() => {
+    const count = 6
+    const ticks: AxisTick[] = []
+
+    for (let i = 0; i <= count; i++) {
+        const ratio = i / count
+        ticks.push({
+            x: plotLeft.value + ratio * plotWidth.value,
+            y: 0,
+            label: formatAxisTickValue(sharedXExtent.value.min + ratio * sharedXExtent.value.span, 0)
+        })
+    }
+
+    return ticks
+})
+
+const yTicks = computed<AxisTick[]>(() => {
+    const count = 5
+    const ticks: AxisTick[] = []
+    const digits = timeMaxTime.value >= 100 ? 0 : timeMaxTime.value >= 10 ? 1 : 2
+
+    for (let i = 0; i <= count; i++) {
+        const ratio = i / count
+        ticks.push({
+            x: 0,
+            y: props.chartHeight - props.marginBottom - ratio * plotHeight.value,
+            label: formatAxisTickValue(ratio * timeMaxTime.value, digits)
+        })
+    }
+
+    return ticks
+})
 
 const formatHeadwayLabel = (headway: number): string => {
     if (!Number.isFinite(headway)) return ''
@@ -334,18 +406,18 @@ function loadSlopeLayout() {
         slopeLayout.value = null
         return
     }
-    axios.get(`/Hump/GetSlopeLayout`, {
+
+    axios.get('/Hump/GetSlopeLayout', {
         params: {
             instanceID: props.selectedInstanceId,
             humpSchemeID: props.selectedHumpSchemeId
         }
     }).then(response => {
-        if (response.data) {
-            slopeLayout.value = response.data as SlopeLayout;
-        }
+        slopeLayout.value = response.data || null
     }).catch(error => {
-        console.error('Failed to load slope layout data:', error);
-    });
+        slopeLayout.value = null
+        console.error('Failed to load slope layout data:', error)
+    })
 }
 
 function loadFlatLayout() {
@@ -354,26 +426,24 @@ function loadFlatLayout() {
         return
     }
 
-    axios.get(`/hump/getflatlayout`, {
+    axios.get('/Hump/GetFlatLayout', {
         params: {
             instanceID: props.selectedInstanceId,
             slopeLineID: props.selectedSlopeLineId
         }
     }).then(response => {
-        if (response.data) {
-            flatLayout.value = response.data
-            if (flatLayout.value?.positionSegmentList) {
-                flatLayout.value.positionSegmentList.forEach(seg => {
-                    if (seg.curveDegree === 0) {
-                        seg.curveDirection = CurveDirections.None
-                    }
-                })
-            }
-            console.log('Flat layout data loaded:', flatLayout.value)
+        flatLayout.value = response.data || null
+        if (flatLayout.value?.positionSegmentList) {
+            flatLayout.value.positionSegmentList.forEach(seg => {
+                if (seg.curveDegree === 0) {
+                    seg.curveDirection = CurveDirections.None
+                }
+            })
         }
     }).catch(error => {
-        console.error('Failed to load flat layout data:', error);
-    });
+        flatLayout.value = null
+        console.error('Failed to load flat layout data:', error)
+    })
 }
 
 onMounted(() => {
@@ -469,8 +539,10 @@ const { t } = useI18n()
     padding: 16px;
     overflow-x: hidden;
     overflow-y: auto;
-    align-items: center;
-    justify-content: center;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 14px;
     color: #9ca3af;
     font-size: 12px;
 }
@@ -484,6 +556,7 @@ const { t } = useI18n()
     max-width: 100%;
     border: 1px solid #e5e7eb;
     border-radius: 4px;
+    display: block;
 }
 
 .chart-fullscreen {
@@ -549,6 +622,18 @@ const { t } = useI18n()
     font-family: system-ui;
 }
 
+.curve-chart .axis-tick {
+    stroke: #4b5563;
+    stroke-width: 1;
+}
+
+.curve-chart .axis-tick-label {
+    font-size: 11px;
+    fill: #6b7280;
+    font-family: system-ui;
+    user-select: none;
+}
+
 .time-curves polyline {
     stroke-linejoin: round;
     stroke-linecap: round;
@@ -588,5 +673,22 @@ const { t } = useI18n()
 
 .headway-annotation--conflict text {
     fill: #b91c1c;
+}
+
+.fullscreen-aux-layouts {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.fullscreen-slope-sketch,
+.fullscreen-flat-layout {
+    padding-top: 8px;
+    border-top: 1px solid #e5e7eb;
+}
+
+.fullscreen-slope-sketch :deep(.sketch-scroll-container),
+.fullscreen-flat-layout :deep(.flatlayout-root) {
+    width: 100%;
 }
 </style>

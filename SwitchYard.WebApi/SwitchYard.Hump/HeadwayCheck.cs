@@ -81,16 +81,23 @@ namespace SwitchYard.Hump
     /// </summary>
     public static class HeadwayChecker
     {
+        private const double RunningTimeSpaceStepSize = 1.0;
+
         private static List<HeadwayCheckPoint> GenerateCheckPointList(FlatLayout flatLayout)
         {
             var checkPointList = new List<HeadwayCheckPoint>();
+            var positionXList = flatLayout?.PositionList?
+                .Select(p => p?.X ?? 0)
+                .ToList() ?? new List<double>();
+            var minX = positionXList.Count > 0 ? positionXList.Min() : 0;
+            var maxX = positionXList.Count > 0 ? positionXList.Max() : 0;
             // 生成检算点
 
             // 峰顶
             HeadwayCheckPoint humpTop = new HeadwayCheckPoint
             {
-                StartPosition = new HPosition() { X = flatLayout.PositionList.FirstOrDefault()?.X??0 },
-                EndPosition = new HPosition() { X = flatLayout.PositionList.FirstOrDefault()?.X ?? 0 },
+                StartPosition = new HPosition() { X = minX },
+                EndPosition = new HPosition() { X = minX },
                 Type = CheckPointTypes.Top,
                 EquipmentID = "Top",
             };
@@ -132,8 +139,8 @@ namespace SwitchYard.Hump
             // 计算点
             HeadwayCheckPoint humpEnd = new HeadwayCheckPoint
             {
-                StartPosition = new HPosition() { X = flatLayout.PositionList.LastOrDefault()?.X ?? 0 },
-                EndPosition = new HPosition() { X = flatLayout.PositionList.LastOrDefault()?.X ?? 0 },
+                StartPosition = new HPosition() { X = maxX },
+                EndPosition = new HPosition() { X = maxX },
                 Type = CheckPointTypes.End,
                 EquipmentID = "End",
             };
@@ -167,7 +174,7 @@ namespace SwitchYard.Hump
                 distanceToFisrtWagon += hcWagon.EnergyCalculationParams.Wagon?.Length / 2 ?? 0;
                 var rollingStartTime = distanceToFisrtWagon / scheme.WagonVelocityOnTop;
                 distanceToFisrtWagon += hcWagon.EnergyCalculationParams.Wagon?.Length / 2 ?? 0;
-                var speedProfile = SpeedProfileGenerator.Generate(hcWagon, flatLayout, slopeLayout);
+                var speedProfile = SpeedProfileGenerator.Generate(hcWagon, flatLayout, slopeLayout, RunningTimeSpaceStepSize);
 
                 foreach (var cp in checkPointList)
                 {

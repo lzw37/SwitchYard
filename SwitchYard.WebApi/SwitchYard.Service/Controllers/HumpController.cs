@@ -2537,8 +2537,6 @@ namespace SwitchYard.Service.Controllers
                 var authResult = ValidateInstanceOwnershipOrFail(instanceID);
                 if (authResult != null) return authResult;
 
-                SpeedProfileGenerator.SpaceStepSize = spaceStepSize;
-
                 var scheme = LoadHeadwayCheckScheme(instanceID, headwayCheckSchemeID);
                 var flatLayout = LoadFlatLayout(instanceID, scheme.SlopeLineID);
                 var slopeLayout = LoadSlopeLayout(instanceID, scheme.HumpSchemeID);
@@ -2566,7 +2564,7 @@ namespace SwitchYard.Service.Controllers
                         RetarderStatusList = humpCalc.RetarderStatusList // TODO: 如果需要减速器状态，需要从HumpCalculation中获取RetarderStatusID并加载
                     };
 
-                    var speedProfile = SpeedProfileGenerator.Generate(hcWagon, flatLayout, slopeLayout);
+                    var speedProfile = SpeedProfileGenerator.Generate(hcWagon, flatLayout, slopeLayout, spaceStepSize);
 
                     speedProfileList.Add(speedProfile);
                 }

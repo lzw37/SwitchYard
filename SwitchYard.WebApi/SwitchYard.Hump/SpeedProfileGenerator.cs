@@ -21,25 +21,61 @@ namespace SwitchYard.Hump
         /// <param name="flatLayout"></param>
         /// <param name="slopeLayout"></param>
         /// <returns></returns>
-        public static HeadwayCheckWagonSpeedProfile Generate(HeadwayCheckWagon hcWagon, FlatLayout flatLayout, SlopeLayout slopeLayout)
+        public static HeadwayCheckWagonSpeedProfile Generate(
+            HeadwayCheckWagon hcWagon,
+            FlatLayout flatLayout,
+            SlopeLayout slopeLayout,
+            double? spaceStepSize = null)
         {
             var speedProfile = new HeadwayCheckWagonSpeedProfile() { Wagon = hcWagon};
-
-            double startX = Math.Max(flatLayout.PositionList.First().X,slopeLayout.PositionList.First().X);
-            double endX = Math.Min(flatLayout.PositionList.Last().X, slopeLayout.PositionList.Last().X);
-
-            for (double x = startX; x <= endX; x += SpaceStepSize)
+            var flatXs = flatLayout?.PositionList?.Select(p => p?.X ?? 0).ToList() ?? new List<double>();
+            var slopeXs = slopeLayout?.PositionList?.Select(p => p?.X ?? 0).ToList() ?? new List<double>();
+            if (flatXs.Count == 0 || slopeXs.Count == 0)
             {
+                return speedProfile;
+            }
+
+            double stepSize = spaceStepSize.HasValue && spaceStepSize.Value > 0
+                ? spaceStepSize.Value
+                : SpaceStepSize;
+            double startX = Math.Max(flatXs.Min(), slopeXs.Min());
+            double endX = Math.Min(flatXs.Max(), slopeXs.Max());
+
+            if (endX < startX)
+            {
+                return speedProfile;
+            }
+
+            void AppendSample(double x)
+            {
+                if (speedProfile.PositionList.Count > 0 &&
+                    Math.Abs(speedProfile.PositionList[^1] - x) <= 1e-9)
+                {
+                    return;
+                }
+
                 var kineticEnergyResult = HumpEnergyHeightCalculator.CalculateKineticEnergyHeight(flatLayout, slopeLayout, x, hcWagon.EnergyCalculationParams);
                 var velocity = kineticEnergyResult.Velocity;
                 speedProfile.PositionList.Add(x);
                 speedProfile.SpeedList.Add(velocity);
+            }
+
+            for (double x = startX; x <= endX + 1e-9; x += stepSize)
+            {
+                AppendSample(Math.Min(x, endX));
 
                 // 车辆已减速至 0，无法继续溜放，停止后续速度曲线计算
-                if (velocity <= 0)
+                if (speedProfile.SpeedList[^1] <= 0)
                 {
                     break;
                 }
+            }
+
+            if (speedProfile.PositionList.Count > 0 &&
+                speedProfile.PositionList[^1] < endX - 1e-9 &&
+                speedProfile.SpeedList[^1] > 0)
+            {
+                AppendSample(endX);
             }
 
             return speedProfile;
