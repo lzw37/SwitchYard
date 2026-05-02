@@ -305,14 +305,8 @@ namespace SwitchYard.Service.Controllers
         }
 
         [HttpPost(Name = "CopyHumpInstance")]
-        [Authorize(Roles = "Admin")]
         public IActionResult CopyHumpInstance([FromBody] CopyHumpInstanceRequest request)
         {
-            if (!IsCurrentUserAdmin())
-            {
-                return Forbid();
-            }
-
             if (request == null)
             {
                 return BadRequest("Invalid copy request.");
@@ -326,9 +320,43 @@ namespace SwitchYard.Service.Controllers
                 return BadRequest("Source instance ID and new instance name are required.");
             }
 
-            if (!TryNormalizeOwnerForPersistence(request.Owner, out var normalizedOwner, out var ownerError))
+            SetLogInstanceId(sourceInstanceID);
+
+            var username = User.Identity?.Name;
+            if (string.IsNullOrWhiteSpace(username))
             {
-                return BadRequest(ownerError);
+                return Unauthorized("Invalid user context.");
+            }
+
+            string normalizedOwner;
+            if (IsCurrentUserAdmin())
+            {
+                var ownerInput = request.Owner;
+                if (string.IsNullOrWhiteSpace(ownerInput))
+                {
+                    DBConnector dbConnector = DBConnector.GetDBConnector();
+                    var sourceInstance = (dbConnector.Query<HumpInstance>(
+                        "SELECT * FROM humpinstance WHERE ID = @id",
+                        new { id = sourceInstanceID }) ?? new List<HumpInstance>()).FirstOrDefault();
+                    if (sourceInstance == null)
+                    {
+                        return NotFound("Source instance not found.");
+                    }
+
+                    ownerInput = sourceInstance.Owner;
+                }
+
+                if (!TryNormalizeOwnerForPersistence(ownerInput, out normalizedOwner, out var ownerError))
+                {
+                    return BadRequest(ownerError);
+                }
+            }
+            else
+            {
+                var authResult = ValidateInstanceOwnershipOrFail(sourceInstanceID);
+                if (authResult != null) return authResult;
+
+                normalizedOwner = username;
             }
 
             var copyResult = _humpInstanceCopyService.CopyInstance(sourceInstanceID, newInstanceName, normalizedOwner);

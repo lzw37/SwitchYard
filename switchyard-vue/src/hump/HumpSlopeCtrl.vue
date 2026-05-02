@@ -128,6 +128,21 @@
                 <g class="cursor">
                     <line class="cursor-vline" :y1="marginTop" :y2="svgHeight - marginBottom" :x1="getX(cursorX)"
                         :x2="getX(cursorX)"></line>
+                    <g v-if="cursorSlopeInfo" class="cursor-slope-info">
+                        <circle class="cursor-slope-point" :cx="cursorSlopeInfo.pointX" :cy="cursorSlopeInfo.pointY"
+                            r="2"></circle>
+                        <rect class="cursor-slope-label-box" :x="cursorSlopeInfo.labelX" :y="cursorSlopeInfo.labelY"
+                            :width="cursorSlopeInfo.labelWidth" :height="cursorSlopeInfo.labelHeight" rx="4"
+                            ry="4"></rect>
+                        <text class="cursor-slope-label-text" :x="cursorSlopeInfo.textX"
+                            :y="cursorSlopeInfo.labelY + 14">
+                            X: {{ cursorSlopeInfo.xText }} m
+                        </text>
+                        <text class="cursor-slope-label-text" :x="cursorSlopeInfo.textX"
+                            :y="cursorSlopeInfo.labelY + 28">
+                            H: {{ cursorSlopeInfo.heightText }} m
+                        </text>
+                    </g>
                 </g>
             </svg>
         </div>
@@ -911,6 +926,81 @@ function formatKineticEnergyHeight(value: unknown): string {
     return numericValue.toFixed(3);
 }
 
+type SlopeSamplePoint = {
+    x: number
+    height: number
+}
+
+const slopeSamplePoints = computed<SlopeSamplePoint[]>(() => {
+    if (!Array.isArray(props.slopeLayout?.positionList)) return [];
+
+    return props.slopeLayout.positionList
+        .map((pos) => ({
+            x: Number(pos.x),
+            height: Number(pos.height)
+        }))
+        .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.height))
+        .sort((a, b) => a.x - b.x);
+});
+
+function getSlopeHeightAtX(x: number): number | null {
+    const points = slopeSamplePoints.value;
+    if (!Number.isFinite(x) || points.length === 0) return null;
+
+    const first = points[0];
+    const last = points[points.length - 1];
+    if (!first || !last || x < first.x || x > last.x) return null;
+
+    for (let i = 0; i < points.length - 1; i++) {
+        const current = points[i];
+        const next = points[i + 1];
+        if (!current || !next) continue;
+
+        if (Math.abs(x - current.x) < 1e-9) return current.height;
+        if (Math.abs(x - next.x) < 1e-9) return next.height;
+        if (x < current.x || x > next.x) continue;
+
+        const deltaX = next.x - current.x;
+        if (Math.abs(deltaX) < 1e-9) return current.height;
+
+        const ratio = (x - current.x) / deltaX;
+        return current.height + (next.height - current.height) * ratio;
+    }
+
+    return Math.abs(x - last.x) < 1e-9 ? last.height : null;
+}
+
+const cursorSlopeInfo = computed(() => {
+    const height = getSlopeHeightAtX(cursorX.value);
+    if (height === null) return null;
+
+    const labelWidth = 128;
+    const labelHeight = 36;
+    const pointX = getX(cursorX.value);
+    const pointY = getY(height);
+    const maxLabelX = svgWidth.value - marginRight.value - labelWidth;
+    const preferredRightX = pointX + 10;
+    const preferredLeftX = pointX - labelWidth - 10;
+    let labelX = preferredRightX <= maxLabelX ? preferredRightX : preferredLeftX;
+    labelX = Math.max(marginLeft.value, Math.min(labelX, maxLabelX));
+
+    const minLabelY = marginTop.value;
+    const maxLabelY = svgHeight.value - marginBottom.value - labelHeight;
+    const labelY = Math.max(minLabelY, Math.min(pointY - labelHeight - 10, maxLabelY));
+
+    return {
+        pointX,
+        pointY,
+        labelX,
+        labelY,
+        labelWidth,
+        labelHeight,
+        textX: labelX + 8,
+        xText: formatKineticEnergyHeight(cursorX.value),
+        heightText: formatKineticEnergyHeight(height)
+    };
+});
+
 const retarderBreakingHeightLabels = computed<RetarderBreakingHeightLabel[]>(() => {
     const retarderList = (props.flatLayout as any)?.retarderList as any[] | undefined;
     const segments = props.flatLayout?.positionSegmentList || [];
@@ -1178,6 +1268,32 @@ defineExpose({
     stroke-width: 1px;
     pointer-events: none;
     opacity: 0.4;
+}
+
+.cursor-slope-point {
+    fill: none;
+    opacity: 0.6;
+    stroke: #9a6700;
+    stroke-width: 1.5px;
+    pointer-events: none;
+}
+
+.cursor-slope-label-box {
+    fill: rgba(255, 250, 230, 0.96);
+    stroke: #d4a017;
+    opacity: 0.6;
+    stroke-width: 1px;
+    pointer-events: none;
+}
+
+.cursor-slope-label-text {
+    fill: #5b3b00;
+    opacity: 0.6;
+    font-size: 11px;
+    font-family: 'Consolas', 'Menlo', monospace;
+    dominant-baseline: middle;
+    pointer-events: none;
+    user-select: none;
 }
 
 .te {
