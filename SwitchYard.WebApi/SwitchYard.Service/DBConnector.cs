@@ -10,35 +10,48 @@ namespace SwitchYard.Service
 {
     public abstract class DBConnector
     {
+        public const string HumpDatabaseSectionName = "HumpDatabase";
+        public const string CapacityDatabaseSectionName = "CapacityDatabase";
+
         // Transaction support fields shared by connectors
         protected DbConnection? _transactionConnection;
         protected DbTransaction? _transaction;
         protected static IConfiguration? _configuration;
+        private readonly string _databaseSectionName;
+
+        protected DBConnector(string databaseSectionName = HumpDatabaseSectionName)
+        {
+            _databaseSectionName = NormalizeDatabaseSectionName(databaseSectionName);
+        }
+
+        protected string DatabaseSectionName => _databaseSectionName;
 
         public static void SetConfiguration(IConfiguration configuration)
         {
             _configuration = configuration;
         }
 
-        public static string GetConfiguredDatabaseType()
+        private static IConfiguration GetConfiguration()
         {
-            if (_configuration == null)
-            {
-                throw new InvalidOperationException("Database configuration has not been initialized.");
-            }
-
-            return _configuration["HumpDatabase:DatabaseType"] ?? "Sqllite";
+            return _configuration
+                ?? throw new InvalidOperationException("Database configuration has not been initialized.");
         }
 
-        public static bool IsSqlite()
+        public static string GetConfiguredDatabaseType(string databaseSectionName = HumpDatabaseSectionName)
         {
-            var dbType = GetConfiguredDatabaseType();
+            var configuration = GetConfiguration();
+            return configuration[GetConfigPath(databaseSectionName, "DatabaseType")] ?? "Sqllite";
+        }
+
+        public static bool IsSqlite(string databaseSectionName = HumpDatabaseSectionName)
+        {
+            var dbType = GetConfiguredDatabaseType(databaseSectionName);
             return dbType == "SQLite" || dbType == "Sqllite";
         }
 
-        public static bool IsMySql()
+        public static bool IsMySql(string databaseSectionName = HumpDatabaseSectionName)
         {
-            var dbType = GetConfiguredDatabaseType();
+            var dbType = GetConfiguredDatabaseType(databaseSectionName);
             return dbType == "MySQL" || dbType == "Mysql";
         }
 
@@ -114,20 +127,22 @@ namespace SwitchYard.Service
             }
         }
 
-        public static DBConnector GetDBConnector()
+        public static DBConnector GetDBConnector(string databaseSectionName = HumpDatabaseSectionName)
         {
-            var dbType = GetConfiguredDatabaseType();
+            var normalizedSectionName = NormalizeDatabaseSectionName(databaseSectionName);
+            var dbType = GetConfiguredDatabaseType(normalizedSectionName);
             if (dbType == "SQLite" || dbType == "Sqllite")
             {
-                return new SqlLiteConnector();
+                return new SqlLiteConnector(normalizedSectionName);
             }
             else if (dbType == "MySQL" || dbType == "Mysql")
             {
-                return new MysqlConnector();
+                return new MysqlConnector(normalizedSectionName);
             }
             else
             {
-                throw new NotSupportedException($"Database type '{dbType}' is not supported.");
+                throw new NotSupportedException(
+                    $"Database type '{dbType}' is not supported for configuration section '{normalizedSectionName}'.");
             }
         }
 
@@ -181,11 +196,30 @@ namespace SwitchYard.Service
                 _transactionConnection = null;
             }
         }
+
+        private static string NormalizeDatabaseSectionName(string? databaseSectionName)
+        {
+            return string.IsNullOrWhiteSpace(databaseSectionName)
+                ? HumpDatabaseSectionName
+                : databaseSectionName;
+        }
+
+        private static string GetConfigPath(string databaseSectionName, string configPath)
+        {
+            return $"{NormalizeDatabaseSectionName(databaseSectionName)}:{configPath}";
+        }
+
         private class SqlLiteConnector : DBConnector
         {
+            public SqlLiteConnector(string databaseSectionName)
+                : base(databaseSectionName)
+            {
+            }
+
             protected override DbConnection GetConnection()
             {
-                var path = _configuration["HumpDatabase:SqlliteConfig:DatabaseFile"];
+                var configuration = GetConfiguration();
+                var path = configuration[GetConfigPath(DatabaseSectionName, "SqlliteConfig:DatabaseFile")];
                 var conn = new SqliteConnection($"Data Source={path}");
                 return conn;
             }
@@ -193,27 +227,33 @@ namespace SwitchYard.Service
 
         private class MysqlConnector : DBConnector
         {
+            public MysqlConnector(string databaseSectionName)
+                : base(databaseSectionName)
+            {
+            }
+
             protected override DbConnection GetConnection()
             {
+                var configuration = GetConfiguration();
                 var connectionStringBuilder = new MySqlConnectionStringBuilder
                 {
-                    Server = _configuration["HumpDatabase:MysqlConfig:Host"],
-                    Port = (uint)_configuration.GetValue("HumpDatabase:MysqlConfig:Port", 3306),
-                    Database = _configuration["HumpDatabase:MysqlConfig:Database"],
-                    UserID = _configuration["HumpDatabase:MysqlConfig:Username"],
-                    Password = _configuration["HumpDatabase:MysqlConfig:Password"],
-                    CharacterSet = _configuration["HumpDatabase:MysqlConfig:CharSet"] ?? "utf8mb4",
-                    ConnectionTimeout = (uint)_configuration.GetValue("HumpDatabase:MysqlConfig:ConnectionTimeout", 15)
+                    Server = configuration[GetConfigPath(DatabaseSectionName, "MysqlConfig:Host")],
+                    Port = (uint)configuration.GetValue(GetConfigPath(DatabaseSectionName, "MysqlConfig:Port"), 3306),
+                    Database = configuration[GetConfigPath(DatabaseSectionName, "MysqlConfig:Database")],
+                    UserID = configuration[GetConfigPath(DatabaseSectionName, "MysqlConfig:Username")],
+                    Password = configuration[GetConfigPath(DatabaseSectionName, "MysqlConfig:Password")],
+                    CharacterSet = configuration[GetConfigPath(DatabaseSectionName, "MysqlConfig:CharSet")] ?? "utf8mb4",
+                    ConnectionTimeout = (uint)configuration.GetValue(GetConfigPath(DatabaseSectionName, "MysqlConfig:ConnectionTimeout"), 15)
                 };
 
-                var sslMode = _configuration["HumpDatabase:MysqlConfig:SslMode"];
+                var sslMode = configuration[GetConfigPath(DatabaseSectionName, "MysqlConfig:SslMode")];
                 if (!string.IsNullOrWhiteSpace(sslMode) &&
                     Enum.TryParse<MySqlSslMode>(sslMode, ignoreCase: true, out var parsedSslMode))
                 {
                     connectionStringBuilder.SslMode = parsedSslMode;
                 }
 
-                if (_configuration.GetValue<bool?>("HumpDatabase:MysqlConfig:AllowPublicKeyRetrieval") is bool allowPublicKeyRetrieval)
+                if (configuration.GetValue<bool?>(GetConfigPath(DatabaseSectionName, "MysqlConfig:AllowPublicKeyRetrieval")) is bool allowPublicKeyRetrieval)
                 {
                     connectionStringBuilder.AllowPublicKeyRetrieval = allowPublicKeyRetrieval;
                 }
