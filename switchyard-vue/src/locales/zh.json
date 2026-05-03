@@ -228,6 +228,7 @@
             "add": "添加",
             "edit": "编辑",
             "save": "保存",
+            "copy": "复制",
             "delete": "删除"
         },
         "update": "更新",
@@ -238,6 +239,9 @@
             "enterSlopeLineName": "请输入溜放线名称",
             "nameRequired": "名称不能为空",
             "slopeLineCreated": "溜放线创建成功",
+            "slopeLineCopied": "溜放线复制成功",
+            "copySlopeLineError": "复制溜放线失败",
+
             "createSlopeLineError": "创建溜放线失败",
             "deleteSlopeLineTitle": "删除溜放线",
             "deleteSlopeLineConfirm": "确定要删除溜放线 {name} 吗？此操作不可恢复。",
@@ -783,6 +787,7 @@
             "save": "保存",
             "cancel": "取消",
             "edit": "编辑",
+            "copy": "复制",
             "delete": "删除",
             "confirm": "确定",
             "deleteConfirm": "删除确认"
@@ -830,7 +835,9 @@
             "schemeNameRequired": "方案名称不能为空",
             "createSuccess": "方案创建成功",
             "updateSuccess": "方案更新成功",
-            "deleteSuccess": "方案删除成功"
+            "deleteSuccess": "方案删除成功",
+            "copySuccess": "方案复制成功",
+            "copyError": "复制方案失败"
         },
         "condition": {
             "wagonTypeRequired": "车辆类型不能为空",

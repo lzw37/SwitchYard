@@ -234,6 +234,7 @@
             "add": "Add",
             "edit": "Edit",
             "save": "Save",
+            "copy": "Copy",
             "delete": "Delete"
         },
         "update": "Update",
@@ -244,6 +245,9 @@
             "enterSlopeLineName": "Please enter slope line name",
             "nameRequired": "Name cannot be empty",
             "slopeLineCreated": "Slope line created successfully",
+            "slopeLineCopied": "Slope line copied successfully",
+            "copySlopeLineError": "Failed to copy slope line",
+
             "createSlopeLineError": "Failed to create slope line",
             "deleteSlopeLineTitle": "Delete Slope Line",
             "deleteSlopeLineConfirm": "Are you sure you want to delete slope line {name}? This action cannot be undone.",
@@ -789,6 +793,7 @@
             "save": "Save",
             "cancel": "Cancel",
             "edit": "Edit",
+            "copy": "Copy",
             "delete": "Delete",
             "confirm": "Confirm",
             "deleteConfirm": "Delete Confirmation"
@@ -836,7 +841,9 @@
             "schemeNameRequired": "Scheme name is required",
             "createSuccess": "Scheme created successfully",
             "updateSuccess": "Scheme updated successfully",
-            "deleteSuccess": "Scheme deleted successfully"
+            "deleteSuccess": "Scheme deleted successfully",
+            "copySuccess": "Scheme copied successfully",
+            "copyError": "Failed to copy scheme"
         },
         "condition": {
             "wagonTypeRequired": "Wagon type cannot be empty",

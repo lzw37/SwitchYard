@@ -282,6 +282,8 @@
                         <div v-else>
                             <el-button type="primary" size="small" @click="handleEditScheme(row, $index)">{{
                                 t('humpSlopeDesigner.buttons.edit') }}</el-button>
+                            <el-button type="success" size="small" @click="handleCopyScheme(row)">{{
+                                t('humpSlopeDesigner.buttons.copy') }}</el-button>
                             <el-button type="danger" size="small" @click="handleDeleteScheme(row)"
                                 :disabled="humpSchemes.length <= 1">{{ t('humpSlopeDesigner.buttons.delete')
                                 }}</el-button>
@@ -1710,6 +1712,27 @@ const handleDeleteScheme = async (scheme: HumpScheme) => {
 const handleCancelEdit = () => {
     editingIndex.value = -1
     editingScheme.value = { id: '', instanceID: '', name: '' }
+}
+
+const handleCopyScheme = async (scheme: HumpScheme) => {
+    if (!scheme.id) return
+
+    try {
+        tableLoading.value = true
+        const response = await axios.post('/Hump/CopyHumpScheme', {
+            SourceHumpSchemeID: scheme.id,
+            NewName: `${scheme.name}副本`
+        })
+        if (response.status === 200) {
+            await loadHumpSchemes()
+            ElMessage.success(t('humpSlopeDesigner.scheme.copySuccess'))
+        }
+    } catch (error) {
+        console.error('复制方案失败:', error)
+        ElMessage.error(t('humpSlopeDesigner.scheme.copyError'))
+    } finally {
+        tableLoading.value = false
+    }
 }
 
 // 计算条件管理相关方法

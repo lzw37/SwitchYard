@@ -45,6 +45,9 @@
                         <template v-else>
                             <el-button size="small" :disabled="scope.row._loading"
                                 @click="startEditSlopeLine(scope.row)">{{ t('hump.buttons.edit') }}</el-button>
+                            <el-button type="success" size="small" :loading="scope.row._loading"
+                                :disabled="scope.row._isNew"
+                                @click="copySlopeLineInManager(scope.row)">{{ t('hump.buttons.copy') }}</el-button>
                             <el-button type="danger" size="small" :loading="scope.row._loading"
                                 @click="removeSlopeLineInManager(scope.row, scope.$index)">{{ t('hump.buttons.delete')
                                 }}</el-button>
@@ -504,6 +507,26 @@ async function saveSlopeLineInManager(row: EditableSlopeLine) {
     } catch (error: any) {
         console.error('Failed to save slope line name:', error)
         ElMessage.error(row._isNew ? t('hump.messages.createSlopeLineError') : t('hump.messages.updateSlopeLineError'))
+    } finally {
+        row._loading = false
+    }
+}
+
+async function copySlopeLineInManager(row: EditableSlopeLine) {
+    if (!props.selectedInstanceId || row._isNew || !row.id) return
+
+    row._loading = true
+    try {
+        await axios.post('/Hump/CopySlopeLine', {
+            SourceSlopeLineID: row.id,
+            NewName: `${row.name}副本`
+        })
+        ElMessage.success(t('hump.messages.slopeLineCopied'))
+        await loadSlopeLines()
+        slopeLineEditList.value = buildSlopeLineEditRows(lines.value)
+    } catch (error: any) {
+        console.error('Failed to copy slope line:', error)
+        ElMessage.error(t('hump.messages.copySlopeLineError'))
     } finally {
         row._loading = false
     }
