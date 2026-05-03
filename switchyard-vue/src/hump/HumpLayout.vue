@@ -76,7 +76,7 @@
                                         style="margin-left:20px;" @click="addPosition">{{ t('hump.buttons.add')
                                         }}</el-button>
                                 </div>
-                                <el-table :data="flatLayout?.positionList || []" row-key="id" stripe :max-height="400"
+                                <el-table :data="flatLayout?.positionList || []" row-key="_rowKey" stripe :max-height="400"
                                     style="width: 100%">
                                     <el-table-column :label="t('hump.id')" width="100">
                                         <template #default="scope">
@@ -352,10 +352,28 @@ const ctrlRef = ref<InstanceType<typeof HumpLayoutCtrl> | null>(null)
 const flatLayout = ref<FlatLayout | null>(null)
 const globalCursorX = ref<number | undefined>(undefined)
 const isPositionListDirty = ref(false)
+let positionRowKeySeed = 0
 
 function dmsToDecimal(degrees: number, minutes: number, seconds: number) {
     const sign = degrees < 0 ? -1 : 1
     return sign * (Math.abs(degrees) + minutes / 60 + seconds / 3600)
+}
+
+function createPositionRowKey() {
+    positionRowKeySeed += 1
+    return `position-row-${positionRowKeySeed}`
+}
+
+function ensurePositionRowKeys(layout: FlatLayout) {
+    if (!layout.positionList) return layout
+
+    layout.positionList.forEach((position: any) => {
+        if (!position._rowKey) {
+            position._rowKey = createPositionRowKey()
+        }
+    })
+
+    return layout
 }
 
 const switchFrogNumberDefinitions: SwitchFrogNumberOption[] = [
@@ -842,7 +860,14 @@ async function insertPositionAfter(index: number) {
         const currentX = Number(current?.x ?? 0)
         const nextX = next !== undefined ? Number(next.x) : currentX + 1
         const newX = next !== undefined ? Math.round(((currentX + nextX) / 2) * 1000) / 1000 : Math.round(nextX * 1000) / 1000
-        list.splice(index + 1, 0, { id: newId, x: newX, height: 0, instanceID: props.selectedInstanceId ?? '' })
+        const newPosition: any = {
+            id: newId,
+            x: newX,
+            height: 0,
+            instanceID: props.selectedInstanceId ?? '',
+            _rowKey: createPositionRowKey()
+        }
+        list.splice(index + 1, 0, newPosition)
         isPositionListDirty.value = true
     } catch (error) {
         // 用户取消操作，不执行任何操作
@@ -861,7 +886,14 @@ function addPosition() {
         const currentX = lastPosition?.x ?? 0
         newX = Number(currentX) + 10
     }
-    list.push({ id: 'P', x: newX, height: 0, instanceID: props.selectedInstanceId ?? '' })
+    const newPosition: any = {
+        id: 'P',
+        x: newX,
+        height: 0,
+        instanceID: props.selectedInstanceId ?? '',
+        _rowKey: createPositionRowKey()
+    }
+    list.push(newPosition)
     isPositionListDirty.value = true
 }
 
@@ -1062,7 +1094,7 @@ function normalizeFlatLayoutResponse(data: FlatLayout | null | undefined): FlatL
         }
     }
 
-    return data
+    return ensurePositionRowKeys(data)
 }
 
 function loadFlatLayout() {
