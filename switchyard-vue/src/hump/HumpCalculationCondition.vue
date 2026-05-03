@@ -121,10 +121,12 @@ import axios from "../utils/axios";
 
 interface Props {
     selectedInstanceId?: string | null
+    activationKey?: number
 }
 
 const props = withDefaults(defineProps<Props>(), {
-    selectedInstanceId: null
+    selectedInstanceId: null,
+    activationKey: 0
 })
 
 // API模型接口
@@ -355,6 +357,28 @@ async function onInstanceChange() {
     }
 }
 
+async function refreshConditionOptionsOnActivate() {
+    if (!currentInstanceId.value) {
+        conditionsList.value = [];
+        return;
+    }
+
+    const previousConditionId = currentConditionId.value;
+    await fetchConditions(currentInstanceId.value);
+
+    if (!previousConditionId) {
+        return;
+    }
+
+    const matchedCondition = conditionsList.value.find(condition => condition.id === previousConditionId);
+    if (!matchedCondition) {
+        resetForm();
+        return;
+    }
+
+    currentConditionId.value = previousConditionId;
+}
+
 function onConditionChange() {
     if (!currentConditionId.value) {
         resetForm();
@@ -407,6 +431,14 @@ watch(currentInstanceId, async (newInstanceId) => {
         resetForm();
     }
 }, { immediate: true });
+
+watch(() => props.activationKey, () => {
+    if (!currentInstanceId.value) {
+        return;
+    }
+
+    void refreshConditionOptionsOnActivate();
+});
 </script>
 
 <style scoped lang="css">

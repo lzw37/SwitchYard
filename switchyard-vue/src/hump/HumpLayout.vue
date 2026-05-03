@@ -337,10 +337,12 @@ interface SwitchFrogNumberOption {
 
 interface Props {
     selectedInstanceId?: string | null
+    activationKey?: number
 }
 
 const props = withDefaults(defineProps<Props>(), {
-    selectedInstanceId: null
+    selectedInstanceId: null,
+    activationKey: 0
 })
 
 const { t } = useI18n()
@@ -419,6 +421,27 @@ async function loadSlopeLines() {
         console.error('Failed to load slope lines:', error)
         ElMessage.error(t('hump.messages.loadSlopeLinesError'))
         lines.value = []
+    }
+}
+
+async function refreshSlopeLineOptionsOnActivate() {
+    if (!props.selectedInstanceId) {
+        lines.value = []
+        selectedLine.value = null
+        flatLayout.value = null
+        return
+    }
+
+    const previousLineId = selectedLine.value
+    await loadSlopeLines()
+
+    if (slopeLineManagerVisible.value) {
+        slopeLineEditList.value = buildSlopeLineEditRows(lines.value)
+    }
+
+    if (previousLineId && !lines.value.some(line => line.id === previousLineId)) {
+        selectedLine.value = null
+        flatLayout.value = null
     }
 }
 
@@ -591,6 +614,14 @@ watch(selectedLine, (newValue) => {
         loadFlatLayout()
     }
 }, { immediate: true })
+
+watch(() => props.activationKey, () => {
+    if (!props.selectedInstanceId) {
+        return
+    }
+
+    void refreshSlopeLineOptionsOnActivate()
+})
 
 function updateGlobalCursorX(value: number) {
     globalCursorX.value = value

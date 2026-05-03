@@ -452,9 +452,11 @@ import { FlatLayout, SlopeLayout, CurveDirections } from './humplayoutctrl';
 // 定义 props
 interface Props {
     selectedInstanceId?: string | null
+    activationKey?: number
 }
 const props = withDefaults(defineProps<Props>(), {
-    selectedInstanceId: null
+    selectedInstanceId: null,
+    activationKey: 0
 })
 
 type HorizontalScrollSyncApi = {
@@ -1261,20 +1263,25 @@ const loadSlopeLines = async () => {
 }
 
 // 加载驼峰计算条件数据
-const loadHumpCalculations = async () => {
+const loadHumpCalculations = async (options: { preserveSelection?: boolean, reloadDropdowns?: boolean } = {}) => {
     if (!props.selectedInstanceId || !currentHumpSchemeID.value) {
         humpCalculations.value = []
         currentHumpCalculationID.value = ""
         return
     }
 
+    const { preserveSelection = false, reloadDropdowns = true } = options
+    const previousCalculationID = preserveSelection ? currentHumpCalculationID.value : ""
+
     try {
         // 同时加载下拉菜单数据以支持显示标签
-        await Promise.all([
-            loadWagonConcepts(),
-            loadOperationConditions(),
-            loadSlopeLines()
-        ])
+        if (reloadDropdowns) {
+            await Promise.all([
+                loadWagonConcepts(),
+                loadOperationConditions(),
+                loadSlopeLines()
+            ])
+        }
 
         const response = await axios.get('/Hump/GetHumpCalculations', {
             params: {
@@ -1285,11 +1292,10 @@ const loadHumpCalculations = async () => {
         humpCalculations.value = response.data || []
 
         // 如果有计算条件数据，默认选择第一个
-        if (humpCalculations.value.length > 0 && humpCalculations.value[0]) {
-            currentHumpCalculationID.value = humpCalculations.value[0].id
-        } else {
-            currentHumpCalculationID.value = ""
-        }
+        const matchedCalculation = previousCalculationID
+            ? humpCalculations.value.find(calculation => calculation.id === previousCalculationID)
+            : undefined
+        currentHumpCalculationID.value = matchedCalculation?.id || humpCalculations.value[0]?.id || ""
 
         console.log('Hump calculations loaded:', humpCalculations.value)
     } catch (error) {
@@ -1300,13 +1306,15 @@ const loadHumpCalculations = async () => {
 }
 
 // 加载驼峰方案数据
-const loadHumpSchemes = async () => {
+const loadHumpSchemes = async (options: { preserveSelection?: boolean } = {}) => {
     if (!props.selectedInstanceId) {
         humpSchemes.value = []
         currentHumpSchemeID.value = ""
         clearSlopeBindingData()
         return
     }
+
+    const previousSchemeID = options.preserveSelection ? currentHumpSchemeID.value : ""
 
     try {
         const response = await axios.get('/Hump/GetHumpSchemes', {
@@ -1315,10 +1323,12 @@ const loadHumpSchemes = async () => {
         humpSchemes.value = response.data || []
 
         // 如果有方案数据，默认选择第一个
-        if (humpSchemes.value.length > 0 && humpSchemes.value[0]) {
-            currentHumpSchemeID.value = humpSchemes.value[0].id
-        } else {
-            currentHumpSchemeID.value = ""
+        const matchedScheme = previousSchemeID
+            ? humpSchemes.value.find(scheme => scheme.id === previousSchemeID)
+            : undefined
+        currentHumpSchemeID.value = matchedScheme?.id || humpSchemes.value[0]?.id || ""
+
+        if (!currentHumpSchemeID.value) {
             clearSlopeBindingData()
         }
 
@@ -1329,6 +1339,38 @@ const loadHumpSchemes = async () => {
         currentHumpSchemeID.value = ""
         clearSlopeBindingData()
     }
+}
+
+// 主 tab 激活时刷新下拉选项
+const refreshDropdownDataOnActivate = async () => {
+    if (!props.selectedInstanceId) {
+        return
+    }
+
+    const previousSchemeID = currentHumpSchemeID.value
+    const previousCalculationID = currentHumpCalculationID.value
+
+    await Promise.all([
+        loadWagonConcepts(),
+        loadOperationConditions(),
+        loadSlopeLines(),
+        loadHumpSchemes({ preserveSelection: true })
+    ])
+
+    if (!currentHumpSchemeID.value || currentHumpSchemeID.value !== previousSchemeID) {
+        return
+    }
+
+    await loadHumpCalculations({
+        preserveSelection: true,
+        reloadDropdowns: false
+    })
+
+    if (!currentHumpCalculationID.value || currentHumpCalculationID.value !== previousCalculationID) {
+        return
+    }
+
+    await updateCurrentCalculateCondition()
 }
 
 // 监听 selectedInstanceId 变化
@@ -1342,6 +1384,15 @@ watch(() => props.selectedInstanceId, (newInstanceId) => {
     }
     loadHumpSchemes()
 }, { immediate: true })
+
+// 监听主 tab 激活
+watch(() => props.activationKey, () => {
+    if (!props.selectedInstanceId) {
+        return
+    }
+
+    void refreshDropdownDataOnActivate()
+})
 
 // 监听 currentHumpSchemeID 变化
 watch(currentHumpSchemeID, async (newSchemeId, oldSchemeId) => {
