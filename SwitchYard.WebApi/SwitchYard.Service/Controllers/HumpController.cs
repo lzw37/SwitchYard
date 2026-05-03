@@ -560,10 +560,10 @@ namespace SwitchYard.Service.Controllers
         [HttpDelete(Name = "DeleteSlopeLine")]
         public IActionResult DeleteSlopeLine(string id)
         {
+            DBConnector dbConnector = DBConnector.GetDBConnector();
             try
             {
                 var username = User.Identity?.Name;
-                DBConnector dbConnector = DBConnector.GetDBConnector();
                 var slopeLine = dbConnector.Query<SlopeLine>("SELECT * FROM slopeline WHERE ID = @id", new { id }).FirstOrDefault();
                 if (slopeLine == null)
                 {
@@ -573,20 +573,28 @@ namespace SwitchYard.Service.Controllers
                 var authResult = ValidateInstanceOwnershipOrFail(slopeLine.InstanceID);
                 if (authResult != null) return authResult;
 
-                var result = dbConnector.ExecuteNonQuery("DELETE FROM slopeline WHERE ID = @id", new { id });
+                dbConnector.BeginTransaction();
+                DeleteSlopeLineDependencies(dbConnector, slopeLine.InstanceID, slopeLine.ID);
+
+                var result = dbConnector.ExecuteNonQuery(
+                    "DELETE FROM slopeline WHERE ID = @id AND InstanceID = @instanceID",
+                    new { id, instanceID = slopeLine.InstanceID });
                 if (result > 0)
                 {
+                    dbConnector.Commit();
                     LogInformationWithContext("Deleted SlopeLine with ID {SlopeLineID}.", id);
                     return Ok("SlopeLine deleted successfully.");
                 }
                 else
                 {
+                    dbConnector.Rollback();
                     _logger.LogWarning("Failed to delete SlopeLine with ID {SlopeLineID}.", id);
                     return StatusCode(500, "Failed to delete slope line.");
                 }
             }
             catch (Exception ex)
             {
+                dbConnector.Rollback();
                 LogErrorWithContext(ex, "Error deleting SlopeLine.");
                 return StatusCode(500, "Internal server error while deleting SlopeLine.");
             }
@@ -2298,6 +2306,63 @@ namespace SwitchYard.Service.Controllers
             dbConnector.ExecuteNonQuery(
                 "DELETE FROM vposition WHERE InstanceID = @instanceID AND HumpSchemeID = @humpSchemeID",
                 new { instanceID, humpSchemeID });
+        }
+
+        private void DeleteSlopeLineDependencies(DBConnector dbConnector, string instanceID, string slopeLineID)
+        {
+            var headwayCheckIds = (dbConnector.Query<HeadwayCheckScheme>(
+                "SELECT * FROM headwaycheckscheme WHERE InstanceID = @instanceID AND SlopeLineID = @slopeLineID",
+                new { instanceID, slopeLineID }) ?? new List<HeadwayCheckScheme>())
+                .Select(scheme => scheme.ID)
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+
+            DeleteHeadwayCheckArtifacts(dbConnector, instanceID, headwayCheckIds);
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM headwaycheckscheme WHERE InstanceID = @instanceID AND SlopeLineID = @slopeLineID",
+                new { instanceID, slopeLineID });
+
+            var humpCalculationIds = (dbConnector.Query<HumpCalculation>(
+                "SELECT * FROM humpcalculation WHERE InstanceID = @instanceID AND SlopeLineID = @slopeLineID",
+                new { instanceID, slopeLineID }) ?? new List<HumpCalculation>())
+                .Select(calculation => calculation.ID)
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+
+            DeleteHumpCalculationArtifactsByIds(dbConnector, instanceID, humpCalculationIds);
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM humpcalculation WHERE InstanceID = @instanceID AND SlopeLineID = @slopeLineID",
+                new { instanceID, slopeLineID });
+
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM retarder WHERE InstanceID = @instanceID AND SlopeLineID = @slopeLineID",
+                new { instanceID, slopeLineID });
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM switch WHERE InstanceID = @instanceID AND SlopeLineID = @slopeLineID",
+                new { instanceID, slopeLineID });
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM positionsegment WHERE InstanceID = @instanceID AND SlopeLineID = @slopeLineID",
+                new { instanceID, slopeLineID });
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM position WHERE InstanceID = @instanceID AND SlopeLineID = @slopeLineID",
+                new { instanceID, slopeLineID });
+        }
+
+        private void DeleteHumpCalculationArtifactsByIds(DBConnector dbConnector, string instanceID, List<string> humpCalculationIds)
+        {
+            if (humpCalculationIds == null || humpCalculationIds.Count == 0)
+            {
+                return;
+            }
+
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM humpcalculationdata WHERE InstanceID = @instanceID AND HumpCalculationID IN @humpCalculationIds",
+                new { instanceID, humpCalculationIds });
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM retarderstatus WHERE InstanceID = @instanceID AND HumpCalculationID IN @humpCalculationIds",
+                new { instanceID, humpCalculationIds });
         }
 
         private void DeleteHumpCalculationArtifactsByScheme(DBConnector dbConnector, string instanceID, string humpSchemeID, List<string> humpCalculationIds)
