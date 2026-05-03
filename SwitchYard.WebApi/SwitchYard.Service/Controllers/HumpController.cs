@@ -439,6 +439,7 @@ namespace SwitchYard.Service.Controllers
         [HttpDelete(Name = "DeleteInstance")]
         public IActionResult DeleteInstance(string id)
         {
+            DBConnector? dbConnector = null;
             try
             {
                 var authResult = ValidateInstanceOwnershipOrFail(id);
@@ -446,23 +447,36 @@ namespace SwitchYard.Service.Controllers
 
                 var username = User.Identity?.Name;
                 var isAdmin = IsCurrentUserAdmin();
-                DBConnector dbConnector = DBConnector.GetDBConnector();
+                dbConnector = DBConnector.GetDBConnector();
+                var existingInstance = (dbConnector.Query<HumpInstance>(
+                    "SELECT * FROM humpinstance WHERE ID = @id",
+                    new { id }) ?? new List<HumpInstance>()).FirstOrDefault();
+                if (existingInstance == null)
+                {
+                    return NotFound("Instance not found.");
+                }
+
+                dbConnector.BeginTransaction();
+                DeleteInstanceDependencies(dbConnector, id);
                 var result = isAdmin
                     ? dbConnector.ExecuteNonQuery("DELETE FROM humpinstance WHERE ID = @id", new { id })
                     : dbConnector.ExecuteNonQuery("DELETE FROM humpinstance WHERE ID = @id AND Owner = @username", new { id, username });
                 if (result > 0)
                 {
+                    dbConnector.Commit();
                     LogInformationWithContext("Deleted HumpInstance with ID {InstanceID}.", id);
                     return Ok("Instance deleted successfully.");
                 }
                 else
                 {
+                    dbConnector.Rollback();
                     _logger.LogWarning("Failed to delete HumpInstance.");
                     return StatusCode(500, "Failed to delete instance.");
                 }
             }
             catch (Exception ex)
             {
+                dbConnector?.Rollback();
                 LogErrorWithContext(ex, "Error deleting HumpInstance.");
                 return StatusCode(500, "Internal server error while deleting HumpInstance.");
             }
@@ -2275,6 +2289,69 @@ namespace SwitchYard.Service.Controllers
         /// <summary>
         /// 获取追踪间隔检算方案列表
         /// </summary>
+        private void DeleteInstanceDependencies(DBConnector dbConnector, string instanceID)
+        {
+            var parameters = new { instanceID };
+
+            // Delete the most dependent records first so the order remains safe
+            // even if database-level foreign keys are added later.
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM headwaycheckdata WHERE InstanceID = @instanceID",
+                parameters);
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM headwaycheckresult WHERE InstanceID = @instanceID",
+                parameters);
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM headwaycheckwagon WHERE InstanceID = @instanceID",
+                parameters);
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM headwaycheckscheme WHERE InstanceID = @instanceID",
+                parameters);
+
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM retarderstatus WHERE InstanceID = @instanceID",
+                parameters);
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM humpcalculationdata WHERE InstanceID = @instanceID",
+                parameters);
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM humpcalculation WHERE InstanceID = @instanceID",
+                parameters);
+
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM vpositionsegment WHERE InstanceID = @instanceID",
+                parameters);
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM vposition WHERE InstanceID = @instanceID",
+                parameters);
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM humpscheme WHERE InstanceID = @instanceID",
+                parameters);
+
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM retarder WHERE InstanceID = @instanceID",
+                parameters);
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM switch WHERE InstanceID = @instanceID",
+                parameters);
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM positionsegment WHERE InstanceID = @instanceID",
+                parameters);
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM position WHERE InstanceID = @instanceID",
+                parameters);
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM slopeline WHERE InstanceID = @instanceID",
+                parameters);
+
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM wagonconcept WHERE InstanceID = @instanceID",
+                parameters);
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM operationcondition WHERE InstanceID = @instanceID",
+                parameters);
+        }
+
         private void DeleteHumpSchemeDependencies(DBConnector dbConnector, string instanceID, string humpSchemeID)
         {
             var headwayCheckIds = (dbConnector.Query<HeadwayCheckScheme>(
