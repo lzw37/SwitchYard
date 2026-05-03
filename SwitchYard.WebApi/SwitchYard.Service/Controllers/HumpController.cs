@@ -1929,10 +1929,10 @@ namespace SwitchYard.Service.Controllers
         [HttpDelete(Name = "DeleteHumpScheme")]
         public IActionResult DeleteHumpScheme(string id)
         {
+            DBConnector dbConnector = DBConnector.GetDBConnector();
             try
             {
                 var username = User.Identity?.Name;
-                DBConnector dbConnector = DBConnector.GetDBConnector();
                 var humpScheme = dbConnector.Query<HumpScheme>("SELECT * FROM humpscheme WHERE ID = @id", new { id }).FirstOrDefault();
                 if (humpScheme == null)
                 {
@@ -1943,20 +1943,26 @@ namespace SwitchYard.Service.Controllers
                 var authResult = ValidateInstanceOwnershipOrFail(humpScheme.InstanceID);
                 if (authResult != null) return authResult;
 
+                dbConnector.BeginTransaction();
+                DeleteHumpSchemeDependencies(dbConnector, humpScheme.InstanceID, id);
+
                 var result = dbConnector.ExecuteNonQuery("DELETE FROM humpscheme WHERE ID = @id", new { id });
                 if (result > 0)
                 {
+                    dbConnector.Commit();
                     LogInformationWithContext("Deleted HumpScheme with ID {HumpSchemeID}.", id);
                     return Ok("HumpScheme deleted successfully.");
                 }
                 else
                 {
+                    dbConnector.Rollback();
                     _logger.LogWarning("Failed to delete HumpScheme.", humpScheme.InstanceID, username);
                     return StatusCode(500, "Failed to delete HumpScheme.");
                 }
             }
             catch (Exception ex)
             {
+                dbConnector.Rollback();
                 LogErrorWithContext(ex, "Error deleting HumpScheme.");
                 return StatusCode(500, "Internal server error while deleting HumpScheme.");
             }
@@ -2138,8 +2144,7 @@ namespace SwitchYard.Service.Controllers
                 if (authResult != null) return authResult;
 
                 dbConnector.BeginTransaction();
-                dbConnector.ExecuteNonQuery("DELETE FROM retarderstatus WHERE InstanceID = @instanceID AND HumpCalculationID = @humpCalculationID",
-                    new { instanceID = humpCalculation.InstanceID, humpCalculationID = id });
+                DeleteHumpCalculationArtifactsByCalculation(dbConnector, humpCalculation.InstanceID, humpCalculation.HumpSchemeID, id);
 
                 var result = dbConnector.ExecuteNonQuery("DELETE FROM humpcalculation WHERE ID = @id", new { id });
                 if (result > 0)
@@ -2261,6 +2266,88 @@ namespace SwitchYard.Service.Controllers
 
         /// <summary>
         /// 获取追踪间隔检算方案列表
+        /// </summary>
+        private void DeleteHumpSchemeDependencies(DBConnector dbConnector, string instanceID, string humpSchemeID)
+        {
+            var headwayCheckIds = (dbConnector.Query<HeadwayCheckScheme>(
+                "SELECT * FROM headwaycheckscheme WHERE InstanceID = @instanceID AND HumpSchemeID = @humpSchemeID",
+                new { instanceID, humpSchemeID }) ?? new List<HeadwayCheckScheme>())
+                .Select(scheme => scheme.ID)
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+
+            DeleteHeadwayCheckArtifacts(dbConnector, instanceID, headwayCheckIds);
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM headwaycheckscheme WHERE InstanceID = @instanceID AND HumpSchemeID = @humpSchemeID",
+                new { instanceID, humpSchemeID });
+
+            var humpCalculationIds = (dbConnector.Query<HumpCalculation>(
+                "SELECT * FROM humpcalculation WHERE InstanceID = @instanceID AND HumpSchemeID = @humpSchemeID",
+                new { instanceID, humpSchemeID }) ?? new List<HumpCalculation>())
+                .Select(calculation => calculation.ID)
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+
+            DeleteHumpCalculationArtifactsByScheme(dbConnector, instanceID, humpSchemeID, humpCalculationIds);
+
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM vpositionsegment WHERE InstanceID = @instanceID AND HumpSchemeID = @humpSchemeID",
+                new { instanceID, humpSchemeID });
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM vposition WHERE InstanceID = @instanceID AND HumpSchemeID = @humpSchemeID",
+                new { instanceID, humpSchemeID });
+        }
+
+        private void DeleteHumpCalculationArtifactsByScheme(DBConnector dbConnector, string instanceID, string humpSchemeID, List<string> humpCalculationIds)
+        {
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM humpcalculationdata WHERE InstanceID = @instanceID AND HumpSchemeID = @humpSchemeID",
+                new { instanceID, humpSchemeID });
+
+            if (humpCalculationIds != null && humpCalculationIds.Count > 0)
+            {
+                dbConnector.ExecuteNonQuery(
+                    "DELETE FROM retarderstatus WHERE InstanceID = @instanceID AND HumpCalculationID IN @humpCalculationIds",
+                    new { instanceID, humpCalculationIds });
+            }
+
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM humpcalculation WHERE InstanceID = @instanceID AND HumpSchemeID = @humpSchemeID",
+                new { instanceID, humpSchemeID });
+        }
+
+        private void DeleteHumpCalculationArtifactsByCalculation(DBConnector dbConnector, string instanceID, string humpSchemeID, string humpCalculationID)
+        {
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM humpcalculationdata WHERE InstanceID = @instanceID AND HumpSchemeID = @humpSchemeID AND HumpCalculationID = @humpCalculationID",
+                new { instanceID, humpSchemeID, humpCalculationID });
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM retarderstatus WHERE InstanceID = @instanceID AND HumpCalculationID = @humpCalculationID",
+                new { instanceID, humpCalculationID });
+        }
+
+        private void DeleteHeadwayCheckArtifacts(DBConnector dbConnector, string instanceID, List<string> headwayCheckIds)
+        {
+            if (headwayCheckIds == null || headwayCheckIds.Count == 0)
+            {
+                return;
+            }
+
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM headwaycheckdata WHERE InstanceID = @instanceID AND HeadwayCheckID IN @headwayCheckIds",
+                new { instanceID, headwayCheckIds });
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM headwaycheckresult WHERE InstanceID = @instanceID AND HeadwayCheckID IN @headwayCheckIds",
+                new { instanceID, headwayCheckIds });
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM headwaycheckwagon WHERE InstanceID = @instanceID AND HeadwayCheckID IN @headwayCheckIds",
+                new { instanceID, headwayCheckIds });
+        }
+
+        /// <summary>
+        /// Gets the headway check schemes for an instance.
         /// </summary>
         [HttpGet(Name = "GetHeadwayCheckSchemes")]
         public IActionResult GetHeadwayCheckSchemes(string instanceID)
@@ -2447,9 +2534,7 @@ namespace SwitchYard.Service.Controllers
                 if (authResult != null) return authResult;
 
                 dbConnector.BeginTransaction();
-
-                dbConnector.ExecuteNonQuery("DELETE FROM headwaycheckwagon WHERE InstanceID = @instanceID AND HeadwayCheckID = @headwayCheckID",
-                    new { instanceID = scheme.InstanceID, headwayCheckID = id });
+                DeleteHeadwayCheckArtifacts(dbConnector, scheme.InstanceID, new List<string> { id });
 
                 var result = dbConnector.ExecuteNonQuery("DELETE FROM headwaycheckscheme WHERE ID = @id", new { id });
 
