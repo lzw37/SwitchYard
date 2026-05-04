@@ -109,6 +109,12 @@ try
     Log.Information("Starting SwitchYard Service");
 
     var builder = WebApplication.CreateBuilder(args);
+    var appVersion = builder.Configuration["App:Version"]?.Trim();
+    if (string.IsNullOrWhiteSpace(appVersion))
+    {
+        appVersion = "unknown";
+    }
+
     var configuredHosts = builder.Configuration
         .GetSection("WebApi:Hosts")
         .Get<string[]>()?
@@ -372,6 +378,7 @@ try
     var logger = app.Services.GetRequiredService<ILogger<Program>>();
     logger.LogInformation("=== SwitchYard Service Starting ===");
     logger.LogInformation("Application starting in {Environment} environment", app.Environment.EnvironmentName);
+    logger.LogInformation("Application version: {Version}", appVersion);
     logger.LogInformation("Content Root: {ContentRoot}", app.Environment.ContentRootPath);
     logger.LogInformation("Web Root: {WebRoot}", app.Environment.WebRootPath);
     logger.LogInformation("Log Directory: {LogDirectory}", logDirectory);
