@@ -148,6 +148,7 @@ import axios from '@/utils/axios'
 
 interface Props {
     selectedInstanceId?: string | null
+    activationKey?: number
 }
 
 interface HeadwayCheckSchemeOption {
@@ -201,7 +202,8 @@ interface WagonRenderState {
 }
 
 const props = withDefaults(defineProps<Props>(), {
-    selectedInstanceId: null
+    selectedInstanceId: null,
+    activationKey: 0
 })
 const { t } = useI18n()
 
@@ -790,14 +792,19 @@ async function ensureHumpSchemeID(scheme: HeadwayCheckSchemeOption): Promise<str
     return scheme.humpSchemeID
 }
 
-async function loadHeadwayCheckSchemes() {
-    headwayCheckSchemeOptions.value = []
-    selectedHeadwayCheckSchemeID.value = ''
-    slopePoints.value = []
-    wagonTrajectories.value = []
-    wagonSpeedProfilesBySequence.value = {}
+async function loadHeadwayCheckSchemes(options: { preserveSelection?: boolean, resetState?: boolean } = {}) {
+    const { preserveSelection = false, resetState = true } = options
+    const previousSchemeID = preserveSelection ? selectedHeadwayCheckSchemeID.value : ''
     loadErrorMessage.value = ''
-    resetSimulationViewState()
+
+    if (resetState) {
+        headwayCheckSchemeOptions.value = []
+        selectedHeadwayCheckSchemeID.value = ''
+        slopePoints.value = []
+        wagonTrajectories.value = []
+        wagonSpeedProfilesBySequence.value = {}
+        resetSimulationViewState()
+    }
 
     if (!props.selectedInstanceId) return
 
@@ -814,10 +821,10 @@ async function loadHeadwayCheckSchemes() {
             .filter((item: HeadwayCheckSchemeOption | null): item is HeadwayCheckSchemeOption => item !== null)
 
         headwayCheckSchemeOptions.value = options
-        const firstOption = options[0]
-        if (firstOption) {
-            selectedHeadwayCheckSchemeID.value = firstOption.id
-        }
+        const matchedScheme = previousSchemeID
+            ? options.find(option => option.id === previousSchemeID)
+            : undefined
+        selectedHeadwayCheckSchemeID.value = matchedScheme?.id || options[0]?.id || ''
     } catch (error) {
         console.error('Failed to load headway check schemes:', error)
         ElMessage.error(t('hump.sim.messages.loadSchemesFailed'))
@@ -936,6 +943,17 @@ watch(
     },
     { immediate: true }
 )
+
+watch(() => props.activationKey, () => {
+    if (!props.selectedInstanceId) {
+        return
+    }
+
+    void loadHeadwayCheckSchemes({
+        preserveSelection: true,
+        resetState: false
+    })
+})
 
 watch(selectedHeadwayCheckSchemeID, () => {
     simulationLoadVersion++

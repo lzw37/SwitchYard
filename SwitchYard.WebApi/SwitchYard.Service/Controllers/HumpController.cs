@@ -439,6 +439,7 @@ namespace SwitchYard.Service.Controllers
         [HttpDelete(Name = "DeleteInstance")]
         public IActionResult DeleteInstance(string id)
         {
+            DBConnector? dbConnector = null;
             try
             {
                 var authResult = ValidateInstanceOwnershipOrFail(id);
@@ -446,23 +447,36 @@ namespace SwitchYard.Service.Controllers
 
                 var username = User.Identity?.Name;
                 var isAdmin = IsCurrentUserAdmin();
-                DBConnector dbConnector = DBConnector.GetDBConnector();
+                dbConnector = DBConnector.GetDBConnector();
+                var existingInstance = (dbConnector.Query<HumpInstance>(
+                    "SELECT * FROM humpinstance WHERE ID = @id",
+                    new { id }) ?? new List<HumpInstance>()).FirstOrDefault();
+                if (existingInstance == null)
+                {
+                    return NotFound("Instance not found.");
+                }
+
+                dbConnector.BeginTransaction();
+                DeleteInstanceDependencies(dbConnector, id);
                 var result = isAdmin
                     ? dbConnector.ExecuteNonQuery("DELETE FROM humpinstance WHERE ID = @id", new { id })
                     : dbConnector.ExecuteNonQuery("DELETE FROM humpinstance WHERE ID = @id AND Owner = @username", new { id, username });
                 if (result > 0)
                 {
+                    dbConnector.Commit();
                     LogInformationWithContext("Deleted HumpInstance with ID {InstanceID}.", id);
                     return Ok("Instance deleted successfully.");
                 }
                 else
                 {
+                    dbConnector.Rollback();
                     _logger.LogWarning("Failed to delete HumpInstance.");
                     return StatusCode(500, "Failed to delete instance.");
                 }
             }
             catch (Exception ex)
             {
+                dbConnector?.Rollback();
                 LogErrorWithContext(ex, "Error deleting HumpInstance.");
                 return StatusCode(500, "Internal server error while deleting HumpInstance.");
             }
@@ -560,10 +574,10 @@ namespace SwitchYard.Service.Controllers
         [HttpDelete(Name = "DeleteSlopeLine")]
         public IActionResult DeleteSlopeLine(string id)
         {
+            DBConnector dbConnector = DBConnector.GetDBConnector();
             try
             {
                 var username = User.Identity?.Name;
-                DBConnector dbConnector = DBConnector.GetDBConnector();
                 var slopeLine = dbConnector.Query<SlopeLine>("SELECT * FROM slopeline WHERE ID = @id", new { id }).FirstOrDefault();
                 if (slopeLine == null)
                 {
@@ -573,23 +587,164 @@ namespace SwitchYard.Service.Controllers
                 var authResult = ValidateInstanceOwnershipOrFail(slopeLine.InstanceID);
                 if (authResult != null) return authResult;
 
-                var result = dbConnector.ExecuteNonQuery("DELETE FROM slopeline WHERE ID = @id", new { id });
+                dbConnector.BeginTransaction();
+                DeleteSlopeLineDependencies(dbConnector, slopeLine.InstanceID, slopeLine.ID);
+
+                var result = dbConnector.ExecuteNonQuery(
+                    "DELETE FROM slopeline WHERE ID = @id AND InstanceID = @instanceID",
+                    new { id, instanceID = slopeLine.InstanceID });
                 if (result > 0)
                 {
+                    dbConnector.Commit();
                     LogInformationWithContext("Deleted SlopeLine with ID {SlopeLineID}.", id);
                     return Ok("SlopeLine deleted successfully.");
                 }
                 else
                 {
+                    dbConnector.Rollback();
                     _logger.LogWarning("Failed to delete SlopeLine with ID {SlopeLineID}.", id);
                     return StatusCode(500, "Failed to delete slope line.");
                 }
             }
             catch (Exception ex)
             {
+                dbConnector.Rollback();
                 LogErrorWithContext(ex, "Error deleting SlopeLine.");
                 return StatusCode(500, "Internal server error while deleting SlopeLine.");
             }
+        }
+
+        public sealed class CopySlopeLineRequest
+        {
+            public string SourceSlopeLineID { get; set; } = string.Empty;
+            public string? NewName { get; set; }
+        }
+
+        /// <summary>
+        /// 复制溜放线及其全部下属数据（位置点、区段、道岔、减速器）
+        /// </summary>
+        [HttpPost(Name = "CopySlopeLine")]
+        public IActionResult CopySlopeLine([FromBody] CopySlopeLineRequest request)
+        {
+            if (request == null || string.IsNullOrWhiteSpace(request.SourceSlopeLineID))
+            {
+                return BadRequest("Source slope line ID is required.");
+            }
+
+            DBConnector dbConnector = DBConnector.GetDBConnector();
+            try
+            {
+                var source = (dbConnector.Query<SlopeLine>(
+                    "SELECT * FROM slopeline WHERE ID = @id",
+                    new { id = request.SourceSlopeLineID }) ?? new List<SlopeLine>()).FirstOrDefault();
+                if (source == null)
+                {
+                    return NotFound("SlopeLine not found.");
+                }
+
+                var authResult = ValidateInstanceOwnershipOrFail(source.InstanceID);
+                if (authResult != null) return authResult;
+
+                var newName = string.IsNullOrWhiteSpace(request.NewName)
+                    ? $"{source.Name}副本"
+                    : request.NewName.Trim();
+
+                dbConnector.BeginTransaction();
+
+                var newSlopeLineID = _snowflakeIdGenerator.NextIdString();
+                dbConnector.ExecuteNonQuery(
+                    "INSERT INTO slopeline (ID, InstanceID, Name) VALUES (@ID, @InstanceID, @Name)",
+                    new { ID = newSlopeLineID, InstanceID = source.InstanceID, Name = newName });
+
+                // 位置点 ID 保持不变（position 表无主键约束，副本与源溜放线共享原始节点 ID）
+                var positionIdMap = new Dictionary<string, string>(StringComparer.Ordinal);
+                var sourcePositions = dbConnector.Query<HPosition>(
+                    "SELECT * FROM position WHERE InstanceID = @instanceID AND SlopeLineID = @slopeLineID",
+                    new { instanceID = source.InstanceID, slopeLineID = source.ID }) ?? new List<HPosition>();
+                foreach (var p in sourcePositions)
+                {
+                    dbConnector.ExecuteNonQuery(
+                        "INSERT INTO position (ID, InstanceID, SlopeLineID, X, Height) VALUES (@ID, @InstanceID, @SlopeLineID, @X, @Height)",
+                        new { ID = p.ID, InstanceID = source.InstanceID, SlopeLineID = newSlopeLineID, p.X, p.Height });
+                }
+
+                // 区段 ID 也保持不变（positionsegment 的外键引用沿用原值）
+                var segmentIdMap = new Dictionary<string, string>(StringComparer.Ordinal);
+                var sourceSegments = dbConnector.Query<HPositionSegment>(
+                    "SELECT * FROM positionsegment WHERE InstanceID = @instanceID AND SlopeLineID = @slopeLineID",
+                    new { instanceID = source.InstanceID, slopeLineID = source.ID }) ?? new List<HPositionSegment>();
+                foreach (var seg in sourceSegments)
+                {
+                    dbConnector.ExecuteNonQuery(
+                        "INSERT INTO positionsegment (ID, InstanceID, SlopeLineID, StartPositionID, EndPositionID, Length, CurveDegree, CurveDirection, LocationParam) VALUES (@ID, @InstanceID, @SlopeLineID, @StartPositionID, @EndPositionID, @Length, @CurveDegree, @CurveDirection, @LocationParam)",
+                        new
+                        {
+                            ID = seg.ID,
+                            InstanceID = source.InstanceID,
+                            SlopeLineID = newSlopeLineID,
+                            StartPositionID = MapId(positionIdMap, seg.StartPositionID),
+                            EndPositionID = MapId(positionIdMap, seg.EndPositionID),
+                            seg.Length,
+                            seg.CurveDegree,
+                            seg.CurveDirection,
+                            seg.LocationParam
+                        });
+                }
+
+                var sourceSwitches = dbConnector.Query<SwitchYard.Hump.Switch>(
+                    "SELECT * FROM switch WHERE InstanceID = @instanceID AND SlopeLineID = @slopeLineID",
+                    new { instanceID = source.InstanceID, slopeLineID = source.ID }) ?? new List<SwitchYard.Hump.Switch>();
+                foreach (var sw in sourceSwitches)
+                {
+                    dbConnector.ExecuteNonQuery(
+                        "INSERT INTO switch (ID, InstanceID, SlopeLineID, BindingPositionID, BindingPositionSegmentID, CurveDegree, Type, Direction, Side) VALUES (@ID, @InstanceID, @SlopeLineID, @BindingPositionID, @BindingPositionSegmentID, @CurveDegree, @Type, @Direction, @Side)",
+                        new
+                        {
+                            ID = _snowflakeIdGenerator.NextIdString(),
+                            InstanceID = source.InstanceID,
+                            SlopeLineID = newSlopeLineID,
+                            BindingPositionID = MapId(positionIdMap, sw.BindingPositionID),
+                            BindingPositionSegmentID = MapId(segmentIdMap, sw.BindingPositionSegmentID),
+                            sw.CurveDegree,
+                            sw.Type,
+                            sw.Direction,
+                            sw.Side
+                        });
+                }
+
+                var sourceRetarders = dbConnector.Query<Retarder>(
+                    "SELECT * FROM retarder WHERE InstanceID = @instanceID AND SlopeLineID = @slopeLineID",
+                    new { instanceID = source.InstanceID, slopeLineID = source.ID }) ?? new List<Retarder>();
+                foreach (var r in sourceRetarders)
+                {
+                    dbConnector.ExecuteNonQuery(
+                        "INSERT INTO retarder (ID, InstanceID, SlopeLineID, BindingPositionSegmentID, Numbers) VALUES (@ID, @InstanceID, @SlopeLineID, @BindingPositionSegmentID, @Numbers)",
+                        new
+                        {
+                            ID = _snowflakeIdGenerator.NextIdString(),
+                            InstanceID = source.InstanceID,
+                            SlopeLineID = newSlopeLineID,
+                            BindingPositionSegmentID = MapId(segmentIdMap, r.BindingPositionSegmentID),
+                            r.Numbers
+                        });
+                }
+
+                dbConnector.Commit();
+                LogInformationWithContext("Copied SlopeLine {SourceSlopeLineID} -> {NewSlopeLineID}.", source.ID, newSlopeLineID);
+                return Ok(new SlopeLine { ID = newSlopeLineID, InstanceID = source.InstanceID, Name = newName });
+            }
+            catch (Exception ex)
+            {
+                dbConnector.Rollback();
+                LogErrorWithContext(ex, "Error copying SlopeLine.");
+                return StatusCode(500, "Internal server error while copying SlopeLine.");
+            }
+        }
+
+        private static string? MapId(Dictionary<string, string> idMap, string? sourceId)
+        {
+            if (string.IsNullOrWhiteSpace(sourceId)) return sourceId;
+            return idMap.TryGetValue(sourceId, out var mapped) ? mapped : sourceId;
         }
 
         /// <summary>
@@ -1929,10 +2084,10 @@ namespace SwitchYard.Service.Controllers
         [HttpDelete(Name = "DeleteHumpScheme")]
         public IActionResult DeleteHumpScheme(string id)
         {
+            DBConnector dbConnector = DBConnector.GetDBConnector();
             try
             {
                 var username = User.Identity?.Name;
-                DBConnector dbConnector = DBConnector.GetDBConnector();
                 var humpScheme = dbConnector.Query<HumpScheme>("SELECT * FROM humpscheme WHERE ID = @id", new { id }).FirstOrDefault();
                 if (humpScheme == null)
                 {
@@ -1943,22 +2098,115 @@ namespace SwitchYard.Service.Controllers
                 var authResult = ValidateInstanceOwnershipOrFail(humpScheme.InstanceID);
                 if (authResult != null) return authResult;
 
+                dbConnector.BeginTransaction();
+                DeleteHumpSchemeDependencies(dbConnector, humpScheme.InstanceID, id);
+
                 var result = dbConnector.ExecuteNonQuery("DELETE FROM humpscheme WHERE ID = @id", new { id });
                 if (result > 0)
                 {
+                    dbConnector.Commit();
                     LogInformationWithContext("Deleted HumpScheme with ID {HumpSchemeID}.", id);
                     return Ok("HumpScheme deleted successfully.");
                 }
                 else
                 {
+                    dbConnector.Rollback();
                     _logger.LogWarning("Failed to delete HumpScheme.", humpScheme.InstanceID, username);
                     return StatusCode(500, "Failed to delete HumpScheme.");
                 }
             }
             catch (Exception ex)
             {
+                dbConnector.Rollback();
                 LogErrorWithContext(ex, "Error deleting HumpScheme.");
                 return StatusCode(500, "Internal server error while deleting HumpScheme.");
+            }
+        }
+
+        public sealed class CopyHumpSchemeRequest
+        {
+            public string SourceHumpSchemeID { get; set; } = string.Empty;
+            public string? NewName { get; set; }
+        }
+
+        /// <summary>
+        /// 复制驼峰纵断面方案及其全部下属数据（纵断面位置点、区段）
+        /// </summary>
+        [HttpPost(Name = "CopyHumpScheme")]
+        public IActionResult CopyHumpScheme([FromBody] CopyHumpSchemeRequest request)
+        {
+            if (request == null || string.IsNullOrWhiteSpace(request.SourceHumpSchemeID))
+            {
+                return BadRequest("Source hump scheme ID is required.");
+            }
+
+            DBConnector dbConnector = DBConnector.GetDBConnector();
+            try
+            {
+                var source = (dbConnector.Query<HumpScheme>(
+                    "SELECT * FROM humpscheme WHERE ID = @id",
+                    new { id = request.SourceHumpSchemeID }) ?? new List<HumpScheme>()).FirstOrDefault();
+                if (source == null)
+                {
+                    return NotFound("HumpScheme not found.");
+                }
+
+                var authResult = ValidateInstanceOwnershipOrFail(source.InstanceID);
+                if (authResult != null) return authResult;
+
+                var newName = string.IsNullOrWhiteSpace(request.NewName)
+                    ? $"{source.Name}副本"
+                    : request.NewName.Trim();
+
+                dbConnector.BeginTransaction();
+
+                var newHumpSchemeID = _snowflakeIdGenerator.NextIdString();
+                dbConnector.ExecuteNonQuery(
+                    "INSERT INTO humpscheme (InstanceID, ID, Name) VALUES (@InstanceID, @ID, @Name)",
+                    new { InstanceID = source.InstanceID, ID = newHumpSchemeID, Name = newName });
+
+                var vPositionIdMap = new Dictionary<string, string>(StringComparer.Ordinal);
+                var sourceVPositions = dbConnector.Query<VPosition>(
+                    "SELECT * FROM vposition WHERE InstanceID = @instanceID AND HumpSchemeID = @humpSchemeID",
+                    new { instanceID = source.InstanceID, humpSchemeID = source.ID }) ?? new List<VPosition>();
+                foreach (var vp in sourceVPositions)
+                {
+                    var newID = _snowflakeIdGenerator.NextIdString();
+                    vPositionIdMap[vp.ID] = newID;
+                    dbConnector.ExecuteNonQuery(
+                        "INSERT INTO vposition (ID, InstanceID, HumpSchemeID, X, Height) VALUES (@ID, @InstanceID, @HumpSchemeID, @X, @Height)",
+                        new { ID = newID, InstanceID = source.InstanceID, HumpSchemeID = newHumpSchemeID, vp.X, vp.Height });
+                }
+
+                var sourceVSegments = dbConnector.Query<VPositionSegment>(
+                    "SELECT * FROM vpositionsegment WHERE InstanceID = @instanceID AND HumpSchemeID = @humpSchemeID",
+                    new { instanceID = source.InstanceID, humpSchemeID = source.ID }) ?? new List<VPositionSegment>();
+                foreach (var seg in sourceVSegments)
+                {
+                    dbConnector.ExecuteNonQuery(
+                        "INSERT INTO vpositionsegment (ID, InstanceID, HumpSchemeID, StartPositionID, EndPositionID, Length, Gradient, Height) VALUES (@ID, @InstanceID, @HumpSchemeID, @StartPositionID, @EndPositionID, @Length, @Gradient, @Height)",
+                        new
+                        {
+                            ID = _snowflakeIdGenerator.NextIdString(),
+                            InstanceID = source.InstanceID,
+                            HumpSchemeID = newHumpSchemeID,
+                            StartPositionID = MapId(vPositionIdMap, seg.StartPositionID),
+                            EndPositionID = MapId(vPositionIdMap, seg.EndPositionID),
+                            seg.Length,
+                            seg.Gradient,
+                            seg.Height
+                        });
+                }
+
+                dbConnector.Commit();
+                LogInformationWithContext("Copied HumpScheme {SourceHumpSchemeID} -> {NewHumpSchemeID}.", source.ID, newHumpSchemeID);
+                return Ok(new HumpScheme { ID = newHumpSchemeID, InstanceID = source.InstanceID, Name = newName });
+            }
+            catch (Exception ex)
+            {
+                dbConnector.Rollback();
+                LogErrorWithContext(ex, "Error copying HumpScheme.");
+                return StatusCode(500, "Internal server error while copying HumpScheme.");
             }
         }
 
@@ -2138,8 +2386,7 @@ namespace SwitchYard.Service.Controllers
                 if (authResult != null) return authResult;
 
                 dbConnector.BeginTransaction();
-                dbConnector.ExecuteNonQuery("DELETE FROM retarderstatus WHERE InstanceID = @instanceID AND HumpCalculationID = @humpCalculationID",
-                    new { instanceID = humpCalculation.InstanceID, humpCalculationID = id });
+                DeleteHumpCalculationArtifactsByCalculation(dbConnector, humpCalculation.InstanceID, humpCalculation.HumpSchemeID, id);
 
                 var result = dbConnector.ExecuteNonQuery("DELETE FROM humpcalculation WHERE ID = @id", new { id });
                 if (result > 0)
@@ -2261,6 +2508,208 @@ namespace SwitchYard.Service.Controllers
 
         /// <summary>
         /// 获取追踪间隔检算方案列表
+        /// </summary>
+        private void DeleteInstanceDependencies(DBConnector dbConnector, string instanceID)
+        {
+            var parameters = new { instanceID };
+
+            // Delete the most dependent records first so the order remains safe
+            // even if database-level foreign keys are added later.
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM headwaycheckdata WHERE InstanceID = @instanceID",
+                parameters);
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM headwaycheckresult WHERE InstanceID = @instanceID",
+                parameters);
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM headwaycheckwagon WHERE InstanceID = @instanceID",
+                parameters);
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM headwaycheckscheme WHERE InstanceID = @instanceID",
+                parameters);
+
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM retarderstatus WHERE InstanceID = @instanceID",
+                parameters);
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM humpcalculationdata WHERE InstanceID = @instanceID",
+                parameters);
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM humpcalculation WHERE InstanceID = @instanceID",
+                parameters);
+
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM vpositionsegment WHERE InstanceID = @instanceID",
+                parameters);
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM vposition WHERE InstanceID = @instanceID",
+                parameters);
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM humpscheme WHERE InstanceID = @instanceID",
+                parameters);
+
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM retarder WHERE InstanceID = @instanceID",
+                parameters);
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM switch WHERE InstanceID = @instanceID",
+                parameters);
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM positionsegment WHERE InstanceID = @instanceID",
+                parameters);
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM position WHERE InstanceID = @instanceID",
+                parameters);
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM slopeline WHERE InstanceID = @instanceID",
+                parameters);
+
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM wagonconcept WHERE InstanceID = @instanceID",
+                parameters);
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM operationcondition WHERE InstanceID = @instanceID",
+                parameters);
+        }
+
+        private void DeleteHumpSchemeDependencies(DBConnector dbConnector, string instanceID, string humpSchemeID)
+        {
+            var headwayCheckIds = (dbConnector.Query<HeadwayCheckScheme>(
+                "SELECT * FROM headwaycheckscheme WHERE InstanceID = @instanceID AND HumpSchemeID = @humpSchemeID",
+                new { instanceID, humpSchemeID }) ?? new List<HeadwayCheckScheme>())
+                .Select(scheme => scheme.ID)
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+
+            DeleteHeadwayCheckArtifacts(dbConnector, instanceID, headwayCheckIds);
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM headwaycheckscheme WHERE InstanceID = @instanceID AND HumpSchemeID = @humpSchemeID",
+                new { instanceID, humpSchemeID });
+
+            var humpCalculationIds = (dbConnector.Query<HumpCalculation>(
+                "SELECT * FROM humpcalculation WHERE InstanceID = @instanceID AND HumpSchemeID = @humpSchemeID",
+                new { instanceID, humpSchemeID }) ?? new List<HumpCalculation>())
+                .Select(calculation => calculation.ID)
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+
+            DeleteHumpCalculationArtifactsByScheme(dbConnector, instanceID, humpSchemeID, humpCalculationIds);
+
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM vpositionsegment WHERE InstanceID = @instanceID AND HumpSchemeID = @humpSchemeID",
+                new { instanceID, humpSchemeID });
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM vposition WHERE InstanceID = @instanceID AND HumpSchemeID = @humpSchemeID",
+                new { instanceID, humpSchemeID });
+        }
+
+        private void DeleteSlopeLineDependencies(DBConnector dbConnector, string instanceID, string slopeLineID)
+        {
+            var headwayCheckIds = (dbConnector.Query<HeadwayCheckScheme>(
+                "SELECT * FROM headwaycheckscheme WHERE InstanceID = @instanceID AND SlopeLineID = @slopeLineID",
+                new { instanceID, slopeLineID }) ?? new List<HeadwayCheckScheme>())
+                .Select(scheme => scheme.ID)
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+
+            DeleteHeadwayCheckArtifacts(dbConnector, instanceID, headwayCheckIds);
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM headwaycheckscheme WHERE InstanceID = @instanceID AND SlopeLineID = @slopeLineID",
+                new { instanceID, slopeLineID });
+
+            var humpCalculationIds = (dbConnector.Query<HumpCalculation>(
+                "SELECT * FROM humpcalculation WHERE InstanceID = @instanceID AND SlopeLineID = @slopeLineID",
+                new { instanceID, slopeLineID }) ?? new List<HumpCalculation>())
+                .Select(calculation => calculation.ID)
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+
+            DeleteHumpCalculationArtifactsByIds(dbConnector, instanceID, humpCalculationIds);
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM humpcalculation WHERE InstanceID = @instanceID AND SlopeLineID = @slopeLineID",
+                new { instanceID, slopeLineID });
+
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM retarder WHERE InstanceID = @instanceID AND SlopeLineID = @slopeLineID",
+                new { instanceID, slopeLineID });
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM switch WHERE InstanceID = @instanceID AND SlopeLineID = @slopeLineID",
+                new { instanceID, slopeLineID });
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM positionsegment WHERE InstanceID = @instanceID AND SlopeLineID = @slopeLineID",
+                new { instanceID, slopeLineID });
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM position WHERE InstanceID = @instanceID AND SlopeLineID = @slopeLineID",
+                new { instanceID, slopeLineID });
+        }
+
+        private void DeleteHumpCalculationArtifactsByIds(DBConnector dbConnector, string instanceID, List<string> humpCalculationIds)
+        {
+            if (humpCalculationIds == null || humpCalculationIds.Count == 0)
+            {
+                return;
+            }
+
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM humpcalculationdata WHERE InstanceID = @instanceID AND HumpCalculationID IN @humpCalculationIds",
+                new { instanceID, humpCalculationIds });
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM retarderstatus WHERE InstanceID = @instanceID AND HumpCalculationID IN @humpCalculationIds",
+                new { instanceID, humpCalculationIds });
+        }
+
+        private void DeleteHumpCalculationArtifactsByScheme(DBConnector dbConnector, string instanceID, string humpSchemeID, List<string> humpCalculationIds)
+        {
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM humpcalculationdata WHERE InstanceID = @instanceID AND HumpSchemeID = @humpSchemeID",
+                new { instanceID, humpSchemeID });
+
+            if (humpCalculationIds != null && humpCalculationIds.Count > 0)
+            {
+                dbConnector.ExecuteNonQuery(
+                    "DELETE FROM retarderstatus WHERE InstanceID = @instanceID AND HumpCalculationID IN @humpCalculationIds",
+                    new { instanceID, humpCalculationIds });
+            }
+
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM humpcalculation WHERE InstanceID = @instanceID AND HumpSchemeID = @humpSchemeID",
+                new { instanceID, humpSchemeID });
+        }
+
+        private void DeleteHumpCalculationArtifactsByCalculation(DBConnector dbConnector, string instanceID, string humpSchemeID, string humpCalculationID)
+        {
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM humpcalculationdata WHERE InstanceID = @instanceID AND HumpSchemeID = @humpSchemeID AND HumpCalculationID = @humpCalculationID",
+                new { instanceID, humpSchemeID, humpCalculationID });
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM retarderstatus WHERE InstanceID = @instanceID AND HumpCalculationID = @humpCalculationID",
+                new { instanceID, humpCalculationID });
+        }
+
+        private void DeleteHeadwayCheckArtifacts(DBConnector dbConnector, string instanceID, List<string> headwayCheckIds)
+        {
+            if (headwayCheckIds == null || headwayCheckIds.Count == 0)
+            {
+                return;
+            }
+
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM headwaycheckdata WHERE InstanceID = @instanceID AND HeadwayCheckID IN @headwayCheckIds",
+                new { instanceID, headwayCheckIds });
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM headwaycheckresult WHERE InstanceID = @instanceID AND HeadwayCheckID IN @headwayCheckIds",
+                new { instanceID, headwayCheckIds });
+            dbConnector.ExecuteNonQuery(
+                "DELETE FROM headwaycheckwagon WHERE InstanceID = @instanceID AND HeadwayCheckID IN @headwayCheckIds",
+                new { instanceID, headwayCheckIds });
+        }
+
+        /// <summary>
+        /// Gets the headway check schemes for an instance.
         /// </summary>
         [HttpGet(Name = "GetHeadwayCheckSchemes")]
         public IActionResult GetHeadwayCheckSchemes(string instanceID)
@@ -2447,9 +2896,7 @@ namespace SwitchYard.Service.Controllers
                 if (authResult != null) return authResult;
 
                 dbConnector.BeginTransaction();
-
-                dbConnector.ExecuteNonQuery("DELETE FROM headwaycheckwagon WHERE InstanceID = @instanceID AND HeadwayCheckID = @headwayCheckID",
-                    new { instanceID = scheme.InstanceID, headwayCheckID = id });
+                DeleteHeadwayCheckArtifacts(dbConnector, scheme.InstanceID, new List<string> { id });
 
                 var result = dbConnector.ExecuteNonQuery("DELETE FROM headwaycheckscheme WHERE ID = @id", new { id });
 

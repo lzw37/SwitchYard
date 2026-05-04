@@ -282,6 +282,8 @@
                         <div v-else>
                             <el-button type="primary" size="small" @click="handleEditScheme(row, $index)">{{
                                 t('humpSlopeDesigner.buttons.edit') }}</el-button>
+                            <el-button type="success" size="small" @click="handleCopyScheme(row)">{{
+                                t('humpSlopeDesigner.buttons.copy') }}</el-button>
                             <el-button type="danger" size="small" @click="handleDeleteScheme(row)"
                                 :disabled="humpSchemes.length <= 1">{{ t('humpSlopeDesigner.buttons.delete')
                                 }}</el-button>
@@ -450,9 +452,11 @@ import { FlatLayout, SlopeLayout, CurveDirections } from './humplayoutctrl';
 // 定义 props
 interface Props {
     selectedInstanceId?: string | null
+    activationKey?: number
 }
 const props = withDefaults(defineProps<Props>(), {
-    selectedInstanceId: null
+    selectedInstanceId: null,
+    activationKey: 0
 })
 
 type HorizontalScrollSyncApi = {
@@ -1259,20 +1263,25 @@ const loadSlopeLines = async () => {
 }
 
 // 加载驼峰计算条件数据
-const loadHumpCalculations = async () => {
+const loadHumpCalculations = async (options: { preserveSelection?: boolean, reloadDropdowns?: boolean } = {}) => {
     if (!props.selectedInstanceId || !currentHumpSchemeID.value) {
         humpCalculations.value = []
         currentHumpCalculationID.value = ""
         return
     }
 
+    const { preserveSelection = false, reloadDropdowns = true } = options
+    const previousCalculationID = preserveSelection ? currentHumpCalculationID.value : ""
+
     try {
         // 同时加载下拉菜单数据以支持显示标签
-        await Promise.all([
-            loadWagonConcepts(),
-            loadOperationConditions(),
-            loadSlopeLines()
-        ])
+        if (reloadDropdowns) {
+            await Promise.all([
+                loadWagonConcepts(),
+                loadOperationConditions(),
+                loadSlopeLines()
+            ])
+        }
 
         const response = await axios.get('/Hump/GetHumpCalculations', {
             params: {
@@ -1283,11 +1292,10 @@ const loadHumpCalculations = async () => {
         humpCalculations.value = response.data || []
 
         // 如果有计算条件数据，默认选择第一个
-        if (humpCalculations.value.length > 0 && humpCalculations.value[0]) {
-            currentHumpCalculationID.value = humpCalculations.value[0].id
-        } else {
-            currentHumpCalculationID.value = ""
-        }
+        const matchedCalculation = previousCalculationID
+            ? humpCalculations.value.find(calculation => calculation.id === previousCalculationID)
+            : undefined
+        currentHumpCalculationID.value = matchedCalculation?.id || humpCalculations.value[0]?.id || ""
 
         console.log('Hump calculations loaded:', humpCalculations.value)
     } catch (error) {
@@ -1298,13 +1306,15 @@ const loadHumpCalculations = async () => {
 }
 
 // 加载驼峰方案数据
-const loadHumpSchemes = async () => {
+const loadHumpSchemes = async (options: { preserveSelection?: boolean } = {}) => {
     if (!props.selectedInstanceId) {
         humpSchemes.value = []
         currentHumpSchemeID.value = ""
         clearSlopeBindingData()
         return
     }
+
+    const previousSchemeID = options.preserveSelection ? currentHumpSchemeID.value : ""
 
     try {
         const response = await axios.get('/Hump/GetHumpSchemes', {
@@ -1313,10 +1323,12 @@ const loadHumpSchemes = async () => {
         humpSchemes.value = response.data || []
 
         // 如果有方案数据，默认选择第一个
-        if (humpSchemes.value.length > 0 && humpSchemes.value[0]) {
-            currentHumpSchemeID.value = humpSchemes.value[0].id
-        } else {
-            currentHumpSchemeID.value = ""
+        const matchedScheme = previousSchemeID
+            ? humpSchemes.value.find(scheme => scheme.id === previousSchemeID)
+            : undefined
+        currentHumpSchemeID.value = matchedScheme?.id || humpSchemes.value[0]?.id || ""
+
+        if (!currentHumpSchemeID.value) {
             clearSlopeBindingData()
         }
 
@@ -1327,6 +1339,38 @@ const loadHumpSchemes = async () => {
         currentHumpSchemeID.value = ""
         clearSlopeBindingData()
     }
+}
+
+// 主 tab 激活时刷新下拉选项
+const refreshDropdownDataOnActivate = async () => {
+    if (!props.selectedInstanceId) {
+        return
+    }
+
+    const previousSchemeID = currentHumpSchemeID.value
+    const previousCalculationID = currentHumpCalculationID.value
+
+    await Promise.all([
+        loadWagonConcepts(),
+        loadOperationConditions(),
+        loadSlopeLines(),
+        loadHumpSchemes({ preserveSelection: true })
+    ])
+
+    if (!currentHumpSchemeID.value || currentHumpSchemeID.value !== previousSchemeID) {
+        return
+    }
+
+    await loadHumpCalculations({
+        preserveSelection: true,
+        reloadDropdowns: false
+    })
+
+    if (!currentHumpCalculationID.value || currentHumpCalculationID.value !== previousCalculationID) {
+        return
+    }
+
+    await updateCurrentCalculateCondition()
 }
 
 // 监听 selectedInstanceId 变化
@@ -1340,6 +1384,15 @@ watch(() => props.selectedInstanceId, (newInstanceId) => {
     }
     loadHumpSchemes()
 }, { immediate: true })
+
+// 监听主 tab 激活
+watch(() => props.activationKey, () => {
+    if (!props.selectedInstanceId) {
+        return
+    }
+
+    void refreshDropdownDataOnActivate()
+})
 
 // 监听 currentHumpSchemeID 变化
 watch(currentHumpSchemeID, async (newSchemeId, oldSchemeId) => {
@@ -1710,6 +1763,27 @@ const handleDeleteScheme = async (scheme: HumpScheme) => {
 const handleCancelEdit = () => {
     editingIndex.value = -1
     editingScheme.value = { id: '', instanceID: '', name: '' }
+}
+
+const handleCopyScheme = async (scheme: HumpScheme) => {
+    if (!scheme.id) return
+
+    try {
+        tableLoading.value = true
+        const response = await axios.post('/Hump/CopyHumpScheme', {
+            SourceHumpSchemeID: scheme.id,
+            NewName: `${scheme.name}副本`
+        })
+        if (response.status === 200) {
+            await loadHumpSchemes()
+            ElMessage.success(t('humpSlopeDesigner.scheme.copySuccess'))
+        }
+    } catch (error) {
+        console.error('复制方案失败:', error)
+        ElMessage.error(t('humpSlopeDesigner.scheme.copyError'))
+    } finally {
+        tableLoading.value = false
+    }
 }
 
 // 计算条件管理相关方法

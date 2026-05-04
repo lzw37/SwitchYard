@@ -121,10 +121,12 @@ import axios from "../utils/axios";
 
 interface Props {
     selectedInstanceId?: string | null
+    activationKey?: number
 }
 
 const props = withDefaults(defineProps<Props>(), {
-    selectedInstanceId: null
+    selectedInstanceId: null,
+    activationKey: 0
 })
 
 // API模型接口
@@ -176,7 +178,7 @@ const formData = ref<CalculationCondition>({
     wagonVelocityOnYard: 2.2,
     windVelocity: 5,
     isHeadWind: 1,
-    airDensity: 0.063,
+    airDensity: 0.125,
     temperature: -10,
     g: 9.8,
     retarderActivation: {},
@@ -330,7 +332,7 @@ function resetForm() {
         wagonVelocityOnYard: 2.2,
         windVelocity: 5,
         isHeadWind: 1,
-        airDensity: 0.063,
+        airDensity: 0.125,
         temperature: -10,
         g: 9.8,
         retarderActivation: {},
@@ -353,6 +355,28 @@ async function onInstanceChange() {
     if (currentInstanceId.value) {
         await fetchConditions(currentInstanceId.value);
     }
+}
+
+async function refreshConditionOptionsOnActivate() {
+    if (!currentInstanceId.value) {
+        conditionsList.value = [];
+        return;
+    }
+
+    const previousConditionId = currentConditionId.value;
+    await fetchConditions(currentInstanceId.value);
+
+    if (!previousConditionId) {
+        return;
+    }
+
+    const matchedCondition = conditionsList.value.find(condition => condition.id === previousConditionId);
+    if (!matchedCondition) {
+        resetForm();
+        return;
+    }
+
+    currentConditionId.value = previousConditionId;
 }
 
 function onConditionChange() {
@@ -407,6 +431,14 @@ watch(currentInstanceId, async (newInstanceId) => {
         resetForm();
     }
 }, { immediate: true });
+
+watch(() => props.activationKey, () => {
+    if (!currentInstanceId.value) {
+        return;
+    }
+
+    void refreshConditionOptionsOnActivate();
+});
 </script>
 
 <style scoped lang="css">

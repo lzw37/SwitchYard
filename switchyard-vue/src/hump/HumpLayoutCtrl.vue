@@ -924,10 +924,10 @@ function getPositionSegmentDeltaY(ps: PositionSegment) {
         return 0;
     }
     if (ps.curveDirection === CurveDirections.Left) {
-        return -curveShiftY.value;
+        return curveShiftY.value;
     }
     else if (ps.curveDirection === CurveDirections.Right) {
-        return curveShiftY.value;
+        return -curveShiftY.value;
     }
     return 0;
 }

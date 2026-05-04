@@ -6,7 +6,7 @@
         <el-table :data="wagonData" style="width: 100%;">
             <el-table-column prop="typeName" :label="t('wagon.typeName')" width="120">
                 <template #default="scope">
-                    <span v-if="!scope.row.isEditing">{{ scope.row.typeName }}</span>
+                    <span v-if="!scope.row.isEditing || !scope.row.isNew">{{ scope.row.typeName }}</span>
                     <el-input v-else v-model="scope.row.typeName" />
                 </template>
             </el-table-column>
@@ -212,6 +212,11 @@ const cancelEdit = (index: number) => {
 const saveRow = async (index: number) => {
     const wagon = wagonData.value[index];
     if (!wagon) return;
+    const effectiveTypeName = wagon.isNew
+        ? wagon.typeName.trim()
+        : wagon.originalData?.typeName?.trim() || wagon.typeName.trim();
+
+    wagon.typeName = effectiveTypeName;
 
     // 验证数据
     const validationError = validateWagonData(wagon);
@@ -222,7 +227,7 @@ const saveRow = async (index: number) => {
 
     // 检查车型名是否重复
     const duplicateIndex = wagonData.value.findIndex((item, idx) =>
-        idx !== index && item.typeName === wagon.typeName
+        idx !== index && item.typeName === effectiveTypeName
     );
     if (duplicateIndex !== -1) {
         ElMessage.error(t('wagon.validation.typeNameExists'));
@@ -234,7 +239,7 @@ const saveRow = async (index: number) => {
     try {
         const wagonPayload = {
             instanceID: currentInstanceId.value,
-            typeName: wagon.typeName,
+            typeName: effectiveTypeName,
             length: wagon.length,
             netMass: wagon.netMass,
             loadingMass: wagon.loadingMass,

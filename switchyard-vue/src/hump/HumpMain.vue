@@ -66,7 +66,8 @@
             </div>
             <el-tabs v-model="activeTab" class="hump-main-tabs">
                 <el-tab-pane :label="getTabLabel('plan')" name="plan" lazy>
-                    <HumpLayout v-if="hasSelectedInstance" :selectedInstanceId="selectedLine" />
+                    <HumpLayout v-if="hasSelectedInstance" :selectedInstanceId="selectedLine"
+                        :activation-key="tabActivationKeys.plan" />
                     <el-empty v-else :description="t('humpMain.placeholders.selectInstance')" />
                 </el-tab-pane>
                 <el-tab-pane :label="getTabLabel('vehicle')" name="vehicle" lazy>
@@ -77,25 +78,30 @@
                         </el-card>
                         <el-card class="param-card" shadow="hover">
                             <h3>{{ t('humpMain.headings.calcCondition') }}</h3>
-                            <HumpCalculationCondition :selectedInstanceId="selectedLine" />
+                            <HumpCalculationCondition :selectedInstanceId="selectedLine"
+                                :activation-key="tabActivationKeys.vehicle" />
                         </el-card>
                     </template>
                     <el-empty v-else :description="t('humpMain.placeholders.selectInstance')" />
                 </el-tab-pane>
                 <el-tab-pane :label="getTabLabel('profile')" name="profile" lazy>
-                    <HumpSlopeDesigner v-if="hasSelectedInstance" :selectedInstanceId="selectedLine" />
+                    <HumpSlopeDesigner v-if="hasSelectedInstance" :selectedInstanceId="selectedLine"
+                        :activation-key="tabActivationKeys.profile" />
                     <el-empty v-else :description="t('humpMain.placeholders.selectInstance')" />
                 </el-tab-pane>
                 <el-tab-pane :label="getTabLabel('release')" name="release" lazy>
-                    <HumpHeadwayCheck v-if="hasSelectedInstance" :selectedInstanceId="selectedLine" />
+                    <HumpHeadwayCheck v-if="hasSelectedInstance" :selectedInstanceId="selectedLine"
+                        :activation-key="tabActivationKeys.release" />
                     <el-empty v-else :description="t('humpMain.placeholders.selectInstance')" />
                 </el-tab-pane>
                 <el-tab-pane :label="getTabLabel('simulation')" name="simulation" lazy>
-                    <HumpSim v-if="hasSelectedInstance" :selectedInstanceId="selectedLine" />
+                    <HumpSim v-if="hasSelectedInstance" :selectedInstanceId="selectedLine"
+                        :activation-key="tabActivationKeys.simulation" />
                     <el-empty v-else :description="t('humpMain.placeholders.selectInstance')" />
                 </el-tab-pane>
                 <el-tab-pane :label="getTabLabel('simulation3d')" name="simulation3d" lazy>
-                    <HumpSim3D v-if="hasSelectedInstance" :selectedInstanceId="selectedLine" />
+                    <HumpSim3D v-if="hasSelectedInstance" :selectedInstanceId="selectedLine"
+                        :activation-key="tabActivationKeys.simulation3d" />
                     <el-empty v-else :description="t('humpMain.placeholders.selectInstance')" />
                 </el-tab-pane>
             </el-tabs>
@@ -137,6 +143,8 @@ interface HumpInstance {
     isActive: number
 }
 
+type MainTabName = 'plan' | 'vehicle' | 'profile' | 'release' | 'simulation' | 'simulation3d'
+
 const activeTab = ref('plan')
 const selectedLine = ref<string | null>(null)
 const lines = ref<HumpInstance[]>([])
@@ -146,6 +154,14 @@ const tabsHostRef = ref<HTMLElement | null>(null)
 const tabSlotRef = ref<HTMLElement | null>(null)
 const tabMeasureRef = ref<HTMLElement | null>(null)
 const tabsInDropdown = ref(false)
+const tabActivationKeys = ref<Record<MainTabName, number>>({
+    plan: 0,
+    vehicle: 0,
+    profile: 0,
+    release: 0,
+    simulation: 0,
+    simulation3d: 0,
+})
 const activeLines = computed(() => lines.value.filter((item) => Number(item.isActive) === 1))
 const hasSelectedInstance = computed(() => Boolean(selectedLine.value))
 const mainTabs = computed(() => [
@@ -174,6 +190,10 @@ const currentLocale = computed(() => locale.value)
 
 const getTabLabel = (tabName: string) => {
     return mainTabs.value.find((tab) => tab.name === tabName)?.label || tabName
+}
+
+const bumpTabActivationKey = (tabName: MainTabName) => {
+    tabActivationKeys.value[tabName] += 1
 }
 
 const updateTabDisplayMode = () => {
@@ -293,6 +313,11 @@ onBeforeUnmount(() => {
 
 watch(currentLocale, () => {
     updateTabDisplayMode()
+})
+
+watch(activeTab, (newTab, oldTab) => {
+    if (!newTab || newTab === oldTab) return
+    bumpTabActivationKey(newTab as MainTabName)
 })
 </script>
 

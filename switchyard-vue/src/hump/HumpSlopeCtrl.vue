@@ -35,7 +35,7 @@
                     <!-- Add point handler that follows current cursor X -->
                     <g class="cursor-addpoint" v-if="cursorX >= 0 && cursorX <= sketchWidth / scaleX"
                         @click="addVPosition(cursorX)">
-                        <circle class="addpointhandler" :cx="getX(cursorX)" :cy="svgHeight - marginBottom / 2" />
+                        <circle class="addpointhandler" :cx="getX(cursorX)" :cy="svgHeight - marginBottom / 2" r="5" />
                         <text :x="getX(cursorX)" :y="svgHeight - marginBottom / 2" text-anchor="middle"
                             dominant-baseline="middle" font-size="14" fill="white" font-weight="bold"
                             style="cursor:pointer">+</text>
@@ -1779,12 +1779,11 @@ defineExpose({
 }
 
 .addpointhandler {
-    r: 5;
     fill: #aeb8c2;
     stroke: #98a4b0;
     stroke-width: 2px;
     cursor: pointer;
-    transition: r 120ms ease, fill 120ms ease, stroke 120ms ease;
+    transition: fill 120ms ease, stroke 120ms ease;
 }
 
 .cursor-addpoint {
@@ -1792,7 +1791,6 @@ defineExpose({
 }
 
 .cursor-addpoint:hover .addpointhandler {
-    r: 8;
     fill: #5b9ad2;
     stroke: #3f84c2;
     stroke-width: 2px;

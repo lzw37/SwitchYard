@@ -1,14 +1,16 @@
 <script setup lang="js">
 import { useRouter } from 'vue-router';
-import { computed, ref, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { ElMessage } from 'element-plus';
 import i18n from '../i18n';
 import { useAuthStore } from '@/stores/auth';
+import config from '@/config';
 
 const router = useRouter();
 const { t } = useI18n({ useScope: 'global' });
 const authStore = useAuthStore();
+const appVersion = ref('');
 
 authStore.hydrateFromStorage();
 
@@ -57,6 +59,27 @@ watch(locale, (v) => {
 function toggleLocale() {
     locale.value = locale.value === 'en' ? 'zh' : 'en';
 }
+
+const loadBackendVersion = async () => {
+    try {
+        const versionUrl = new URL('/api/System/version', config.serverurl).toString();
+        const response = await fetch(versionUrl);
+        if (!response.ok) {
+            return;
+        }
+
+        const data = await response.json();
+        if (data && typeof data.version === 'string' && data.version.trim()) {
+            appVersion.value = data.version.trim();
+        }
+    } catch (error) {
+        console.warn('load backend version failed', error);
+    }
+};
+
+onMounted(() => {
+    loadBackendVersion();
+});
 
 // 平滑滚动
 document.querySelectorAll('a[href^="#"]').forEach(anchor => {
@@ -278,6 +301,7 @@ console.log('欢迎访问 SwitchYard 项目主页！');
         <div class="hero-overlay"></div>
         <div class="hero-content">
             <h1 class="hero-title">{{ t('home.brand') }}</h1>
+            <p v-if="appVersion" class="hero-version">Version {{ appVersion }}</p>
             <p class="hero-subtitle">{{ t('home.hero.subtitle') }}</p>
             <p class="hero-description">{{ t('home.hero.description') }}</p>
             <div class="hero-buttons">
@@ -515,6 +539,7 @@ console.log('欢迎访问 SwitchYard 项目主页！');
         <div class="container">
             <p>{{ t('home.footer.copy') }}</p>
             <p>{{ t('home.footer.tagline') }}</p>
+            <p v-if="appVersion" class="app-version">Version: {{ appVersion }}</p>
         </div>
     </footer>
 </template>
@@ -750,6 +775,20 @@ html {
     font-size: 1.8rem;
     margin-bottom: 1rem;
     text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.hero-version {
+    display: inline-block;
+    margin-bottom: 1rem;
+    padding: 0.28rem 0.9rem;
+    border-radius: 999px;
+    font-size: 1rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: #1e3a8a;
+    background: rgba(255, 255, 255, 0.92);
+    border: 1px solid rgba(255, 255, 255, 0.95);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
 }
 
 .hero-description {
@@ -1117,6 +1156,12 @@ section {
 .footer p {
     margin-bottom: 0.5rem;
     opacity: 0.9;
+}
+
+.app-version {
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 0.95rem;
+    opacity: 0.95;
 }
 
 /* 响应式设计 */

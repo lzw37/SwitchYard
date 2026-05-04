@@ -45,6 +45,9 @@
                         <template v-else>
                             <el-button size="small" :disabled="scope.row._loading"
                                 @click="startEditSlopeLine(scope.row)">{{ t('hump.buttons.edit') }}</el-button>
+                            <el-button type="success" size="small" :loading="scope.row._loading"
+                                :disabled="scope.row._isNew"
+                                @click="copySlopeLineInManager(scope.row)">{{ t('hump.buttons.copy') }}</el-button>
                             <el-button type="danger" size="small" :loading="scope.row._loading"
                                 @click="removeSlopeLineInManager(scope.row, scope.$index)">{{ t('hump.buttons.delete')
                                 }}</el-button>
@@ -76,7 +79,7 @@
                                         style="margin-left:20px;" @click="addPosition">{{ t('hump.buttons.add')
                                         }}</el-button>
                                 </div>
-                                <el-table :data="flatLayout?.positionList || []" row-key="id" stripe :max-height="400"
+                                <el-table :data="flatLayout?.positionList || []" row-key="_rowKey" stripe :max-height="400"
                                     style="width: 100%">
                                     <el-table-column :label="t('hump.id')" width="100">
                                         <template #default="scope">
@@ -334,10 +337,12 @@ interface SwitchFrogNumberOption {
 
 interface Props {
     selectedInstanceId?: string | null
+    activationKey?: number
 }
 
 const props = withDefaults(defineProps<Props>(), {
-    selectedInstanceId: null
+    selectedInstanceId: null,
+    activationKey: 0
 })
 
 const { t } = useI18n()
@@ -352,10 +357,28 @@ const ctrlRef = ref<InstanceType<typeof HumpLayoutCtrl> | null>(null)
 const flatLayout = ref<FlatLayout | null>(null)
 const globalCursorX = ref<number | undefined>(undefined)
 const isPositionListDirty = ref(false)
+let positionRowKeySeed = 0
 
 function dmsToDecimal(degrees: number, minutes: number, seconds: number) {
     const sign = degrees < 0 ? -1 : 1
     return sign * (Math.abs(degrees) + minutes / 60 + seconds / 3600)
+}
+
+function createPositionRowKey() {
+    positionRowKeySeed += 1
+    return `position-row-${positionRowKeySeed}`
+}
+
+function ensurePositionRowKeys(layout: FlatLayout) {
+    if (!layout.positionList) return layout
+
+    layout.positionList.forEach((position: any) => {
+        if (!position._rowKey) {
+            position._rowKey = createPositionRowKey()
+        }
+    })
+
+    return layout
 }
 
 const switchFrogNumberDefinitions: SwitchFrogNumberOption[] = [
@@ -398,6 +421,27 @@ async function loadSlopeLines() {
         console.error('Failed to load slope lines:', error)
         ElMessage.error(t('hump.messages.loadSlopeLinesError'))
         lines.value = []
+    }
+}
+
+async function refreshSlopeLineOptionsOnActivate() {
+    if (!props.selectedInstanceId) {
+        lines.value = []
+        selectedLine.value = null
+        flatLayout.value = null
+        return
+    }
+
+    const previousLineId = selectedLine.value
+    await loadSlopeLines()
+
+    if (slopeLineManagerVisible.value) {
+        slopeLineEditList.value = buildSlopeLineEditRows(lines.value)
+    }
+
+    if (previousLineId && !lines.value.some(line => line.id === previousLineId)) {
+        selectedLine.value = null
+        flatLayout.value = null
     }
 }
 
@@ -491,6 +535,26 @@ async function saveSlopeLineInManager(row: EditableSlopeLine) {
     }
 }
 
+async function copySlopeLineInManager(row: EditableSlopeLine) {
+    if (!props.selectedInstanceId || row._isNew || !row.id) return
+
+    row._loading = true
+    try {
+        await axios.post('/Hump/CopySlopeLine', {
+            SourceSlopeLineID: row.id,
+            NewName: `${row.name}副本`
+        })
+        ElMessage.success(t('hump.messages.slopeLineCopied'))
+        await loadSlopeLines()
+        slopeLineEditList.value = buildSlopeLineEditRows(lines.value)
+    } catch (error: any) {
+        console.error('Failed to copy slope line:', error)
+        ElMessage.error(t('hump.messages.copySlopeLineError'))
+    } finally {
+        row._loading = false
+    }
+}
+
 async function removeSlopeLineInManager(row: EditableSlopeLine, index: number) {
     if (row._isNew) {
         slopeLineEditList.value.splice(index, 1)
@@ -550,6 +614,14 @@ watch(selectedLine, (newValue) => {
         loadFlatLayout()
     }
 }, { immediate: true })
+
+watch(() => props.activationKey, () => {
+    if (!props.selectedInstanceId) {
+        return
+    }
+
+    void refreshSlopeLineOptionsOnActivate()
+})
 
 function updateGlobalCursorX(value: number) {
     globalCursorX.value = value
@@ -842,7 +914,14 @@ async function insertPositionAfter(index: number) {
         const currentX = Number(current?.x ?? 0)
         const nextX = next !== undefined ? Number(next.x) : currentX + 1
         const newX = next !== undefined ? Math.round(((currentX + nextX) / 2) * 1000) / 1000 : Math.round(nextX * 1000) / 1000
-        list.splice(index + 1, 0, { id: newId, x: newX, height: 0, instanceID: props.selectedInstanceId ?? '' })
+        const newPosition: any = {
+            id: newId,
+            x: newX,
+            height: 0,
+            instanceID: props.selectedInstanceId ?? '',
+            _rowKey: createPositionRowKey()
+        }
+        list.splice(index + 1, 0, newPosition)
         isPositionListDirty.value = true
     } catch (error) {
         // 用户取消操作，不执行任何操作
@@ -861,7 +940,14 @@ function addPosition() {
         const currentX = lastPosition?.x ?? 0
         newX = Number(currentX) + 10
     }
-    list.push({ id: 'P', x: newX, height: 0, instanceID: props.selectedInstanceId ?? '' })
+    const newPosition: any = {
+        id: 'P',
+        x: newX,
+        height: 0,
+        instanceID: props.selectedInstanceId ?? '',
+        _rowKey: createPositionRowKey()
+    }
+    list.push(newPosition)
     isPositionListDirty.value = true
 }
 
@@ -1062,7 +1148,7 @@ function normalizeFlatLayoutResponse(data: FlatLayout | null | undefined): FlatL
         }
     }
 
-    return data
+    return ensurePositionRowKeys(data)
 }
 
 function loadFlatLayout() {

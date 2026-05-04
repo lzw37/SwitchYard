@@ -241,8 +241,10 @@ interface OperationCondition {
 
 const props = withDefaults(defineProps<{
     selectedInstanceId?: string | null
+    activationKey?: number
 }>(), {
-    selectedInstanceId: null
+    selectedInstanceId: null,
+    activationKey: 0
 })
 
 // 全屏状态管理
@@ -520,7 +522,7 @@ const applySelectedHeadwayScheme = async () => {
 }
 
 // 加载钩车计算数据
-const loadHumpCalculations = async () => {
+const loadHumpCalculations = async (force = false) => {
     if (!props.selectedInstanceId || !selectedHumpSchemeID.value) {
         humpCalculationsRaw.value = []
         selectedHeadwayCheckWagons.value = []
@@ -529,7 +531,7 @@ const loadHumpCalculations = async () => {
     }
 
     try {
-        const rows = await loadHumpCalculationsForScheme(selectedHumpSchemeID.value)
+        const rows = await loadHumpCalculationsForScheme(selectedHumpSchemeID.value, force)
         humpCalculationsRaw.value = rows
 
         const availableWagons = new Set(rows.map(c => c.id))
@@ -543,6 +545,25 @@ const loadHumpCalculations = async () => {
     }
 }
 
+const refreshDropdownDataOnActivate = async () => {
+    if (!props.selectedInstanceId) {
+        return
+    }
+
+    const previousHumpSchemeID = selectedHumpSchemeID.value
+    await loadBaseData()
+
+    if (showHeadwaySchemeManager.value) {
+        await loadHeadwaySchemeManagerData(true)
+    }
+
+    if (!selectedHumpSchemeID.value || selectedHumpSchemeID.value !== previousHumpSchemeID) {
+        return
+    }
+
+    await loadHumpCalculations(true)
+}
+
 const toManagerRow = (scheme: HeadwayCheckScheme): HeadwayCheckSchemeManagerRow => ({
     id: scheme.id,
     instanceID: scheme.instanceID,
@@ -554,7 +575,7 @@ const toManagerRow = (scheme: HeadwayCheckScheme): HeadwayCheckSchemeManagerRow 
     wagonTokens: toHeadwayTokens(toHeadwayWagonIDs(scheme.wagonList))
 })
 
-const loadHeadwaySchemeManagerData = async () => {
+const loadHeadwaySchemeManagerData = async (force = false) => {
     if (!props.selectedInstanceId) {
         headwaySchemeManagerRows.value = []
         return
@@ -575,7 +596,7 @@ const loadHeadwaySchemeManagerData = async () => {
         )
 
         const humpSchemeIDs = [...new Set(detailRows.map((x: any) => x.humpSchemeID).filter(Boolean))]
-        await Promise.all(humpSchemeIDs.map(id => loadHumpCalculationsForScheme(id)))
+        await Promise.all(humpSchemeIDs.map(id => loadHumpCalculationsForScheme(id, force)))
 
         headwaySchemeManagerRows.value = detailRows.map((row: HeadwayCheckScheme) => toManagerRow(row))
         editingHeadwaySchemeID.value = ''
@@ -1138,6 +1159,14 @@ watch(() => props.selectedInstanceId, (val) => {
     }
     loadBaseData()
 }, { immediate: true })
+
+watch(() => props.activationKey, () => {
+    if (!props.selectedInstanceId) {
+        return
+    }
+
+    void refreshDropdownDataOnActivate()
+})
 
 // 监听纵断面方案变化加载钩车计算
 watch(selectedHumpSchemeID, () => {
