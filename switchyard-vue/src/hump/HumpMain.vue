@@ -1,5 +1,10 @@
 <template>
     <section class="hump-main">
+        <header class="page-header">
+            <span class="page-header-brand">SwitchYard.Hump</span>
+            <span class="page-header-sep"></span>
+            <span class="page-header-title">驼峰纵断面设计辅助工具</span>
+        </header>
         <div ref="tabsHostRef" class="hump-tabs-wrapper">
             <div class="hump-main-toolbar">
                 <div class="left-controls">
@@ -325,11 +330,49 @@ watch(activeTab, (newTab, oldTab) => {
 .hump-main {
     width: 100%;
     min-height: 100dvh;
-    padding: 24px;
+    padding: 0 24px 24px;
     background-color: white;
     box-sizing: border-box;
     overflow-x: hidden;
     overflow-y: auto;
+}
+
+.page-header {
+    height: 32px;
+    line-height: 28px;
+    margin: 0 -24px 10px;
+    padding: 0 20px;
+    background: linear-gradient(90deg, #1a3860 0%, #254e8e 55%, #3568b0 100%);
+    display: flex;
+    align-items: center;
+    /* justify-content: center; */
+    gap: 0;
+    user-select: none;
+    flex-shrink: 0;
+}
+
+.page-header-brand {
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-weight: 700;
+    font-size: 15px;
+    color: #ffffff;
+    letter-spacing: 0.03em;
+}
+
+.page-header-sep {
+    display: inline-block;
+    width: 1px;
+    height: 13px;
+    background: rgba(255, 255, 255, 0.3);
+    margin: 0 10px;
+    flex-shrink: 0;
+}
+
+.page-header-title {
+    color: #aecfe8;
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
 }
 
 .hump-tabs-wrapper {
@@ -560,7 +603,11 @@ el-card {
 
 @media (max-width: 768px) {
     .hump-main {
-        padding: 12px;
+        padding: 0 12px 12px;
+    }
+
+    .page-header {
+        margin: 0 -12px 8px;
     }
 
     .hump-main-toolbar {
