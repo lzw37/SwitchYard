@@ -152,6 +152,12 @@
         "networkError": "网络错误，请检查网络连接",
         "requestConfigError": "请求配置错误"
     },
+    "units": {
+        "m_s": "m/s",
+        "kg_s2_m4": "kg·s²/m⁴",
+        "deg_c": "°C",
+        "m_s2": "m/s²"
+    },
     "hump": {
         "selectLine": "请选择线路",
         "load": "加载",
@@ -294,7 +300,7 @@
                 "yardAvgVelocity": "调车场平均速度",
                 "windVelocity": "风速",
                 "windDirection": "风向",
-                "airDensity": "空气密度",
+                "airDensity": "气流密度",
                 "temperature": "气温",
                 "gravity": "重力加速度",
                 "retarderActivation": "减速器启动阈值",
@@ -754,7 +760,7 @@
         "windSpeed": "风速：",
         "headWind": "逆风",
         "tailWind": "顺风",
-        "airDensity": "空气密度：",
+        "airDensity": "气流密度：",
         "temperature": "温度：",
         "positionPoints": "位置点",
         "positionSegments": "位置区间",
@@ -771,7 +777,7 @@
         "slopePart": "溜放部分",
         "yard": "调车场:",
         "windSpeedLabel": "风速:",
-        "airDensityLabel": "空气密度:",
+        "airDensityLabel": "气流密度:",
         "temperatureLabel": "温度:",
         "dialog": {
             "schemeManagement": "驼峰方案管理",

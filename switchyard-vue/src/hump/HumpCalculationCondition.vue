@@ -94,7 +94,7 @@
                             <div style="display: flex; align-items: center">
                                 <el-input-number v-model="formData.airDensity" :min="0" :step="0.001" :precision="4"
                                     style="width: 300px" />
-                                <span style="margin-left: 8px; color: #666; font-size: 14px">{{ t("units.kg_m3")
+                                <span style="margin-left: 8px; color: #666; font-size: 14px">{{ t("units.kg_s2_m4")
                                     }}</span>
                             </div>
                         </el-form-item>

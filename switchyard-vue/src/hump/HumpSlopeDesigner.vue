@@ -94,7 +94,7 @@
             </span>
             <span class="condition-item">
                 <span class="condition-label">{{ t('humpSlopeDesigner.airDensity') }}</span>
-                <span class="condition-value">{{ currentCalculateCondition.airDensity }}kg/m³</span>
+                <span class="condition-value">{{ currentCalculateCondition.airDensity }} {{ t('units.kg_s2_m4') }}</span>
             </span>
             <span class="condition-item">
                 <span class="condition-label">{{ t('humpSlopeDesigner.temperature') }}</span>

@@ -154,7 +154,7 @@
     },
     "units": {
         "m_s": "m/s",
-        "kg_m3": "kg/m³",
+        "kg_s2_m4": "kg·s²/m⁴",
         "deg_c": "°C",
         "m_s2": "m/s²"
     },
@@ -300,7 +300,7 @@
                 "yardAvgVelocity": "Yard Avg Velocity",
                 "windVelocity": "Wind Velocity",
                 "windDirection": "Wind Direction",
-                "airDensity": "Air Density",
+                "airDensity": "Airflow Density",
                 "temperature": "Temperature",
                 "gravity": "Gravity Acceleration",
                 "retarderActivation": "Retarder Activation",
@@ -760,7 +760,7 @@
         "windSpeed": "Wind Speed:",
         "headWind": "Head Wind",
         "tailWind": "Tail Wind",
-        "airDensity": "Air Density:",
+        "airDensity": "Airflow Density:",
         "temperature": "Temperature:",
         "positionPoints": "Position Points",
         "positionSegments": "Position Segments",
@@ -777,7 +777,7 @@
         "slopePart": "Slope Part",
         "yard": "Yard:",
         "windSpeedLabel": "Wind Speed:",
-        "airDensityLabel": "Air Density:",
+        "airDensityLabel": "Airflow Density:",
         "temperatureLabel": "Temperature:",
         "dialog": {
             "schemeManagement": "Scheme Management",
