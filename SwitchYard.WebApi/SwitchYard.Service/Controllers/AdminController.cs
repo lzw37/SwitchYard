@@ -96,6 +96,32 @@ namespace SwitchYard.Service.Controllers
                     return StatusCode(500, new { message = "Failed to create user" });
                 }
 
+                var defaultInstanceCopyResult = _humpInstanceCopyService.CopyTemplateInstanceForNewUser(
+                    DefaultTemplateInstanceId,
+                    createdUser.Name);
+                if (!defaultInstanceCopyResult.Success)
+                {
+                    _logger.LogError(
+                        "Default hump instance initialization failed for admin-created user {Username}, UserId: {UserId}, TemplateInstanceId: {TemplateInstanceId}, StatusCode: {StatusCode}, Error: {ErrorMessage}",
+                        createdUser.Name,
+                        createdUser.Id,
+                        DefaultTemplateInstanceId,
+                        defaultInstanceCopyResult.StatusCode,
+                        defaultInstanceCopyResult.ErrorMessage);
+
+                    var rollbackSucceeded = _userService.DeleteUser(createdUser.Id);
+                    if (!rollbackSucceeded)
+                    {
+                        _logger.LogError(
+                            "User rollback failed after default hump instance initialization error for admin-created user {Username}, UserId: {UserId}",
+                            createdUser.Name,
+                            createdUser.Id);
+                        return StatusCode(500, new { message = "Failed to initialize default instance and failed to roll back user creation" });
+                    }
+
+                    return StatusCode(500, new { message = "Failed to initialize default instance" });
+                }
+
                 return Ok(new
                 {
                     id = createdUser.Id,
@@ -447,9 +473,8 @@ namespace SwitchYard.Service.Controllers
                     }
                     else
                     {
-                        var instanceResult = _humpInstanceCopyService.CopyInstance(
+                        var instanceResult = _humpInstanceCopyService.CopyTemplateInstanceForNewUser(
                             DefaultTemplateInstanceId,
-                            string.Empty,
                             createdUser.Name);
 
                         if (!instanceResult.Success)

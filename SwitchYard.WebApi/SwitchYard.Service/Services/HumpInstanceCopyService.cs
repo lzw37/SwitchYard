@@ -47,6 +47,38 @@ namespace SwitchYard.Service.Services
             _logger = logger;
         }
 
+        public HumpInstanceCopyResult CopyTemplateInstanceForNewUser(string sourceInstanceID, string owner)
+        {
+            var normalizedSourceInstanceID = sourceInstanceID?.Trim() ?? string.Empty;
+            var normalizedOwner = owner?.Trim() ?? string.Empty;
+
+            if (string.IsNullOrWhiteSpace(normalizedSourceInstanceID))
+            {
+                return HumpInstanceCopyResult.Fail(400, "Source instance ID is required.");
+            }
+
+            if (string.IsNullOrWhiteSpace(normalizedOwner))
+            {
+                return HumpInstanceCopyResult.Fail(400, "Owner is required.");
+            }
+
+            var sourceInstanceName = GetInstanceName(normalizedSourceInstanceID);
+            if (sourceInstanceName == null)
+            {
+                return HumpInstanceCopyResult.Fail(404, "Source instance not found.");
+            }
+
+            if (string.IsNullOrWhiteSpace(sourceInstanceName))
+            {
+                return HumpInstanceCopyResult.Fail(400, "Source instance name is required.");
+            }
+
+            return CopyInstance(
+                normalizedSourceInstanceID,
+                $"{sourceInstanceName}{normalizedOwner}",
+                normalizedOwner);
+        }
+
         public HumpInstanceCopyResult CopyInstance(string sourceInstanceID, string? newInstanceName, string owner)
         {
             var normalizedSourceInstanceID = sourceInstanceID?.Trim() ?? string.Empty;
@@ -494,6 +526,16 @@ namespace SwitchYard.Service.Services
             }
 
             throw new InvalidOperationException("Failed to generate a unique instance ID.");
+        }
+
+        private static string? GetInstanceName(string instanceID)
+        {
+            var dbConnector = DBConnector.GetDBConnector();
+            var sourceInstance = (dbConnector.Query<HumpInstance>(
+                "SELECT * FROM humpinstance WHERE ID = @id",
+                new { id = instanceID }) ?? new List<HumpInstance>()).FirstOrDefault();
+
+            return sourceInstance?.Name?.Trim();
         }
 
         private List<RetarderStatus> LoadRetarderStatusList(DBConnector dbConnector, string instanceID, string humpCalculationID)
