@@ -86,7 +86,7 @@ import { Switch, SwitchTypes, SwitchDirections, SwitchSides, PositionSegment, Cu
 import axios from '@/utils/axios'
 import { ElMessageBox } from 'element-plus'
 
-const emit = defineEmits(['update:flatLayout', 'update:globalCursorX', 'horizontal-scroll'])
+const emit = defineEmits(['update:flatLayout', 'update:globalCursorX', 'horizontal-scroll', 'selection-change'])
 const props = defineProps<{
     flatLayout?: any,
     isToolbarDisplay?: boolean,
@@ -166,6 +166,14 @@ let dragStartY = 0
 let pendingCursorX: number | null = null
 let cursorFrameId: number | null = null
 
+type SelectionSource = 'segment' | 'position' | 'switch' | 'retarder' | 'rectangle' | 'clear'
+type SelectionSnapshot = {
+    segments: string[]
+    positions: string[]
+    switches: string[]
+    retarders: string[]
+}
+
 // 选中状态
 const selectedElements = ref({
     segments: [] as string[],
@@ -173,6 +181,23 @@ const selectedElements = ref({
     switches: [] as string[],
     retarders: [] as string[],
 })
+
+function cloneSelectedElements(): SelectionSnapshot {
+    return {
+        segments: [...selectedElements.value.segments],
+        positions: [...selectedElements.value.positions],
+        switches: [...selectedElements.value.switches],
+        retarders: [...selectedElements.value.retarders],
+    }
+}
+
+function emitSelectionChange(source: SelectionSource, activeId?: string) {
+    emit('selection-change', {
+        source,
+        activeId,
+        selections: cloneSelectedElements(),
+    })
+}
 
 // 曲线表示的Y偏移量
 const curveShiftY = ref(5);
@@ -810,6 +835,7 @@ function toggleSegment(id: string) {
     } else {
         selectedElements.value.segments = [...list, id]
     }
+    emitSelectionChange('segment', id)
 }
 
 /**
@@ -823,6 +849,7 @@ function togglePosition(id: string) {
     } else {
         selectedElements.value.positions = [...list, id]
     }
+    emitSelectionChange('position', id)
 }
 
 /**
@@ -836,6 +863,7 @@ function toggleSwitch(id: string) {
     } else {
         selectedElements.value.switches = [...list, id]
     }
+    emitSelectionChange('switch', id)
 }
 
 /**
@@ -849,6 +877,7 @@ function toggleRetarder(id: string) {
     } else {
         selectedElements.value.retarders = [...list, id]
     }
+    emitSelectionChange('retarder', id)
 }
 
 /**
@@ -964,12 +993,15 @@ function getDegreeStr(degreeDecimal: number): string {
 /**
  * 清空所有选中元素
  */
-function clearSelections() {
+function clearSelections(shouldEmit = true) {
     selectedElements.value = {
         segments: [],
         positions: [],
         switches: [],
         retarders: [],
+    }
+    if (shouldEmit) {
+        emitSelectionChange('clear')
     }
 }
 
@@ -1189,9 +1221,13 @@ function selectObjectsInRect(rect: { x: number; y: number; width: number; height
         })
         .map((re) => re.bindingPositionSegmentID);
 
-    selectedElements.value.segments = segments;
-    selectedElements.value.switches = switches;
-    selectedElements.value.retarders = retarders;
+    selectedElements.value = {
+        segments,
+        positions: [],
+        switches,
+        retarders,
+    }
+    emitSelectionChange('rectangle')
 
 
     // selectedElements.value = {
@@ -1216,7 +1252,8 @@ function handleHorizontalScroll(event: Event) {
 // expose methods to parent component
 defineExpose({
     checkPositionIdChange,
-    setScrollLeft
+    setScrollLeft,
+    clearSelections
 })
 </script>
 
