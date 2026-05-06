@@ -494,6 +494,8 @@ const handleImportFile = async (event: Event) => {
         const formData = new FormData()
         formData.append('file', file)
         const resp = await axios.post<ImportResult>('/api/Admin/users/import', formData, {
+            // User import is processed synchronously on the server and can exceed 15s.
+            timeout: 0,
             headers: { 'Content-Type': 'multipart/form-data' }
         })
         importResult.value = resp.data

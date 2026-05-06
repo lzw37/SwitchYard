@@ -51,6 +51,15 @@ const shouldSkipRefresh = (requestConfig?: {
     isLoginRequest(requestConfig?.url) ||
     isRefreshRequest(requestConfig?.url);
 
+const isTimeoutError = (error: AxiosError) =>
+    error.code === "ECONNABORTED" ||
+    error.message.toLowerCase().includes("timeout");
+
+const getTimeoutMessage = () =>
+    String(i18n.global.locale.value).startsWith("zh")
+        ? "请求超时，请稍后重试"
+        : "Request timed out, please try again later";
+
 const redirectToLogin = () => {
     authStore.clearAuth();
 
@@ -197,6 +206,8 @@ axios.interceptors.response.use(
                             (i18n.global.t("axios.requestFailed") as string),
                     );
             }
+        } else if (isTimeoutError(error)) {
+            ElMessage.error(getTimeoutMessage());
         } else if (error.request) {
             ElMessage.error(i18n.global.t("axios.networkError") as string);
         } else {
