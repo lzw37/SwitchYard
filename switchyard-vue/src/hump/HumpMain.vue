@@ -370,7 +370,7 @@ watch(activeTab, (newTab, oldTab) => {
 
 .page-header-title {
     color: #aecfe8;
-    font-size: 16px;
+    font-size: 14px;
     font-weight: 600;
     letter-spacing: 0.04em;
 }

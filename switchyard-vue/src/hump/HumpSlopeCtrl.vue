@@ -376,12 +376,15 @@ const touchStartClientX = ref(0);
 const touchStartClientY = ref(0);
 const touchCurrentClientX = ref(0);
 const touchCurrentClientY = ref(0);
+const didDragChange = ref(false);
+const touchHorizontalDragActivated = ref(false);
 
 function notifyControlPointChanged() {
     emit('control-point-drag-end');
 }
 const touchLongPressDelay = 550;
 const touchMoveThreshold = 8;
+const touchHorizontalActivationThreshold = 12;
 const longPressActivatedId = ref<string | null>(null);
 const touchLongPressTriggered = ref(false);
 const contextMenu = ref<{ visible: boolean; x: number; y: number; posId: string }>({ visible: false, x: 0, y: 0, posId: '' });
@@ -391,6 +394,12 @@ function clearTouchLongPressTimer() {
         clearTimeout(touchLongPressTimer.value);
         touchLongPressTimer.value = null;
     }
+}
+
+function resetTouchLongPressState() {
+    longPressActivatedId.value = null;
+    touchLongPressTriggered.value = false;
+    touchHorizontalDragActivated.value = false;
 }
 
 function openContextMenuAt(posId: string, x: number, y: number) {
@@ -577,8 +586,7 @@ function startTouchDrag(pos: { id: string; height: number; x: number }, event: T
     const touch = event.touches[0];
     if (!touch) return;
     beginDrag(pos, touch.clientX, touch.clientY, false);
-    longPressActivatedId.value = null;
-    touchLongPressTriggered.value = false;
+    resetTouchLongPressState();
     touchStartClientX.value = touch.clientX;
     touchStartClientY.value = touch.clientY;
     touchCurrentClientX.value = touch.clientX;
@@ -588,11 +596,8 @@ function startTouchDrag(pos: { id: string; height: number; x: number }, event: T
         if (!draggingId.value || dragMode.value !== 'vertical') return;
         const target = props.slopeLayout?.positionList?.find(p => p.id === draggingId.value);
         if (!target) return;
-        dragMode.value = 'horizontal';
         longPressActivatedId.value = target.id;
         touchLongPressTriggered.value = true;
-        startMouseX.value = touchCurrentClientX.value;
-        startX.value = target.x;
         clearTouchLongPressTimer();
     }, touchLongPressDelay);
     window.addEventListener('touchmove', onTouchMove, { passive: false });
@@ -602,9 +607,11 @@ function startTouchDrag(pos: { id: string; height: number; x: number }, event: T
 
 function beginDrag(pos: { id: string; height: number; x: number }, clientX: number, clientY: number, isHorizontal: boolean) {
     clearTemporaryKineticEnergyPoint();
+    closeContextMenu();
     draggingId.value = pos.id;
     currentX.value = pos.x;
     currentHeight.value = pos.height;
+    didDragChange.value = false;
     if (isHorizontal) {
         dragMode.value = 'horizontal';
         startMouseX.value = clientX;
@@ -622,14 +629,16 @@ function onMouseMove(event: MouseEvent) {
     if (!target) return;
     if (dragMode.value === 'vertical') {
         const deltaY = event.clientY - startMouseY.value;
-        const newHeight = startHeight.value - deltaY / scaleY.value;
-        target.height = Math.round(Math.max(0, newHeight) * 1000) / 1000;
-        currentHeight.value = target.height;
+        const nextHeight = Math.round(Math.max(0, startHeight.value - deltaY / scaleY.value) * 1000) / 1000;
+        didDragChange.value = didDragChange.value || Math.abs(nextHeight - target.height) > 1e-6;
+        target.height = nextHeight;
+        currentHeight.value = nextHeight;
     } else if (dragMode.value === 'horizontal') {
         const deltaX = event.clientX - startMouseX.value;
-        const newX = startX.value + deltaX / scaleX.value;
-        target.x = Math.round(Math.max(0, newX) * 1000) / 1000;
-        currentX.value = target.x;
+        const nextX = Math.round(Math.max(0, startX.value + deltaX / scaleX.value) * 1000) / 1000;
+        didDragChange.value = didDragChange.value || Math.abs(nextX - target.x) > 1e-6;
+        target.x = nextX;
+        currentX.value = nextX;
     }
     updateKineticEnergyHeights(draggingId.value);  // refresh kinetic profile for dragged point
 
@@ -650,6 +659,8 @@ function onTouchMove(event: TouchEvent) {
     if (!touch) return;
     touchCurrentClientX.value = touch.clientX;
     touchCurrentClientY.value = touch.clientY;
+    const target = props.slopeLayout?.positionList?.find(p => p.id === draggingId.value);
+    if (!target) return;
 
     if (dragMode.value === 'vertical' && touchLongPressTimer.value) {
         const movedX = Math.abs(touch.clientX - touchStartClientX.value);
@@ -659,24 +670,37 @@ function onTouchMove(event: TouchEvent) {
         }
     }
 
+    if (touchLongPressTriggered.value && dragMode.value === 'vertical') {
+        const movedX = touch.clientX - touchStartClientX.value;
+        const movedY = touch.clientY - touchStartClientY.value;
+        if (
+            Math.abs(movedX) >= touchHorizontalActivationThreshold
+            && Math.abs(movedX) > Math.abs(movedY)
+        ) {
+            dragMode.value = 'horizontal';
+            touchHorizontalDragActivated.value = true;
+            touchLongPressTriggered.value = false;
+            startMouseX.value = touch.clientX;
+            startX.value = target.x;
+        }
+        return;
+    }
+
     if (dragMode.value === 'vertical') {
         const deltaY = touch.clientY - startMouseY.value;
-        const newHeight = startHeight.value - deltaY / scaleY.value;
-        const target = props.slopeLayout?.positionList?.find(p => p.id === draggingId.value);
-        if (!target) return;
-        target.height = Math.round(Math.max(0, newHeight) * 1000) / 1000;
-        currentHeight.value = target.height;
+        const nextHeight = Math.round(Math.max(0, startHeight.value - deltaY / scaleY.value) * 1000) / 1000;
+        didDragChange.value = didDragChange.value || Math.abs(nextHeight - target.height) > 1e-6;
+        target.height = nextHeight;
+        currentHeight.value = nextHeight;
     } else {
         const deltaX = touch.clientX - startMouseX.value;
-        const newX = startX.value + deltaX / scaleX.value;
-        const target = props.slopeLayout?.positionList?.find(p => p.id === draggingId.value);
-        if (!target) return;
-        target.x = Math.round(Math.max(0, newX) * 1000) / 1000;
-        currentX.value = target.x;
+        const nextX = Math.round(Math.max(0, startX.value + deltaX / scaleX.value) * 1000) / 1000;
+        didDragChange.value = didDragChange.value || Math.abs(nextX - target.x) > 1e-6;
+        target.x = nextX;
+        currentX.value = nextX;
     }
 
     updateKineticEnergyHeights(draggingId.value);
-    const target = props.slopeLayout?.positionList?.find(p => p.id === draggingId.value);
     if (target?.x === 0 && props.slopeLayout?.positionList) {
         props.slopeLayout.positionList.forEach(p => {
             if (p.id !== draggingId.value) {
@@ -691,7 +715,7 @@ function endDrag() {
     if (!finishedId) return;
 
     clearTouchLongPressTimer();
-    longPressActivatedId.value = null;
+    resetTouchLongPressState();
     window.removeEventListener('mousemove', onMouseMove);
     window.removeEventListener('mouseup', endDrag);
     window.removeEventListener('touchmove', onTouchMove);
@@ -699,11 +723,13 @@ function endDrag() {
     window.removeEventListener('touchcancel', endTouchDrag);
     // updateKineticEnergyHeights(finishedId);
     draggingId.value = null;
-    notifyControlPointChanged();
+    if (didDragChange.value) {
+        notifyControlPointChanged();
+    }
 }
 
 function endTouchDrag(event: TouchEvent) {
-    const shouldOpenContextMenu = touchLongPressTriggered.value;
+    const shouldOpenContextMenu = touchLongPressTriggered.value && !touchHorizontalDragActivated.value;
     const menuPosId = draggingId.value;
     const touch = event.changedTouches?.[0];
     const menuX = touch?.clientX ?? touchCurrentClientX.value;
