@@ -1736,7 +1736,7 @@ onMounted(() => {
 });
 
 // 驼峰计算方法
-const executeCalculation = async () => {
+const executeCalculation = async (options: { showSuccessDialog?: boolean } = {}) => {
     if (!props.selectedInstanceId || !currentHumpSchemeID.value || !currentHumpCalculationID.value) {
         ElMessageBox.alert(t('humpSlopeDesigner.messages.selectInstanceSchemeCondition'), t('humpSlopeDesigner.messages.tip'), {
             confirmButtonText: t('humpSlopeDesigner.buttons.confirm'),
@@ -1772,14 +1772,16 @@ const executeCalculation = async () => {
         const response = await axios.post('/Hump/ExecuteEnergyHeightCalculation', requestData)
 
         if (response.status === 200) {
-            await ElMessageBox.alert(
-                t('humpSlopeDesigner.messages.calculationCompleted'),
-                t('humpSlopeDesigner.messages.calculationCompletedTitle'),
-                {
-                    confirmButtonText: t('humpSlopeDesigner.buttons.confirm'),
-                    type: 'success'
-                }
-            )
+            if (options.showSuccessDialog ?? true) {
+                await ElMessageBox.alert(
+                    t('humpSlopeDesigner.messages.calculationCompleted'),
+                    t('humpSlopeDesigner.messages.calculationCompletedTitle'),
+                    {
+                        confirmButtonText: t('humpSlopeDesigner.buttons.confirm'),
+                        type: 'success'
+                    }
+                )
+            }
             console.log('驼峰计算完成:', response.data)
 
             // 重新加载相关数据
@@ -2183,6 +2185,7 @@ const handleInlineRetarderStatusUpdate = async (retarderStatusList: RetarderStat
             }))
         }
         await axios.put('/Hump/EditHumpCalculation', apiRequest)
+        await executeCalculation({ showSuccessDialog: false })
     } catch (error) {
         calc.retarderStatusList = backupList
         console.error('保存减速器状态失败:', error)
