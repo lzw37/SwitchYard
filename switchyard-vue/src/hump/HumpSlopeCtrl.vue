@@ -79,8 +79,8 @@
                         <circle class="resistance-circle resistance-shade-clickable" :cx="getX(dataPoint.x)"
                             :cy="getY(orgKineticEnergyY - dataPoint.height)" r="4"
                             @click.stop="handleResistanceShadeClick($event, dataPoint.x)" />
-                        <text v-if="showResistanceNumber" class="resistance-text" :x="getX(dataPoint.x)"
-                            :y="(getY(orgKineticEnergyY - dataPoint.height) + getY(orgKineticEnergyY)) / 2">{{
+                        <text v-if="showResistanceNumber && isSlopeControlPointX(dataPoint.x)" class="resistance-text" :x="getX(dataPoint.x)"
+                            :y="resistanceTextPositions.get(dataPoint.x) ?? ((getY(orgKineticEnergyY - dataPoint.height) + getY(orgKineticEnergyY)) / 2)">{{
                                 dataPoint.height
                             }}m</text>
                         <line class="resistance-vline" :x1="getX(dataPoint.x)"
@@ -103,14 +103,39 @@
                         :y="kineticTextPositions.get(dataPoint.x) ?? ((getY(dataPoint.result.gravitationHeight) + getY(dataPoint.result.gravitationHeight + dataPoint.result.kineticEnergyHeight)) / 2)">{{
                             formatKineticEnergyHeight(dataPoint.result.kineticEnergyHeight)
                         }}m({{ dataPoint.result.velocity }}m/s)</text>
+                    <g v-if="props.elementVisibility?.kinetic && temporaryEnergyHeightMarkers"
+                        class="temporary-energy-height-markers">
+                        <line class="temporary-slope-height-vline"
+                            :x1="temporaryEnergyHeightMarkers.x" :x2="temporaryEnergyHeightMarkers.x"
+                            :y1="temporaryEnergyHeightMarkers.slopeBaseY"
+                            :y2="temporaryEnergyHeightMarkers.slopeTopY"></line>
+                        <text class="temporary-energy-height-marker-text temporary-slope-height-text"
+                            :x="temporaryEnergyHeightMarkers.labelX" :y="temporaryEnergyHeightMarkers.slopeTextY"
+                            :text-anchor="temporaryEnergyHeightMarkers.labelAnchor">
+                            {{ temporaryEnergyHeightMarkers.slopeText }}
+                        </text>
+                        <g v-if="temporaryEnergyHeightMarkers.hasResistance">
+                            <line class="temporary-resistance-height-vline"
+                                :x1="temporaryEnergyHeightMarkers.x" :x2="temporaryEnergyHeightMarkers.x"
+                                :y1="temporaryEnergyHeightMarkers.resistanceTopY"
+                                :y2="temporaryEnergyHeightMarkers.resistanceBaseY"></line>
+                            <text class="temporary-energy-height-marker-text temporary-resistance-height-text"
+                                :x="temporaryEnergyHeightMarkers.labelX" :y="temporaryEnergyHeightMarkers.resistanceTextY"
+                                :text-anchor="temporaryEnergyHeightMarkers.labelAnchor">
+                                {{ temporaryEnergyHeightMarkers.resistanceText }}
+                            </text>
+                        </g>
+                    </g>
                     <line v-if="props.elementVisibility?.kinetic && temporaryKineticEnergyPoint" class="kinetic-vline temporary-kinetic-vline"
                         :x1="getX(temporaryKineticEnergyPoint.x)" :y1="getY(temporaryKineticEnergyPoint.gravitationHeight)"
                         :x2="getX(temporaryKineticEnergyPoint.x)"
                         :y2="getY(temporaryKineticEnergyPoint.gravitationHeight + temporaryKineticEnergyPoint.kineticEnergyHeight)"></line>
-                    <text v-if="props.elementVisibility?.kinetic && temporaryKineticEnergyPoint" class="kinetic-text temporary-kinetic-text"
-                        :x="getX(temporaryKineticEnergyPoint.x)" :y="temporaryKineticTextY">{{
-                            formatKineticEnergyHeight(temporaryKineticEnergyPoint.kineticEnergyHeight)
-                        }}m({{ formatKineticVelocity(temporaryKineticEnergyPoint.velocity) }}m/s)</text>
+                    <text v-if="props.elementVisibility?.kinetic && temporaryEnergyHeightMarkers"
+                        class="temporary-energy-height-marker-text temporary-kinetic-height-text"
+                        :x="temporaryEnergyHeightMarkers.labelX" :y="temporaryEnergyHeightMarkers.kineticTextY"
+                        :text-anchor="temporaryEnergyHeightMarkers.labelAnchor">
+                        {{ temporaryEnergyHeightMarkers.kineticText }}
+                    </text>
                 </g>
                 <g class="points">
                     <g v-for="pos in slopeLayout?.positionList || []"
@@ -247,6 +272,7 @@ type TemporaryKineticEnergyPoint = {
     x: number
     gravitationHeight: number
     kineticEnergyHeight: number
+    resistanceEnergyHeight: number | null
     velocity: number
 }
 
@@ -363,6 +389,12 @@ const showResistanceNumber = computed(() => props.elementVisibility?.resistanceN
 const showKineticNumber = computed(() => props.elementVisibility?.kineticNumber ?? true);
 const showPointHeightNumber = computed(() => props.elementVisibility?.pointHeightNumber ?? true);
 const showCursorPositionLabel = computed(() => props.elementVisibility?.cursorPositionLabel ?? true);
+const controlPointXTolerance = 1e-6;
+const slopeControlPointXs = computed(() => {
+    return (props.slopeLayout?.positionList || [])
+        .map(position => Number(position.x))
+        .filter(x => Number.isFinite(x));
+});
 const draggingId = ref<string | null>(null);
 const startMouseY = ref(0);
 const startHeight = ref(0);
@@ -448,6 +480,10 @@ function getFlatPositionX(positionID: string): number | null {
     const position = props.flatLayout?.positionList?.find(pos => pos.id?.toString() === positionID?.toString());
     if (!position) return null;
     return Number.isFinite(position.x) ? position.x : null;
+}
+
+function isSlopeControlPointX(x: number): boolean {
+    return slopeControlPointXs.value.some(controlX => Math.abs(controlX - x) <= controlPointXTolerance);
 }
 
 function normalizeId(value: unknown): string {
@@ -936,6 +972,72 @@ const kineticTextPositions = computed(() => {
     return map;
 });
 
+// Adjust resistance text positions by nearby vertical slots to avoid overlaps.
+const resistanceTextPositions = computed(() => {
+    const map = new Map<number, number>();
+    if (!props.resistanceEnergyHeightData) return map;
+
+    const charWidth = fontSize.value * 0.6;
+    const textHeight = fontSize.value;
+    const gap = 3;
+    const step = textHeight + gap;
+    const placed: { x1: number; x2: number; y1: number; y2: number }[] = [];
+    const chartMinY = marginTop.value + textHeight / 2;
+    const chartMaxY = svgHeight.value - marginBottom.value - textHeight / 2;
+    const offsets = [0];
+
+    for (let i = 1; i <= 20; i += 1) {
+        offsets.push(-i * step, i * step);
+    }
+
+    const visiblePoints = props.resistanceEnergyHeightData
+        .filter(dataPoint => Number.isFinite(dataPoint.x) && Number.isFinite(dataPoint.height) && isSlopeControlPointX(dataPoint.x))
+        .slice()
+        .sort((a, b) => a.x - b.x);
+
+    for (const dataPoint of visiblePoints) {
+        const text = `${dataPoint.height}m`;
+        const width = Math.max(12, text.length * charWidth);
+        const cx = getX(dataPoint.x);
+        const topY = getY(orgKineticEnergyY.value - dataPoint.height);
+        const bottomY = getY(orgKineticEnergyY.value);
+        const baseY = Math.max(chartMinY, Math.min(chartMaxY, (topY + bottomY) / 2));
+        const segmentMinY = Math.max(chartMinY, Math.min(topY, bottomY) + textHeight / 2);
+        const segmentMaxY = Math.min(chartMaxY, Math.max(topY, bottomY) - textHeight / 2);
+
+        const getRect = (y: number) => ({
+            x1: cx - width / 2,
+            x2: cx + width / 2,
+            y1: y - textHeight / 2 - gap / 2,
+            y2: y + textHeight / 2 + gap / 2
+        });
+        const overlaps = (rect: { x1: number; x2: number; y1: number; y2: number }) =>
+            placed.some(p => !(p.x2 < rect.x1 || p.x1 > rect.x2 || p.y2 < rect.y1 || p.y1 > rect.y2));
+        const findOpenSlot = (minY: number, maxY: number) => {
+            for (const offset of offsets) {
+                const y = baseY + offset;
+                if (y < minY || y > maxY) continue;
+                if (!overlaps(getRect(y))) return y;
+            }
+            return null;
+        };
+
+        let ty = segmentMinY <= segmentMaxY ? findOpenSlot(segmentMinY, segmentMaxY) : null;
+        if (ty === null) {
+            ty = findOpenSlot(chartMinY, chartMaxY);
+        }
+        if (ty === null) {
+            ty = baseY;
+        }
+
+        const textY = Math.round(ty * 1000) / 1000;
+        map.set(dataPoint.x, textY);
+        placed.push(getRect(textY));
+    }
+
+    return map;
+});
+
 const resistancePoints = computed(() => {
     if (!props.resistanceEnergyHeightData) return '';
     return props.resistanceEnergyHeightData.map(dataPoint => {
@@ -958,6 +1060,19 @@ type CurveSamplePoint = {
     x: number
     value: number
 }
+
+const resistanceEnergyHeightSeries = computed<CurveSamplePoint[]>(() => {
+    if (!props.resistanceEnergyHeightData?.length) return [];
+
+    return props.resistanceEnergyHeightData
+        .filter(dataPoint => Number.isFinite(dataPoint.x))
+        .map(dataPoint => ({
+            x: dataPoint.x,
+            value: Number(dataPoint.height)
+        }))
+        .filter(point => Number.isFinite(point.value))
+        .sort((a, b) => a.x - b.x);
+});
 
 type RetarderBreakingHeightLabel = {
     key: string
@@ -1159,7 +1274,7 @@ const temporaryKineticTextY = computed(() => {
     const charWidth = fontSize.value * 0.6;
     const textHeight = fontSize.value;
     const step = textHeight + 4;
-    const text = `${formatKineticEnergyHeight(dataPoint.kineticEnergyHeight)}m(${formatKineticVelocity(dataPoint.velocity)}m/s)`;
+    const text = `${t('humpSlopeCtrl.labels.kineticEnergyHeight')} ${formatKineticEnergyHeight(dataPoint.kineticEnergyHeight)}m(${formatKineticVelocity(dataPoint.velocity)}m/s)`;
     const width = Math.max(12, text.length * charWidth);
     const cx = getX(dataPoint.x);
     const baseY = (getY(dataPoint.gravitationHeight) + getY(dataPoint.gravitationHeight + dataPoint.kineticEnergyHeight)) / 2;
@@ -1195,6 +1310,43 @@ const temporaryKineticTextY = computed(() => {
     }
 
     return Math.round(Math.max(marginTop.value + textHeight, ty) * 1000) / 1000;
+});
+
+const temporaryEnergyHeightMarkers = computed(() => {
+    const dataPoint = temporaryKineticEnergyPoint.value;
+    if (!dataPoint) return null;
+
+    const x = getX(dataPoint.x);
+    const labelOffset = 8;
+    const labelAnchor = x + 120 <= svgWidth.value - marginRight.value ? 'start' : 'end';
+    const labelX = labelAnchor === 'start' ? x + labelOffset : x - labelOffset;
+    const clampTextY = (y: number) => Math.max(
+        marginTop.value + fontSize.value,
+        Math.min(svgHeight.value - marginBottom.value - 4, y)
+    );
+    const slopeTopY = getY(dataPoint.gravitationHeight);
+    const slopeBaseY = getY(0);
+    const resistanceHeight = dataPoint.resistanceEnergyHeight;
+    const hasResistance = resistanceHeight !== null && Number.isFinite(resistanceHeight);
+    const resistanceTopY = hasResistance ? getY(orgKineticEnergyY.value - resistanceHeight) : 0;
+    const resistanceBaseY = hasResistance ? getY(orgKineticEnergyY.value) : 0;
+
+    return {
+        x,
+        labelX,
+        labelAnchor,
+        slopeTopY,
+        slopeBaseY,
+        kineticTextY: temporaryKineticTextY.value,
+        kineticText: `${t('humpSlopeCtrl.labels.kineticEnergyHeight')} ${formatKineticEnergyHeight(dataPoint.kineticEnergyHeight)}m(${formatKineticVelocity(dataPoint.velocity)}m/s)`,
+        slopeTextY: clampTextY((slopeTopY + slopeBaseY) / 2),
+        slopeText: `${t('humpSlopeCtrl.labels.slopeHeight')} ${formatKineticEnergyHeight(dataPoint.gravitationHeight)}m`,
+        hasResistance,
+        resistanceTopY,
+        resistanceBaseY,
+        resistanceTextY: hasResistance ? clampTextY((resistanceTopY + resistanceBaseY) / 2) : 0,
+        resistanceText: hasResistance ? `${t('humpSlopeCtrl.labels.resistanceEnergyHeight')} ${formatKineticEnergyHeight(resistanceHeight)}m` : ''
+    };
 });
 
 const retarderBreakingHeightLabels = computed<RetarderBreakingHeightLabel[]>(() => {
@@ -1354,6 +1506,7 @@ function handleTemporaryKineticAreaClick(event: MouseEvent) {
 
     const gravitationHeight = getSlopeHeightAtX(x);
     const breakingDisplayHeight = interpolateSeriesValue(breakingDisplaySeries.value, x);
+    const resistanceEnergyHeight = interpolateSeriesValue(resistanceEnergyHeightSeries.value, x);
     if (gravitationHeight === null || breakingDisplayHeight === null) return;
 
     const rawKineticEnergyHeight = breakingDisplayHeight - gravitationHeight;
@@ -1367,6 +1520,7 @@ function handleTemporaryKineticAreaClick(event: MouseEvent) {
         x: Math.round(x * 1000) / 1000,
         gravitationHeight: Math.round(gravitationHeight * 1000) / 1000,
         kineticEnergyHeight: Math.round(rawKineticEnergyHeight * 1000) / 1000,
+        resistanceEnergyHeight: resistanceEnergyHeight === null ? null : Math.round(Math.max(0, resistanceEnergyHeight) * 1000) / 1000,
         velocity: Math.round(Math.sqrt(2 * g * rawKineticEnergyHeight) * 100) / 100
     };
 }
@@ -1790,12 +1944,49 @@ defineExpose({
 }
 
 .temporary-kinetic-vline,
-.temporary-kinetic-text {
+.temporary-kinetic-height-text {
     opacity: 0.9;
 }
 
 .temporary-kinetic-vline {
+    stroke-width: 2px;
     stroke-dasharray: 4 2;
+}
+
+.temporary-slope-height-vline {
+    stroke: darkred;
+    stroke-width: 2px;
+    stroke-dasharray: 4 2;
+    opacity: 0.85;
+    pointer-events: none;
+}
+
+.temporary-resistance-height-vline {
+    stroke: #4988C4;
+    stroke-width: 2px;
+    stroke-dasharray: 4 2;
+    opacity: 0.85;
+    pointer-events: none;
+}
+
+.temporary-energy-height-marker-text {
+    font-size: 12px;
+    font-weight: 600;
+    dominant-baseline: middle;
+    user-select: none;
+    pointer-events: none;
+}
+
+.temporary-slope-height-text {
+    fill: darkred;
+}
+
+.temporary-resistance-height-text {
+    fill: #306fa8;
+}
+
+.temporary-kinetic-height-text {
+    fill: #016B61;
 }
 
 .addpointbar {

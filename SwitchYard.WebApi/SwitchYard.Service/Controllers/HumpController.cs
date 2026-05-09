@@ -1727,7 +1727,39 @@ namespace SwitchYard.Service.Controllers
             return slopeLine;
         }
 
-        private double resistanceDistanceStep = 20.0;
+        private const double EnergyHeightControlPointTolerance = 1e-6;
+
+        private static List<double> NormalizeEnergyHeightControlXList(IEnumerable<double> xList)
+        {
+            var result = new List<double>();
+
+            foreach (var x in xList.Where(double.IsFinite).OrderBy(x => x))
+            {
+                if (result.Count == 0 || Math.Abs(result[^1] - x) > EnergyHeightControlPointTolerance)
+                {
+                    result.Add(x);
+                }
+            }
+
+            return result;
+        }
+
+        private static List<double> BuildEnergyHeightControlXList(Hump.FlatLayout flatLayout, SlopeLayout slopeLayout)
+        {
+            var xList = new List<double>();
+
+            if (flatLayout.PositionList != null)
+            {
+                xList.AddRange(flatLayout.PositionList.Select(position => position.X));
+            }
+
+            if (slopeLayout.PositionList != null)
+            {
+                xList.AddRange(slopeLayout.PositionList.Select(position => position.X));
+            }
+
+            return NormalizeEnergyHeightControlXList(xList);
+        }
 
         /// <summary>
         /// 计算阻力能高
@@ -1762,10 +1794,10 @@ namespace SwitchYard.Service.Controllers
                 }
                 else
                 {
-                    for (var i = slopeLayout.PositionList.First().X; i <= slopeLayout.PositionList.Last().X; i += resistanceDistanceStep)
+                    foreach (var x in BuildEnergyHeightControlXList(flatLayout, slopeLayout))
                     {
-                        var energyHeight = HumpEnergyHeightCalculator.CalculateResistanceEnergyHeight(flatLayout, i, parameters);
-                        resistanceEnergyHeightList.Add(new { x = i, height = Math.Round(energyHeight, 3) });
+                        var energyHeight = HumpEnergyHeightCalculator.CalculateResistanceEnergyHeight(flatLayout, x, parameters);
+                        resistanceEnergyHeightList.Add(new { x, height = Math.Round(energyHeight, 3) });
                     }
                 }
                 LogInformationWithContext("Resistance Energy Height calculated for {PositionCount} positions, slope line {SlopeLineID}, hump scheme {HumpSchemeID}, operation condition {OperationConditionID}.", resistanceEnergyHeightList?.Count ?? 0, parameters.SlopeLineID, parameters.HumpSchemeID, parameters.OperationConditionID);
@@ -1834,20 +1866,29 @@ namespace SwitchYard.Service.Controllers
                 var breakingEnergyHeightDict = new Dictionary<double, object>();
 
                 var retarderXList = new List<double>();
-                retarderXList.Add(flatLayout.PositionList[0].X);
-                retarderXList.AddRange(flatLayout.RetarderList.Select(x => x.BindingPositionSegment.StartPosition.X)
-                    .Union(flatLayout.RetarderList.Select(x => x.BindingPositionSegment.EndPosition.X)));
-                retarderXList.AddRange(flatLayout.PositionList.LastOrDefault()?.X != null ? new List<double> { flatLayout.PositionList.Last().X } : new List<double>());
-
-                var resistanceXList = new List<double>();
-                for (var i = slopeLayout.PositionList.First().X; i <= slopeLayout.PositionList.Last().X; i += resistanceDistanceStep)
+                if (flatLayout.PositionList?.Count > 0)
                 {
-                    resistanceXList.Add(i);
+                    retarderXList.Add(flatLayout.PositionList[0].X);
+                    retarderXList.Add(flatLayout.PositionList.Last().X);
                 }
 
-                foreach (var x in retarderXList.Union(flatLayout.PositionList.Select(p => p.X))
-                    .Union(slopeLayout.PositionList.Select(p => p.X))
-                    .Union(resistanceXList))
+                if (flatLayout.RetarderList != null)
+                {
+                    retarderXList.AddRange(flatLayout.RetarderList
+                        .SelectMany(retarder => new double?[]
+                        {
+                            retarder.BindingPositionSegment?.StartPosition?.X,
+                            retarder.BindingPositionSegment?.EndPosition?.X
+                        })
+                        .Where(x => x.HasValue)
+                        .Select(x => x!.Value));
+                }
+
+                var displayXList = NormalizeEnergyHeightControlXList(retarderXList);
+                var sampleXList = NormalizeEnergyHeightControlXList(
+                    BuildEnergyHeightControlXList(flatLayout, slopeLayout).Concat(displayXList));
+
+                foreach (var x in sampleXList)
                 {
                     var kineticEnergyHeight = HumpEnergyHeightCalculator.CalculateKineticEnergyHeight(flatLayout, slopeLayout, x, parameters);
 
@@ -1857,7 +1898,7 @@ namespace SwitchYard.Service.Controllers
                             BreakingEnergyHeight = kineticEnergyHeight.BreakingHeight,
                             GravityEnergyHeight = kineticEnergyHeight.GravitationHeight,
                             KineticEnergyHeight = kineticEnergyHeight.KineticEnergyHeight,
-                            Display = retarderXList.Contains(x)
+                            Display = displayXList.Any(displayX => Math.Abs(displayX - x) <= EnergyHeightControlPointTolerance)
                         });
                 }
                 LogInformationWithContext("Breaking Energy Height calculated for {PositionCount} positions, slope line {SlopeLineID}, hump scheme {HumpSchemeID}.", breakingEnergyHeightDict?.Count ?? 0, parameters.SlopeLineID, parameters.HumpSchemeID);

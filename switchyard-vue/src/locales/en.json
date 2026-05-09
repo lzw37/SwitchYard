@@ -725,6 +725,9 @@
             "enabled": "Enabled",
             "output": "Output",
             "totalEnergyHeight": "Total EH",
+            "slopeHeight": "Slope H",
+            "resistanceEnergyHeight": "Resistance EH",
+            "kineticEnergyHeight": "Kinetic EH",
             "notConfigured": "Not Configured"
         },
         "contextMenu": {

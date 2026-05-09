@@ -725,6 +725,9 @@
             "enabled": "\u542f\u7528",
             "output": "\u8f93\u51fa",
             "totalEnergyHeight": "\u603b\u80fd\u9ad8",
+            "slopeHeight": "坡高",
+            "resistanceEnergyHeight": "阻力能高",
+            "kineticEnergyHeight": "动能高",
             "notConfigured": "\u672a\u914d\u7f6e"
         },
         "contextMenu": {
