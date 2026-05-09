@@ -158,7 +158,7 @@
                 <el-tabs v-model="activeTab" @tab-click="handleTabClick">
                     <el-tab-pane :label="t('humpSlopeDesigner.positionPoints')" name="vposition">
                         <el-table :data="slopeLayout?.positionList || []" style="width: 100%">
-                            <el-table-column prop="id" :label="t('humpSlopeDesigner.table.calculationConditionID')"
+                            <el-table-column prop="id" :label="t('humpSlopeDesigner.table.positionID')"
                                 width="100"></el-table-column>
                             <el-table-column prop="x" :label="t('humpSlopeDesigner.positionX')" width="140">
                                 <template #default="{ row }">
@@ -194,9 +194,6 @@
                         <el-table :data="energyHeightTableRows" class="energy-height-table" style="width: 100%">
                             <el-table-column prop="positionID" :label="t('humpSlopeDesigner.energyHeightTable.positionID')"
                                 width="110"></el-table-column>
-                            <el-table-column prop="positionPointID"
-                                :label="t('humpSlopeDesigner.energyHeightTable.positionPointID')"
-                                width="120"></el-table-column>
                             <el-table-column :label="t('humpSlopeDesigner.energyHeightTable.positionX')"
                                 width="115">
                                 <template #default="{ row }">
@@ -581,7 +578,6 @@ type KineticEnergyHeightPoint = {
 
 type EnergyHeightTableRow = {
     positionID: string
-    positionPointID: string
     x: number
     height: number
     resistanceEnergyHeight: number | null
@@ -781,7 +777,6 @@ const energyHeightTableRows = computed<EnergyHeightTableRow[]>(() => {
 
         return {
             positionID,
-            positionPointID,
             x: toFiniteNumberOrNull(position.x) ?? 0,
             height: toFiniteNumberOrNull(position.height) ?? 0,
             resistanceEnergyHeight: getKineticResultNumber(result, 'resistanceHeight', 'ResistanceHeight'),

@@ -800,6 +800,7 @@
             "deleteConfirm": "删除确认"
         },
         "table": {
+            "positionID": "位置ID",
             "calculationConditionID": "计算条件ID",
             "schemeId": "方案ID",
             "schemeName": "方案名称",
@@ -813,7 +814,6 @@
         },
         "energyHeightTable": {
             "positionID": "位置ID",
-            "positionPointID": "位置点ID",
             "positionX": "位置X/m",
             "height": "高度H/m",
             "resistanceEnergyHeight": "阻力能高/m",

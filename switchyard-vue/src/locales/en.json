@@ -800,6 +800,7 @@
             "deleteConfirm": "Delete Confirmation"
         },
         "table": {
+            "positionID": "Position ID",
             "calculationConditionID": "Op. Condition ID",
             "schemeId": "Scheme ID",
             "schemeName": "Scheme Name",
@@ -813,7 +814,6 @@
         },
         "energyHeightTable": {
             "positionID": "Position ID",
-            "positionPointID": "Position Point ID",
             "positionX": "Position X/m",
             "height": "Height H/m",
             "resistanceEnergyHeight": "Resistance Energy Height/m",
