@@ -764,6 +764,7 @@
         "temperature": "Temperature:",
         "positionPoints": "Position Points",
         "positionSegments": "Position Segments",
+        "energyHeight": "Energy Height",
         "id": "ID",
         "positionX": "Position X/m",
         "height": "Height/m",
@@ -809,6 +810,15 @@
             "slopeLine": "Slope Line",
             "humpScheme": "Hump Scheme",
             "retarderStatus": "Retarder Status"
+        },
+        "energyHeightTable": {
+            "positionID": "Position ID",
+            "positionPointID": "Position Point ID",
+            "positionX": "Position X/m",
+            "height": "Height H/m",
+            "resistanceEnergyHeight": "Resistance Energy Height/m",
+            "kineticEnergyHeight": "Kinetic Energy Height/m",
+            "instantaneousVelocity": "Instantaneous Rolling Speed/(m/s)"
         },
         "placeholder": {
             "selectWagonType": "Select Wagon Type",
@@ -864,7 +874,7 @@
             "saveError": "Failed to save retarder status"
         },
         "resistanceDetail": {
-            "title": "Resistance Energy Height (x = {x} m)",
+            "title": "Resistance Energy Height",
             "total": "Total Resistance EH",
             "loading": "Loading...",
             "row": {

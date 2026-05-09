@@ -764,6 +764,7 @@
         "temperature": "温度：",
         "positionPoints": "位置点",
         "positionSegments": "位置区间",
+        "energyHeight": "能高",
         "id": "ID",
         "positionX": "位置X/m",
         "height": "高度/m",
@@ -809,6 +810,15 @@
             "slopeLine": "溜放线",
             "humpScheme": "驼峰方案",
             "retarderStatus": "减速器状态"
+        },
+        "energyHeightTable": {
+            "positionID": "位置ID",
+            "positionPointID": "位置点ID",
+            "positionX": "位置X/m",
+            "height": "高度H/m",
+            "resistanceEnergyHeight": "阻力能高/m",
+            "kineticEnergyHeight": "动能高/m",
+            "instantaneousVelocity": "瞬时溜放速度/(m/s)"
         },
         "placeholder": {
             "selectWagonType": "选择车辆类型",
@@ -864,7 +874,7 @@
             "saveError": "减速器工作状态保存失败"
         },
         "resistanceDetail": {
-            "title": "阻力能高 (x = {x} m)",
+            "title": "阻力能高",
             "total": "总阻力能高",
             "loading": "加载中...",
             "row": {

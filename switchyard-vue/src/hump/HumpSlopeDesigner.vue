@@ -190,6 +190,44 @@
                                 width="120"></el-table-column>
                         </el-table>
                     </el-tab-pane>
+                    <el-tab-pane :label="t('humpSlopeDesigner.energyHeight')" name="energyHeight">
+                        <el-table :data="energyHeightTableRows" class="energy-height-table" style="width: 100%">
+                            <el-table-column prop="positionID" :label="t('humpSlopeDesigner.energyHeightTable.positionID')"
+                                width="110"></el-table-column>
+                            <el-table-column prop="positionPointID"
+                                :label="t('humpSlopeDesigner.energyHeightTable.positionPointID')"
+                                width="120"></el-table-column>
+                            <el-table-column :label="t('humpSlopeDesigner.energyHeightTable.positionX')"
+                                width="115">
+                                <template #default="{ row }">
+                                    {{ formatEnergyTableNumber(row.x) }}
+                                </template>
+                            </el-table-column>
+                            <el-table-column :label="t('humpSlopeDesigner.energyHeightTable.height')" width="110">
+                                <template #default="{ row }">
+                                    {{ formatEnergyTableNumber(row.height) }}
+                                </template>
+                            </el-table-column>
+                            <el-table-column :label="t('humpSlopeDesigner.energyHeightTable.resistanceEnergyHeight')"
+                                width="130">
+                                <template #default="{ row }">
+                                    {{ formatEnergyTableNumber(row.resistanceEnergyHeight) }}
+                                </template>
+                            </el-table-column>
+                            <el-table-column :label="t('humpSlopeDesigner.energyHeightTable.kineticEnergyHeight')"
+                                width="120">
+                                <template #default="{ row }">
+                                    {{ formatEnergyTableNumber(row.kineticEnergyHeight) }}
+                                </template>
+                            </el-table-column>
+                            <el-table-column :label="t('humpSlopeDesigner.energyHeightTable.instantaneousVelocity')"
+                                width="170">
+                                <template #default="{ row }">
+                                    {{ formatEnergyTableNumber(row.velocity, 2) }}
+                                </template>
+                            </el-table-column>
+                        </el-table>
+                    </el-tab-pane>
                 </el-tabs>
             </div>
         </div>
@@ -200,10 +238,20 @@
             :style="{ left: resistanceDetailPopover.x + 'px', top: resistanceDetailPopover.y + 'px' }"
             @click.stop>
             <div class="resistance-detail-header">
-                <span class="resistance-detail-title">{{ t('humpSlopeDesigner.resistanceDetail.title', { x: resistanceDetailPopover.detail?.x ?? '-' }) }}</span>
+                <span class="resistance-detail-title">{{ t('humpSlopeDesigner.resistanceDetail.title') }}</span>
                 <span class="resistance-detail-close" @click="closeResistanceDetail">×</span>
             </div>
-            <div class="resistance-detail-body" v-if="resistanceDetailPopover.detail">
+            <div class="resistance-detail-x-editor">
+                <span class="resistance-detail-label">x=</span>
+                <el-input-number v-model="resistanceDetailXInput" class="resistance-detail-x-input" size="small"
+                    :controls="false" :precision="3" :min="0" @keydown.enter.prevent="confirmResistanceDetailX" />
+                <span class="resistance-detail-unit">m</span>
+                <el-button size="small" type="primary" :loading="resistanceDetailLoading"
+                    :disabled="!isResistanceDetailXValid" @click="confirmResistanceDetailX">
+                    {{ t('humpSlopeDesigner.buttons.confirm') }}
+                </el-button>
+            </div>
+            <div class="resistance-detail-body" v-if="resistanceDetailPopover.detail && !resistanceDetailLoading">
                 <div class="resistance-detail-row">
                     <span class="resistance-detail-label">{{ t('humpSlopeDesigner.resistanceDetail.total') }}</span>
                     <span class="resistance-detail-value resistance-detail-total">
@@ -508,6 +556,39 @@ type BreakingEnergyHeightPoint = {
     display: boolean
 }
 
+type KineticEnergyHeightResult = {
+    positionID?: string
+    PositionID?: string
+    orgKineticEnergyHeight?: number
+    OrgKineticEnergyHeight?: number
+    gravitationHeight?: number
+    GravitationHeight?: number
+    resistanceHeight?: number
+    ResistanceHeight?: number
+    breakingHeight?: number
+    BreakingHeight?: number
+    kineticEnergyHeight?: number
+    KineticEnergyHeight?: number
+    velocity?: number
+    Velocity?: number
+}
+
+type KineticEnergyHeightPoint = {
+    x: number
+    X?: number
+    result: KineticEnergyHeightResult
+}
+
+type EnergyHeightTableRow = {
+    positionID: string
+    positionPointID: string
+    x: number
+    height: number
+    resistanceEnergyHeight: number | null
+    kineticEnergyHeight: number | null
+    velocity: number | null
+}
+
 const humpSchemes = ref<HumpScheme[]>([])
 const currentHumpSchemeID = ref("");
 
@@ -621,7 +702,7 @@ function handleWheelScaleX(payload: { scaleX: number, scrollLeft: number }) {
 }
 
 const resistanceEnergyHeightData = ref<{ x: number, height: number }[] | null>(null);
-const kineticEnergyHeightData = ref<{ x: number, result: any }[] | null>(null);
+const kineticEnergyHeightData = ref<KineticEnergyHeightPoint[] | null>(null);
 const breakingEnergyHeightData = ref<BreakingEnergyHeightPoint[] | null>(null);
 
 const selectedCondition = ref('condition1');
@@ -647,6 +728,74 @@ const clearEnergyHeightData = () => {
     kineticEnergyHeightData.value = null
     breakingEnergyHeightData.value = null
     closeResistanceDetail()
+}
+
+function getObjectValue(source: unknown, ...keys: string[]): unknown {
+    if (!source || typeof source !== 'object') return undefined
+    const record = source as Record<string, unknown>
+    for (const key of keys) {
+        if (record[key] !== undefined && record[key] !== null) {
+            return record[key]
+        }
+    }
+    return undefined
+}
+
+function normalizeTableID(value: unknown): string {
+    return value === undefined || value === null ? '' : String(value)
+}
+
+function toFiniteNumberOrNull(value: unknown): number | null {
+    if (value === undefined || value === null || value === '') return null
+    const numericValue = Number(value)
+    return Number.isFinite(numericValue) ? numericValue : null
+}
+
+function getKineticResultNumber(result: KineticEnergyHeightResult | undefined, ...keys: string[]): number | null {
+    return toFiniteNumberOrNull(getObjectValue(result, ...keys))
+}
+
+function findKineticEnergyPoint(positionPointID: string, x: unknown): KineticEnergyHeightPoint | undefined {
+    const data = kineticEnergyHeightData.value || []
+    const idMatchedPoint = data.find(point => {
+        const pointPositionID = normalizeTableID(getObjectValue(point.result, 'positionID', 'PositionID'))
+        return pointPositionID !== '' && pointPositionID === positionPointID
+    })
+    if (idMatchedPoint) return idMatchedPoint
+
+    const targetX = toFiniteNumberOrNull(x)
+    if (targetX === null) return undefined
+
+    return data.find(point => {
+        const pointX = toFiniteNumberOrNull(getObjectValue(point, 'x', 'X'))
+        return pointX !== null && Math.abs(pointX - targetX) < 1e-6
+    })
+}
+
+const energyHeightTableRows = computed<EnergyHeightTableRow[]>(() => {
+    return (slopeLayout.value?.positionList || []).map(position => {
+        const positionPointID = normalizeTableID(position.id)
+        const kineticPoint = findKineticEnergyPoint(positionPointID, position.x)
+        const result = kineticPoint?.result
+        const positionID = normalizeTableID(getObjectValue(result, 'positionID', 'PositionID')) || positionPointID
+
+        return {
+            positionID,
+            positionPointID,
+            x: toFiniteNumberOrNull(position.x) ?? 0,
+            height: toFiniteNumberOrNull(position.height) ?? 0,
+            resistanceEnergyHeight: getKineticResultNumber(result, 'resistanceHeight', 'ResistanceHeight'),
+            kineticEnergyHeight: getKineticResultNumber(result, 'kineticEnergyHeight', 'KineticEnergyHeight'),
+            velocity: getKineticResultNumber(result, 'velocity', 'Velocity')
+        }
+    })
+})
+
+function formatEnergyTableNumber(value: unknown, precision = 3): string {
+    if (value === undefined || value === null || value === '') return '--'
+    const numericValue = Number(value)
+    if (!Number.isFinite(numericValue)) return '--'
+    return numericValue.toFixed(precision)
 }
 
 const setAllEnergyLinesVisible = async (visible: boolean) => {
@@ -996,6 +1145,14 @@ const resistanceDetailPopover = ref<{
     y: number
     detail: ResistanceEnergyHeightDetailDto | null
 }>({ visible: false, x: 0, y: 0, detail: null })
+const resistanceDetailXInput = ref<number | undefined>(undefined)
+const resistanceDetailLoading = ref(false)
+let resistanceDetailRequestSequence = 0
+
+const isResistanceDetailXValid = computed(() => {
+    const x = Number(resistanceDetailXInput.value)
+    return Number.isFinite(x) && x >= 0
+})
 
 function formatHeight(value: unknown): string {
     const v = Number(value)
@@ -1012,6 +1169,9 @@ function formatNumber(value: unknown): string {
 }
 
 function closeResistanceDetail() {
+    resistanceDetailRequestSequence += 1
+    resistanceDetailXInput.value = undefined
+    resistanceDetailLoading.value = false
     resistanceDetailPopover.value = { visible: false, x: 0, y: 0, detail: null }
 }
 
@@ -1074,13 +1234,58 @@ const curveFormulaParams = computed(() => {
     }
 })
 
+async function loadResistanceEnergyHeightDetail(xValue: number, options: { closeOnError?: boolean } = {}) {
+    const x = Number(xValue)
+    if (!Number.isFinite(x) || x < 0) return
+
+    if (!props.selectedInstanceId || !currentHumpSchemeID.value || !currentHumpCalculationID.value) {
+        ElMessage.warning(t('humpSlopeDesigner.resistanceDetail.messages.selectFirst'))
+        return
+    }
+    const currentCalculation = getCurrentCalculation()
+    if (!currentCalculation) return
+
+    const requestSequence = ++resistanceDetailRequestSequence
+    resistanceDetailLoading.value = true
+
+    try {
+        const response = await axios.post(`/hump/getresistanceenergyheightdetail`, buildEnergyHeightLineParams(currentCalculation), {
+            params: { x }
+        })
+        if (requestSequence !== resistanceDetailRequestSequence || !resistanceDetailPopover.value.visible) return
+        if (response.data) {
+            const detail = response.data as ResistanceEnergyHeightDetailDto
+            resistanceDetailPopover.value.detail = detail
+            const detailX = Number(detail.x)
+            resistanceDetailXInput.value = Number.isFinite(detailX) ? detailX : x
+        }
+    } catch (error) {
+        console.error('Failed to load resistance energy height detail:', error)
+        ElMessage.error(t('humpSlopeDesigner.resistanceDetail.messages.loadDetailFailed'))
+        if (options.closeOnError) {
+            closeResistanceDetail()
+        }
+    } finally {
+        if (requestSequence === resistanceDetailRequestSequence) {
+            resistanceDetailLoading.value = false
+        }
+    }
+}
+
+async function confirmResistanceDetailX() {
+    if (!isResistanceDetailXValid.value || resistanceDetailLoading.value) return
+    await loadResistanceEnergyHeightDetail(Number(resistanceDetailXInput.value))
+}
+
 function handleResistanceClick(payload: { x: number, clientX: number, clientY: number }) {
     if (!props.selectedInstanceId || !currentHumpSchemeID.value || !currentHumpCalculationID.value) {
         ElMessage.warning(t('humpSlopeDesigner.resistanceDetail.messages.selectFirst'))
         return
     }
-    const currentCalculation = humpCalculations.value.find(calc => calc.id === currentHumpCalculationID.value)
+    const currentCalculation = getCurrentCalculation()
     if (!currentCalculation) return
+    const x = Number(payload.x)
+    if (!Number.isFinite(x) || x < 0) return
 
     // 弹出位置：相对视口的固定坐标。向右下方稍微偏移以避免遮挡光标点。
     const popoverWidth = 320
@@ -1097,31 +1302,10 @@ function handleResistanceClick(payload: { x: number, clientX: number, clientY: n
         }
     }
 
+    resistanceDetailXInput.value = Math.round(x * 1000) / 1000
     resistanceDetailPopover.value = { visible: true, x: left, y: top, detail: null }
 
-    const requestBody = {
-        instanceID: props.selectedInstanceId,
-        humpSchemeID: currentHumpSchemeID.value,
-        id: currentCalculation.id,
-        slopeLineID: currentCalculation.slopeLineID,
-        wagonTypeName: currentCalculation.wagonType,
-        operationConditionID: currentCalculation.operationConditionID,
-        retarderStatusID: null,
-        retarderStatusList: currentCalculation.retarderStatusList || [],
-        wagon: { typeName: currentCalculation.wagonType }
-    }
-
-    axios.post(`/hump/getresistanceenergyheightdetail`, requestBody, {
-        params: { x: payload.x }
-    }).then(response => {
-        if (response.data) {
-            resistanceDetailPopover.value.detail = response.data as ResistanceEnergyHeightDetailDto
-        }
-    }).catch(error => {
-        console.error('加载阻力能高分项明细失败:', error)
-        ElMessage.error(t('humpSlopeDesigner.resistanceDetail.messages.loadDetailFailed'))
-        closeResistanceDetail()
-    })
+    void loadResistanceEnergyHeightDetail(x, { closeOnError: true })
 }
 
 // 加载动能高线
@@ -1146,7 +1330,7 @@ async function loadKineticEnergyHeight() {
         if (!isCurrentEnergyHeightRequest(requestKey)) return
         if (response.data) {
             console.log('Kinetic energy height data loaded:', response.data);
-            kineticEnergyHeightData.value = response.data as { x: number, result: any }[];
+            kineticEnergyHeightData.value = response.data as KineticEnergyHeightPoint[];
         }
     } catch (error) {
         console.error("加载动能高度数据失败:", error);
@@ -1536,7 +1720,10 @@ const loadFlatLayout = async () => {
 }
 
 function handleTabClick(tab: any) {
-    // 可以添加切换tab的逻辑
+    const tabName = String(tab?.paneName ?? tab?.props?.name ?? tab?.name ?? '')
+    if (tabName === 'energyHeight' && !kineticEnergyHeightData.value) {
+        void loadKineticEnergyHeight()
+    }
 }
 
 function toggleLeft() {
@@ -2086,6 +2273,24 @@ const handleSaveRetarderStatus = async () => {
 
 .resistance-detail-body {
     padding: 6px 0;
+}
+
+.resistance-detail-x-editor {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    border-bottom: 1px solid #eaecef;
+}
+
+.resistance-detail-x-input {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.resistance-detail-unit {
+    color: #57606a;
+    font-size: 12px;
 }
 
 .resistance-detail-row {
