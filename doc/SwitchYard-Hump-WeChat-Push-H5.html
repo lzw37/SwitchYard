@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SwitchYard.Hump 驼峰纵断面设计辅助工具</title>
+  <style>
+    body {
+      margin: 0;
+      background: #ffffff;
+      color: #1f2937;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
+    }
+    img {
+      max-width: 100%;
+      height: auto;
+    }
+    a {
+      color: #0f63d8;
+    }
+  </style>
+</head>
+<body style="margin:0;background:#ffffff;color:#1f2937;">
+  <!-- 公众号编辑器可优先复制 article 内的内容；正文关键样式已尽量内联。 -->
+  <article style="box-sizing:border-box;max-width:720px;margin:0 auto;padding:0 18px 42px;background:#ffffff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',Arial,sans-serif;color:#1f2937;line-height:1.78;">
+    <section style="box-sizing:border-box;padding:34px 0 22px;border-bottom:1px solid #dbeafe;">
+      <p style="margin:0 0 14px;font-size:13px;line-height:1.4;color:#0f63d8;letter-spacing:0;font-weight:600;">
+        RAILWAY DESIGN TOOL · TRIAL VERSION
+      </p>
+      <h1 style="margin:0;color:#0b2f66;font-size:28px;line-height:1.26;font-weight:800;letter-spacing:0;">
+        SwitchYard.Hump
+      </h1>
+      <p style="margin:8px 0 0;color:#0f63d8;font-size:20px;line-height:1.45;font-weight:700;letter-spacing:0;">
+        驼峰纵断面设计辅助工具
+      </p>
+      <p style="margin:20px 0 0;color:#334155;font-size:15px;line-height:1.9;">
+        调车驼峰是铁路编组站中最关键的设备之一，承担着有改编中转列车的解体任务。但驼峰设计是一个特别小众的领域，计算繁、参数多、方案判断链条长。
+      </p>
+      <section style="box-sizing:border-box;margin:22px 0 0;padding:16px 16px 15px;background:#f3f8ff;border:1px solid #bfdbfe;border-left:4px solid #0f63d8;border-radius:8px;">
+        <p style="margin:0;color:#0b2f66;font-size:16px;line-height:1.78;font-weight:700;">
+          我们希望把人从繁重、重复、容易出错的计算工作中解放出来，让使用者把更多精力放在理解方案、比较方案和优化方案上。
+        </p>
+      </section>
+    </section>
+
+    <section style="box-sizing:border-box;padding:28px 0 10px;">
+      <h2 style="margin:0 0 14px;color:#0b2f66;font-size:21px;line-height:1.35;font-weight:800;letter-spacing:0;">
+        为什么需要它？
+      </h2>
+      <p style="margin:0 0 14px;color:#334155;font-size:15px;line-height:1.9;">
+        做驼峰纵断面设计时，最耗人的往往不是“不会算”，而是每改一个坡段、每换一种车辆或运行条件，都要重新整理参数、计算阻力能高、推导速度变化、绘制曲线，再回过头判断方案是否合理。
+      </p>
+      <p style="margin:0 0 14px;color:#334155;font-size:15px;line-height:1.9;">
+        对刚接触站场与驼峰设计的同学来说，很多精力会被重复计算和表格整理消耗掉。算到最后，可能公式都对了，数值也都带入正确了（但这个可能性不大），却没有真正理解这个方案为什么好、哪里还有进一步提升的空间。
+      </p>
+      <section style="box-sizing:border-box;margin:20px 0 2px;padding:18px 16px;background:#ffffff;border:1px solid #dbeafe;border-radius:8px;box-shadow:0 8px 24px rgba(15,99,216,0.08);">
+        <p style="margin:0;color:#475569;font-size:14px;line-height:1.85;">
+          作者曾无数次回忆起半夜在18号楼楼道里，坐在楼梯上 <strong style="color:#0f63d8;font-weight:800;">采用古法手工计算</strong> 手算半天，算出来减速区是一段上坡的崩溃感……
+        </p>
+      </section>
+    </section>
+
+    <section style="box-sizing:border-box;margin:20px 0 8px;padding:22px 18px;background:#0f63d8;border-radius:8px;color:#ffffff;">
+      <h2 style="margin:0 0 12px;color:#ffffff;font-size:20px;line-height:1.35;font-weight:800;letter-spacing:0;">
+        从“埋头算数据”，走向“抬头看方案”
+      </h2>
+      <p style="margin:0;color:#eaf3ff;font-size:15px;line-height:1.9;">
+        在这个工具中，纵断面不再只是表格里的坡度、高度和能高。所有与纵断面设计相关的车辆参数、运行条件、能高、速度曲线、时间曲线等要素，都被放到同一个系统中。你可以更快地试方案、改参数、看结果，也更容易理解不同设计因素之间的相互影响。
+      </p>
+    </section>
+
+    <section style="box-sizing:border-box;padding:28px 0 0;">
+      <p style="margin:0 0 8px;font-size:13px;line-height:1.4;color:#0f63d8;font-weight:700;">
+        CORE FEATURES
+      </p>
+      <h2 style="margin:0 0 18px;color:#0b2f66;font-size:22px;line-height:1.35;font-weight:800;letter-spacing:0;">
+        主要功能
+      </h2>
+
+      <section style="box-sizing:border-box;margin:0 0 24px;padding:18px 16px;background:#ffffff;border:1px solid #dbeafe;border-radius:8px;">
+        <p style="margin:0 0 8px;color:#0f63d8;font-size:13px;line-height:1.4;font-weight:800;">01</p>
+        <h3 style="margin:0 0 10px;color:#0b2f66;font-size:18px;line-height:1.45;font-weight:800;letter-spacing:0;">
+          溜放线平面展开图的维护
+        </h3>
+        <p style="margin:0 0 14px;color:#334155;font-size:15px;line-height:1.85;">
+          工具提供溜放线至调车场线路的平面展开图展示和维护功能，帮助用户直观构建平面展开图上的设备布置。
+        </p>
+        <img src="assets/hump-gif/hump-plan-layout.gif" alt="平面展开图演示" style="display:block;width:100%;height:auto;margin:0;border:1px solid #dbeafe;border-radius:8px;background:#f8fbff;">
+      </section>
+
+      <section style="box-sizing:border-box;margin:0 0 24px;padding:18px 16px;background:#ffffff;border:1px solid #dbeafe;border-radius:8px;">
+        <p style="margin:0 0 8px;color:#0f63d8;font-size:13px;line-height:1.4;font-weight:800;">02</p>
+        <h3 style="margin:0 0 10px;color:#0b2f66;font-size:18px;line-height:1.45;font-weight:800;letter-spacing:0;">
+          车辆参数与计算条件配置
+        </h3>
+        <p style="margin:0 0 14px;color:#334155;font-size:15px;line-height:1.85;">
+          可配置车辆类型、质量、迎风面积、推峰速度、溜放速度、风速、温度、空气密度等参数，为不同工况下的能高计算分析提供基础。
+        </p>
+        <img src="assets/hump-gif/hump-calculation-params.gif" alt="车辆参数与计算条件维护演示" style="display:block;width:100%;height:auto;margin:0;border:1px solid #dbeafe;border-radius:8px;background:#f8fbff;">
+      </section>
+
+      <section style="box-sizing:border-box;margin:0 0 24px;padding:18px 16px;background:#ffffff;border:1px solid #dbeafe;border-radius:8px;">
+        <p style="margin:0 0 8px;color:#0f63d8;font-size:13px;line-height:1.4;font-weight:800;">03</p>
+        <h3 style="margin:0 0 10px;color:#0b2f66;font-size:18px;line-height:1.45;font-weight:800;letter-spacing:0;">
+          纵断面设计
+        </h3>
+        <p style="margin:0 0 14px;color:#334155;font-size:15px;line-height:1.85;">
+          支持对驼峰峰顶、驼峰溜放部分的边坡点进行编辑，通过交互式控件调整边坡点高程和水平位置，并可保存不同设计方案，适合教学演示、课程设计和方案初步比选。
+        </p>
+        <img src="assets/hump-gif/hump-profile-design.gif" alt="纵断面设计演示" style="display:block;width:100%;height:auto;margin:0;border:1px solid #dbeafe;border-radius:8px;background:#f8fbff;">
+      </section>
+
+      <section style="box-sizing:border-box;margin:0 0 24px;padding:18px 16px;background:#ffffff;border:1px solid #dbeafe;border-radius:8px;">
+        <p style="margin:0 0 8px;color:#0f63d8;font-size:13px;line-height:1.4;font-weight:800;">04</p>
+        <h3 style="margin:0 0 10px;color:#0b2f66;font-size:18px;line-height:1.45;font-weight:800;letter-spacing:0;">
+          能高线计算与展示
+        </h3>
+        <p style="margin:0 0 14px;color:#334155;font-size:15px;line-height:1.85;">
+          支持计算并显示初始动能高线、阻力能高线、动能高线和制动能高线。阻力能高还可进一步查看基本阻力、风阻力、道岔阻力、曲线阻力等分项明细。
+        </p>
+        <img src="assets/hump-gif/hump-retarder-energy.gif" alt="制动位与制动能高设计演示" style="display:block;width:100%;height:auto;margin:0;border:1px solid #dbeafe;border-radius:8px;background:#f8fbff;">
+      </section>
+
+      <section style="box-sizing:border-box;margin:0 0 24px;padding:18px 16px;background:#f8fbff;border:1px solid #bfdbfe;border-radius:8px;">
+        <p style="margin:0 0 8px;color:#0f63d8;font-size:13px;line-height:1.4;font-weight:800;">05</p>
+        <h3 style="margin:0 0 10px;color:#0b2f66;font-size:18px;line-height:1.45;font-weight:800;letter-spacing:0;">
+          驼峰调速系统的设计
+        </h3>
+        <p style="margin:0;color:#334155;font-size:15px;line-height:1.85;">
+          可设置减速器的制动能高、输出比例，用于设计驼峰调速系统，使纵断面设计与调速能力配置形成闭环。
+        </p>
+      </section>
+
+      <section style="box-sizing:border-box;margin:0 0 24px;padding:18px 16px;background:#ffffff;border:1px solid #dbeafe;border-radius:8px;">
+        <p style="margin:0 0 8px;color:#0f63d8;font-size:13px;line-height:1.4;font-weight:800;">06</p>
+        <h3 style="margin:0 0 10px;color:#0b2f66;font-size:18px;line-height:1.45;font-weight:800;letter-spacing:0;">
+          驼峰检算
+        </h3>
+        <p style="margin:0 0 14px;color:#334155;font-size:15px;line-height:1.85;">
+          工具可生成车辆速度-距离曲线、时间-距离曲线，辅助判断车辆在溜放过程中的速度变化，以及前后行钩车溜经分路道岔、减速器等关键设备的溜放间隔。
+        </p>
+        <img src="assets/hump-gif/hump-headway-check.gif" alt="车辆溜放检算与曲线分析演示" style="display:block;width:100%;height:auto;margin:0;border:1px solid #dbeafe;border-radius:8px;background:#f8fbff;">
+      </section>
+
+      <section style="box-sizing:border-box;margin:0 0 24px;padding:18px 16px;background:#ffffff;border:1px solid #dbeafe;border-radius:8px;">
+        <p style="margin:0 0 8px;color:#0f63d8;font-size:13px;line-height:1.4;font-weight:800;">07</p>
+        <h3 style="margin:0 0 10px;color:#0b2f66;font-size:18px;line-height:1.45;font-weight:800;letter-spacing:0;">
+          车辆溜放与仿真
+        </h3>
+        <p style="margin:0 0 14px;color:#334155;font-size:15px;line-height:1.85;">
+          支持车辆序列、追踪间隔等检算场景，并提供二维及三维溜放仿真视图，便于观察车辆运行过程。
+        </p>
+        <img src="assets/hump-gif/hump-release-simulation.gif" alt="车辆溜放过程仿真演示" style="display:block;width:100%;height:auto;margin:0;border:1px solid #dbeafe;border-radius:8px;background:#f8fbff;">
+      </section>
+    </section>
+
+    <section style="box-sizing:border-box;margin:10px 0 0;padding:24px 18px;background:#f3f8ff;border:1px solid #bfdbfe;border-radius:8px;">
+      <p style="margin:0 0 8px;font-size:13px;line-height:1.4;color:#0f63d8;font-weight:800;">
+        USE CASES
+      </p>
+      <h2 style="margin:0 0 14px;color:#0b2f66;font-size:21px;line-height:1.35;font-weight:800;letter-spacing:0;">
+        适用场景
+      </h2>
+      <p style="margin:0 0 12px;color:#334155;font-size:15px;line-height:1.85;">
+        该辅助设计工具可用于铁路站场与驼峰相关课程教学、课程设计、设计原理演示、方案初步分析以及学生自主学习。
+      </p>
+      <p style="margin:0;color:#334155;font-size:15px;line-height:1.85;">
+        相比 <strong style="color:#0f63d8;font-weight:800;">古法手工计算</strong>，它更强调“看得见”的设计过程：参数变化、坡度调整和运行结果可以在同一界面中联动呈现。
+      </p>
+    </section>
+
+    <section style="box-sizing:border-box;padding:28px 0 0;">
+      <h2 style="margin:0 0 14px;color:#0b2f66;font-size:21px;line-height:1.35;font-weight:800;letter-spacing:0;">
+        欢迎试用
+      </h2>
+      <p style="margin:0 0 16px;color:#334155;font-size:15px;line-height:1.9;">
+        如果你正在学习铁路站场、驼峰设计、调车场布置，或者希望把复杂计算背后的工程逻辑真正看明白，欢迎试用 SwitchYard.Hump。也欢迎大家在试用过程中提出意见和建议，一起把这个工具打磨得更好用。
+      </p>
+
+      <section style="box-sizing:border-box;margin:18px 0 0;padding:18px;background:#ffffff;border:1px solid #dbeafe;border-radius:8px;box-shadow:0 8px 24px rgba(15,99,216,0.08);">
+        <p style="margin:0 0 10px;color:#0f63d8;font-size:13px;line-height:1.4;font-weight:800;">TRY IT NOW</p>
+        <p style="margin:0 0 10px;color:#0b2f66;font-size:17px;line-height:1.55;font-weight:800;">
+          访问：<a href="https://switchyard.top" style="color:#0f63d8;text-decoration:none;border-bottom:1px solid #93c5fd;">https://switchyard.top</a>
+        </p>
+        <p style="margin:0;color:#475569;font-size:14px;line-height:1.8;">
+          如在试用过程中遇到问题，欢迎联系：<a href="mailto:zwliao@bjtu.edu.cn" style="color:#0f63d8;text-decoration:none;border-bottom:1px solid #93c5fd;">zwliao@bjtu.edu.cn</a>
+        </p>
+        <section style="box-sizing:border-box;margin:18px auto 4px;width:168px;height:168px;border:1px dashed #93c5fd;border-radius:8px;background:#f8fbff;text-align:center;">
+          <p style="margin:54px 0 4px;color:#0f63d8;font-size:18px;line-height:1.4;font-weight:800;">二维码</p>
+          <p style="margin:0;color:#64748b;font-size:13px;line-height:1.5;">请替换为正式图片</p>
+        </section>
+      </section>
+    </section>
+  </article>
+</body>
+</html>
