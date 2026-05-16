@@ -732,6 +732,9 @@
         },
         "contextMenu": {
             "deleteNode": "删除节点"
+        },
+        "messages": {
+            "holdAltToMoveHorizontally": "按住Alt可左右移动"
         }
     },
     "humpSlopeDesigner": {
@@ -842,6 +845,7 @@
             "error": "错误",
             "selectInstanceAndScheme": "请先选择实例和纵断面方案",
             "slopeLayoutNotExist": "纵断面数据不存在",
+            "emptyHumpScheme": "当前驼峰方案为空，请点击横坐标轴下方的“+”创建驼峰纵断面变坡点",
             "slopeLayoutSaveSuccess": "纵断面保存成功",
             "slopeLayoutSaveFailed": "保存纵断面失败，请稍后重试"
         },

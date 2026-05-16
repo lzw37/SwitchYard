@@ -205,6 +205,10 @@
             :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }">
             <div class="context-menu-item" @click.stop="deleteContextPos">{{ t('humpSlopeCtrl.contextMenu.deleteNode') }}</div>
         </div>
+        <div v-if="horizontalDragHint.visible" class="horizontal-drag-hint"
+            :style="{ left: horizontalDragHint.x + 'px', top: horizontalDragHint.y + 'px' }">
+            {{ t('humpSlopeCtrl.messages.holdAltToMoveHorizontally') }}
+        </div>
         <el-dialog v-model="showRetarderStatusDialog" :title="t('humpSlopeCtrl.dialog.retarderSettings')" width="420px"
             :close-on-click-modal="false" append-to-body>
             <div v-if="editingRetarderStatus">
@@ -410,6 +414,9 @@ const touchCurrentClientX = ref(0);
 const touchCurrentClientY = ref(0);
 const didDragChange = ref(false);
 const touchHorizontalDragActivated = ref(false);
+const horizontalDragHintShown = ref(false);
+const horizontalDragHint = ref({ visible: false, x: 0, y: 0 });
+const horizontalDragHintTimer = ref<ReturnType<typeof setTimeout> | null>(null);
 
 function notifyControlPointChanged() {
     emit('control-point-drag-end');
@@ -417,6 +424,9 @@ function notifyControlPointChanged() {
 const touchLongPressDelay = 550;
 const touchMoveThreshold = 8;
 const touchHorizontalActivationThreshold = 12;
+const mouseHorizontalHintThreshold = 12;
+const horizontalDragHintDuration = 1400;
+const horizontalDragHintOffset = 12;
 const longPressActivatedId = ref<string | null>(null);
 const touchLongPressTriggered = ref(false);
 const contextMenu = ref<{ visible: boolean; x: number; y: number; posId: string }>({ visible: false, x: 0, y: 0, posId: '' });
@@ -432,6 +442,31 @@ function resetTouchLongPressState() {
     longPressActivatedId.value = null;
     touchLongPressTriggered.value = false;
     touchHorizontalDragActivated.value = false;
+}
+
+function clearHorizontalDragHintTimer() {
+    if (horizontalDragHintTimer.value) {
+        clearTimeout(horizontalDragHintTimer.value);
+        horizontalDragHintTimer.value = null;
+    }
+}
+
+function hideHorizontalDragHint() {
+    clearHorizontalDragHintTimer();
+    horizontalDragHint.value.visible = false;
+}
+
+function showHorizontalDragHint(clientX: number, clientY: number) {
+    clearHorizontalDragHintTimer();
+    horizontalDragHint.value = {
+        visible: true,
+        x: Math.max(8, Math.min(window.innerWidth - 200, clientX + horizontalDragHintOffset)),
+        y: Math.max(8, Math.min(window.innerHeight - 40, clientY + horizontalDragHintOffset))
+    };
+    horizontalDragHintTimer.value = setTimeout(() => {
+        horizontalDragHint.value.visible = false;
+        horizontalDragHintTimer.value = null;
+    }, horizontalDragHintDuration);
 }
 
 function openContextMenuAt(posId: string, x: number, y: number) {
@@ -648,13 +683,14 @@ function beginDrag(pos: { id: string; height: number; x: number }, clientX: numb
     currentX.value = pos.x;
     currentHeight.value = pos.height;
     didDragChange.value = false;
+    horizontalDragHintShown.value = false;
+    startMouseX.value = clientX;
+    startMouseY.value = clientY;
     if (isHorizontal) {
         dragMode.value = 'horizontal';
-        startMouseX.value = clientX;
         startX.value = pos.x;
     } else {
         dragMode.value = 'vertical';
-        startMouseY.value = clientY;
         startHeight.value = pos.height;
     }
 }
@@ -664,7 +700,17 @@ function onMouseMove(event: MouseEvent) {
     const target = props.slopeLayout.positionList.find(p => p.id === draggingId.value);
     if (!target) return;
     if (dragMode.value === 'vertical') {
+        const deltaX = event.clientX - startMouseX.value;
         const deltaY = event.clientY - startMouseY.value;
+        if (
+            !event.altKey
+            && !horizontalDragHintShown.value
+            && Math.abs(deltaX) >= mouseHorizontalHintThreshold
+            && Math.abs(deltaX) > Math.abs(deltaY)
+        ) {
+            horizontalDragHintShown.value = true;
+            showHorizontalDragHint(event.clientX, event.clientY);
+        }
         const nextHeight = Math.round(Math.max(0, startHeight.value - deltaY / scaleY.value) * 1000) / 1000;
         didDragChange.value = didDragChange.value || Math.abs(nextHeight - target.height) > 1e-6;
         target.height = nextHeight;
@@ -1658,6 +1704,7 @@ watch(() => props.elementVisibility?.kinetic, (visible) => {
 
 onBeforeUnmount(() => {
     clearTouchLongPressTimer();
+    hideHorizontalDragHint();
     window.removeEventListener('mousemove', onMouseMove);
     window.removeEventListener('mouseup', endDrag);
     window.removeEventListener('touchmove', onTouchMove);
@@ -1715,6 +1762,22 @@ defineExpose({
     stroke-width: 1px;
     opacity: 0.6;
     pointer-events: none;
+}
+
+.horizontal-drag-hint {
+    position: fixed;
+    z-index: 3000;
+    max-width: 240px;
+    padding: 6px 10px;
+    border: 1px solid rgba(31, 42, 68, 0.18);
+    border-radius: 4px;
+    background: rgba(31, 42, 68, 0.94);
+    color: #ffffff;
+    font-size: 13px;
+    line-height: 1.4;
+    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.18);
+    pointer-events: none;
+    white-space: nowrap;
 }
 
 .cursor-slope-label-caption {

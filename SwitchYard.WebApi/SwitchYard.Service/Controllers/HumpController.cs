@@ -2040,6 +2040,7 @@ namespace SwitchYard.Service.Controllers
         [HttpPost(Name = "CreateHumpScheme")]
         public IActionResult CreateHumpScheme(HumpScheme humpScheme)
         {
+            DBConnector dbConnector = DBConnector.GetDBConnector();
             try
             {
                 if (humpScheme == null || string.IsNullOrEmpty(humpScheme.InstanceID))
@@ -2052,26 +2053,106 @@ namespace SwitchYard.Service.Controllers
                 if (authResult != null) return authResult;
 
                 var username = User.Identity?.Name;
-                DBConnector dbConnector = DBConnector.GetDBConnector();
                 humpScheme.ID = _snowflakeIdGenerator.NextIdString();
+
+                dbConnector.BeginTransaction();
                 var result = dbConnector.ExecuteNonQuery("INSERT INTO humpscheme (InstanceID, ID, Name) VALUES (@InstanceID, @ID, @Name)",
                     new { humpScheme.InstanceID, humpScheme.ID, humpScheme.Name });
                 if (result > 0)
                 {
+                    CreateDefaultSlopeLayoutForHumpScheme(dbConnector, humpScheme.InstanceID, humpScheme.ID);
+                    dbConnector.Commit();
                     LogInformationWithContext("Created HumpScheme with ID {HumpSchemeID}.", humpScheme.ID);
                     return Ok(humpScheme);
                 }
                 else
                 {
+                    dbConnector.Rollback();
                     _logger.LogWarning("Failed to create HumpScheme.", humpScheme.InstanceID, username);
                     return StatusCode(500, "Failed to create HumpScheme.");
                 }
             }
             catch (Exception ex)
             {
+                dbConnector.Rollback();
                 LogErrorWithContext(ex, "Error creating HumpScheme.");
                 return StatusCode(500, "Internal server error while creating HumpScheme.");
             }
+        }
+
+        private sealed class SlopeLineRightmostPosition
+        {
+            public string? ID { get; set; }
+            public string? Name { get; set; }
+            public double? MaxX { get; set; }
+        }
+
+        private double ResolveDefaultHumpSchemeEndX(DBConnector dbConnector, string instanceID)
+        {
+            const double fallbackEndX = 100.0;
+            var endpoints = dbConnector.Query<SlopeLineRightmostPosition>(
+                @"SELECT sl.ID, sl.Name, MAX(p.X) AS MaxX
+                  FROM slopeline sl
+                  LEFT JOIN position p ON p.InstanceID = sl.InstanceID AND p.SlopeLineID = sl.ID
+                  WHERE sl.InstanceID = @instanceID
+                  GROUP BY sl.ID, sl.Name",
+                new { instanceID }) ?? new List<SlopeLineRightmostPosition>();
+
+            var hardLineEndX = endpoints
+                .Where(line => !string.IsNullOrWhiteSpace(line.Name) && line.Name.Contains("难行") && line.MaxX.HasValue)
+                .Select(line => line.MaxX!.Value)
+                .DefaultIfEmpty(double.NaN)
+                .Max();
+            if (double.IsFinite(hardLineEndX) && hardLineEndX > 0)
+            {
+                return hardLineEndX;
+            }
+
+            var rightmostEndX = endpoints
+                .Where(line => line.MaxX.HasValue)
+                .Select(line => line.MaxX!.Value)
+                .DefaultIfEmpty(double.NaN)
+                .Max();
+            if (double.IsFinite(rightmostEndX) && rightmostEndX > 0)
+            {
+                return rightmostEndX;
+            }
+
+            return fallbackEndX;
+        }
+
+        private void CreateDefaultSlopeLayoutForHumpScheme(DBConnector dbConnector, string instanceID, string humpSchemeID)
+        {
+            const double startX = 0.0;
+            const double startHeight = 3.0;
+            const double endHeight = 0.0;
+
+            var endX = ResolveDefaultHumpSchemeEndX(dbConnector, instanceID);
+            var length = Math.Max(0, endX - startX);
+            var gradient = length > 0 ? (endHeight - startHeight) / length * 1000 : 0;
+            var startPositionID = _snowflakeIdGenerator.NextIdString();
+            var endPositionID = _snowflakeIdGenerator.NextIdString();
+            var segmentID = _snowflakeIdGenerator.NextIdString();
+
+            dbConnector.ExecuteNonQuery(
+                "INSERT INTO vposition (ID, InstanceID, HumpSchemeID, X, Height) VALUES (@ID, @InstanceID, @HumpSchemeID, @X, @Height)",
+                new { ID = startPositionID, InstanceID = instanceID, HumpSchemeID = humpSchemeID, X = startX, Height = startHeight });
+            dbConnector.ExecuteNonQuery(
+                "INSERT INTO vposition (ID, InstanceID, HumpSchemeID, X, Height) VALUES (@ID, @InstanceID, @HumpSchemeID, @X, @Height)",
+                new { ID = endPositionID, InstanceID = instanceID, HumpSchemeID = humpSchemeID, X = endX, Height = endHeight });
+            dbConnector.ExecuteNonQuery(
+                "INSERT INTO vpositionsegment (ID, InstanceID, HumpSchemeID, StartPositionID, EndPositionID, Length, Gradient, Height) VALUES (@ID, @InstanceID, @HumpSchemeID, @StartPositionID, @EndPositionID, @Length, @Gradient, @Height)",
+                new
+                {
+                    ID = segmentID,
+                    InstanceID = instanceID,
+                    HumpSchemeID = humpSchemeID,
+                    StartPositionID = startPositionID,
+                    EndPositionID = endPositionID,
+                    Length = length,
+                    Gradient = gradient,
+                    Height = endHeight
+                });
         }
 
         /// <summary>
