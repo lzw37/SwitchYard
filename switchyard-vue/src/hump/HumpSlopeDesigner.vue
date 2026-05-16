@@ -112,6 +112,9 @@
                 @wheel-scale-x="handleWheelScaleX" @update-retarder-status-list="handleInlineRetarderStatusUpdate"
                 @resistance-click="handleResistanceClick"
                 @control-point-drag-end="handleControlPointDragEnd" />
+            <div v-if="isCurrentHumpSchemeEmpty" class="empty-slope-layout-notice">
+                {{ t('humpSlopeDesigner.messages.emptyHumpScheme') }}
+            </div>
             <HumpSlopeSketchBlock ref="humpSlopeSketchBlockRef" v-model:slope-layout="slopeLayout" style="height:auto"
                 :global-scale-x="globalScaleX" :global-cursor-x="globalCursorX"
                 :horizontal-scroll-left="horizontalScrollLeft" @updateGlobalCursorX="updateGlobalCursorX"
@@ -786,6 +789,31 @@ const energyHeightTableRows = computed<EnergyHeightTableRow[]>(() => {
     })
 })
 
+const isCurrentHumpSchemeEmpty = computed(() => {
+    if (!currentHumpSchemeID.value || !slopeLayout.value) return false
+    return getSlopeControlPointCount() <= 1
+})
+
+function getSlopeControlPointCount() {
+    return Array.isArray(slopeLayout.value?.positionList) ? slopeLayout.value.positionList.length : 0
+}
+
+function shouldSkipCalculationForEmptyScheme(options: { notify?: boolean } = {}) {
+    if (!currentHumpSchemeID.value || getSlopeControlPointCount() > 1) {
+        return false
+    }
+
+    if (options.notify) {
+        ElMessage.warning({
+            message: t('humpSlopeDesigner.messages.emptyHumpScheme'),
+            duration: 2500
+        })
+    }
+    clearEnergyHeightData()
+    calculationExecuting.value = false
+    return true
+}
+
 function formatEnergyTableNumber(value: unknown, precision = 3): string {
     if (value === undefined || value === null || value === '') return '--'
     const numericValue = Number(value)
@@ -895,8 +923,13 @@ const loadSlopeLayout = async () => {
             }
         })
         if (response.data) {
-            slopeLayout.value = response.data as SlopeLayout
+            const layout = response.data as SlopeLayout
+            layout.positionList = layout.positionList || []
+            layout.positionSegmentList = layout.positionSegmentList || []
+            slopeLayout.value = layout
             console.log('Slope layout loaded:', slopeLayout.value)
+        } else {
+            slopeLayout.value = new SlopeLayout()
         }
     } catch (error) {
         console.error('加载纵断面设计数据失败:', error)
@@ -1006,6 +1039,9 @@ async function runCurrentEnergyHeightCalculation() {
     if (!currentCalculation || !props.selectedInstanceId || !currentHumpSchemeID.value || !currentHumpCalculationID.value) {
         return false
     }
+    if (shouldSkipCalculationForEmptyScheme()) {
+        return false
+    }
 
     const requestData = buildEnergyHeightRequestData(currentCalculation)
     console.log('执行驼峰计算，请求参数:', requestData)
@@ -1032,6 +1068,12 @@ async function recalculateAndShowAllEnergyLines(options: { hideFirst?: boolean }
     }
 
     if (!props.selectedInstanceId || !currentHumpSchemeID.value || !currentHumpCalculationID.value || !getCurrentCalculation()) {
+        if (refreshSequence === energyHeightRefreshSequence) {
+            calculationExecuting.value = false
+        }
+        return
+    }
+    if (shouldSkipCalculationForEmptyScheme()) {
         if (refreshSequence === energyHeightRefreshSequence) {
             calculationExecuting.value = false
         }
@@ -1754,6 +1796,9 @@ const executeCalculation = async (options: { showSuccessDialog?: boolean } = {})
         })
         return
     }
+    if (shouldSkipCalculationForEmptyScheme({ notify: true })) {
+        return
+    }
 
     try {
         calculationExecuting.value = true
@@ -1835,6 +1880,7 @@ const handleControlPointDragEnd = async () => {
     }
 
     // 2. 执行计算（静默，不弹对话框）
+    if (shouldSkipCalculationForEmptyScheme()) return
     if (!currentHumpCalculationID.value) return
     const currentCalculation = humpCalculations.value.find(calc => calc.id === currentHumpCalculationID.value)
     if (!currentCalculation) return
@@ -1874,7 +1920,11 @@ const handleAddScheme = async () => {
         tableLoading.value = true
         const response = await axios.post('/Hump/CreateHumpScheme', newScheme)
         if (response.data) {
+            const createdSchemeID = response.data?.id || response.data?.ID || ""
             await loadHumpSchemes() // 重新加载列表
+            if (createdSchemeID) {
+                currentHumpSchemeID.value = createdSchemeID
+            }
             console.log(t('humpSlopeDesigner.scheme.createSuccess'))
         }
     } catch (error) {
@@ -2407,6 +2457,25 @@ const handleSaveRetarderStatus = async () => {
     background-color: #ffffff;
     position: relative;
     /* display: flex; */
+}
+
+.empty-slope-layout-notice {
+    position: absolute;
+    top: 58px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 6;
+    max-width: min(92vw, 560px);
+    padding: 8px 14px;
+    border: 1px solid #c8d5e8;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.95);
+    color: #1f2a44;
+    font-size: 14px;
+    line-height: 1.4;
+    text-align: center;
+    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.12);
+    pointer-events: none;
 }
 
 .side-menu-left {

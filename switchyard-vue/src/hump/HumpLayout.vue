@@ -8,7 +8,7 @@
             <el-button type="primary" size="small" @click="openSlopeLineManager">...</el-button>
             <div>
                 <el-button-group>
-                    <el-button type="plain" size="small" @click="loadFlatLayout">{{ t('hump.load') }}</el-button>
+                    <el-button type="plain" size="small" @click="loadFlatLayout()">{{ t('hump.load') }}</el-button>
                     <el-button type="primary" size="small" @click="saveFlatLayout">{{ t('hump.buttons.save')
                     }}</el-button>
                 </el-button-group>
@@ -387,7 +387,9 @@ const retarderTableRef = ref<TableInstanceLike | null>(null)
 const flatLayout = ref<FlatLayout | null>(null)
 const globalCursorX = ref<number | undefined>(undefined)
 const isPositionListDirty = ref(false)
+const suppressNextFlatLayoutLoadedMessage = ref(false)
 let positionRowKeySeed = 0
+let instanceLineLoadSequence = 0
 
 function createEmptyLayoutSelection(): LayoutSelectionState {
     return {
@@ -775,16 +777,24 @@ async function removeSlopeLineInManager(row: EditableSlopeLine, index: number) {
     }
 }
 // Reload slope lines when selected instance changes.
-watch(() => props.selectedInstanceId, (newValue) => {
+watch(() => props.selectedInstanceId, async (newValue) => {
+    const loadSequence = ++instanceLineLoadSequence
     resetLayoutHighlights()
     ctrlRef.value?.clearSelections?.()
+    selectedLine.value = null
+    flatLayout.value = null
+
     if (newValue) {
-        loadSlopeLines()
-        selectedLine.value = null
-        flatLayout.value = null
+        await loadSlopeLines()
+        if (loadSequence !== instanceLineLoadSequence) return
+
+        const firstLineId = lines.value[0]?.id ?? null
+        if (firstLineId) {
+            suppressNextFlatLayoutLoadedMessage.value = true
+            selectedLine.value = firstLineId
+        }
     } else {
         lines.value = []
-        selectedLine.value = null
     }
 }, { immediate: true })
 
@@ -793,8 +803,10 @@ watch(selectedLine, (newValue) => {
     resetLayoutHighlights()
     ctrlRef.value?.clearSelections?.()
     flatLayout.value = null
+    const showSuccessMessage = !suppressNextFlatLayoutLoadedMessage.value
+    suppressNextFlatLayoutLoadedMessage.value = false
     if (newValue) {
-        loadFlatLayout()
+        loadFlatLayout({ showSuccessMessage })
     }
 }, { immediate: true })
 
@@ -1334,7 +1346,9 @@ function normalizeFlatLayoutResponse(data: FlatLayout | null | undefined): FlatL
     return ensurePositionRowKeys(data)
 }
 
-function loadFlatLayout() {
+function loadFlatLayout(options: { showSuccessMessage?: boolean } = {}) {
+    const { showSuccessMessage = true } = options
+
     if (!props.selectedInstanceId) {
         ElMessage.warning(t('hump.messages.selectInstanceFirst'))
         return
@@ -1355,7 +1369,9 @@ function loadFlatLayout() {
         resetLayoutHighlights()
         ctrlRef.value?.clearSelections?.()
         isPositionListDirty.value = false
-        ElMessage.success(t('hump.messages.flatLayoutLoaded'))
+        if (showSuccessMessage) {
+            ElMessage.success(t('hump.messages.flatLayoutLoaded'))
+        }
         // child will react to flatLayout prop change and load data
     }).catch(error => {
         console.error('Error fetching flat layout data:', error)

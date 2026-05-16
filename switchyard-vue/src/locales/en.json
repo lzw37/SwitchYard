@@ -732,6 +732,9 @@
         },
         "contextMenu": {
             "deleteNode": "Delete Node"
+        },
+        "messages": {
+            "holdAltToMoveHorizontally": "Hold Alt to move horizontally"
         }
     },
     "humpSlopeDesigner": {
@@ -842,6 +845,7 @@
             "error": "Error",
             "selectInstanceAndScheme": "Please select an instance and a longitudinal section scheme first",
             "slopeLayoutNotExist": "Slope layout data does not exist",
+            "emptyHumpScheme": "The current hump scheme is empty. Click the “+” below the x-axis to create a profile slope control point.",
             "slopeLayoutSaveSuccess": "Slope layout saved successfully",
             "slopeLayoutSaveFailed": "Failed to save slope layout, please try again later"
         },
