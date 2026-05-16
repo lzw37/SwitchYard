@@ -1,9 +1,21 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { RouterView } from 'vue-router'
+import { useI18n } from 'vue-i18n'
+import en from 'element-plus/es/locale/lang/en'
+import zhCn from 'element-plus/es/locale/lang/zh-cn'
+
+const { locale } = useI18n({ useScope: 'global' })
+
+const elementLocale = computed(() => {
+    return locale.value.toLowerCase().startsWith('zh') ? zhCn : en
+})
 </script>
 
 <template>
-    <RouterView />
+    <el-config-provider :locale="elementLocale">
+        <RouterView />
+    </el-config-provider>
 </template>
 
 <style scoped>

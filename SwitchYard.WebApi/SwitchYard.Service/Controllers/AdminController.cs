@@ -54,6 +54,38 @@ namespace SwitchYard.Service.Controllers
             }
         }
 
+        [HttpGet("users/paged")]
+        public IActionResult GetUsersPaged([FromQuery] UserPaginationQuery query)
+        {
+            try
+            {
+                var pagedUsers = _userService.GetUsersPage(query.PageNumber, query.PageSize, query.Keyword);
+                var result = new PagedResult<AdminUserListItem>
+                {
+                    Items = pagedUsers.Items.Select(user => new AdminUserListItem
+                    {
+                        Id = user.Id,
+                        Name = user.Name,
+                        Role = user.Role,
+                        Email = user.Email,
+                        CreateAt = user.CreateAt,
+                        IsActive = user.IsActive,
+                        MustChangePassword = user.MustChangePassword
+                    }).ToList(),
+                    PageNumber = pagedUsers.PageNumber,
+                    PageSize = pagedUsers.PageSize,
+                    TotalCount = pagedUsers.TotalCount
+                };
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to get paged user list");
+                return StatusCode(500, new { message = "Internal server error" });
+            }
+        }
+
         [HttpPost("users")]
         public IActionResult CreateUser([FromBody] AdminCreateUserRequest request)
         {

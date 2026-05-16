@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using MySqlX.XDevAPI;
 using SwitchYard.Hump;
+using SwitchYard.Service.Models;
 using SwitchYard.Service.Services;
 using SwitchYard.Service.Utils;
 using System.Collections.Generic;
@@ -209,8 +210,8 @@ namespace SwitchYard.Service.Controllers
 
                 DBConnector dbConnector = DBConnector.GetDBConnector();
                 var instanceList = isAdmin
-                    ? dbConnector.Query<HumpInstance>("SELECT * FROM humpinstance")
-                    : dbConnector.Query<HumpInstance>("SELECT * FROM humpinstance WHERE Owner = @username", new { username });
+                    ? dbConnector.Query<HumpInstance>("SELECT * FROM humpinstance ORDER BY CreatedDate DESC, ID DESC")
+                    : dbConnector.Query<HumpInstance>("SELECT * FROM humpinstance WHERE Owner = @username ORDER BY CreatedDate DESC, ID DESC", new { username });
                 LogInformationWithContext("Retrieved {InstanceCount} HumpInstances.", instanceList?.Count ?? 0);
                 return Ok(instanceList);
             }
@@ -218,6 +219,59 @@ namespace SwitchYard.Service.Controllers
             {
                 LogErrorWithContext(ex, "Error getting HumpInstance.");
                 return StatusCode(500, "Internal server error while getting HumpInstance.");
+            }
+        }
+
+        [HttpGet(Name = "GetInstancePage")]
+        public IActionResult GetInstancePage([FromQuery] PaginationQuery query)
+        {
+            try
+            {
+                var username = User.Identity?.Name;
+                var isAdmin = IsCurrentUserAdmin();
+                if (!isAdmin && string.IsNullOrWhiteSpace(username))
+                {
+                    return Unauthorized("Invalid user context.");
+                }
+
+                DBConnector dbConnector = DBConnector.GetDBConnector();
+                var whereSql = isAdmin ? string.Empty : "WHERE Owner = @username";
+                object? baseParameters = isAdmin
+                    ? null
+                    : new { username };
+
+                var totalCount = (dbConnector.Query<int>(
+                    $"SELECT COUNT(1) FROM humpinstance {whereSql}",
+                    baseParameters) ?? new List<int> { 0 }).FirstOrDefault();
+
+                var items = dbConnector.Query<HumpInstance>(
+                    $@"SELECT * FROM humpinstance
+                       {whereSql}
+                       ORDER BY CreatedDate DESC, ID DESC
+                       LIMIT @pageSize OFFSET @offset",
+                    isAdmin
+                        ? new { pageSize = query.PageSize, offset = query.Offset }
+                        : new { username, pageSize = query.PageSize, offset = query.Offset }) ?? new List<HumpInstance>();
+
+                var result = new PagedResult<HumpInstance>
+                {
+                    Items = items,
+                    PageNumber = query.PageNumber,
+                    PageSize = query.PageSize,
+                    TotalCount = totalCount
+                };
+
+                LogInformationWithContext(
+                    "Retrieved paged HumpInstances. Page {PageNumber}, PageSize {PageSize}, TotalCount {TotalCount}.",
+                    query.PageNumber,
+                    query.PageSize,
+                    totalCount);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                LogErrorWithContext(ex, "Error getting paged HumpInstance.");
+                return StatusCode(500, "Internal server error while getting paged HumpInstance.");
             }
         }
 
