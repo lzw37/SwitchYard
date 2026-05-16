@@ -3,9 +3,11 @@
         <div class="toolbar">
             <el-input
                 v-model="keyword"
-                placeholder="搜索 ID/用户名/邮箱/角色"
+                placeholder="搜索 ID、用户名、邮箱或角色"
                 clearable
                 style="width: 320px"
+                @clear="handleSearch"
+                @keyup.enter="handleSearch"
             />
             <el-button type="primary" :loading="loading" @click="loadUsers">刷新</el-button>
             <el-button type="success" @click="openCreate">新增用户</el-button>
@@ -20,7 +22,7 @@
             />
         </div>
 
-        <el-table :data="filteredUsers" v-loading="loading" stripe style="width: 100%">
+        <el-table :data="users" v-loading="loading" stripe style="width: 100%">
             <el-table-column prop="id" label="ID" min-width="170" />
             <el-table-column prop="name" label="用户名" min-width="130" />
             <el-table-column prop="role" label="角色" width="100" />
@@ -53,6 +55,19 @@
                 </template>
             </el-table-column>
         </el-table>
+
+        <div class="table-footer">
+            <el-pagination
+                background
+                :current-page="pagination.pageNumber"
+                :page-size="pagination.pageSize"
+                :page-sizes="pageSizes"
+                :total="pagination.totalCount"
+                layout="total, sizes, prev, pager, next, jumper"
+                @current-change="handleCurrentChange"
+                @size-change="handleSizeChange"
+            />
+        </div>
 
         <el-dialog v-model="createVisible" title="新增用户" width="560px">
             <el-form :model="createForm" label-width="120px">
@@ -154,7 +169,7 @@
 
         <el-dialog v-model="resetPasswordVisible" title="重置密码" width="520px">
             <el-form :model="resetForm" label-width="120px">
-                <el-form-item label="用户ID">
+                <el-form-item label="用户 ID">
                     <el-input v-model="resetForm.id" disabled />
                 </el-form-item>
                 <el-form-item label="用户名">
@@ -169,18 +184,21 @@
             </el-form>
             <template #footer>
                 <el-button @click="resetPasswordVisible = false">取消</el-button>
-                <el-button type="primary" :loading="resettingPassword" @click="submitResetPassword">确认重置</el-button>
+                <el-button type="primary" :loading="resettingPassword" @click="submitResetPassword">
+                    确认重置
+                </el-button>
             </template>
         </el-dialog>
     </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import axios from '@/utils/axios'
 import { useAuthStore } from '@/stores/auth'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import CryptoJS from 'crypto-js'
+import { DEFAULT_PAGE_SIZES, type PagedResult } from '@/types/pagination'
 
 interface ImportRowResult {
     row: number
@@ -220,6 +238,12 @@ const creating = ref(false)
 const resettingPassword = ref(false)
 const deletingId = ref('')
 const keyword = ref('')
+const pageSizes = [...DEFAULT_PAGE_SIZES]
+const pagination = reactive({
+    pageNumber: 1,
+    pageSize: 10,
+    totalCount: 0,
+})
 
 const createVisible = ref(false)
 const editVisible = ref(false)
@@ -237,7 +261,7 @@ const createForm = reactive({
     confirmPassword: '',
     role: 'User',
     email: '',
-    isActive: 1
+    isActive: 1,
 })
 
 const editForm = reactive<UserRecord>({
@@ -246,18 +270,20 @@ const editForm = reactive<UserRecord>({
     role: 'User',
     email: '',
     createAt: '',
-    isActive: 1
+    isActive: 1,
 })
 
 const resetForm = reactive({
     id: '',
     name: '',
     newPassword: '',
-    confirmPassword: ''
+    confirmPassword: '',
 })
 
 const authStore = useAuthStore()
+authStore.hydrateFromStorage()
 const currentUsername = computed(() => authStore.username.trim())
+let searchTimer: ReturnType<typeof window.setTimeout> | null = null
 
 const isCurrentUser = (user: UserRecord): boolean => {
     return !!currentUsername.value && user.name.toLowerCase() === currentUsername.value.toLowerCase()
@@ -276,18 +302,6 @@ const formatCreateAt = (value: string): string => {
     return normalizeCreateAt(value).replace('T', ' ')
 }
 
-const filteredUsers = computed(() => {
-    const key = keyword.value.trim().toLowerCase()
-    if (!key) return users.value
-
-    return users.value.filter((user) =>
-        user.id.toLowerCase().includes(key) ||
-        user.name.toLowerCase().includes(key) ||
-        (user.email || '').toLowerCase().includes(key) ||
-        user.role.toLowerCase().includes(key)
-    )
-})
-
 const resetCreateForm = () => {
     createForm.username = ''
     createForm.password = ''
@@ -304,20 +318,59 @@ const resetPasswordForm = () => {
     resetForm.confirmPassword = ''
 }
 
-const loadUsers = async () => {
+const loadUsers = async (options: { resetPage?: boolean } = {}) => {
+    if (options.resetPage) {
+        pagination.pageNumber = 1
+    }
+
     loading.value = true
     try {
-        const resp = await axios.get<UserRecord[]>('/api/Admin/users')
-        users.value = (resp.data || []).map((user) => ({
+        const resp = await axios.get<PagedResult<UserRecord>>('/api/Admin/users/paged', {
+            params: {
+                pageNumber: pagination.pageNumber,
+                pageSize: pagination.pageSize,
+                keyword: keyword.value.trim() || undefined,
+            },
+        })
+
+        const result = resp.data
+        const totalPages = Math.max(1, Math.ceil((result.totalCount || 0) / (result.pageSize || pagination.pageSize)))
+        if (result.totalCount > 0 && pagination.pageNumber > totalPages) {
+            pagination.pageNumber = totalPages
+            await loadUsers()
+            return
+        }
+
+        users.value = (result.items || []).map((user) => ({
             ...user,
             createAt: normalizeCreateAt(user.createAt),
-            isActive: Number(user.isActive)
+            isActive: Number(user.isActive),
         }))
+        pagination.pageNumber = result.pageNumber || pagination.pageNumber
+        pagination.pageSize = result.pageSize || pagination.pageSize
+        pagination.totalCount = result.totalCount || 0
     } catch (error: any) {
+        users.value = []
+        pagination.totalCount = 0
         ElMessage.error(error?.response?.data?.message || '加载用户列表失败')
     } finally {
         loading.value = false
     }
+}
+
+const handleSearch = () => {
+    void loadUsers({ resetPage: true })
+}
+
+const handleCurrentChange = (pageNumber: number) => {
+    pagination.pageNumber = pageNumber
+    void loadUsers()
+}
+
+const handleSizeChange = (pageSize: number) => {
+    pagination.pageSize = pageSize
+    pagination.pageNumber = 1
+    void loadUsers()
 }
 
 const openCreate = () => {
@@ -347,7 +400,7 @@ const createUser = async () => {
             username: createForm.username.trim(),
             password: hashPassword(createForm.password),
             role: createForm.role,
-            isActive: Number(createForm.isActive)
+            isActive: Number(createForm.isActive),
         }
 
         const email = createForm.email.trim()
@@ -358,7 +411,7 @@ const createUser = async () => {
         await axios.post('/api/Admin/users', payload)
         ElMessage.success('用户创建成功')
         createVisible.value = false
-        await loadUsers()
+        await loadUsers({ resetPage: true })
     } catch (error: any) {
         ElMessage.error(error?.response?.data?.message || '创建用户失败')
     } finally {
@@ -381,7 +434,7 @@ const saveUser = async () => {
     if (!editingSourceId.value) return
 
     if (!editForm.id.trim() || !editForm.name.trim() || !editForm.role.trim()) {
-        ElMessage.warning('ID、用户名、角色不能为空')
+        ElMessage.warning('ID、用户名和角色不能为空')
         return
     }
 
@@ -393,7 +446,7 @@ const saveUser = async () => {
             role: editForm.role.trim(),
             email: editForm.email?.trim() || null,
             createAt: editForm.createAt,
-            isActive: Number(editForm.isActive)
+            isActive: Number(editForm.isActive),
         })
 
         ElMessage.success('用户更新成功')
@@ -421,18 +474,21 @@ const confirmDelete = async (row: UserRecord) => {
 
     try {
         await ElMessageBox.confirm(
-            `确定要删除用户 "${row.name}" 吗？此操作不可恢复。`,
+            `确定要删除用户“${row.name}”吗？此操作不可恢复。`,
             '确认删除',
             {
                 type: 'warning',
                 confirmButtonText: '删除',
-                cancelButtonText: '取消'
-            }
+                cancelButtonText: '取消',
+            },
         )
 
         deletingId.value = row.id
         await axios.delete(`/api/Admin/users/${row.id}`)
         ElMessage.success('用户已删除')
+        if (users.value.length === 1 && pagination.pageNumber > 1) {
+            pagination.pageNumber -= 1
+        }
         await loadUsers()
     } catch (error: any) {
         if (error === 'cancel' || error === 'close') {
@@ -464,7 +520,7 @@ const submitResetPassword = async () => {
     resettingPassword.value = true
     try {
         await axios.post(`/api/Admin/users/${resetForm.id}/reset-password`, {
-            newPassword: hashPassword(resetForm.newPassword)
+            newPassword: hashPassword(resetForm.newPassword),
         })
 
         ElMessage.success('密码重置成功，用户下次登录将被要求修改密码')
@@ -494,9 +550,8 @@ const handleImportFile = async (event: Event) => {
         const formData = new FormData()
         formData.append('file', file)
         const resp = await axios.post<ImportResult>('/api/Admin/users/import', formData, {
-            // User import is processed synchronously on the server and can exceed 15s.
             timeout: 0,
-            headers: { 'Content-Type': 'multipart/form-data' }
+            headers: { 'Content-Type': 'multipart/form-data' },
         })
         importResult.value = resp.data
         importResultVisible.value = true
@@ -509,7 +564,7 @@ const handleImportFile = async (event: Event) => {
 
 const closeImportResult = async () => {
     importResultVisible.value = false
-    await loadUsers()
+    await loadUsers({ resetPage: true })
 }
 
 const downloadTemplate = async () => {
@@ -528,8 +583,25 @@ const downloadTemplate = async () => {
     }
 }
 
+watch(keyword, () => {
+    if (searchTimer !== null) {
+        window.clearTimeout(searchTimer)
+    }
+
+    searchTimer = window.setTimeout(() => {
+        void loadUsers({ resetPage: true })
+    }, 300)
+})
+
 onMounted(() => {
-    loadUsers()
+    void loadUsers()
+})
+
+onBeforeUnmount(() => {
+    if (searchTimer !== null) {
+        window.clearTimeout(searchTimer)
+        searchTimer = null
+    }
 })
 </script>
 
@@ -543,5 +615,12 @@ onMounted(() => {
     align-items: center;
     gap: 10px;
     margin-bottom: 12px;
+    flex-wrap: wrap;
+}
+
+.table-footer {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 12px;
 }
 </style>

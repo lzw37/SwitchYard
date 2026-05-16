@@ -4,12 +4,12 @@
             <el-button type="primary" @click="openCreate">
                 {{ t('humpInstance.buttons.create') }}
             </el-button>
-            <el-button type="primary" @click="loadInstances">
+            <el-button type="primary" :loading="loading" @click="loadInstances">
                 {{ t('humpInstance.buttons.refresh') }}
             </el-button>
         </div>
 
-        <el-table :data="instances" style="width:100%" v-loading="loading">
+        <el-table :data="instances" style="width: 100%" v-loading="loading">
             <el-table-column prop="id" label="ID" width="200" />
             <el-table-column prop="name" :label="t('humpInstance.columns.name')" min-width="200" />
             <el-table-column prop="owner" :label="t('humpInstance.columns.owner')" width="150" />
@@ -40,25 +40,44 @@
             </el-table-column>
         </el-table>
 
-        <!-- 创建/编辑对话框 -->
+        <div class="table-footer">
+            <el-pagination
+                background
+                :current-page="pagination.pageNumber"
+                :page-size="pagination.pageSize"
+                :page-sizes="pageSizes"
+                :total="pagination.totalCount"
+                layout="total, sizes, prev, pager, next, jumper"
+                @current-change="handleCurrentChange"
+                @size-change="handleSizeChange"
+            />
+        </div>
+
         <el-dialog
             :title="dialogMode === 'create' ? t('humpInstance.dialogs.createTitle') : t('humpInstance.dialogs.editTitle')"
-            v-model="dialogVisible" width="500px" :close-on-click-modal="false">
-            <el-form :model="formData" :rules="rules" ref="formRef" label-width="120px">
+            v-model="dialogVisible"
+            width="500px"
+            :close-on-click-modal="false"
+        >
+            <el-form ref="formRef" :model="formData" :rules="rules" label-width="120px">
                 <el-form-item :label="t('humpInstance.columns.name')" prop="name">
                     <el-input v-model="formData.name" :placeholder="t('humpInstance.placeholder.name')" />
                 </el-form-item>
                 <el-form-item :label="t('humpInstance.columns.isActive')" prop="isActive">
-                    <el-switch v-model="formData.isActive" :active-value="1" :inactive-value="0"
+                    <el-switch
+                        v-model="formData.isActive"
+                        :active-value="1"
+                        :inactive-value="0"
                         :active-text="t('humpInstance.status.active')"
-                        :inactive-text="t('humpInstance.status.inactive')" />
+                        :inactive-text="t('humpInstance.status.inactive')"
+                    />
                 </el-form-item>
             </el-form>
             <template #footer>
                 <el-button @click="dialogVisible = false">
                     {{ t('humpInstance.buttons.cancel') }}
                 </el-button>
-                <el-button type="primary" @click="handleSubmit" :loading="saving">
+                <el-button type="primary" :loading="saving" @click="handleSubmit">
                     {{ t('humpInstance.buttons.save') }}
                 </el-button>
             </template>
@@ -66,30 +85,48 @@
 
         <el-dialog
             :title="tr('humpInstanceManagement.dialogs.copyTitle', '复制驼峰实例', 'Copy Hump Instance')"
-            v-model="copyDialogVisible" width="500px" :close-on-click-modal="false">
-            <el-form :model="copyForm" :rules="copyRules" ref="copyFormRef" label-width="120px">
+            v-model="copyDialogVisible"
+            width="500px"
+            :close-on-click-modal="false"
+        >
+            <el-form ref="copyFormRef" :model="copyForm" :rules="copyRules" label-width="120px">
                 <el-form-item :label="tr('humpInstanceManagement.copy.source', '原实例', 'Source Instance')">
                     <el-input :model-value="copySourceLabel" disabled />
                 </el-form-item>
                 <el-form-item
                     :label="tr('humpInstanceManagement.copy.newName', '新实例名称', 'New Instance Name')"
-                    prop="newInstanceName">
+                    prop="newInstanceName"
+                >
                     <el-input
                         v-model="copyForm.newInstanceName"
-                        :placeholder="tr('humpInstanceManagement.placeholder.newName', '请输入新实例名称', 'Please enter a new instance name')" />
+                        :placeholder="
+                            tr(
+                                'humpInstanceManagement.placeholder.newName',
+                                '请输入新实例名称',
+                                'Please enter a new instance name',
+                            )
+                        "
+                    />
                 </el-form-item>
                 <el-alert
                     class="copy-hint"
-                    :title="tr('humpInstanceManagement.copy.generatedIdHint', '新实例号将由系统自动生成', 'The new instance ID will be generated automatically')"
+                    :title="
+                        tr(
+                            'humpInstanceManagement.copy.generatedIdHint',
+                            '新实例编号将由系统自动生成',
+                            'The new instance ID will be generated automatically',
+                        )
+                    "
                     type="info"
                     :closable="false"
-                    show-icon />
+                    show-icon
+                />
             </el-form>
             <template #footer>
                 <el-button @click="copyDialogVisible = false">
                     {{ t('humpInstance.buttons.cancel') }}
                 </el-button>
-                <el-button type="primary" @click="handleCopy" :loading="copying">
+                <el-button type="primary" :loading="copying" @click="handleCopy">
                     {{ tr('humpInstance.buttons.copy', '复制', 'Copy') }}
                 </el-button>
             </template>
@@ -98,12 +135,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, computed } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import axios from '@/utils/axios'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useI18n } from 'vue-i18n'
 import type { FormInstance, FormRules } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
+import { DEFAULT_PAGE_SIZES, type PagedResult } from '@/types/pagination'
 
 interface HumpInstance {
     id?: string
@@ -127,13 +165,19 @@ const dialogMode = ref<'create' | 'edit'>('create')
 const formRef = ref<FormInstance>()
 const copyFormRef = ref<FormInstance>()
 const copySourceLabel = ref('')
+const pageSizes = [...DEFAULT_PAGE_SIZES]
+const pagination = reactive({
+    pageNumber: 1,
+    pageSize: 10,
+    totalCount: 0,
+})
 
 const formData = reactive<HumpInstance>({
     id: '',
     name: '',
     owner: '',
     createdDate: '',
-    isActive: 1
+    isActive: 1,
 })
 
 const copyForm = reactive({
@@ -169,8 +213,8 @@ const tr = (
 const rules = reactive<FormRules>({
     name: [
         { required: true, message: t('humpInstance.validation.nameRequired'), trigger: 'blur' },
-        { min: 2, max: 100, message: t('humpInstance.validation.nameLength'), trigger: 'blur' }
-    ]
+        { min: 2, max: 100, message: t('humpInstance.validation.nameLength'), trigger: 'blur' },
+    ],
 })
 
 const copyRules = reactive<FormRules>({
@@ -180,22 +224,52 @@ const copyRules = reactive<FormRules>({
     ],
 })
 
-// 加载实例列表
 const loadInstances = async () => {
     loading.value = true
     try {
-        const response = await axios.get('/Hump/GetInstances')
-        instances.value = response.data || []
-        ElMessage.success(t('humpInstance.messages.loadSuccess'))
+        const response = await axios.get<PagedResult<HumpInstance>>('/Hump/GetInstancePage', {
+            params: {
+                pageNumber: pagination.pageNumber,
+                pageSize: pagination.pageSize,
+            },
+        })
+
+        const result = response.data
+        const totalPages = Math.max(1, Math.ceil((result.totalCount || 0) / (result.pageSize || pagination.pageSize)))
+        if (result.totalCount > 0 && pagination.pageNumber > totalPages) {
+            pagination.pageNumber = totalPages
+            await loadInstances()
+            return
+        }
+
+        instances.value = (result.items || []).map((item) => ({
+            ...item,
+            isActive: Number(item.isActive ?? 1),
+        }))
+        pagination.pageNumber = result.pageNumber || pagination.pageNumber
+        pagination.pageSize = result.pageSize || pagination.pageSize
+        pagination.totalCount = result.totalCount || 0
     } catch (error: any) {
         console.error('Failed to load instances:', error)
+        instances.value = []
+        pagination.totalCount = 0
         ElMessage.error(t('humpInstance.messages.loadError'))
     } finally {
         loading.value = false
     }
 }
 
-// 打开创建对话框
+const handleCurrentChange = (pageNumber: number) => {
+    pagination.pageNumber = pageNumber
+    void loadInstances()
+}
+
+const handleSizeChange = (pageSize: number) => {
+    pagination.pageSize = pageSize
+    pagination.pageNumber = 1
+    void loadInstances()
+}
+
 const openCreate = () => {
     dialogMode.value = 'create'
     Object.assign(formData, {
@@ -203,14 +277,12 @@ const openCreate = () => {
         name: '',
         owner: authStore.username.trim(),
         createdDate: '',
-        isActive: 1
+        isActive: 1,
     })
     dialogVisible.value = true
-    // 重置表单验证
     formRef.value?.clearValidate()
 }
 
-// 打开编辑对话框
 const openEdit = (row: HumpInstance) => {
     dialogMode.value = 'edit'
     Object.assign(formData, {
@@ -218,14 +290,12 @@ const openEdit = (row: HumpInstance) => {
         name: row.name,
         owner: row.owner,
         createdDate: row.createdDate,
-        isActive: row.isActive
+        isActive: row.isActive,
     })
     dialogVisible.value = true
-    // 重置表单验证
     formRef.value?.clearValidate()
 }
 
-// 打开复制对话框
 const openCopy = (row: HumpInstance) => {
     copyForm.sourceInstanceID = row.id || ''
     copyForm.newInstanceName = tr(
@@ -240,74 +310,77 @@ const openCopy = (row: HumpInstance) => {
     copyFormRef.value?.clearValidate()
 }
 
-// 提交表单
 const handleSubmit = async () => {
     if (!formRef.value) return
 
-    await formRef.value.validate(async (valid) => {
-        if (!valid) return
+    try {
+        await formRef.value.validate()
+    } catch {
+        return
+    }
 
-        saving.value = true
-        try {
-            if (dialogMode.value === 'create') {
-                await createInstance()
-            } else {
-                await editInstance()
-            }
-        } finally {
-            saving.value = false
+    saving.value = true
+    try {
+        if (dialogMode.value === 'create') {
+            await createInstance()
+        } else {
+            await editInstance()
         }
-    })
+    } finally {
+        saving.value = false
+    }
 }
 
-// 复制实例
 const handleCopy = async () => {
     if (!copyFormRef.value) return
 
-    await copyFormRef.value.validate(async (valid) => {
-        if (!valid) return
+    try {
+        await copyFormRef.value.validate()
+    } catch {
+        return
+    }
 
-        copying.value = true
-        try {
-            const response = await axios.post<HumpInstance>('/Hump/CopyHumpInstance', {
-                sourceInstanceID: copyForm.sourceInstanceID,
-                newInstanceName: copyForm.newInstanceName.trim(),
-                owner: copyForm.owner || authStore.username.trim(),
-            })
+    copying.value = true
+    try {
+        const response = await axios.post<HumpInstance>('/Hump/CopyHumpInstance', {
+            sourceInstanceID: copyForm.sourceInstanceID,
+            newInstanceName: copyForm.newInstanceName.trim(),
+            owner: copyForm.owner || authStore.username.trim(),
+        })
 
-            ElMessage.success(
-                tr(
-                    'humpInstanceManagement.messages.copySuccess',
-                    '实例复制成功，新实例号：{id}',
-                    'Instance copied successfully. New ID: {id}',
-                    { id: response.data?.id || '-' },
-                ),
-            )
-            copyDialogVisible.value = false
-            await loadInstances()
-        } catch (error: any) {
-            console.error('Failed to copy instance:', error)
-            ElMessage.error(
-                tr(
-                    'humpInstanceManagement.messages.copyError',
-                    '实例复制失败',
-                    'Failed to copy instance',
-                ),
-            )
-        } finally {
-            copying.value = false
-        }
-    })
+        pagination.pageNumber = 1
+        ElMessage.success(
+            tr(
+                'humpInstanceManagement.messages.copySuccess',
+                '实例复制成功，新实例编号：{id}',
+                'Instance copied successfully. New ID: {id}',
+                { id: response.data?.id || '-' },
+            ),
+        )
+        copyDialogVisible.value = false
+        await loadInstances()
+    } catch (error: any) {
+        console.error('Failed to copy instance:', error)
+        ElMessage.error(
+            tr(
+                'humpInstanceManagement.messages.copyError',
+                '实例复制失败',
+                'Failed to copy instance',
+            ),
+        )
+    } finally {
+        copying.value = false
+    }
 }
 
-// 创建实例
 const createInstance = async () => {
     try {
-        const response = await axios.post('/Hump/CreateInstance', {
-            name: formData.name,
+        await axios.post('/Hump/CreateInstance', {
+            name: formData.name.trim(),
             owner: formData.owner || authStore.username.trim(),
             isActive: formData.isActive,
         })
+        pagination.pageNumber = 1
         ElMessage.success(t('humpInstance.messages.createSuccess'))
         dialogVisible.value = false
         await loadInstances()
@@ -317,14 +390,13 @@ const createInstance = async () => {
     }
 }
 
-// 编辑实例
 const editInstance = async () => {
     try {
         await axios.put('/Hump/EditInstance', {
             id: formData.id,
-            name: formData.name,
+            name: formData.name.trim(),
             owner: formData.owner,
-            isActive: formData.isActive
+            isActive: formData.isActive,
         })
         ElMessage.success(t('humpInstance.messages.editSuccess'))
         dialogVisible.value = false
@@ -335,7 +407,6 @@ const editInstance = async () => {
     }
 }
 
-// 确认删除
 const confirmDelete = (row: HumpInstance) => {
     ElMessageBox.confirm(
         t('humpInstance.messages.deleteConfirm', { name: row.name }),
@@ -343,23 +414,28 @@ const confirmDelete = (row: HumpInstance) => {
         {
             confirmButtonText: t('humpInstance.buttons.confirm'),
             cancelButtonText: t('humpInstance.buttons.cancel'),
-            type: 'warning'
-        }
-    ).then(() => {
-        deleteInstance(row.id!)
-    }).catch(() => {
-        // 取消删除
-    })
+            type: 'warning',
+        },
+    )
+        .then(() => {
+            if (!row.id) return
+            void deleteInstance(row.id)
+        })
+        .catch(() => {
+            return
+        })
 }
 
-// 删除实例
 const deleteInstance = async (id: string) => {
     loading.value = true
     try {
         await axios.delete('/Hump/DeleteInstance', {
-            params: { id }
+            params: { id },
         })
         ElMessage.success(t('humpInstance.messages.deleteSuccess'))
+        if (instances.value.length === 1 && pagination.pageNumber > 1) {
+            pagination.pageNumber -= 1
+        }
         await loadInstances()
     } catch (error: any) {
         console.error('Failed to delete instance:', error)
@@ -369,16 +445,14 @@ const deleteInstance = async (id: string) => {
     }
 }
 
-// 格式化日期
-const formatDate = (dateString: string) => {
+const formatDate = (dateString?: string) => {
     if (!dateString) return ''
     const date = new Date(dateString)
-    return date.toLocaleString()
+    return Number.isNaN(date.getTime()) ? dateString : date.toLocaleString()
 }
 
-// 组件挂载时加载数据
 onMounted(() => {
-    loadInstances()
+    void loadInstances()
 })
 </script>
 
@@ -395,6 +469,12 @@ onMounted(() => {
 
 .el-table {
     margin-top: 10px;
+}
+
+.table-footer {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 12px;
 }
 
 .copy-hint {
