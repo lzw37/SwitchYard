@@ -1,7 +1,9 @@
 <template>
     <div>
         <div class="wagon-toolbar">
-            <el-button @click="addNewWagon" type="primary" size="small">{{ t('wagon.new') }}</el-button>
+            <el-button @click="addNewWagon" type="primary" size="small" :icon="Plus">
+                {{ t('hump.buttons.add') }}
+            </el-button>
         </div>
         <el-table :data="wagonData" style="width: 100%;">
             <el-table-column prop="typeName" :label="t('wagon.typeName')" width="120">
@@ -85,6 +87,7 @@ import { onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n'
 import axios from '@/utils/axios';
 import { ElMessage, ElMessageBox } from 'element-plus';
+import { Plus } from '@element-plus/icons-vue';
 
 const { t } = useI18n()
 
@@ -369,7 +372,7 @@ onMounted(() => {
 <style scoped lang="css">
 .wagon-toolbar {
     display: flex;
-    justify-content: flex-end;
+    justify-content: flex-start;
     margin-bottom: 12px;
 }
 </style>
