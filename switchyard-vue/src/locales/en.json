@@ -159,6 +159,30 @@
         "m_s2": "m/s²"
     },
     "hump": {
+        "referenceMissing": {
+            "message": "Referenced object is missing or was deleted: {items}. Please add it again or update {targets} in the scheme.",
+            "fallback": "A referenced object is missing or was deleted. Please add it again or choose another object.",
+            "item": "{label} ({value})",
+            "separator": "; ",
+            "targetSeparator": ", ",
+            "valueEmpty": "empty",
+            "labels": {
+                "wagonType": "Wagon type",
+                "operationCondition": "Calculation condition",
+                "slopeLine": "Slope line",
+                "humpCalculation": "Hump calculation",
+                "humpScheme": "Hump scheme",
+                "headwayCheckScheme": "Headway check scheme",
+                "flatPosition": "Flat-layout position",
+                "flatSegment": "Flat-layout segment",
+                "switchBindingPosition": "Switch binding position",
+                "switchBindingSegment": "Switch binding segment",
+                "retarderBindingSegment": "Retarder binding segment",
+                "slopePosition": "Profile position",
+                "slopeSegment": "Profile segment",
+                "unknown": "Unknown object"
+            }
+        },
         "selectLine": "Please select a line",
         "load": "Load",
         "tabs": {
@@ -423,6 +447,7 @@
                 "deleteFailed": "Failed to delete headway check instance",
                 "saveConfigSuccess": "Current headway check configuration saved",
                 "saveConfigFailed": "Failed to save headway check configuration",
+                "refreshFailed": "Headway check configuration was saved, but refreshing results failed",
                 "loadConditionsFailed": "Failed to load wagon conditions",
                 "confirmSlopeConfig": "Please ensure hump profile scheme and slope line are configured first"
             }

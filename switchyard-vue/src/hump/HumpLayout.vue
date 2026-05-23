@@ -316,6 +316,7 @@ import HumpLayoutCtrl from './HumpLayoutCtrl.vue'
 import type { FlatLayout } from './humplayoutctrl'
 import { CurveDirections, SwitchTypes, SwitchDirections, SwitchSides, LocationParam } from './humplayoutctrl'
 import axios from '@/utils/axios'
+import { getHumpMissingReferenceMessage } from '@/utils/humpMissingReference'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 interface SlopeLine {
@@ -1375,7 +1376,7 @@ function loadFlatLayout(options: { showSuccessMessage?: boolean } = {}) {
         // child will react to flatLayout prop change and load data
     }).catch(error => {
         console.error('Error fetching flat layout data:', error)
-        ElMessage.error(t('hump.messages.loadFlatLayoutError'))
+        ElMessage.error(getHumpMissingReferenceMessage(error, 'hump.messages.loadFlatLayoutError'))
     })
 }
 

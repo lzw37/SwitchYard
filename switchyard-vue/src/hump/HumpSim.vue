@@ -145,6 +145,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useI18n } from 'vue-i18n'
 import axios from '@/utils/axios'
+import { getHumpMissingReferenceMessage } from '@/utils/humpMissingReference'
 
 interface Props {
     selectedInstanceId?: string | null
@@ -891,8 +892,11 @@ async function loadSimulationData() {
 
         if (loadVersion !== simulationLoadVersion) return
 
-        if (slopeResult.status !== 'fulfilled' || runningTimeResult.status !== 'fulfilled') {
-            throw new Error('Missing required simulation payload.')
+        if (slopeResult.status !== 'fulfilled') {
+            throw slopeResult.reason
+        }
+        if (runningTimeResult.status !== 'fulfilled') {
+            throw runningTimeResult.reason
         }
 
         slopePoints.value = normalizeSlopePoints(slopeResult.value.data)
@@ -926,8 +930,9 @@ async function loadSimulationData() {
         }
     } catch (error) {
         console.error('Failed to load simulation data:', error)
-        ElMessage.error(t('hump.sim.messages.loadSimulationFailed'))
-        loadErrorMessage.value = t('hump.sim.messages.loadSimulationFailed')
+        const message = getHumpMissingReferenceMessage(error, 'hump.sim.messages.loadSimulationFailed')
+        ElMessage.error(message)
+        loadErrorMessage.value = message
     } finally {
         if (loadVersion === simulationLoadVersion) {
             loadingSimulation.value = false

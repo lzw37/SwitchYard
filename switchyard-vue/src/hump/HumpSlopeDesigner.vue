@@ -490,11 +490,12 @@
 <script setup lang="ts">
 import HumpSlopeCtrl from './HumpSlopeCtrl.vue';
 import HumpSlopeSketchBlock from './HumpSlopeSketchBlock.vue';
-import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import HumpLayoutCtrl from './HumpLayoutCtrl.vue';
 import axios from '@/utils/axios';
+import { getHumpMissingReferenceMessage } from '@/utils/humpMissingReference';
 import { FlatLayout, SlopeLayout, CurveDirections } from './humplayoutctrl';
 
 // 定义 props
@@ -909,7 +910,9 @@ const elementVisibility = computed(() => {
 });
 
 // 加载纵断面设计数据
-const loadSlopeLayout = async () => {
+const loadSlopeLayout = async (options: { showErrorMessage?: boolean } = {}) => {
+    const { showErrorMessage = true } = options
+
     if (!props.selectedInstanceId || !currentHumpSchemeID.value) {
         slopeLayout.value = null
         return
@@ -933,6 +936,9 @@ const loadSlopeLayout = async () => {
         }
     } catch (error) {
         console.error('加载纵断面设计数据失败:', error)
+        if (showErrorMessage) {
+            ElMessage.error(getHumpMissingReferenceMessage(error, 'humpSlopeDesigner.messages.calculationUnknownError'))
+        }
         slopeLayout.value = null
     }
 }
@@ -1091,7 +1097,7 @@ async function recalculateAndShowAllEnergyLines(options: { hideFirst?: boolean }
         await showAllEnergyLinesAfterRecalculation()
     } catch (error: any) {
         console.error('自动刷新能高线失败:', error)
-        const errorMessage = error.response?.data?.message || error.message || t('humpSlopeDesigner.messages.calculationUnknownError')
+        const errorMessage = getHumpMissingReferenceMessage(error, 'humpSlopeDesigner.messages.calculationUnknownError')
         ElMessage.error(`${t('humpSlopeDesigner.messages.calculationFailed')}: ${errorMessage}`)
     } finally {
         if (refreshSequence === energyHeightRefreshSequence) {
@@ -1126,6 +1132,7 @@ async function loadResistanceEnergyHeight() {
         }
     } catch (error) {
         console.error("加载阻力能高度数据失败:", error);
+        ElMessage.error(getHumpMissingReferenceMessage(error, 'humpSlopeDesigner.messages.calculationUnknownError'))
     }
 }
 
@@ -1298,7 +1305,7 @@ async function loadResistanceEnergyHeightDetail(xValue: number, options: { close
         }
     } catch (error) {
         console.error('Failed to load resistance energy height detail:', error)
-        ElMessage.error(t('humpSlopeDesigner.resistanceDetail.messages.loadDetailFailed'))
+        ElMessage.error(getHumpMissingReferenceMessage(error, 'humpSlopeDesigner.resistanceDetail.messages.loadDetailFailed'))
         if (options.closeOnError) {
             closeResistanceDetail()
         }
@@ -1371,6 +1378,7 @@ async function loadKineticEnergyHeight() {
         }
     } catch (error) {
         console.error("加载动能高度数据失败:", error);
+        ElMessage.error(getHumpMissingReferenceMessage(error, 'humpSlopeDesigner.messages.calculationUnknownError'))
     }
 }
 
@@ -1425,6 +1433,7 @@ async function loadBreakingEnergyHeight() {
         console.log('Breaking energy height data loaded:', breakingEnergyHeightData.value);
     } catch (error) {
         console.error("Failed to load breaking energy height data:", error);
+        ElMessage.error(getHumpMissingReferenceMessage(error, 'humpSlopeDesigner.messages.calculationUnknownError'))
     }
 }
 
@@ -1625,11 +1634,11 @@ watch(currentHumpSchemeID, async (newSchemeId, oldSchemeId) => {
         handlingSchemeSelectionChange.value = true
         try {
             await Promise.all([
-                loadSlopeLayout(),
+                loadSlopeLayout({ showErrorMessage: false }),
                 loadHumpCalculations()
             ])
             await Promise.all([
-                loadFlatLayout(),
+                loadFlatLayout({ showErrorMessage: false }),
                 updateCurrentCalculateCondition()
             ])
             await recalculateAndShowAllEnergyLines({ hideFirst: false })
@@ -1654,7 +1663,7 @@ watch(currentHumpCalculationID, async (newCalculationId, oldCalculationId) => {
 
     if (newCalculationId && props.selectedInstanceId) {
         await Promise.all([
-            loadFlatLayout(),
+            loadFlatLayout({ showErrorMessage: false }),
             updateCurrentCalculateCondition()
         ])
         await recalculateAndShowAllEnergyLines({ hideFirst: false })
@@ -1709,7 +1718,9 @@ const updateCurrentCalculateCondition = async () => {
 }
 
 // 加载平面布置图数据 
-const loadFlatLayout = async () => {
+const loadFlatLayout = async (options: { showErrorMessage?: boolean } = {}) => {
+    const { showErrorMessage = true } = options
+
     if (!props.selectedInstanceId) {
         flatLayout.value = null
         return
@@ -1752,6 +1763,9 @@ const loadFlatLayout = async () => {
         }
     } catch (error) {
         console.error('加载平面展开图数据失败:', error)
+        if (showErrorMessage) {
+            ElMessage.error(getHumpMissingReferenceMessage(error, 'humpSlopeDesigner.messages.calculationUnknownError'))
+        }
         flatLayout.value = null
     }
 }
@@ -1771,11 +1785,6 @@ function toggleRight() {
     rightVisible.value = !rightVisible.value;
 }
 
-onMounted(() => {
-    loadSlopeLayout();
-    loadFlatLayout();
-    loadHumpSchemes();
-});
 
 // 驼峰计算方法
 const executeCalculation = async (options: { showSuccessDialog?: boolean } = {}) => {
@@ -1842,7 +1851,7 @@ const executeCalculation = async (options: { showSuccessDialog?: boolean } = {})
         }
     } catch (error: any) {
         console.error('驼峰计算失败:', error)
-        const errorMessage = error.response?.data?.message || error.message || t('humpSlopeDesigner.messages.calculationUnknownError')
+        const errorMessage = getHumpMissingReferenceMessage(error, 'humpSlopeDesigner.messages.calculationUnknownError')
         await ElMessageBox.alert(
             `${t('humpSlopeDesigner.messages.calculationFailed')}: ${errorMessage}`,
             t('humpSlopeDesigner.messages.calculationFailed'),
@@ -2183,6 +2192,7 @@ const handleEditRetarderStatus = async (calculation: HumpCalculation) => {
             }))
         } catch (error) {
             console.error('加载减速器列表失败:', error)
+            ElMessage.error(getHumpMissingReferenceMessage(error, 'humpSlopeDesigner.retarderStatus.saveError'))
         } finally {
             retarderOptionsLoading.value = false
         }

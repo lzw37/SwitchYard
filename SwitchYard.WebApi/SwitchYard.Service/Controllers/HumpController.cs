@@ -31,6 +31,43 @@ namespace SwitchYard.Service.Controllers
         private const string UnknownLogValue = "N/A";
         private const string LogInstanceIdKey = "__log_instance_id";
         private const string LogObjectIdKey = "__log_object_id";
+        private const string HumpReferenceMissingCode = "HUMP_REFERENCE_MISSING";
+        private const string HumpCalculationDependencyMissingCode = "HUMP_CALCULATION_DEPENDENCY_MISSING";
+
+        private sealed class MissingHumpDependency
+        {
+            public string Type { get; init; } = string.Empty;
+
+            public string Label { get; init; } = string.Empty;
+
+            public string? Value { get; init; }
+        }
+
+        private sealed class EnergyCalculationDependencyContext
+        {
+            public HumpCalculation HumpCalculation { get; init; } = null!;
+
+            public SlopeLine SlopeLine { get; init; } = null!;
+
+            public Hump.FlatLayout FlatLayout { get; init; } = null!;
+
+            public SlopeLayout SlopeLayout { get; init; } = null!;
+
+            public WagonConcept Wagon { get; init; } = null!;
+
+            public OperationCondition OperationCondition { get; init; } = null!;
+        }
+
+        private sealed class HeadwayCheckDependencyContext
+        {
+            public HeadwayCheckScheme Scheme { get; init; } = null!;
+
+            public SlopeLine SlopeLine { get; init; } = null!;
+
+            public Hump.FlatLayout FlatLayout { get; init; } = null!;
+
+            public SlopeLayout SlopeLayout { get; init; } = null!;
+        }
 
         public HumpController(
             ILogger<HumpController> logger,
@@ -46,6 +83,49 @@ namespace SwitchYard.Service.Controllers
             _authService = authService;
             _userService = userService;
             _humpInstanceCopyService = humpInstanceCopyService;
+        }
+
+        private static void AddMissingDependency(List<MissingHumpDependency> missingDependencies, string type, string label, string? value)
+        {
+            if (missingDependencies.Any(item =>
+                string.Equals(item.Type, type, System.StringComparison.Ordinal) &&
+                string.Equals(item.Label, label, System.StringComparison.Ordinal) &&
+                string.Equals(item.Value, value, System.StringComparison.Ordinal)))
+            {
+                return;
+            }
+
+            missingDependencies.Add(new MissingHumpDependency
+            {
+                Type = type,
+                Label = label,
+                Value = value
+            });
+        }
+
+        private IActionResult CreateMissingHumpDependencyResult(List<MissingHumpDependency> missingDependencies)
+        {
+            var details = string.Join("；", missingDependencies.Select(item =>
+            {
+                var value = string.IsNullOrWhiteSpace(item.Value) ? "未填写" : item.Value;
+                return $"{item.Label}：{value}";
+            }));
+            var message = string.IsNullOrWhiteSpace(details)
+                ? "驼峰相关数据引用的对象不存在或已被删除，请重新添加或重新选择对应对象后再试。"
+                : $"驼峰相关数据引用的对象不存在或已被删除：{details}。请重新添加或重新选择对应对象后再试。";
+
+            return StatusCode(409, new
+            {
+                code = HumpReferenceMissingCode,
+                legacyCode = HumpCalculationDependencyMissingCode,
+                message,
+                missingDependencies
+            });
+        }
+
+        private IActionResult CreateMissingEnergyHeightDependencyResult(List<MissingHumpDependency> missingDependencies)
+        {
+            return CreateMissingHumpDependencyResult(missingDependencies);
         }
 
         private string NormalizeLogValue(object? value)
@@ -801,6 +881,388 @@ namespace SwitchYard.Service.Controllers
             return idMap.TryGetValue(sourceId, out var mapped) ? mapped : sourceId;
         }
 
+        private static List<MissingHumpDependency> CollectFlatLayoutMissingReferences(Hump.FlatLayout? flatLayout)
+        {
+            var missingDependencies = new List<MissingHumpDependency>();
+            if (flatLayout == null)
+            {
+                return missingDependencies;
+            }
+
+            var positionIds = (flatLayout.PositionList ?? new List<HPosition>())
+                .Where(position => !string.IsNullOrWhiteSpace(position.ID))
+                .Select(position => position.ID)
+                .ToHashSet(StringComparer.Ordinal);
+            var segmentIds = (flatLayout.PositionSegmentList ?? new List<HPositionSegment>())
+                .Where(segment => !string.IsNullOrWhiteSpace(segment.ID))
+                .Select(segment => segment.ID)
+                .ToHashSet(StringComparer.Ordinal);
+
+            foreach (var segment in flatLayout.PositionSegmentList ?? new List<HPositionSegment>())
+            {
+                var segmentLabel = string.IsNullOrWhiteSpace(segment.ID) ? "平面区间" : $"平面区间 {segment.ID}";
+                if (string.IsNullOrWhiteSpace(segment.StartPositionID) || !positionIds.Contains(segment.StartPositionID))
+                {
+                    AddMissingDependency(missingDependencies, "flatPosition", $"{segmentLabel} 的起点位置", segment.StartPositionID);
+                }
+
+                if (string.IsNullOrWhiteSpace(segment.EndPositionID) || !positionIds.Contains(segment.EndPositionID))
+                {
+                    AddMissingDependency(missingDependencies, "flatPosition", $"{segmentLabel} 的终点位置", segment.EndPositionID);
+                }
+            }
+
+            foreach (var sw in flatLayout.SwitchList ?? new List<SwitchYard.Hump.Switch>())
+            {
+                var switchLabel = string.IsNullOrWhiteSpace(sw.ID) ? "道岔" : $"道岔 {sw.ID}";
+                if (!string.IsNullOrWhiteSpace(sw.BindingPositionID) && !positionIds.Contains(sw.BindingPositionID))
+                {
+                    AddMissingDependency(missingDependencies, "switchBindingPosition", $"{switchLabel} 绑定的位置点", sw.BindingPositionID);
+                }
+
+                if (!string.IsNullOrWhiteSpace(sw.BindingPositionSegmentID) && !segmentIds.Contains(sw.BindingPositionSegmentID))
+                {
+                    AddMissingDependency(missingDependencies, "switchBindingSegment", $"{switchLabel} 绑定的平面区间", sw.BindingPositionSegmentID);
+                }
+            }
+
+            foreach (var retarder in flatLayout.RetarderList ?? new List<Retarder>())
+            {
+                var retarderLabel = string.IsNullOrWhiteSpace(retarder.ID) ? "减速器" : $"减速器 {retarder.ID}";
+                if (string.IsNullOrWhiteSpace(retarder.BindingPositionSegmentID) || !segmentIds.Contains(retarder.BindingPositionSegmentID))
+                {
+                    AddMissingDependency(missingDependencies, "retarderBindingSegment", $"{retarderLabel} 绑定的平面区间", retarder.BindingPositionSegmentID);
+                }
+            }
+
+            return missingDependencies;
+        }
+
+        private static List<MissingHumpDependency> CollectSlopeLayoutMissingReferences(SlopeLayout? slopeLayout)
+        {
+            var missingDependencies = new List<MissingHumpDependency>();
+            if (slopeLayout == null)
+            {
+                return missingDependencies;
+            }
+
+            var positionIds = (slopeLayout.PositionList ?? new List<VPosition>())
+                .Where(position => !string.IsNullOrWhiteSpace(position.ID))
+                .Select(position => position.ID)
+                .ToHashSet(StringComparer.Ordinal);
+
+            foreach (var segment in slopeLayout.PositionSegmentList ?? new List<VPositionSegment>())
+            {
+                var segmentLabel = string.IsNullOrWhiteSpace(segment.ID) ? "纵断面区间" : $"纵断面区间 {segment.ID}";
+                if (string.IsNullOrWhiteSpace(segment.StartPositionID) || !positionIds.Contains(segment.StartPositionID))
+                {
+                    AddMissingDependency(missingDependencies, "slopePosition", $"{segmentLabel} 的起点位置", segment.StartPositionID);
+                }
+
+                if (string.IsNullOrWhiteSpace(segment.EndPositionID) || !positionIds.Contains(segment.EndPositionID))
+                {
+                    AddMissingDependency(missingDependencies, "slopePosition", $"{segmentLabel} 的终点位置", segment.EndPositionID);
+                }
+            }
+
+            return missingDependencies;
+        }
+
+        private HumpScheme? LoadHumpScheme(string instanceID, string humpSchemeID)
+        {
+            DBConnector dbConnector = DBConnector.GetDBConnector();
+            return (dbConnector.Query<HumpScheme>(
+                "SELECT * FROM humpscheme WHERE InstanceID = @instanceID AND ID = @humpSchemeID",
+                new { instanceID, humpSchemeID }) ?? new List<HumpScheme>()).FirstOrDefault();
+        }
+
+        private bool TryLoadEnergyCalculationDependencies(
+            EnergyCalculationParams parameters,
+            out EnergyCalculationDependencyContext? context,
+            out IActionResult? errorResult)
+        {
+            context = null;
+            errorResult = null;
+
+            if (parameters == null)
+            {
+                errorResult = BadRequest("Invalid energy calculation parameters.");
+                return false;
+            }
+
+            var missingDependencies = new List<MissingHumpDependency>();
+            var instanceID = parameters.InstanceID;
+            var humpSchemeID = parameters.HumpSchemeID;
+            var calculationID = parameters.ID;
+
+            HumpCalculation? humpCalculation = null;
+            if (!string.IsNullOrWhiteSpace(instanceID) &&
+                !string.IsNullOrWhiteSpace(humpSchemeID) &&
+                !string.IsNullOrWhiteSpace(calculationID))
+            {
+                humpCalculation = GetHumpCalculation(instanceID, humpSchemeID, calculationID);
+            }
+
+            if (humpCalculation == null)
+            {
+                AddMissingDependency(missingDependencies, "humpCalculation", "驼峰计算", calculationID);
+            }
+
+            var effectiveSlopeLineID = string.IsNullOrWhiteSpace(parameters.SlopeLineID)
+                ? humpCalculation?.SlopeLineID
+                : parameters.SlopeLineID;
+            var effectiveWagonTypeName = string.IsNullOrWhiteSpace(parameters.WagonTypeName)
+                ? humpCalculation?.WagonType
+                : parameters.WagonTypeName;
+            var effectiveOperationConditionID = string.IsNullOrWhiteSpace(parameters.OperationConditionID)
+                ? humpCalculation?.OperationConditionID
+                : parameters.OperationConditionID;
+
+            var humpScheme = !string.IsNullOrWhiteSpace(humpSchemeID)
+                ? LoadHumpScheme(instanceID, humpSchemeID)
+                : null;
+            if (humpScheme == null)
+            {
+                AddMissingDependency(missingDependencies, "humpScheme", "驼峰方案", humpSchemeID);
+            }
+
+            var slopeLine = !string.IsNullOrWhiteSpace(effectiveSlopeLineID)
+                ? LoadSlopeLine(instanceID, effectiveSlopeLineID)
+                : null;
+            if (slopeLine == null)
+            {
+                AddMissingDependency(missingDependencies, "slopeLine", "溜放线", effectiveSlopeLineID);
+            }
+
+            Hump.FlatLayout? flatLayout = null;
+            if (slopeLine != null)
+            {
+                flatLayout = LoadFlatLayout(instanceID, effectiveSlopeLineID!);
+                if (flatLayout == null)
+                {
+                    AddMissingDependency(missingDependencies, "slopeLine", "溜放线平面布置", effectiveSlopeLineID);
+                }
+                else
+                {
+                    missingDependencies.AddRange(CollectFlatLayoutMissingReferences(flatLayout));
+                }
+            }
+
+            SlopeLayout? slopeLayout = null;
+            if (humpScheme != null)
+            {
+                slopeLayout = LoadSlopeLayout(instanceID, humpSchemeID);
+                if (slopeLayout == null)
+                {
+                    AddMissingDependency(missingDependencies, "humpScheme", "驼峰方案纵断面", humpSchemeID);
+                }
+                else
+                {
+                    missingDependencies.AddRange(CollectSlopeLayoutMissingReferences(slopeLayout));
+                }
+            }
+
+            var wagonConceptList = LoadWagonConcept(instanceID) ?? new List<WagonConcept>();
+            var wagon = !string.IsNullOrWhiteSpace(effectiveWagonTypeName)
+                ? wagonConceptList.Find(w => w.TypeName == effectiveWagonTypeName)
+                : null;
+            if (wagon == null)
+            {
+                AddMissingDependency(missingDependencies, "wagonType", "车辆类型", effectiveWagonTypeName);
+            }
+
+            var operationCondition = !string.IsNullOrWhiteSpace(effectiveOperationConditionID)
+                ? LoadOperationCondition(instanceID, effectiveOperationConditionID)
+                : null;
+            if (operationCondition == null)
+            {
+                AddMissingDependency(missingDependencies, "operationCondition", "计算条件", effectiveOperationConditionID);
+            }
+
+            if (missingDependencies.Count > 0)
+            {
+                errorResult = CreateMissingEnergyHeightDependencyResult(missingDependencies);
+                return false;
+            }
+
+            parameters.SlopeLineID = effectiveSlopeLineID;
+            parameters.WagonTypeName = effectiveWagonTypeName;
+            parameters.OperationConditionID = effectiveOperationConditionID;
+            parameters.SlopeLine = slopeLine;
+            parameters.Wagon = wagon;
+            parameters.OperationCondition = operationCondition;
+            parameters.RetarderStatusList ??= humpCalculation!.RetarderStatusList;
+
+            context = new EnergyCalculationDependencyContext
+            {
+                HumpCalculation = humpCalculation!,
+                SlopeLine = slopeLine!,
+                FlatLayout = flatLayout!,
+                SlopeLayout = slopeLayout!,
+                Wagon = wagon!,
+                OperationCondition = operationCondition!
+            };
+            return true;
+        }
+
+        private bool TryLoadHeadwayCheckDependencies(
+            string instanceID,
+            string headwayCheckSchemeID,
+            out HeadwayCheckDependencyContext? context,
+            out IActionResult? errorResult)
+        {
+            context = null;
+            errorResult = null;
+
+            var missingDependencies = new List<MissingHumpDependency>();
+            var scheme = LoadHeadwayCheckScheme(instanceID, headwayCheckSchemeID);
+            if (scheme == null)
+            {
+                AddMissingDependency(missingDependencies, "headwayCheckScheme", "追踪间隔检算方案", headwayCheckSchemeID);
+                errorResult = CreateMissingHumpDependencyResult(missingDependencies);
+                return false;
+            }
+
+            var humpScheme = !string.IsNullOrWhiteSpace(scheme.HumpSchemeID)
+                ? LoadHumpScheme(instanceID, scheme.HumpSchemeID)
+                : null;
+            if (humpScheme == null)
+            {
+                AddMissingDependency(missingDependencies, "humpScheme", "追踪间隔检算方案引用的驼峰方案", scheme.HumpSchemeID);
+            }
+
+            var slopeLine = !string.IsNullOrWhiteSpace(scheme.SlopeLineID)
+                ? LoadSlopeLine(instanceID, scheme.SlopeLineID)
+                : null;
+            if (slopeLine == null)
+            {
+                AddMissingDependency(missingDependencies, "slopeLine", "追踪间隔检算方案引用的溜放线", scheme.SlopeLineID);
+            }
+
+            Hump.FlatLayout? flatLayout = null;
+            if (slopeLine != null)
+            {
+                flatLayout = LoadFlatLayout(instanceID, scheme.SlopeLineID);
+                if (flatLayout == null)
+                {
+                    AddMissingDependency(missingDependencies, "slopeLine", "追踪间隔检算方案引用的溜放线平面布置", scheme.SlopeLineID);
+                }
+                else
+                {
+                    missingDependencies.AddRange(CollectFlatLayoutMissingReferences(flatLayout));
+                }
+            }
+
+            SlopeLayout? slopeLayout = null;
+            if (humpScheme != null)
+            {
+                slopeLayout = LoadSlopeLayout(instanceID, scheme.HumpSchemeID);
+                if (slopeLayout == null)
+                {
+                    AddMissingDependency(missingDependencies, "humpScheme", "追踪间隔检算方案引用的驼峰方案纵断面", scheme.HumpSchemeID);
+                }
+                else
+                {
+                    missingDependencies.AddRange(CollectSlopeLayoutMissingReferences(slopeLayout));
+                }
+            }
+
+            var wagonConceptList = LoadWagonConcept(instanceID) ?? new List<WagonConcept>();
+            var operationConditionCache = new Dictionary<string, OperationCondition?>(StringComparer.Ordinal);
+            var slopeLineCache = new Dictionary<string, SlopeLine?>(StringComparer.Ordinal);
+
+            OperationCondition? GetOperationConditionById(string? id)
+            {
+                if (string.IsNullOrWhiteSpace(id))
+                {
+                    return null;
+                }
+
+                if (!operationConditionCache.TryGetValue(id, out var condition))
+                {
+                    condition = LoadOperationCondition(instanceID, id);
+                    operationConditionCache[id] = condition;
+                }
+
+                return condition;
+            }
+
+            SlopeLine? GetSlopeLineById(string? id)
+            {
+                if (string.IsNullOrWhiteSpace(id))
+                {
+                    return null;
+                }
+
+                if (!slopeLineCache.TryGetValue(id, out var line))
+                {
+                    line = LoadSlopeLine(instanceID, id);
+                    slopeLineCache[id] = line;
+                }
+
+                return line;
+            }
+
+            foreach (var hcWagon in scheme.WagonList ?? new List<HeadwayCheckWagon>())
+            {
+                var wagonLabel = $"第 {hcWagon.Sequence} 辆钩车";
+                var humpCalculation = hcWagon.HumpCalculation;
+                if (humpCalculation == null)
+                {
+                    AddMissingDependency(missingDependencies, "humpCalculation", $"{wagonLabel} 引用的驼峰计算", hcWagon.HumpCalculationID);
+                    continue;
+                }
+
+                if (wagonConceptList.Find(w => w.TypeName == humpCalculation.WagonType) == null)
+                {
+                    AddMissingDependency(missingDependencies, "wagonType", $"{wagonLabel} 引用的车辆类型", humpCalculation.WagonType);
+                }
+
+                if (GetOperationConditionById(humpCalculation.OperationConditionID) == null)
+                {
+                    AddMissingDependency(missingDependencies, "operationCondition", $"{wagonLabel} 引用的计算条件", humpCalculation.OperationConditionID);
+                }
+
+                if (GetSlopeLineById(humpCalculation.SlopeLineID) == null)
+                {
+                    AddMissingDependency(missingDependencies, "slopeLine", $"{wagonLabel} 引用的溜放线", humpCalculation.SlopeLineID);
+                }
+            }
+
+            if (missingDependencies.Count > 0)
+            {
+                errorResult = CreateMissingHumpDependencyResult(missingDependencies);
+                return false;
+            }
+
+            foreach (var hcWagon in scheme.WagonList ?? new List<HeadwayCheckWagon>())
+            {
+                var humpCalculation = hcWagon.HumpCalculation!;
+                hcWagon.EnergyCalculationParams = new EnergyCalculationParams
+                {
+                    InstanceID = instanceID,
+                    HumpSchemeID = scheme.HumpSchemeID,
+                    ID = humpCalculation.ID,
+                    SlopeLineID = humpCalculation.SlopeLineID,
+                    SlopeLine = GetSlopeLineById(humpCalculation.SlopeLineID) ?? slopeLine,
+                    WagonTypeName = humpCalculation.WagonType,
+                    Wagon = wagonConceptList.Find(w => w.TypeName == humpCalculation.WagonType),
+                    OperationConditionID = humpCalculation.OperationConditionID,
+                    OperationCondition = GetOperationConditionById(humpCalculation.OperationConditionID),
+                    RetarderStatusList = humpCalculation.RetarderStatusList
+                };
+            }
+
+            context = new HeadwayCheckDependencyContext
+            {
+                Scheme = scheme,
+                SlopeLine = slopeLine!,
+                FlatLayout = flatLayout!,
+                SlopeLayout = slopeLayout!
+            };
+            return true;
+        }
+
         /// <summary>
         /// 获取驼峰溜放部分的平面布置图
         /// </summary>
@@ -813,7 +1275,26 @@ namespace SwitchYard.Service.Controllers
                 var authResult = ValidateInstanceOwnershipOrFail(instanceID);
                 if (authResult != null) return authResult;
 
+                var slopeLine = LoadSlopeLine(instanceID, slopeLineID);
+                if (slopeLine == null)
+                {
+                    return CreateMissingHumpDependencyResult(new List<MissingHumpDependency>
+                    {
+                        new MissingHumpDependency { Type = "slopeLine", Label = "溜放线", Value = slopeLineID }
+                    });
+                }
+
                 var flatLayout = LoadFlatLayout(instanceID, slopeLineID);
+                if (flatLayout == null)
+                {
+                    return StatusCode(500, "Internal server error while retrieving FlatLayout.");
+                }
+
+                var missingDependencies = CollectFlatLayoutMissingReferences(flatLayout);
+                if (missingDependencies.Count > 0)
+                {
+                    return CreateMissingHumpDependencyResult(missingDependencies);
+                }
 
                 return Ok(flatLayout);
             }
@@ -828,7 +1309,7 @@ namespace SwitchYard.Service.Controllers
         /// 加载驼峰溜放部分的平面布置图
         /// </summary>
         /// <returns></returns>
-        private Hump.FlatLayout LoadFlatLayout(string instanceID, string slopeLineID)
+        private Hump.FlatLayout? LoadFlatLayout(string instanceID, string slopeLineID)
         {
             var flatLayout = new SwitchYard.Hump.FlatLayout();
             flatLayout.InstanceID = instanceID;
@@ -838,10 +1319,10 @@ namespace SwitchYard.Service.Controllers
             try
             {
                 dbConnector.BeginTransaction();
-                flatLayout.PositionList = dbConnector.Query<SwitchYard.Hump.HPosition>("SELECT * FROM position WHERE InstanceID = @instanceID AND SlopeLineID = @slopeLineID", new { instanceID, slopeLineID });
-                flatLayout.PositionSegmentList = dbConnector.Query<SwitchYard.Hump.HPositionSegment>("SELECT * FROM positionsegment WHERE InstanceID = @instanceID AND SlopeLineID = @slopeLineID", new { instanceID, slopeLineID });
-                flatLayout.SwitchList = dbConnector.Query<SwitchYard.Hump.Switch>("SELECT * FROM switch WHERE InstanceID = @instanceID AND SlopeLineID = @slopeLineID", new { instanceID, slopeLineID });
-                flatLayout.RetarderList = dbConnector.Query<SwitchYard.Hump.Retarder>("SELECT * FROM retarder WHERE InstanceID = @instanceID AND SlopeLineID = @slopeLineID", new { instanceID, slopeLineID });
+                flatLayout.PositionList = dbConnector.Query<SwitchYard.Hump.HPosition>("SELECT * FROM position WHERE InstanceID = @instanceID AND SlopeLineID = @slopeLineID", new { instanceID, slopeLineID }) ?? new List<HPosition>();
+                flatLayout.PositionSegmentList = dbConnector.Query<SwitchYard.Hump.HPositionSegment>("SELECT * FROM positionsegment WHERE InstanceID = @instanceID AND SlopeLineID = @slopeLineID", new { instanceID, slopeLineID }) ?? new List<HPositionSegment>();
+                flatLayout.SwitchList = dbConnector.Query<SwitchYard.Hump.Switch>("SELECT * FROM switch WHERE InstanceID = @instanceID AND SlopeLineID = @slopeLineID", new { instanceID, slopeLineID }) ?? new List<SwitchYard.Hump.Switch>();
+                flatLayout.RetarderList = dbConnector.Query<SwitchYard.Hump.Retarder>("SELECT * FROM retarder WHERE InstanceID = @instanceID AND SlopeLineID = @slopeLineID", new { instanceID, slopeLineID }) ?? new List<Retarder>();
                 dbConnector.Commit();
 
                 foreach (var seg in flatLayout.PositionSegmentList)
@@ -872,6 +1353,7 @@ namespace SwitchYard.Service.Controllers
             }
             catch (Exception ex)
             {
+                dbConnector.Rollback();
                 LogErrorWithContext(ex, "Error getting FlatLayout.");
                 return null;
             }
@@ -1238,10 +1720,10 @@ namespace SwitchYard.Service.Controllers
             }
         }
 
-        private OperationCondition LoadOperationCondition(string instanceID, string id)
+        private OperationCondition? LoadOperationCondition(string instanceID, string id)
         {
             DBConnector dbConnector = DBConnector.GetDBConnector();
-            var condition = dbConnector.Query<OperationCondition>("SELECT * FROM operationcondition WHERE InstanceID = @instanceID AND ID = @id", new { instanceID = instanceID, id = id }).FirstOrDefault();
+            var condition = (dbConnector.Query<OperationCondition>("SELECT * FROM operationcondition WHERE InstanceID = @instanceID AND ID = @id", new { instanceID = instanceID, id = id }) ?? new List<OperationCondition>()).FirstOrDefault();
             return condition;
         }
 
@@ -1407,7 +1889,21 @@ namespace SwitchYard.Service.Controllers
                 var authResult = ValidateInstanceOwnershipOrFail(instanceID);
                 if (authResult != null) return authResult;
 
+                var humpScheme = LoadHumpScheme(instanceID, humpSchemeID);
+                if (humpScheme == null)
+                {
+                    return CreateMissingHumpDependencyResult(new List<MissingHumpDependency>
+                    {
+                        new MissingHumpDependency { Type = "humpScheme", Label = "驼峰方案", Value = humpSchemeID }
+                    });
+                }
+
                 var slopeLayout = LoadSlopeLayout(instanceID, humpSchemeID);
+                var missingDependencies = CollectSlopeLayoutMissingReferences(slopeLayout);
+                if (missingDependencies.Count > 0)
+                {
+                    return CreateMissingHumpDependencyResult(missingDependencies);
+                }
 
                 LogInformationWithContext("SlopeLayout retrieved, hump scheme {HumpSchemeID} with {PositionCount} positions and {SegmentCount} segments.",
                     humpSchemeID,
@@ -1426,8 +1922,8 @@ namespace SwitchYard.Service.Controllers
         {
             var slopeLayout = new SwitchYard.Hump.SlopeLayout();
             DBConnector dbConnector = DBConnector.GetDBConnector();
-            slopeLayout.PositionList = dbConnector.Query<SwitchYard.Hump.VPosition>("SELECT * FROM vposition WHERE InstanceID = @instanceID AND HumpSchemeID = @humpSchemeID;", new { instanceID = instanceID, humpSchemeID = humpSchemeID });
-            slopeLayout.PositionSegmentList = dbConnector.Query<SwitchYard.Hump.VPositionSegment>("SELECT * FROM vpositionsegment WHERE InstanceID = @instanceID AND HumpSchemeID = @humpSchemeID", new { instanceID = instanceID, humpSchemeID = humpSchemeID });
+            slopeLayout.PositionList = dbConnector.Query<SwitchYard.Hump.VPosition>("SELECT * FROM vposition WHERE InstanceID = @instanceID AND HumpSchemeID = @humpSchemeID;", new { instanceID = instanceID, humpSchemeID = humpSchemeID }) ?? new List<VPosition>();
+            slopeLayout.PositionSegmentList = dbConnector.Query<SwitchYard.Hump.VPositionSegment>("SELECT * FROM vpositionsegment WHERE InstanceID = @instanceID AND HumpSchemeID = @humpSchemeID", new { instanceID = instanceID, humpSchemeID = humpSchemeID }) ?? new List<VPositionSegment>();
             foreach (var seg in slopeLayout.PositionSegmentList)
             {
                 seg.StartPosition = slopeLayout.PositionList.Find(p => p.ID == seg.StartPositionID);
@@ -1642,18 +2138,16 @@ namespace SwitchYard.Service.Controllers
                 if (authResult != null) return authResult;
 
                 // 载入所有计算参数
-                var humpCalculation = GetHumpCalculation(parameters.InstanceID, parameters.HumpSchemeID, parameters.ID);
+                if (!TryLoadEnergyCalculationDependencies(parameters, out var dependencyContext, out var dependencyErrorResult))
+                {
+                    return dependencyErrorResult!;
+                }
 
-                var slopeLine = LoadSlopeLine(parameters.InstanceID, parameters.SlopeLineID);
-                var flatLayout = LoadFlatLayout(parameters.InstanceID, parameters.SlopeLineID);
+                var humpCalculation = dependencyContext!.HumpCalculation;
+                var slopeLine = dependencyContext.SlopeLine;
+                var flatLayout = dependencyContext.FlatLayout;
+                var slopeLayout = dependencyContext.SlopeLayout;
                 slopeLine.FlatLayout = flatLayout;
-
-                var slopeLayout = LoadSlopeLayout(parameters.InstanceID, parameters.HumpSchemeID);
-                var wagonConceptList = LoadWagonConcept(parameters.InstanceID);
-
-                parameters.SlopeLine = slopeLine;
-                parameters.Wagon = wagonConceptList.Find(w => w.TypeName == parameters.WagonTypeName);
-                parameters.OperationCondition = LoadOperationCondition(parameters.InstanceID, parameters.OperationConditionID);
 
                 humpCalculation.Data = new List<HumpCalculationData>();
 
@@ -1746,16 +2240,15 @@ namespace SwitchYard.Service.Controllers
                 var authResult = ValidateInstanceOwnershipOrFail(parameters.InstanceID);
                 if (authResult != null) return authResult;
 
-                var slopeLine = LoadSlopeLine(parameters.InstanceID, parameters.SlopeLineID);
-                var flatLayout = LoadFlatLayout(parameters.InstanceID, parameters.SlopeLineID);
+                if (!TryLoadEnergyCalculationDependencies(parameters, out var dependencyContext, out var dependencyErrorResult))
+                {
+                    return dependencyErrorResult!;
+                }
+
+                var slopeLine = dependencyContext!.SlopeLine;
+                var flatLayout = dependencyContext.FlatLayout;
+                var slopeLayout = dependencyContext.SlopeLayout;
                 slopeLine.FlatLayout = flatLayout;
-
-                var slopeLayout = LoadSlopeLayout(parameters.InstanceID, parameters.HumpSchemeID);
-                var wagonConceptList = LoadWagonConcept(parameters.InstanceID);
-
-
-                parameters.Wagon = wagonConceptList.Find(w => w.TypeName == parameters.WagonTypeName);
-                parameters.OperationCondition = LoadOperationCondition(parameters.InstanceID, parameters.OperationConditionID);
 
                 var kineticEnergyHeightList = new List<object>();
 
@@ -1774,10 +2267,10 @@ namespace SwitchYard.Service.Controllers
             }
         }
 
-        private SlopeLine LoadSlopeLine(string instanceID, string id)
+        private SlopeLine? LoadSlopeLine(string instanceID, string id)
         {
             DBConnector dbConnector = DBConnector.GetDBConnector();
-            var slopeLine = dbConnector.Query<SlopeLine>("SELECT * FROM slopeline WHERE InstanceID = @instanceID AND ID = @id", new { instanceID, id }).FirstOrDefault();
+            var slopeLine = (dbConnector.Query<SlopeLine>("SELECT * FROM slopeline WHERE InstanceID = @instanceID AND ID = @id", new { instanceID, id }) ?? new List<SlopeLine>()).FirstOrDefault();
             return slopeLine;
         }
 
@@ -1828,16 +2321,15 @@ namespace SwitchYard.Service.Controllers
                 var authResult = ValidateInstanceOwnershipOrFail(parameters.InstanceID);
                 if (authResult != null) return authResult;
 
-                var slopeLine = LoadSlopeLine(parameters.InstanceID, parameters.SlopeLineID);
-                var flatLayout = LoadFlatLayout(parameters.InstanceID, parameters.SlopeLineID);
+                if (!TryLoadEnergyCalculationDependencies(parameters, out var dependencyContext, out var dependencyErrorResult))
+                {
+                    return dependencyErrorResult!;
+                }
+
+                var slopeLine = dependencyContext!.SlopeLine;
+                var flatLayout = dependencyContext.FlatLayout;
+                var slopeLayout = dependencyContext.SlopeLayout;
                 slopeLine.FlatLayout = flatLayout;
-
-                var slopeLayout = LoadSlopeLayout(parameters.InstanceID, parameters.HumpSchemeID);
-                var wagonConceptList = LoadWagonConcept(parameters.InstanceID);
-
-
-                parameters.Wagon = wagonConceptList.Find(w => w.TypeName == parameters.WagonTypeName);
-                parameters.OperationCondition = LoadOperationCondition(parameters.InstanceID, parameters.OperationConditionID);
 
                 var resistanceEnergyHeightList = new List<object>();
 
@@ -1878,13 +2370,14 @@ namespace SwitchYard.Service.Controllers
                 var authResult = ValidateInstanceOwnershipOrFail(parameters.InstanceID);
                 if (authResult != null) return authResult;
 
-                var slopeLine = LoadSlopeLine(parameters.InstanceID, parameters.SlopeLineID);
-                var flatLayout = LoadFlatLayout(parameters.InstanceID, parameters.SlopeLineID);
-                slopeLine.FlatLayout = flatLayout;
+                if (!TryLoadEnergyCalculationDependencies(parameters, out var dependencyContext, out var dependencyErrorResult))
+                {
+                    return dependencyErrorResult!;
+                }
 
-                var wagonConceptList = LoadWagonConcept(parameters.InstanceID);
-                parameters.Wagon = wagonConceptList.Find(w => w.TypeName == parameters.WagonTypeName);
-                parameters.OperationCondition = LoadOperationCondition(parameters.InstanceID, parameters.OperationConditionID);
+                var slopeLine = dependencyContext!.SlopeLine;
+                var flatLayout = dependencyContext.FlatLayout;
+                slopeLine.FlatLayout = flatLayout;
 
                 var detail = HumpEnergyHeightCalculator.CalculateResistanceEnergyHeightDetail(flatLayout, x, parameters);
                 LogInformationWithContext("Resistance Energy Height detail calculated at x={X}, slope line {SlopeLineID}, hump scheme {HumpSchemeID}.", x, parameters.SlopeLineID, parameters.HumpSchemeID);
@@ -1910,12 +2403,13 @@ namespace SwitchYard.Service.Controllers
                 var authResult = ValidateInstanceOwnershipOrFail(parameters.InstanceID);
                 if (authResult != null) return authResult;
 
-                var flatLayout = LoadFlatLayout(parameters.InstanceID, parameters.SlopeLineID);
-                var slopeLayout = LoadSlopeLayout(parameters.InstanceID, parameters.HumpSchemeID);
-                var wagonConceptList = LoadWagonConcept(parameters.InstanceID);
+                if (!TryLoadEnergyCalculationDependencies(parameters, out var dependencyContext, out var dependencyErrorResult))
+                {
+                    return dependencyErrorResult!;
+                }
 
-                parameters.Wagon = wagonConceptList.Find(w => w.TypeName == parameters.WagonTypeName);
-                parameters.OperationCondition = LoadOperationCondition(parameters.InstanceID, parameters.OperationConditionID);
+                var flatLayout = dependencyContext!.FlatLayout;
+                var slopeLayout = dependencyContext.SlopeLayout;
 
                 var breakingEnergyHeightDict = new Dictionary<double, object>();
 
@@ -1965,17 +2459,18 @@ namespace SwitchYard.Service.Controllers
             }
         }
 
-        private List<object> GetVelocityList(EnergyCalculationParams parameters)
+        private List<object> GetVelocityList(EnergyCalculationParams parameters, Hump.FlatLayout flatLayout, SlopeLayout slopeLayout)
         {
             var stepSize = 10;
-
-            var flatLayout = LoadFlatLayout(parameters.InstanceID, parameters.SlopeLineID);
-            var slopeLayout = LoadSlopeLayout(parameters.InstanceID, parameters.HumpSchemeID);
-            var wagonConceptList = LoadWagonConcept(parameters.InstanceID);
-
-            parameters.Wagon = wagonConceptList.Find(w => w.TypeName == parameters.Wagon.TypeName);
-
             var velocityList = new List<object>();
+
+            if (flatLayout.PositionList == null ||
+                flatLayout.PositionList.Count == 0 ||
+                slopeLayout.PositionList == null ||
+                slopeLayout.PositionList.Count == 0)
+            {
+                return velocityList;
+            }
 
             var flatXPositionList = flatLayout.PositionList.Select(position => { return position.X; }).ToList();
             var slopeXPositionList = slopeLayout.PositionList.Select(position => { return position.X; }).ToList();
@@ -2006,7 +2501,12 @@ namespace SwitchYard.Service.Controllers
                 var authResult = ValidateInstanceOwnershipOrFail(parameters.InstanceID);
                 if (authResult != null) return authResult;
 
-                var velocityList = GetVelocityList(parameters);
+                if (!TryLoadEnergyCalculationDependencies(parameters, out var dependencyContext, out var dependencyErrorResult))
+                {
+                    return dependencyErrorResult!;
+                }
+
+                var velocityList = GetVelocityList(parameters, dependencyContext!.FlatLayout, dependencyContext.SlopeLayout);
                 LogInformationWithContext("Velocity calculated for {PositionCount} positions, slope line {SlopeLineID}, hump scheme {HumpSchemeID}.", velocityList?.Count ?? 0, parameters.SlopeLineID, parameters.HumpSchemeID);
                 return Ok(velocityList);
             }
@@ -2026,7 +2526,16 @@ namespace SwitchYard.Service.Controllers
                 if (authResult != null) return authResult;
 
                 var timeList = new List<object>();
-                var velocityList = GetVelocityList(parameters);
+                if (!TryLoadEnergyCalculationDependencies(parameters, out var dependencyContext, out var dependencyErrorResult))
+                {
+                    return dependencyErrorResult!;
+                }
+
+                var velocityList = GetVelocityList(parameters, dependencyContext!.FlatLayout, dependencyContext.SlopeLayout);
+                if (velocityList.Count == 0)
+                {
+                    return Ok(timeList);
+                }
 
                 double startX = ((dynamic)velocityList[0]).x;
                 double cumulativeTime = 0.0;
@@ -3100,20 +3609,20 @@ namespace SwitchYard.Service.Controllers
         /// <summary>
         /// 加载追踪间隔检算方案（包含车辆列表）
         /// </summary>
-        private HeadwayCheckScheme LoadHeadwayCheckScheme(string instanceID, string id)
+        private HeadwayCheckScheme? LoadHeadwayCheckScheme(string instanceID, string id)
         {
             DBConnector dbConnector = DBConnector.GetDBConnector();
-            var scheme = dbConnector.Query<HeadwayCheckScheme>("SELECT * FROM headwaycheckscheme WHERE InstanceID = @instanceID AND ID = @id", new { instanceID, id }).FirstOrDefault();
+            var scheme = (dbConnector.Query<HeadwayCheckScheme>("SELECT * FROM headwaycheckscheme WHERE InstanceID = @instanceID AND ID = @id", new { instanceID, id }) ?? new List<HeadwayCheckScheme>()).FirstOrDefault();
 
             if (scheme != null)
             {
                 scheme.WagonList = dbConnector.Query<HeadwayCheckWagon>("SELECT * FROM headwaycheckwagon WHERE InstanceID = @instanceID AND HeadwayCheckID = @headwayCheckID ORDER BY Sequence",
-                    new { instanceID, headwayCheckID = scheme.ID });
-            }
+                    new { instanceID, headwayCheckID = scheme.ID }) ?? new List<HeadwayCheckWagon>();
 
-            foreach (var hcWagon in scheme.WagonList)
-            {
-                hcWagon.HumpCalculation = GetHumpCalculation(instanceID, scheme.HumpSchemeID, hcWagon.HumpCalculationID);
+                foreach (var hcWagon in scheme.WagonList)
+                {
+                    hcWagon.HumpCalculation = GetHumpCalculation(instanceID, scheme.HumpSchemeID, hcWagon.HumpCalculationID);
+                }
             }
 
             return scheme;
@@ -3160,17 +3669,22 @@ namespace SwitchYard.Service.Controllers
                 var authResult = ValidateInstanceOwnershipOrFail(instanceID);
                 if (authResult != null) return authResult;
 
-                var scheme = LoadHeadwayCheckScheme(instanceID, headwayCheckSchemeID);
-                var flatLayout = LoadFlatLayout(instanceID, scheme.SlopeLineID);
-                var slopeLayout = LoadSlopeLayout(instanceID, scheme.HumpSchemeID);
-                var slopeLine = LoadSlopeLine(instanceID, scheme.SlopeLineID);
-                var wagonConceptList = LoadWagonConcept(instanceID);
+                if (!TryLoadHeadwayCheckDependencies(instanceID, headwayCheckSchemeID, out var dependencyContext, out var dependencyErrorResult))
+                {
+                    return dependencyErrorResult!;
+                }
+
+                var scheme = dependencyContext!.Scheme;
+                var flatLayout = dependencyContext.FlatLayout;
+                var slopeLayout = dependencyContext.SlopeLayout;
+                var slopeLine = dependencyContext.SlopeLine;
+                var wagonConceptList = LoadWagonConcept(instanceID) ?? new List<WagonConcept>();
 
                 var speedProfileList = new List<HeadwayCheckWagonSpeedProfile>();
 
                 foreach (var hcWagon in scheme.WagonList)  // 分别对每勾车计算速度曲线
                 {
-                    var humpCalc = hcWagon.HumpCalculation;
+                    var humpCalc = hcWagon.HumpCalculation!;
                     var operationCondition = LoadOperationCondition(instanceID, humpCalc.OperationConditionID);
 
                     hcWagon.EnergyCalculationParams = new EnergyCalculationParams
@@ -3216,12 +3730,16 @@ namespace SwitchYard.Service.Controllers
                 var authResult = ValidateInstanceOwnershipOrFail(instanceID);
                 if (authResult != null) return authResult;
 
-                var scheme = LoadHeadwayCheckScheme(instanceID, headwayCheckSchemeID);
-                var flatLayout = LoadFlatLayout(instanceID, scheme.SlopeLineID);
-                var slopeLayout = LoadSlopeLayout(instanceID, scheme.HumpSchemeID);
+                if (!TryLoadHeadwayCheckDependencies(instanceID, headwayCheckSchemeID, out var dependencyContext, out var dependencyErrorResult))
+                {
+                    return dependencyErrorResult!;
+                }
 
-                var wagonConceptList = LoadWagonConcept(instanceID);
-                var slopeLine = LoadSlopeLine(instanceID, scheme.SlopeLineID);
+                var scheme = dependencyContext!.Scheme;
+                var flatLayout = dependencyContext.FlatLayout;
+                var slopeLayout = dependencyContext.SlopeLayout;
+                var slopeLine = dependencyContext.SlopeLine;
+                var wagonConceptList = LoadWagonConcept(instanceID) ?? new List<WagonConcept>();
 
                 foreach (var hcWagon in scheme.WagonList)  // 分别对每勾车计算速度曲线
                 {

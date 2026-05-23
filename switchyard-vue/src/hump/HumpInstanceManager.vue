@@ -142,6 +142,7 @@ import { useI18n } from 'vue-i18n'
 import type { FormInstance, FormRules } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import { DEFAULT_PAGE_SIZES, type PagedResult } from '@/types/pagination'
+import { getHumpMissingReferenceMessage } from '@/utils/humpMissingReference'
 
 interface HumpInstance {
     id?: string
@@ -361,13 +362,7 @@ const handleCopy = async () => {
         await loadInstances()
     } catch (error: any) {
         console.error('Failed to copy instance:', error)
-        ElMessage.error(
-            tr(
-                'humpInstanceManagement.messages.copyError',
-                '实例复制失败',
-                'Failed to copy instance',
-            ),
-        )
+        ElMessage.error(getHumpMissingReferenceMessage(error, 'humpInstanceManagement.messages.copyError'))
     } finally {
         copying.value = false
     }

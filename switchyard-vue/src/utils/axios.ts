@@ -55,6 +55,21 @@ const isTimeoutError = (error: AxiosError) =>
     error.code === "ECONNABORTED" ||
     error.message.toLowerCase().includes("timeout");
 
+const HUMP_MISSING_REFERENCE_CODES = new Set([
+    "HUMP_REFERENCE_MISSING",
+    "HUMP_CALCULATION_DEPENDENCY_MISSING",
+]);
+
+const isHumpMissingReferencePayload = (data: unknown) => {
+    const payload = data as any;
+    const code = payload?.code || payload?.Code;
+    const legacyCode = payload?.legacyCode || payload?.LegacyCode;
+    return (
+        HUMP_MISSING_REFERENCE_CODES.has(code) ||
+        HUMP_MISSING_REFERENCE_CODES.has(legacyCode)
+    );
+};
+
 const getTimeoutMessage = () =>
     String(i18n.global.locale.value).startsWith("zh")
         ? "请求超时，请稍后重试"
@@ -161,6 +176,10 @@ axios.interceptors.response.use(
         const originalRequest = error.config as RetriableRequestConfig | undefined;
 
         if (error.response) {
+            if (isHumpMissingReferencePayload(error.response.data)) {
+                return Promise.reject(error);
+            }
+
             switch (error.response.status) {
                 case 401: {
                     if (
