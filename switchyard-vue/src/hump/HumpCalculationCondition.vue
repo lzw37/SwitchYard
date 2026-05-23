@@ -1,15 +1,16 @@
 <template>
     <div class="calculation-condition-container">
         <div class="condition-toolbar">
-            <el-button type="primary" size="small" :icon="Plus" @click="addCondition"
+            <el-button type="primary" size="small" @click="addCondition"
                 :disabled="!currentInstanceId">
                 {{ t('hump.buttons.add') }}
             </el-button>
         </div>
 
-        <el-table :data="conditionsList" class="condition-table" row-key="localKey" style="width: 100%"
+        <el-table :data="conditionsList" class="condition-table" row-key="localKey"
             v-loading="loading">
-            <el-table-column prop="name" :label="t('hump.calcCondition.labels.conditionName')" min-width="180">
+            <el-table-column prop="name" :label="t('hump.calcCondition.labels.conditionName')" width="120"
+                show-overflow-tooltip>
                 <template #default="{ row }">
                     <el-input v-if="row.isEditing" v-model="row.name" size="small"
                         :placeholder="t('hump.calcCondition.placeholders.conditionName')" />
@@ -17,8 +18,13 @@
                 </template>
             </el-table-column>
 
-            <el-table-column :label="`${t('hump.calcCondition.labels.peakVelocity')} (${t('units.m_s')})`"
-                width="150">
+            <el-table-column width="112" align="center" header-align="center">
+                <template #header>
+                    <div class="condition-header">
+                        <span>{{ t('hump.calcCondition.labels.peakVelocity') }}</span>
+                        <span class="condition-header__unit">({{ t('units.m_s') }})</span>
+                    </div>
+                </template>
                 <template #default="{ row }">
                     <el-input-number v-if="row.isEditing" v-model="row.wagonVelocityOnTop" :min="0" :step="0.1"
                         :precision="2" controls-position="right" size="small" class="table-number-input" />
@@ -26,8 +32,13 @@
                 </template>
             </el-table-column>
 
-            <el-table-column :label="`${t('hump.calcCondition.labels.slopeAvgVelocity')} (${t('units.m_s')})`"
-                width="190">
+            <el-table-column width="128" align="center" header-align="center">
+                <template #header>
+                    <div class="condition-header">
+                        <span>{{ t('hump.calcCondition.labels.slopeAvgVelocity') }}</span>
+                        <span class="condition-header__unit">({{ t('units.m_s') }})</span>
+                    </div>
+                </template>
                 <template #default="{ row }">
                     <el-input-number v-if="row.isEditing" v-model="row.wagonVelocityOnSlope" :min="0" :step="0.1"
                         :precision="2" controls-position="right" size="small" class="table-number-input" />
@@ -35,8 +46,13 @@
                 </template>
             </el-table-column>
 
-            <el-table-column :label="`${t('hump.calcCondition.labels.yardAvgVelocity')} (${t('units.m_s')})`"
-                width="170">
+            <el-table-column width="132" align="center" header-align="center">
+                <template #header>
+                    <div class="condition-header">
+                        <span>{{ t('hump.calcCondition.labels.yardAvgVelocity') }}</span>
+                        <span class="condition-header__unit">({{ t('units.m_s') }})</span>
+                    </div>
+                </template>
                 <template #default="{ row }">
                     <el-input-number v-if="row.isEditing" v-model="row.wagonVelocityOnYard" :min="0" :step="0.1"
                         :precision="2" controls-position="right" size="small" class="table-number-input" />
@@ -44,8 +60,13 @@
                 </template>
             </el-table-column>
 
-            <el-table-column :label="`${t('hump.calcCondition.labels.windVelocity')} (${t('units.m_s')})`"
-                width="130">
+            <el-table-column width="96" align="center" header-align="center">
+                <template #header>
+                    <div class="condition-header">
+                        <span>{{ t('hump.calcCondition.labels.windVelocity') }}</span>
+                        <span class="condition-header__unit">({{ t('units.m_s') }})</span>
+                    </div>
+                </template>
                 <template #default="{ row }">
                     <el-input-number v-if="row.isEditing" v-model="row.windVelocity" :min="0" :step="0.1"
                         :precision="2" controls-position="right" size="small" class="table-number-input" />
@@ -53,7 +74,8 @@
                 </template>
             </el-table-column>
 
-            <el-table-column prop="isHeadWind" :label="t('hump.calcCondition.labels.windDirection')" width="110">
+            <el-table-column prop="isHeadWind" :label="t('hump.calcCondition.labels.windDirection')" width="88"
+                align="center" header-align="center">
                 <template #default="{ row }">
                     <el-select v-if="row.isEditing" v-model="row.isHeadWind" size="small" class="table-select">
                         <el-option :label="t('hump.calcCondition.options.headwind')" :value="1" />
@@ -63,8 +85,13 @@
                 </template>
             </el-table-column>
 
-            <el-table-column :label="`${t('hump.calcCondition.labels.airDensity')} (${t('units.kg_s2_m4')})`"
-                width="160">
+            <el-table-column width="124" align="center" header-align="center">
+                <template #header>
+                    <div class="condition-header">
+                        <span>{{ t('hump.calcCondition.labels.airDensity') }}</span>
+                        <span class="condition-header__unit">({{ t('units.kg_s2_m4') }})</span>
+                    </div>
+                </template>
                 <template #default="{ row }">
                     <el-input-number v-if="row.isEditing" v-model="row.airDensity" :min="0" :step="0.001"
                         :precision="4" controls-position="right" size="small" class="table-number-input" />
@@ -72,8 +99,13 @@
                 </template>
             </el-table-column>
 
-            <el-table-column :label="`${t('hump.calcCondition.labels.temperature')} (${t('units.deg_c')})`"
-                width="120">
+            <el-table-column width="96" align="center" header-align="center">
+                <template #header>
+                    <div class="condition-header">
+                        <span>{{ t('hump.calcCondition.labels.temperature') }}</span>
+                        <span class="condition-header__unit">({{ t('units.deg_c') }})</span>
+                    </div>
+                </template>
                 <template #default="{ row }">
                     <el-input-number v-if="row.isEditing" v-model="row.temperature" :step="1" :precision="0"
                         controls-position="right" size="small" class="table-number-input" />
@@ -81,24 +113,25 @@
                 </template>
             </el-table-column>
 
-            <el-table-column :label="t('hump.operation')" width="220" fixed="right">
+            <el-table-column :label="t('hump.operation')" width="150" fixed="right" align="center"
+                header-align="center">
                 <template #default="{ row, $index }">
                     <div class="row-actions">
                         <template v-if="row.isEditing">
-                            <el-button type="success" size="small" :icon="Check" @click="saveConditionRow($index)"
+                            <el-button type="primary" size="small" @click="saveConditionRow($index)"
                                 :loading="row.saving" :disabled="row.saving">
                                 {{ t('hump.buttons.save') }}
                             </el-button>
-                            <el-button size="small" :icon="Close" @click="cancelEdit($index)"
+                            <el-button size="small" @click="cancelEdit($index)"
                                 :disabled="row.saving">
                                 {{ t('hump.buttons.cancel') }}
                             </el-button>
                         </template>
                         <template v-else>
-                            <el-button type="primary" size="small" :icon="Edit" @click="editRow($index)">
+                            <el-button type="primary" size="small" @click="editRow($index)">
                                 {{ t('hump.buttons.edit') }}
                             </el-button>
-                            <el-button type="danger" size="small" :icon="Delete" @click="deleteConditionRow($index)"
+                            <el-button type="danger" size="small" @click="deleteConditionRow($index)"
                                 :loading="row.deleting" :disabled="row.deleting">
                                 {{ t('hump.buttons.delete') }}
                             </el-button>
@@ -113,7 +146,6 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { Check, Close, Delete, Edit, Plus } from "@element-plus/icons-vue";
 import { useI18n } from "vue-i18n";
 import axios from "../utils/axios";
 
@@ -401,7 +433,7 @@ watch(() => props.activationKey, () => {
 }
 
 .condition-table {
-    width: 100%;
+    width: min(1046px, 100%);
 }
 
 .table-number-input,
@@ -409,14 +441,45 @@ watch(() => props.activationKey, () => {
     width: 100%;
 }
 
+.condition-header {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    width: 100%;
+    line-height: 1.18;
+    white-space: normal;
+    word-break: keep-all;
+}
+
+.condition-header__unit {
+    color: #6b7280;
+    font-size: 12px;
+    font-weight: 500;
+}
+
 .row-actions {
     display: flex;
-    gap: 8px;
+    gap: 6px;
     align-items: center;
+    justify-content: center;
     flex-wrap: nowrap;
 }
 
-:deep(.condition-table .cell) {
+:deep(.condition-table .el-table__header .cell) {
+    white-space: normal;
+    line-height: 1.18;
+    padding: 0 6px;
+}
+
+:deep(.condition-table .el-table__body .cell) {
     white-space: nowrap;
+    padding: 0 6px;
+}
+
+:deep(.condition-table .el-input-number .el-input__inner) {
+    padding-left: 6px;
+    padding-right: 30px;
 }
 </style>

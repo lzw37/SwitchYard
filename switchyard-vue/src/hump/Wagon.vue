@@ -1,7 +1,7 @@
 <template>
     <div>
         <div class="wagon-toolbar">
-            <el-button @click="addNewWagon" type="primary" size="small" :icon="Plus">
+            <el-button @click="addNewWagon" type="primary" size="small">
                 {{ t('hump.buttons.add') }}
             </el-button>
         </div>
@@ -66,7 +66,7 @@
             </el-table-column>
             <el-table-column :label="t('wagon.actionsLabel')" width="200">
                 <template #default="scope">
-                    <el-button v-if="!scope.row.isEditing" @click="editRow(scope.$index)" size="small">{{
+                    <el-button v-if="!scope.row.isEditing" @click="editRow(scope.$index)" size="small" type="primary">{{
                         t('wagon.actions.edit') }}</el-button>
                     <el-button v-if="scope.row.isEditing" @click="saveRow(scope.$index)" size="small" type="primary"
                         :loading="scope.row.saving" :disabled="scope.row.saving">{{
@@ -87,7 +87,6 @@ import { onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n'
 import axios from '@/utils/axios';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { Plus } from '@element-plus/icons-vue';
 
 const { t } = useI18n()
 
