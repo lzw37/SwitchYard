@@ -4,6 +4,10 @@
             <span class="page-header-brand">SwitchYard.Hump</span>
             <span class="page-header-sep"></span>
             <span class="page-header-title">驼峰纵断面设计辅助工具</span>
+            <a class="page-header-video-link" href="https://www.bilibili.com/video/BV1gMRmBRER9" target="_blank"
+                rel="noopener noreferrer">
+                教学视频
+            </a>
         </header>
         <div ref="tabsHostRef" class="hump-tabs-wrapper">
             <div class="hump-main-toolbar">
@@ -373,6 +377,21 @@ watch(activeTab, (newTab, oldTab) => {
     font-size: 14px;
     font-weight: 600;
     letter-spacing: 0.04em;
+}
+
+.page-header-video-link {
+    margin-left: auto;
+    color: #ffffff;
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 32px;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.page-header-video-link:hover {
+    color: #d7ebff;
+    text-decoration: underline;
 }
 
 .hump-tabs-wrapper {

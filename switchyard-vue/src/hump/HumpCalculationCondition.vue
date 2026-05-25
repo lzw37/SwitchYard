@@ -9,7 +9,7 @@
 
         <el-table :data="conditionsList" class="condition-table" row-key="localKey"
             v-loading="loading">
-            <el-table-column prop="name" :label="t('hump.calcCondition.labels.conditionName')" width="120"
+            <el-table-column prop="name" :label="t('hump.calcCondition.labels.conditionName')" width="180"
                 show-overflow-tooltip>
                 <template #default="{ row }">
                     <el-input v-if="row.isEditing" v-model="row.name" size="small"
@@ -26,8 +26,8 @@
                     </div>
                 </template>
                 <template #default="{ row }">
-                    <el-input-number v-if="row.isEditing" v-model="row.wagonVelocityOnTop" :min="0" :step="0.1"
-                        :precision="2" controls-position="right" size="small" class="table-number-input" />
+                    <el-input v-if="row.isEditing" v-model.number="row.wagonVelocityOnTop" size="small"
+                        inputmode="decimal" class="table-number-input" />
                     <span v-else>{{ formatNumber(row.wagonVelocityOnTop, 2) }}</span>
                 </template>
             </el-table-column>
@@ -40,8 +40,8 @@
                     </div>
                 </template>
                 <template #default="{ row }">
-                    <el-input-number v-if="row.isEditing" v-model="row.wagonVelocityOnSlope" :min="0" :step="0.1"
-                        :precision="2" controls-position="right" size="small" class="table-number-input" />
+                    <el-input v-if="row.isEditing" v-model.number="row.wagonVelocityOnSlope" size="small"
+                        inputmode="decimal" class="table-number-input" />
                     <span v-else>{{ formatNumber(row.wagonVelocityOnSlope, 2) }}</span>
                 </template>
             </el-table-column>
@@ -54,8 +54,8 @@
                     </div>
                 </template>
                 <template #default="{ row }">
-                    <el-input-number v-if="row.isEditing" v-model="row.wagonVelocityOnYard" :min="0" :step="0.1"
-                        :precision="2" controls-position="right" size="small" class="table-number-input" />
+                    <el-input v-if="row.isEditing" v-model.number="row.wagonVelocityOnYard" size="small"
+                        inputmode="decimal" class="table-number-input" />
                     <span v-else>{{ formatNumber(row.wagonVelocityOnYard, 2) }}</span>
                 </template>
             </el-table-column>
@@ -68,8 +68,8 @@
                     </div>
                 </template>
                 <template #default="{ row }">
-                    <el-input-number v-if="row.isEditing" v-model="row.windVelocity" :min="0" :step="0.1"
-                        :precision="2" controls-position="right" size="small" class="table-number-input" />
+                    <el-input v-if="row.isEditing" v-model.number="row.windVelocity" size="small"
+                        inputmode="decimal" class="table-number-input" />
                     <span v-else>{{ formatNumber(row.windVelocity, 2) }}</span>
                 </template>
             </el-table-column>
@@ -93,8 +93,8 @@
                     </div>
                 </template>
                 <template #default="{ row }">
-                    <el-input-number v-if="row.isEditing" v-model="row.airDensity" :min="0" :step="0.001"
-                        :precision="4" controls-position="right" size="small" class="table-number-input" />
+                    <el-input v-if="row.isEditing" v-model.number="row.airDensity" size="small"
+                        inputmode="decimal" class="table-number-input" />
                     <span v-else>{{ formatNumber(row.airDensity, 4) }}</span>
                 </template>
             </el-table-column>
@@ -107,8 +107,8 @@
                     </div>
                 </template>
                 <template #default="{ row }">
-                    <el-input-number v-if="row.isEditing" v-model="row.temperature" :step="1" :precision="0"
-                        controls-position="right" size="small" class="table-number-input" />
+                    <el-input v-if="row.isEditing" v-model.number="row.temperature" size="small"
+                        inputmode="decimal" class="table-number-input" />
                     <span v-else>{{ formatNumber(row.temperature, 0) }}</span>
                 </template>
             </el-table-column>
@@ -433,7 +433,7 @@ watch(() => props.activationKey, () => {
 }
 
 .condition-table {
-    width: min(1046px, 100%);
+    width: min(1180px, 100%);
 }
 
 .table-number-input,
@@ -478,8 +478,9 @@ watch(() => props.activationKey, () => {
     padding: 0 6px;
 }
 
-:deep(.condition-table .el-input-number .el-input__inner) {
+:deep(.condition-table .table-number-input .el-input__inner) {
     padding-left: 6px;
-    padding-right: 30px;
+    padding-right: 6px;
+    text-align: center;
 }
 </style>

@@ -112,6 +112,9 @@
                 @wheel-scale-x="handleWheelScaleX" @update-retarder-status-list="handleInlineRetarderStatusUpdate"
                 @resistance-click="handleResistanceClick"
                 @control-point-drag-end="handleControlPointDragEnd" />
+            <div v-if="shouldShowCreateCalculationNotice" class="empty-calculation-condition-notice">
+                请新建计算条件
+            </div>
             <div v-if="isCurrentHumpSchemeEmpty" class="empty-slope-layout-notice">
                 {{ t('humpSlopeDesigner.messages.emptyHumpScheme') }}
             </div>
@@ -119,7 +122,7 @@
                 :global-scale-x="globalScaleX" :global-cursor-x="globalCursorX"
                 :horizontal-scroll-left="horizontalScrollLeft" @updateGlobalCursorX="updateGlobalCursorX"
                 @horizontal-scroll="syncHorizontalScroll" />
-            <HumpLayoutCtrl ref="humpLayoutCtrlRef" v-model:flat-layout="flatLayout" :is-toolbar-display="false"
+            <HumpLayoutCtrl v-if="flatLayout" ref="humpLayoutCtrlRef" v-model:flat-layout="flatLayout" :is-toolbar-display="false"
                 style="height:auto" :global-scale-x="globalScaleX" :global-cursor-x="globalCursorX"
                 @update:global-cursor-x="updateGlobalCursorX" @horizontal-scroll="syncHorizontalScroll" />
         </div>
@@ -347,7 +350,7 @@
 
         <!-- 计算条件管理对话框 -->
         <el-dialog v-model="showConditionManager" :title="t('humpSlopeDesigner.dialog.conditionManagement')" width="90%"
-            :close-on-click-modal="false" @open="loadDropdownData">
+            :close-on-click-modal="false" @open="loadDropdownData" @closed="handleConditionManagerClosed">
             <div style="margin-bottom: 16px;">
                 <el-button type="primary" @click="handleAddCalculation">{{ t('humpSlopeDesigner.buttons.addCondition')
                     }}</el-button>
@@ -637,6 +640,8 @@ const getCalculationDisplayLabel = (calculation: HumpCalculation) => {
 // 方案管理相关状态
 const showSchemeManager = ref(false)
 const showConditionManager = ref(false)
+const conditionManagerRefreshPending = ref(false)
+const suppressCalculationSelectionReload = ref(false)
 const tableLoading = ref(false)
 const editingIndex = ref(-1)
 const editingScheme = ref<HumpScheme>({ id: '', instanceID: '', name: '' })
@@ -793,6 +798,15 @@ const energyHeightTableRows = computed<EnergyHeightTableRow[]>(() => {
 const isCurrentHumpSchemeEmpty = computed(() => {
     if (!currentHumpSchemeID.value || !slopeLayout.value) return false
     return getSlopeControlPointCount() <= 1
+})
+
+const shouldShowCreateCalculationNotice = computed(() => {
+    return Boolean(
+        props.selectedInstanceId &&
+        currentHumpSchemeID.value &&
+        !handlingSchemeSelectionChange.value &&
+        humpCalculations.value.length === 0
+    )
 })
 
 function getSlopeControlPointCount() {
@@ -1535,6 +1549,64 @@ const loadHumpCalculations = async (options: { preserveSelection?: boolean, relo
     }
 }
 
+// 弹窗内改动计算条件时，延后到关闭弹窗后统一刷新图形和能高数据。
+const reloadHumpCalculationsWithoutSelectionSideEffects = async (
+    options: { preserveSelection?: boolean, reloadDropdowns?: boolean } = {}
+) => {
+    suppressCalculationSelectionReload.value = true
+    try {
+        await loadHumpCalculations(options)
+        await nextTick()
+    } finally {
+        suppressCalculationSelectionReload.value = false
+    }
+}
+
+const clearCurrentCalculationDependentData = () => {
+    flatLayout.value = null
+    clearEnergyHeightData()
+    currentCalculateCondition.value = defaultCalculateCondition()
+    calculationExecuting.value = false
+}
+
+const refreshCurrentCalculationOperations = async (options: {
+    reloadCalculations?: boolean
+    preserveSelection?: boolean
+    reloadDropdowns?: boolean
+    hideFirst?: boolean
+} = {}) => {
+    const {
+        reloadCalculations = false,
+        preserveSelection = true,
+        reloadDropdowns = true,
+        hideFirst = true
+    } = options
+
+    invalidateEnergyHeightRefresh()
+    if (hideFirst) {
+        await hideAllEnergyLinesForRecalculation()
+    }
+
+    if (reloadCalculations) {
+        await reloadHumpCalculationsWithoutSelectionSideEffects({
+            preserveSelection,
+            reloadDropdowns
+        })
+    }
+
+    const currentCalculation = getCurrentCalculation()
+    if (!props.selectedInstanceId || !currentHumpSchemeID.value || !currentHumpCalculationID.value || !currentCalculation) {
+        clearCurrentCalculationDependentData()
+        return
+    }
+
+    await Promise.all([
+        loadFlatLayout({ showErrorMessage: false }),
+        updateCurrentCalculateCondition()
+    ])
+    await recalculateAndShowAllEnergyLines({ hideFirst: false })
+}
+
 // 加载驼峰方案数据
 const loadHumpSchemes = async (options: { preserveSelection?: boolean } = {}) => {
     if (!props.selectedInstanceId) {
@@ -1637,11 +1709,7 @@ watch(currentHumpSchemeID, async (newSchemeId, oldSchemeId) => {
                 loadSlopeLayout({ showErrorMessage: false }),
                 loadHumpCalculations()
             ])
-            await Promise.all([
-                loadFlatLayout({ showErrorMessage: false }),
-                updateCurrentCalculateCondition()
-            ])
-            await recalculateAndShowAllEnergyLines({ hideFirst: false })
+            await refreshCurrentCalculationOperations({ hideFirst: false })
         } finally {
             handlingSchemeSelectionChange.value = false
         }
@@ -1654,7 +1722,7 @@ watch(currentHumpSchemeID, async (newSchemeId, oldSchemeId) => {
 // 监听 currentHumpCalculationID 变化
 watch(currentHumpCalculationID, async (newCalculationId, oldCalculationId) => {
     console.log('Current hump calculation changed from', oldCalculationId, 'to', newCalculationId)
-    if (handlingSchemeSelectionChange.value) {
+    if (handlingSchemeSelectionChange.value || suppressCalculationSelectionReload.value) {
         return
     }
 
@@ -1662,13 +1730,9 @@ watch(currentHumpCalculationID, async (newCalculationId, oldCalculationId) => {
     await hideAllEnergyLinesForRecalculation()
 
     if (newCalculationId && props.selectedInstanceId) {
-        await Promise.all([
-            loadFlatLayout({ showErrorMessage: false }),
-            updateCurrentCalculateCondition()
-        ])
-        await recalculateAndShowAllEnergyLines({ hideFirst: false })
+        await refreshCurrentCalculationOperations({ hideFirst: false })
     } else {
-        calculationExecuting.value = false
+        clearCurrentCalculationDependentData()
     }
 })
 
@@ -1721,7 +1785,8 @@ const updateCurrentCalculateCondition = async () => {
 const loadFlatLayout = async (options: { showErrorMessage?: boolean } = {}) => {
     const { showErrorMessage = true } = options
 
-    if (!props.selectedInstanceId) {
+    const currentCalculation = getCurrentCalculation()
+    if (!props.selectedInstanceId || !currentHumpCalculationID.value || !currentCalculation?.slopeLineID) {
         flatLayout.value = null
         return
     }
@@ -1733,16 +1798,12 @@ const loadFlatLayout = async (options: { showErrorMessage?: boolean } = {}) => {
         })
         const slopeLines = slopeLinesResponse.data || []
 
-        const currentCal = humpCalculations.value.filter(calc => calc.id === currentHumpCalculationID.value)[0] // 过滤出与第一条溜放线相关的计算条件
-        const currentSlopeLineID = currentCal?.slopeLineID
-
-        // 如果有溜放线，使用第一条线获取平面图
+        // 有当前计算条件时，只载入它绑定的溜放线展开图。
         if (slopeLines.length > 0) {
-            const slopeLineID = slopeLines[0].id
             const response = await axios.get('/Hump/GetFlatLayout', {
                 params: {
                     instanceID: props.selectedInstanceId,
-                    slopeLineID: currentSlopeLineID || slopeLineID // 优先使用与计算条件相关的溜放线ID
+                    slopeLineID: currentCalculation.slopeLineID
                 }
             })
 
@@ -2057,7 +2118,8 @@ const handleAddCalculation = async () => {
         calculationTableLoading.value = true
         const response = await axios.post('/Hump/CreateHumpCalculation', newCalculation)
         if (response.data) {
-            await loadHumpCalculations() // 重新加载列表
+            conditionManagerRefreshPending.value = true
+            await reloadHumpCalculationsWithoutSelectionSideEffects({ preserveSelection: true }) // 重新加载列表
             console.log(t('humpSlopeDesigner.condition.createSuccess'))
         }
     } catch (error) {
@@ -2099,7 +2161,8 @@ const handleSaveCalculation = async () => {
         }
         const response = await axios.put('/Hump/EditHumpCalculation', apiRequest)
         if (response.status === 200) {
-            await loadHumpCalculations() // 重新加载列表
+            conditionManagerRefreshPending.value = true
+            await reloadHumpCalculationsWithoutSelectionSideEffects({ preserveSelection: true }) // 重新加载列表
             handleCancelCalculationEdit()
             console.log(t('humpSlopeDesigner.condition.updateSuccess'))
         }
@@ -2131,7 +2194,8 @@ const handleDeleteCalculation = async (calculation: HumpCalculation) => {
             }
         })
         if (response.status === 200) {
-            await loadHumpCalculations() // 重新加载列表
+            conditionManagerRefreshPending.value = true
+            await reloadHumpCalculationsWithoutSelectionSideEffects({ preserveSelection: true }) // 重新加载列表
             console.log(t('humpSlopeDesigner.condition.deleteSuccess'))
         }
     } catch (error) {
@@ -2152,6 +2216,19 @@ const loadDropdownData = async () => {
         loadOperationConditions(),
         loadSlopeLines()
     ])
+}
+
+const handleConditionManagerClosed = async () => {
+    if (!conditionManagerRefreshPending.value) {
+        return
+    }
+
+    conditionManagerRefreshPending.value = false
+    await refreshCurrentCalculationOperations({
+        reloadCalculations: true,
+        preserveSelection: true,
+        hideFirst: true
+    })
 }
 
 const handleCancelCalculationEdit = () => {
@@ -2276,7 +2353,8 @@ const handleSaveRetarderStatus = async () => {
         }
         const response = await axios.put('/Hump/EditHumpCalculation', apiRequest)
         if (response.status === 200) {
-            await loadHumpCalculations()
+            conditionManagerRefreshPending.value = true
+            await reloadHumpCalculationsWithoutSelectionSideEffects({ preserveSelection: true })
             showRetarderStatusDialog.value = false
             ElMessage.success(t('humpSlopeDesigner.retarderStatus.saveSuccess'))
         }
@@ -2485,6 +2563,27 @@ const handleSaveRetarderStatus = async () => {
     line-height: 1.4;
     text-align: center;
     box-shadow: 0 4px 14px rgba(15, 23, 42, 0.12);
+    pointer-events: none;
+}
+
+.empty-calculation-condition-notice {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 8;
+    min-width: 180px;
+    max-width: min(90vw, 420px);
+    padding: 14px 22px;
+    border: 1px solid #c8d5e8;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.96);
+    color: #1f2a44;
+    font-size: 16px;
+    font-weight: 600;
+    line-height: 1.4;
+    text-align: center;
+    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.14);
     pointer-events: none;
 }
 
