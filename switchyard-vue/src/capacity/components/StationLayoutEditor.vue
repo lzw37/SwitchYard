@@ -7,6 +7,7 @@ const props = defineProps({
     displayScaleX: { type: Number, default: 1 },
     displayScaleY: { type: Number, default: 1 },
 });
+const emit = defineEmits(["selected-annotation-change"]);
 
 const svgRef = ref(null);
 
@@ -39,6 +40,7 @@ const signals = ref([]);
 const insulationJoints = ref([]);
 const platforms = ref([]);
 const switches = ref([]);
+const annotations = ref([]);
 
 const selectedLineIds = ref(new Set());
 const selectedNodeIds = ref(new Set());
@@ -46,6 +48,7 @@ const selectedSignalIds = ref(new Set());
 const selectedInsulationJointIds = ref(new Set());
 const selectedSwitchIds = ref(new Set());
 const selectedPlatformIds = ref(new Set());
+const selectedAnnotationIds = ref(new Set());
 
 const crossPoints = ref([]);
 const perpendicularPoint = ref(null);
@@ -57,8 +60,10 @@ const tempNode = ref({ visible: false, x: 0, y: 0 });
 const tempPlatformPosition = ref(null);
 const selectionBox = ref(null);
 const selectionBoxDragThreshold = 4;
+const annotationTextAnchorRadius = 5;
 
 const movingAnchor = ref(null);
+const annotationInteraction = ref(null);
 
 const finishedCmdList = ref([]);
 const revokedCmdList = ref([]);
@@ -129,6 +134,82 @@ function anchorScreenY(anchor) {
     return screenY(toFiniteNumber(anchor.y) + anchorParam.size / 2) - anchorParam.size / 2;
 }
 
+function normalizeAnnotation(annotation) {
+    return {
+        id: annotation?.id ?? nextId(),
+        text: annotation?.text ?? "Annotation",
+        position: {
+            x: toFiniteNumber(annotation?.position?.x),
+            y: toFiniteNumber(annotation?.position?.y),
+        },
+        fontFamily: annotation?.fontFamily || "Arial",
+        fontSize: toFiniteNumber(annotation?.fontSize) || 16,
+        fontWeight: annotation?.fontWeight || "normal",
+        fontStyle: annotation?.fontStyle || "normal",
+        angle: toFiniteNumber(annotation?.angle),
+        textColor: annotation?.textColor || "#ffffff",
+    };
+}
+
+function buildDefaultAnnotation(x, y) {
+    return normalizeAnnotation({
+        id: nextId(),
+        text: "Annotation",
+        position: { x, y },
+    });
+}
+
+function getSelectedAnnotation() {
+    if (selectedAnnotationIds.value.size !== 1) return null;
+    const [selectedId] = [...selectedAnnotationIds.value];
+    return annotations.value.find((annotation) => annotation.id === selectedId) || null;
+}
+
+function getAnnotationSnapshot(annotation) {
+    if (!annotation) return null;
+    return JSON.parse(JSON.stringify(annotation));
+}
+
+function emitSelectedAnnotationChange() {
+    emit("selected-annotation-change", getAnnotationSnapshot(getSelectedAnnotation()));
+}
+
+function setSelectedAnnotationIds(ids) {
+    selectedAnnotationIds.value = new Set(ids);
+    emitSelectedAnnotationChange();
+}
+
+function updateSelectedAnnotation(patch) {
+    const selected = getSelectedAnnotation();
+    if (!selected) return;
+
+    executeMutation(() => {
+        const target = annotations.value.find((annotation) => annotation.id === selected.id);
+        if (!target) return;
+        if (patch.position) {
+            target.position = {
+                ...target.position,
+                ...patch.position,
+            };
+        }
+        Object.assign(target, { ...patch, position: target.position });
+        annotations.value = annotations.value.map((annotation) => annotation.id === target.id ? normalizeAnnotation(target) : annotation);
+    });
+    emitSelectedAnnotationChange();
+}
+
+function annotationTransform(annotation) {
+    return `translate(${screenX(annotation.position?.x)},${screenY(annotation.position?.y)}) rotate(${toFiniteNumber(annotation.angle)})`;
+}
+
+function roundLayoutNumber(value) {
+    return Math.round(toFiniteNumber(value) * 1000) / 1000;
+}
+
+function shouldShowAnnotationControls(annotation) {
+    return selectedAnnotationIds.value.size === 1 && isAnnotationSelected(annotation.id);
+}
+
 function normalizeSelectionBox(box) {
     return {
         minX: Math.min(toFiniteNumber(box.startX), toFiniteNumber(box.endX)),
@@ -185,12 +266,14 @@ function cloneState() {
             insulationJoints: insulationJoints.value,
             platforms: platforms.value,
             switches: switches.value,
+            annotations: annotations.value,
             selectedLineIds: [...selectedLineIds.value],
             selectedNodeIds: [...selectedNodeIds.value],
             selectedSignalIds: [...selectedSignalIds.value],
             selectedInsulationJointIds: [...selectedInsulationJointIds.value],
             selectedSwitchIds: [...selectedSwitchIds.value],
             selectedPlatformIds: [...selectedPlatformIds.value],
+            selectedAnnotationIds: [...selectedAnnotationIds.value],
         })
     );
 }
@@ -199,16 +282,19 @@ function applyState(state) {
     latestElementID.value = state.latestElementID;
     tracks.value = state.tracks || [];
     nodes.value = state.nodes || [];
-    signals.value = state.signals || [];
+    signals.value = (state.signals || []).map((signal) => normalizeNamedEquipment(signal));
     insulationJoints.value = state.insulationJoints || [];
-    platforms.value = state.platforms || [];
-    switches.value = state.switches || [];
+    platforms.value = (state.platforms || []).map((platform) => normalizeNamedEquipment(platform));
+    switches.value = (state.switches || []).map((sw) => normalizeNamedEquipment(sw));
+    annotations.value = state.annotations || [];
     selectedLineIds.value = new Set(state.selectedLineIds || []);
     selectedNodeIds.value = new Set(state.selectedNodeIds || []);
     selectedSignalIds.value = new Set(state.selectedSignalIds || []);
     selectedInsulationJointIds.value = new Set(state.selectedInsulationJointIds || []);
     selectedSwitchIds.value = new Set(state.selectedSwitchIds || []);
     selectedPlatformIds.value = new Set(state.selectedPlatformIds || []);
+    selectedAnnotationIds.value = new Set(state.selectedAnnotationIds || []);
+    emitSelectedAnnotationChange();
 }
 
 function executeMutation(mutator) {
@@ -240,6 +326,21 @@ function nextId() {
     return id;
 }
 
+function normalizeNamedEquipment(equipment) {
+    const normalized = { ...(equipment || {}) };
+    const id = normalized.id == null ? "" : String(normalized.id).trim();
+    const name = normalized.name == null ? "" : String(normalized.name).trim();
+    normalized.name = name || id;
+    return normalized;
+}
+
+function getEquipmentDisplayName(equipment, placeholder) {
+    const name = equipment?.name == null ? "" : String(equipment.name).trim();
+    if (name) return name;
+    const id = equipment?.id == null ? "" : String(equipment.id).trim();
+    return id || placeholder;
+}
+
 function clearSelectedLines() {
     selectedLineIds.value = new Set();
     movingAnchor.value = null;
@@ -254,6 +355,9 @@ function clearSelectedEquipment() {
     selectedInsulationJointIds.value = new Set();
     selectedSwitchIds.value = new Set();
     selectedPlatformIds.value = new Set();
+    selectedAnnotationIds.value = new Set();
+    finishAnnotationInteraction();
+    emitSelectedAnnotationChange();
 }
 
 function setEditMode(code) {
@@ -270,6 +374,8 @@ function setDrawingObject(obj) {
         startDrawingNode();
     } else if (obj === "p") {
         startDrawingPlatform();
+    } else if (obj === "a") {
+        cancelSelectionBox();
     }
 }
 
@@ -428,6 +534,7 @@ function selectElementsInBox(box) {
     const nextInsulationJointIds = box.additive ? new Set(selectedInsulationJointIds.value) : new Set();
     const nextSwitchIds = box.additive ? new Set(selectedSwitchIds.value) : new Set();
     const nextPlatformIds = box.additive ? new Set(selectedPlatformIds.value) : new Set();
+    const nextAnnotationIds = box.additive ? new Set(selectedAnnotationIds.value) : new Set();
 
     for (const line of tracks.value) {
         if (doesLineIntersectRect(line, rect)) nextLineIds.add(line.id);
@@ -449,6 +556,11 @@ function selectElementsInBox(box) {
             nextPlatformIds.add(platform.id);
         }
     }
+    for (const annotation of annotations.value) {
+        if (isPointInRect(annotation.position || {}, rect)) {
+            nextAnnotationIds.add(annotation.id);
+        }
+    }
 
     selectedLineIds.value = nextLineIds;
     selectedNodeIds.value = nextNodeIds;
@@ -456,7 +568,9 @@ function selectElementsInBox(box) {
     selectedInsulationJointIds.value = nextInsulationJointIds;
     selectedSwitchIds.value = nextSwitchIds;
     selectedPlatformIds.value = nextPlatformIds;
+    selectedAnnotationIds.value = nextAnnotationIds;
     movingAnchor.value = null;
+    emitSelectedAnnotationChange();
 }
 
 function addSelectionBoxWindowListeners() {
@@ -568,6 +682,7 @@ function deleteEquipment() {
         insulationJoints.value = insulationJoints.value.filter((i) => !selectedInsulationJointIds.value.has(i.id));
         switches.value = switches.value.filter((s) => !selectedSwitchIds.value.has(s.id));
         platforms.value = platforms.value.filter((p) => !selectedPlatformIds.value.has(p.id));
+        annotations.value = annotations.value.filter((a) => !selectedAnnotationIds.value.has(a.id));
         clearSelectedEquipment();
     });
 }
@@ -996,8 +1111,10 @@ function drawingSignalMouseDown(x, y) {
     const bindingNode = nodes.value.find((n) => Number(n.x) === Number(x) && Number(n.y) === Number(y));
     if (!bindingNode) return;
     executeMutation(() => {
+        const id = nextId();
         signals.value.push({
-            id: nextId(),
+            id,
+            name: id,
             type: "departure",
             position: { x, y },
             direction: tempSignal.value.direction,
@@ -1185,8 +1302,10 @@ function buildSwitch(node) {
         switchType = "slip";
     }
 
+    const id = nextId();
     return {
-        id: nextId(),
+        id,
+        name: id,
         type: switchType,
         position: { x: node.x, y: node.y },
         bindingNodeID: node.id,
@@ -1223,13 +1342,15 @@ function drawingPlatformMouseDown(x, y) {
     }
 
     executeMutation(() => {
+        const id = nextId();
         const startX = tempPlatformPosition.value.startX;
         const endX = tempPlatformPosition.value.endX;
         const startY = tempPlatformPosition.value.startY;
         const endY = tempPlatformPosition.value.endY;
 
         platforms.value.push({
-            id: nextId(),
+            id,
+            name: id,
             x: Math.min(startX, endX),
             y: Math.min(startY, endY),
             width: Math.abs(endX - startX),
@@ -1238,6 +1359,14 @@ function drawingPlatformMouseDown(x, y) {
     });
 
     tempPlatformPosition.value = null;
+}
+
+function drawingAnnotationMouseDown(x, y) {
+    executeMutation(() => {
+        const annotation = buildDefaultAnnotation(x, y);
+        annotations.value.push(annotation);
+        setSelectedAnnotationIds([annotation.id]);
+    });
 }
 
 const tempPlatformView = computed(() => {
@@ -1265,6 +1394,7 @@ function buildJsonData() {
         insulationJoints: insulationJoints.value,
         platforms: platforms.value,
         switches: switches.value,
+        annotations: annotations.value,
     });
 }
 
@@ -1276,6 +1406,7 @@ function clearElements() {
     insulationJoints.value = [];
     platforms.value = [];
     switches.value = [];
+    annotations.value = [];
     clearSelectedLines();
     clearSelectedNodes();
     clearSelectedEquipment();
@@ -1288,15 +1419,18 @@ function loadDataFromJson(jsonObj) {
         latestElementID.value = Number(jsonObj?.metadata?.latestElementID || 0);
         tracks.value = (jsonObj?.tracks || []).map((track) => ({ ...track }));
         nodes.value = (jsonObj?.nodes || []).map((node) => ({ ...node }));
-        signals.value = (jsonObj?.signals || []).map((signal) => ({ ...signal }));
+        signals.value = (jsonObj?.signals || []).map((signal) => normalizeNamedEquipment(signal));
         insulationJoints.value = (jsonObj?.insulationJoints || []).map((ij) => ({ ...ij }));
-        platforms.value = (jsonObj?.platforms || []).map((platform) => ({ ...platform }));
-        switches.value = (jsonObj?.switches || []).map((sw) => ({ ...sw }));
+        platforms.value = (jsonObj?.platforms || []).map((platform) => normalizeNamedEquipment(platform));
+        switches.value = (jsonObj?.switches || []).map((sw) => normalizeNamedEquipment(sw));
+        annotations.value = (jsonObj?.annotations || []).map((annotation) => normalizeAnnotation(annotation));
     });
+    emitSelectedAnnotationChange();
 }
 
 function handleLineClick(lineId) {
     if (editModeCode.value !== 0) return;
+    setSelectedAnnotationIds([]);
     selectLine(lineId);
 }
 
@@ -1308,27 +1442,140 @@ function shouldHandleElementMouseDown(event) {
 
 function handleNodeClick(event, nodeId) {
     if (!shouldHandleElementMouseDown(event)) return;
+    setSelectedAnnotationIds([]);
     selectedNodeIds.value = new Set([...selectedNodeIds.value, nodeId]);
 }
 
 function handleSignalClick(event, signalId) {
     if (!shouldHandleElementMouseDown(event)) return;
+    setSelectedAnnotationIds([]);
     selectedSignalIds.value = new Set([...selectedSignalIds.value, signalId]);
 }
 
 function handleInsulationJointClick(event, id) {
     if (!shouldHandleElementMouseDown(event)) return;
+    setSelectedAnnotationIds([]);
     selectedInsulationJointIds.value = new Set([...selectedInsulationJointIds.value, id]);
 }
 
 function handleSwitchClick(event, id) {
     if (!shouldHandleElementMouseDown(event)) return;
+    setSelectedAnnotationIds([]);
     selectedSwitchIds.value = new Set([...selectedSwitchIds.value, id]);
 }
 
 function handlePlatformClick(event, id) {
     if (!shouldHandleElementMouseDown(event)) return;
+    setSelectedAnnotationIds([]);
     selectedPlatformIds.value = new Set([...selectedPlatformIds.value, id]);
+}
+
+function handleAnnotationClick(event, id) {
+    if (!shouldHandleElementMouseDown(event)) return;
+    if (event.shiftKey) {
+        setSelectedAnnotationIds([...selectedAnnotationIds.value, id]);
+        return;
+    }
+    setSelectedAnnotationIds([id]);
+}
+
+function getAnnotationById(id) {
+    return annotations.value.find((annotation) => annotation.id === id) || null;
+}
+
+function getAnnotationInteractionStartState(annotation) {
+    return {
+        position: {
+            x: toFiniteNumber(annotation.position?.x),
+            y: toFiniteNumber(annotation.position?.y),
+        },
+    };
+}
+
+function pushAnnotationInteractionUndoSnapshot() {
+    const interaction = annotationInteraction.value;
+    if (!interaction || interaction.undoCaptured) return;
+    finishedCmdList.value.push(cloneState());
+    if (finishedCmdList.value.length > 30) {
+        finishedCmdList.value.shift();
+    }
+    revokedCmdList.value = [];
+    interaction.undoCaptured = true;
+}
+
+function addAnnotationInteractionWindowListeners() {
+    window.addEventListener("mousemove", onAnnotationInteractionWindowMouseMove);
+    window.addEventListener("mouseup", onAnnotationInteractionWindowMouseUp);
+}
+
+function removeAnnotationInteractionWindowListeners() {
+    window.removeEventListener("mousemove", onAnnotationInteractionWindowMouseMove);
+    window.removeEventListener("mouseup", onAnnotationInteractionWindowMouseUp);
+}
+
+function beginAnnotationTextMove(event, annotationId) {
+    if (!shouldHandleElementMouseDown(event)) return;
+    event.preventDefault();
+    cancelSelectionBox();
+
+    const annotation = getAnnotationById(annotationId);
+    if (!annotation) return;
+    if (!isAnnotationSelected(annotationId) || selectedAnnotationIds.value.size !== 1) {
+        setSelectedAnnotationIds([annotationId]);
+    }
+
+    const startState = getAnnotationInteractionStartState(annotation);
+    const startPointer = clientPointToDataPoint(event.clientX, event.clientY);
+    if (!startPointer) return;
+
+    annotationInteraction.value = {
+        annotationId,
+        startState,
+        startPointer,
+        undoCaptured: false,
+    };
+    addAnnotationInteractionWindowListeners();
+}
+
+function updateAnnotationTextInteraction(annotation, interaction, currentPointer) {
+    const dx = currentPointer.x - interaction.startPointer.x;
+    const dy = currentPointer.y - interaction.startPointer.y;
+    pushAnnotationInteractionUndoSnapshot();
+    annotation.position = {
+        x: roundLayoutNumber(interaction.startState.position.x + dx),
+        y: roundLayoutNumber(interaction.startState.position.y + dy),
+    };
+    emitSelectedAnnotationChange();
+}
+
+function updateAnnotationInteraction(event) {
+    const interaction = annotationInteraction.value;
+    if (!interaction) return;
+    const annotation = getAnnotationById(interaction.annotationId);
+    if (!annotation) {
+        finishAnnotationInteraction();
+        return;
+    }
+
+    const currentPointer = clientPointToDataPoint(event.clientX, event.clientY);
+    if (!currentPointer) return;
+    updateAnnotationTextInteraction(annotation, interaction, currentPointer);
+}
+
+function finishAnnotationInteraction() {
+    annotationInteraction.value = null;
+    removeAnnotationInteractionWindowListeners();
+}
+
+function onAnnotationInteractionWindowMouseMove(event) {
+    event.preventDefault();
+    updateAnnotationInteraction(event);
+}
+
+function onAnnotationInteractionWindowMouseUp(event) {
+    event.preventDefault();
+    updateAnnotationInteraction(event);
+    finishAnnotationInteraction();
 }
 
 function handleAnchorDown(event, anchor) {
@@ -1418,6 +1665,8 @@ function onMouseDown(event) {
         drawingNodeMouseDown(x, y);
     } else if (drawingObject.value === "p") {
         drawingPlatformMouseDown(x, y);
+    } else if (drawingObject.value === "a") {
+        drawingAnnotationMouseDown(x, y);
     }
 }
 
@@ -1430,6 +1679,7 @@ function onMouseUp(event) {
 function onKeydown(event) {
     if (event.key === "Escape") {
         cancelSelectionBox();
+        finishAnnotationInteraction();
         clearSelectedEquipment();
         clearSelectedLines();
         clearSelectedNodes();
@@ -1473,6 +1723,10 @@ function isSwitchSelected(id) {
 
 function isPlatformSelected(id) {
     return selectedPlatformIds.value.has(id);
+}
+
+function isAnnotationSelected(id) {
+    return selectedAnnotationIds.value.has(id);
 }
 
 function signalTransform(signal) {
@@ -1528,6 +1782,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
     removeSelectionBoxWindowListeners();
+    removeAnnotationInteractionWindowListeners();
 });
 
 defineExpose({
@@ -1560,6 +1815,7 @@ defineExpose({
     startDrawingInsulationJoint,
     startDrawingNode,
     startDrawingPlatform,
+    updateSelectedAnnotation,
     clearElements,
 });
 </script>
@@ -1612,7 +1868,7 @@ defineExpose({
                 <circle cx="103" cy="17" r="16" style="fill:#e60012;" />
                 <line x1="22" y1="17" x2="1" y2="17" style="fill:none;" />
                 <line x1="1" y1="1" x2="1" y2="33" style="fill:none;" />
-                <text class="signalname" x="0" y="45">SIGNAL</text>
+                <text class="signalname" x="0" y="45">{{ getEquipmentDisplayName(signal, "SIGNAL") }}</text>
             </g>
 
             <g v-if="tempSignal.visible" id="tempsignal" class="signal signal-departure signal-temp"
@@ -1648,7 +1904,7 @@ defineExpose({
                 <line v-for="(lineVec, idx) in sw.branchVectorList" :key="`sw-line-${sw.id}-${idx}`"
                     class="switchbranch" :x1="switchBranch(sw, lineVec).x1" :y1="switchBranch(sw, lineVec).y1"
                     :x2="switchBranch(sw, lineVec).x2" :y2="switchBranch(sw, lineVec).y2" />
-                <text class="switchname" x="4" y="-4">SWITCH</text>
+                <text class="switchname" x="4" y="-4">{{ getEquipmentDisplayName(sw, "SWITCH") }}</text>
             </g>
         </g>
 
@@ -1666,6 +1922,20 @@ defineExpose({
 
             <rect class="platform platform-temp" :x="screenX(tempPlatformView.x)" :y="screenY(tempPlatformView.y)"
                 :width="screenDeltaX(tempPlatformView.width)" :height="screenDeltaY(tempPlatformView.height)" />
+        </g>
+
+        <g id="annotationgroup">
+            <g v-for="annotation in annotations" :id="String(annotation.id)" :key="`annotation-${annotation.id}`"
+                class="annotation" :class="{ 'annotation-selected': isAnnotationSelected(annotation.id) }"
+                :transform="annotationTransform(annotation)" @mousedown="handleAnnotationClick($event, annotation.id)">
+                <text class="annotation-text" x="0" y="0" :font-family="annotation.fontFamily"
+                    :font-size="annotation.fontSize" :font-weight="annotation.fontWeight" :font-style="annotation.fontStyle"
+                    :fill="annotation.textColor">
+                    {{ annotation.text }}
+                </text>
+                <circle v-if="shouldShowAnnotationControls(annotation)" class="annotation-text-anchor" cx="0" cy="0"
+                    :r="annotationTextAnchorRadius" @mousedown="beginAnnotationTextMove($event, annotation.id)" />
+            </g>
         </g>
 
         <g id="cursor">

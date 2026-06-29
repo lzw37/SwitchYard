@@ -167,3 +167,21 @@
     fill:white;
     font-size: 10px;
 }
+
+.annotation {
+    cursor: pointer;
+}
+
+.annotation-text {
+    dominant-baseline: middle;
+    text-anchor: middle;
+    pointer-events: auto;
+    user-select: none;
+}
+
+.annotation-text-anchor {
+    cursor: move;
+    fill: #409eff;
+    stroke: #fefded;
+    stroke-width: 1.5px;
+}

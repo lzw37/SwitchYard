@@ -1125,7 +1125,8 @@
             "insulation": "钢轨绝缘",
             "route": "进路",
             "buffer": "车挡",
-            "platform": "站台"
+            "platform": "站台",
+            "annotation": "注释"
         },
         "tools": {
             "showCrossPoint": "显示交点",

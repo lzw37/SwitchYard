@@ -21,6 +21,7 @@ namespace SwitchYard.Service.Controllers
         private const long MaxDwgFileSize = 20L * 1024 * 1024; // 20 MB
         private const string DefaultStationSchemeID = "station_layout_scheme";
         private const string DefaultStationSchemeName = "车站布置图";
+        private static readonly string[] NamedDeviceTables = new[] { "signal", "switch", "cell", "route", "platform" };
         private static readonly Regex LayerNameRegex = new("^[A-Za-z0-9_\\-]{1,255}$", RegexOptions.Compiled);
         private static readonly JsonSerializerOptions StationLayoutJsonOptions = new()
         {
@@ -214,7 +215,8 @@ namespace SwitchYard.Service.Controllers
                 signals = Array.Empty<object>(),
                 insulationJoints = Array.Empty<object>(),
                 platforms = Array.Empty<object>(),
-                switches = Array.Empty<object>()
+                switches = Array.Empty<object>(),
+                annotations = Array.Empty<object>()
             });
         }
 
@@ -316,6 +318,9 @@ namespace SwitchYard.Service.Controllers
             var platformTable = QuoteIdentifier("platform");
             var switchTable = QuoteIdentifier("switch");
             var switchBranchVectorTable = QuoteIdentifier("switchbranchvector");
+            var annotationTable = QuoteIdentifier("annotation");
+
+            EnsureNamedDeviceSchemas(dbConnector);
 
             var nodes = dbConnector.Query<StationNodeRow>(
                 $@"SELECT *
@@ -365,6 +370,13 @@ namespace SwitchYard.Service.Controllers
                    WHERE InstanceID = @instanceID AND StationSchemeID = @stationSchemeID
                    ORDER BY SwitchID, Sequence",
                 new { instanceID, stationSchemeID }) ?? new List<SwitchBranchVectorRow>();
+
+            var annotations = dbConnector.Query<StationAnnotationRow>(
+                $@"SELECT *
+                   FROM {annotationTable}
+                   WHERE InstanceID = @instanceID AND StationSchemeID = @stationSchemeID
+                   ORDER BY ID",
+                new { instanceID, stationSchemeID }) ?? new List<StationAnnotationRow>();
 
             var nodeTransform = BuildCoordinateTransform(nodes);
             var nodeViews = nodes
@@ -423,6 +435,7 @@ namespace SwitchYard.Service.Controllers
                     return new
                     {
                         id = signal.ID ?? string.Empty,
+                        name = NormalizeEquipmentName(signal.Name, signal.ID ?? string.Empty),
                         type = signal.Type ?? string.Empty,
                         position = new { x = point.x, y = point.y },
                         direction = string.IsNullOrWhiteSpace(signal.Direction) ? "e" : signal.Direction,
@@ -460,7 +473,7 @@ namespace SwitchYard.Service.Controllers
                     return new
                     {
                         id = platform.ID ?? string.Empty,
-                        name = platform.Name ?? string.Empty,
+                        name = NormalizeEquipmentName(platform.Name, platform.ID ?? string.Empty),
                         x = point.x,
                         y = point.y,
                         width = nodeTransform.MapLength(platform.Width),
@@ -487,6 +500,7 @@ namespace SwitchYard.Service.Controllers
                     return new
                     {
                         id = sw.ID ?? string.Empty,
+                        name = NormalizeEquipmentName(sw.Name, sw.ID ?? string.Empty),
                         type = sw.Type ?? "unknown",
                         position = new { x = point.x, y = point.y },
                         bindingNodeID = ToInvariantString(bindingNode.ID),
@@ -503,13 +517,33 @@ namespace SwitchYard.Service.Controllers
                 .Where(sw => sw != null)
                 .ToArray();
 
+            var annotationViews = annotations
+                .Select(annotation =>
+                {
+                    var point = nodeTransform.MapPoint(annotation.X, annotation.Y);
+                    return new
+                    {
+                        id = annotation.ID ?? string.Empty,
+                        text = annotation.Text ?? string.Empty,
+                        position = new { x = point.x, y = point.y },
+                        fontFamily = string.IsNullOrWhiteSpace(annotation.FontFamily) ? "Arial" : annotation.FontFamily,
+                        fontSize = annotation.FontSize <= 0 ? 16 : annotation.FontSize,
+                        fontWeight = string.IsNullOrWhiteSpace(annotation.FontWeight) ? "normal" : annotation.FontWeight,
+                        fontStyle = string.IsNullOrWhiteSpace(annotation.FontStyle) ? "normal" : annotation.FontStyle,
+                        angle = annotation.Angle,
+                        textColor = string.IsNullOrWhiteSpace(annotation.TextColor) ? "#ffffff" : annotation.TextColor
+                    };
+                })
+                .ToArray();
+
             var latestElementID = CalculateLatestElementID(
                 nodes.Select(node => ToInvariantString(node.ID))
                     .Concat(links.Select(link => ToInvariantString(link.ID)))
                     .Concat(signals.Select(signal => signal.ID ?? string.Empty))
                     .Concat(insulationJoints.Select(insulationJoint => insulationJoint.ID ?? string.Empty))
                     .Concat(platforms.Select(platform => platform.ID ?? string.Empty))
-                    .Concat(switches.Select(sw => sw.ID ?? string.Empty)));
+                    .Concat(switches.Select(sw => sw.ID ?? string.Empty))
+                    .Concat(annotations.Select(annotation => annotation.ID ?? string.Empty)));
 
             return JsonSerializer.Serialize(new
             {
@@ -525,7 +559,8 @@ namespace SwitchYard.Service.Controllers
                 signals = signalViews,
                 insulationJoints = insulationJointViews,
                 platforms = platformViews,
-                switches = switchViews
+                switches = switchViews,
+                annotations = annotationViews
             });
         }
 
@@ -542,6 +577,9 @@ namespace SwitchYard.Service.Controllers
             var platformTable = QuoteIdentifier("platform");
             var switchTable = QuoteIdentifier("switch");
             var switchBranchVectorTable = QuoteIdentifier("switchbranchvector");
+            var annotationTable = QuoteIdentifier("annotation");
+
+            EnsureNamedDeviceSchemas(dbConnector);
 
             var transform = StationLayoutPersistenceTransform.FromMetadata(layout.Metadata?.CoordinateTransform);
             var nodeSaveContext = BuildNodeSaveContext(layout, transform);
@@ -557,6 +595,7 @@ namespace SwitchYard.Service.Controllers
                 DeleteStationLayoutTableRows(dbConnector, insulationJointTable, instanceID, stationSchemeID);
                 DeleteStationLayoutTableRows(dbConnector, signalTable, instanceID, stationSchemeID);
                 DeleteStationLayoutTableRows(dbConnector, platformTable, instanceID, stationSchemeID);
+                DeleteStationLayoutTableRows(dbConnector, annotationTable, instanceID, stationSchemeID);
                 DeleteStationLayoutTableRows(dbConnector, linkTable, instanceID, stationSchemeID);
                 DeleteStationLayoutTableRows(dbConnector, nodeTable, instanceID, stationSchemeID);
 
@@ -595,6 +634,7 @@ namespace SwitchYard.Service.Controllers
                 }
 
                 var platformCount = SavePlatforms(dbConnector, platformTable, instanceID, stationSchemeID, layout, transform);
+                var annotationCount = SaveAnnotations(dbConnector, annotationTable, instanceID, stationSchemeID, layout, transform);
                 var signalCount = SaveSignals(dbConnector, signalTable, instanceID, stationSchemeID, layout, nodeSaveContext);
                 var insulationJointCount = SaveInsulationJoints(dbConnector, insulationJointTable, instanceID, stationSchemeID, layout, nodeSaveContext);
                 var switchSaveResult = SaveSwitches(
@@ -620,7 +660,8 @@ namespace SwitchYard.Service.Controllers
                     InsulationJointCount = insulationJointCount,
                     PlatformCount = platformCount,
                     SwitchCount = switchSaveResult.SwitchCount,
-                    SwitchBranchVectorCount = switchSaveResult.SwitchBranchVectorCount
+                    SwitchBranchVectorCount = switchSaveResult.SwitchBranchVectorCount,
+                    AnnotationCount = annotationCount
                 };
             }
             catch
@@ -773,6 +814,7 @@ namespace SwitchYard.Service.Controllers
             var count = 0;
             foreach (var platform in layout.Platforms ?? new List<StationLayoutPlatformJson>())
             {
+                var platformID = NormalizeStringID(platform.ID, "platform", count);
                 var databasePoint = transform.UnmapPoint(platform.X, platform.Y);
                 EnsureInserted(
                     dbConnector.ExecuteNonQuery(
@@ -782,14 +824,57 @@ namespace SwitchYard.Service.Controllers
                         {
                             InstanceID = instanceID,
                             StationSchemeID = stationSchemeID,
-                            ID = NormalizeStringID(platform.ID, "platform", count),
-                            Name = platform.Name ?? string.Empty,
+                            ID = platformID,
+                            Name = NormalizeEquipmentName(platform.Name, platformID),
                             X = databasePoint.x,
                             Y = databasePoint.y,
                             Width = transform.UnmapLength(platform.Width),
                             Height = transform.UnmapLength(platform.Height)
                         }),
                     "platform");
+                count++;
+            }
+
+            return count;
+        }
+
+        private int SaveAnnotations(
+            DBConnector dbConnector,
+            string annotationTable,
+            string instanceID,
+            string stationSchemeID,
+            StationLayoutJson layout,
+            StationLayoutPersistenceTransform transform)
+        {
+            var count = 0;
+            foreach (var annotation in layout.Annotations ?? new List<StationLayoutAnnotationJson>())
+            {
+                var position = annotation.Position ?? new StationLayoutPositionJson();
+                var databasePoint = transform.UnmapPoint(position.X, position.Y);
+                EnsureInserted(
+                    dbConnector.ExecuteNonQuery(
+                        $@"INSERT INTO {annotationTable} (
+                               InstanceID, StationSchemeID, ID, Text, X, Y,
+                               FontFamily, FontSize, FontWeight, FontStyle, Angle, TextColor)
+                           VALUES (
+                               @InstanceID, @StationSchemeID, @ID, @Text, @X, @Y,
+                               @FontFamily, @FontSize, @FontWeight, @FontStyle, @Angle, @TextColor)",
+                        new
+                        {
+                            InstanceID = instanceID,
+                            StationSchemeID = stationSchemeID,
+                            ID = NormalizeStringID(annotation.ID, "annotation", count),
+                            Text = annotation.Text ?? string.Empty,
+                            X = databasePoint.x,
+                            Y = databasePoint.y,
+                            FontFamily = string.IsNullOrWhiteSpace(annotation.FontFamily) ? "Arial" : annotation.FontFamily,
+                            FontSize = annotation.FontSize <= 0 ? 16 : annotation.FontSize,
+                            FontWeight = string.IsNullOrWhiteSpace(annotation.FontWeight) ? "normal" : annotation.FontWeight,
+                            FontStyle = string.IsNullOrWhiteSpace(annotation.FontStyle) ? "normal" : annotation.FontStyle,
+                            Angle = annotation.Angle,
+                            TextColor = string.IsNullOrWhiteSpace(annotation.TextColor) ? "#ffffff" : annotation.TextColor
+                        }),
+                    "annotation");
                 count++;
             }
 
@@ -813,15 +898,17 @@ namespace SwitchYard.Service.Controllers
                     continue;
                 }
 
+                var signalID = NormalizeStringID(signal.ID, "signal", count);
                 EnsureInserted(
                     dbConnector.ExecuteNonQuery(
-                        $@"INSERT INTO {signalTable} (InstanceID, StationSchemeID, ID, Type, Direction, BindingNodeID)
-                           VALUES (@InstanceID, @StationSchemeID, @ID, @Type, @Direction, @BindingNodeID)",
+                        $@"INSERT INTO {signalTable} (InstanceID, StationSchemeID, ID, Name, Type, Direction, BindingNodeID)
+                           VALUES (@InstanceID, @StationSchemeID, @ID, @Name, @Type, @Direction, @BindingNodeID)",
                         new
                         {
                             InstanceID = instanceID,
                             StationSchemeID = stationSchemeID,
-                            ID = NormalizeStringID(signal.ID, "signal", count),
+                            ID = signalID,
+                            Name = NormalizeEquipmentName(signal.Name, signalID),
                             Type = string.IsNullOrWhiteSpace(signal.Type) ? "departure" : signal.Type,
                             Direction = string.IsNullOrWhiteSpace(signal.Direction) ? "e" : signal.Direction,
                             BindingNodeID = ToInvariantString(bindingNodeID.Value)
@@ -893,13 +980,14 @@ namespace SwitchYard.Service.Controllers
                 var switchID = NormalizeStringID(sw.ID, "switch", switchCount);
                 EnsureInserted(
                     dbConnector.ExecuteNonQuery(
-                        $@"INSERT INTO {switchTable} (InstanceID, StationSchemeID, ID, Type, BindingNodeID)
-                           VALUES (@InstanceID, @StationSchemeID, @ID, @Type, @BindingNodeID)",
+                        $@"INSERT INTO {switchTable} (InstanceID, StationSchemeID, ID, Name, Type, BindingNodeID)
+                           VALUES (@InstanceID, @StationSchemeID, @ID, @Name, @Type, @BindingNodeID)",
                         new
                         {
                             InstanceID = instanceID,
                             StationSchemeID = stationSchemeID,
                             ID = switchID,
+                            Name = NormalizeEquipmentName(sw.Name, switchID),
                             Type = string.IsNullOrWhiteSpace(sw.Type) ? "unknown" : sw.Type,
                             BindingNodeID = ToInvariantString(bindingNodeID.Value)
                         }),
@@ -1087,6 +1175,104 @@ namespace SwitchYard.Service.Controllers
             }
 
             return $"\"{escapedIdentifier}\"";
+        }
+
+        private static void EnsureNamedDeviceSchemas(DBConnector dbConnector)
+        {
+            foreach (var tableName in NamedDeviceTables)
+            {
+                EnsureNamedDeviceSchema(dbConnector, tableName);
+            }
+        }
+
+        private static void EnsureNamedDeviceSchema(DBConnector dbConnector, string tableName)
+        {
+            var columnNames = GetColumnNames(dbConnector, tableName);
+            if (columnNames.Count == 0)
+            {
+                return;
+            }
+
+            var hasName = columnNames.Any(column => string.Equals(column, "Name", StringComparison.OrdinalIgnoreCase));
+            var hasID = columnNames.Any(column => string.Equals(column, "ID", StringComparison.OrdinalIgnoreCase));
+            var quotedTableName = QuoteIdentifier(tableName);
+            var nameColumn = QuoteIdentifier("Name");
+            var idColumn = QuoteIdentifier("ID");
+
+            if (!hasName)
+            {
+                var nameColumnType = DBConnector.IsMySql(DBConnector.CapacityDatabaseSectionName)
+                    ? "VARCHAR(100) NULL"
+                    : "TEXT NULL";
+                dbConnector.ExecuteNonQuery($@"ALTER TABLE {quotedTableName} ADD COLUMN {nameColumn} {nameColumnType}");
+            }
+
+            if (!hasID)
+            {
+                return;
+            }
+
+            dbConnector.ExecuteNonQuery(
+                $@"UPDATE {quotedTableName}
+                   SET {nameColumn} = {idColumn}
+                   WHERE ({nameColumn} IS NULL OR TRIM({nameColumn}) = '')
+                     AND {idColumn} IS NOT NULL");
+        }
+
+        private static List<string> GetColumnNames(DBConnector dbConnector, string tableName)
+        {
+            if (!TableExists(dbConnector, tableName))
+            {
+                return new List<string>();
+            }
+
+            if (DBConnector.IsMySql(DBConnector.CapacityDatabaseSectionName))
+            {
+                return (dbConnector.Query<DatabaseNameLookupRow>(
+                    @"SELECT COLUMN_NAME AS Name
+                      FROM INFORMATION_SCHEMA.COLUMNS
+                      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = @tableName",
+                    new { tableName }) ?? new List<DatabaseNameLookupRow>())
+                    .Select(column => column.Name ?? string.Empty)
+                    .Where(name => !string.IsNullOrWhiteSpace(name))
+                    .ToList();
+            }
+
+            return (dbConnector.Query<DatabaseNameLookupRow>(
+                $@"PRAGMA table_info({QuoteIdentifier(tableName)})") ?? new List<DatabaseNameLookupRow>())
+                .Select(column => column.Name ?? string.Empty)
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .ToList();
+        }
+
+        private static bool TableExists(DBConnector dbConnector, string tableName)
+        {
+            List<DatabaseNameLookupRow>? rows;
+            if (DBConnector.IsMySql(DBConnector.CapacityDatabaseSectionName))
+            {
+                rows = dbConnector.Query<DatabaseNameLookupRow>(
+                    @"SELECT TABLE_NAME AS Name
+                      FROM INFORMATION_SCHEMA.TABLES
+                      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = @tableName
+                      LIMIT 1",
+                    new { tableName });
+            }
+            else
+            {
+                rows = dbConnector.Query<DatabaseNameLookupRow>(
+                    @"SELECT name AS Name
+                      FROM sqlite_master
+                      WHERE type = 'table' AND lower(name) = lower(@tableName)
+                      LIMIT 1",
+                    new { tableName });
+            }
+
+            return rows?.Any() == true;
+        }
+
+        private static string NormalizeEquipmentName(string? name, string id)
+        {
+            return string.IsNullOrWhiteSpace(name) ? id : name.Trim();
         }
 
         private static string ToInvariantString(int value)
@@ -1294,6 +1480,8 @@ namespace SwitchYard.Service.Controllers
         {
             public string? ID { get; set; }
 
+            public string? Name { get; set; }
+
             public string? Type { get; set; }
 
             public string? Direction { get; set; }
@@ -1329,9 +1517,16 @@ namespace SwitchYard.Service.Controllers
         {
             public string? ID { get; set; }
 
+            public string? Name { get; set; }
+
             public string? Type { get; set; }
 
             public string? BindingNodeID { get; set; }
+        }
+
+        private sealed class DatabaseNameLookupRow
+        {
+            public string? Name { get; set; }
         }
 
         private sealed class SwitchBranchVectorRow
@@ -1345,6 +1540,29 @@ namespace SwitchYard.Service.Controllers
             public double Y { get; set; }
 
             public string? BindingLinkID { get; set; }
+        }
+
+        private sealed class StationAnnotationRow
+        {
+            public string? ID { get; set; }
+
+            public string? Text { get; set; }
+
+            public double X { get; set; }
+
+            public double Y { get; set; }
+
+            public string? FontFamily { get; set; }
+
+            public double FontSize { get; set; }
+
+            public string? FontWeight { get; set; }
+
+            public string? FontStyle { get; set; }
+
+            public double Angle { get; set; }
+
+            public string? TextColor { get; set; }
         }
 
         private sealed class StationLayoutJson
@@ -1369,6 +1587,9 @@ namespace SwitchYard.Service.Controllers
 
             [JsonPropertyName("switches")]
             public List<StationLayoutSwitchJson> Switches { get; set; } = new();
+
+            [JsonPropertyName("annotations")]
+            public List<StationLayoutAnnotationJson> Annotations { get; set; } = new();
         }
 
         private sealed class StationLayoutJsonMetadata
@@ -1454,6 +1675,9 @@ namespace SwitchYard.Service.Controllers
             [JsonPropertyName("id")]
             public string? ID { get; set; }
 
+            [JsonPropertyName("name")]
+            public string? Name { get; set; }
+
             [JsonPropertyName("type")]
             public string? Type { get; set; }
 
@@ -1508,6 +1732,9 @@ namespace SwitchYard.Service.Controllers
             [JsonPropertyName("id")]
             public string? ID { get; set; }
 
+            [JsonPropertyName("name")]
+            public string? Name { get; set; }
+
             [JsonPropertyName("type")]
             public string? Type { get; set; }
 
@@ -1531,6 +1758,36 @@ namespace SwitchYard.Service.Controllers
 
             [JsonPropertyName("lineID")]
             public string? LineID { get; set; }
+        }
+
+        private sealed class StationLayoutAnnotationJson
+        {
+            [JsonPropertyName("id")]
+            public string? ID { get; set; }
+
+            [JsonPropertyName("text")]
+            public string? Text { get; set; }
+
+            [JsonPropertyName("position")]
+            public StationLayoutPositionJson? Position { get; set; }
+
+            [JsonPropertyName("fontFamily")]
+            public string? FontFamily { get; set; }
+
+            [JsonPropertyName("fontSize")]
+            public double FontSize { get; set; }
+
+            [JsonPropertyName("fontWeight")]
+            public string? FontWeight { get; set; }
+
+            [JsonPropertyName("fontStyle")]
+            public string? FontStyle { get; set; }
+
+            [JsonPropertyName("angle")]
+            public double Angle { get; set; }
+
+            [JsonPropertyName("textColor")]
+            public string? TextColor { get; set; }
         }
 
         private sealed class StationLayoutNodeSaveContext
@@ -1617,6 +1874,9 @@ namespace SwitchYard.Service.Controllers
 
             [JsonPropertyName("switchBranchVectorCount")]
             public int SwitchBranchVectorCount { get; set; }
+
+            [JsonPropertyName("annotationCount")]
+            public int AnnotationCount { get; set; }
         }
 
         public sealed class StationLayoutSaveRequest
@@ -1759,7 +2019,8 @@ namespace SwitchYard.Service.Controllers
                 signals = Array.Empty<object>(),
                 insulationJoints = Array.Empty<object>(),
                 platforms = Array.Empty<object>(),
-                switches = Array.Empty<object>()
+                switches = Array.Empty<object>(),
+                annotations = Array.Empty<object>()
             }, new JsonSerializerOptions
             {
                 WriteIndented = true

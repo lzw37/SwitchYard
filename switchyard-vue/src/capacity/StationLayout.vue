@@ -36,6 +36,17 @@ const layoutScaleX = ref(1);
 const layoutScaleY = ref(1);
 const layoutScaleXDisplay = computed(() => layoutScaleX.value.toFixed(2));
 const layoutScaleYDisplay = computed(() => layoutScaleY.value.toFixed(2));
+const selectedAnnotation = ref(null);
+
+const annotationFontFamilyOptions = ["Arial", "Microsoft YaHei", "SimSun", "SimHei", "Times New Roman", "Consolas"];
+const annotationFontWeightOptions = [
+    { label: "常规", value: "normal" },
+    { label: "加粗", value: "bold" },
+];
+const annotationFontStyleOptions = [
+    { label: "常规", value: "normal" },
+    { label: "斜体", value: "italic" },
+];
 
 function setSelectMode() {
     stationLayoutEditorRef.value?.setEditMode(0);
@@ -162,6 +173,25 @@ function exportJsonFile() {
     }
 }
 
+function handleSelectedAnnotationChange(annotation) {
+    selectedAnnotation.value = annotation;
+}
+
+function updateSelectedAnnotation(patch) {
+    if (!selectedAnnotation.value) return;
+    stationLayoutEditorRef.value?.updateSelectedAnnotation(patch);
+}
+
+function updateSelectedAnnotationPosition() {
+    if (!selectedAnnotation.value) return;
+    updateSelectedAnnotation({
+        position: {
+            x: selectedAnnotation.value.position?.x || 0,
+            y: selectedAnnotation.value.position?.y || 0,
+        },
+    });
+}
+
 function buildExportJsonFileName(jsonObj) {
     const instanceID = jsonObj?.metadata?.instanceID || props.selectedInstanceId || "station-layout";
     const stationSchemeID = jsonObj?.metadata?.stationSchemeID || currentStationSchemeId.value || "scheme";
@@ -213,7 +243,7 @@ function validateStationLayoutJson(jsonObj) {
         throw new Error("Invalid station layout JSON root.");
     }
 
-    const arrayFields = ["tracks", "nodes", "signals", "insulationJoints", "platforms", "switches"];
+    const arrayFields = ["tracks", "nodes", "signals", "insulationJoints", "platforms", "switches", "annotations"];
     for (const field of arrayFields) {
         if (jsonObj[field] !== undefined && !Array.isArray(jsonObj[field])) {
             throw new Error(`Invalid station layout JSON field: ${field}`);
@@ -431,6 +461,8 @@ watch(
                         }}</el-button>
                     <el-button :icon="Platform" @click="setDrawingObject('p')">{{ t('stationLayout.draw.platform')
                         }}</el-button>
+                    <el-button :icon="EditPen" @click="setDrawingObject('a')">{{ t('stationLayout.draw.annotation')
+                        }}</el-button>
                 </el-button-group>
             </div>
             <el-divider direction="vertical" />
@@ -466,9 +498,40 @@ watch(
                 </div>
             </div>
         </div>
+        <div v-if="selectedAnnotation" class="annotation-editor-row">
+            <span class="toolbar-group-label">注释</span>
+            <el-input v-model="selectedAnnotation.text" size="small" class="annotation-text-input"
+                @input="updateSelectedAnnotation({ text: selectedAnnotation.text })" />
+            <el-select v-model="selectedAnnotation.fontFamily" size="small" class="annotation-font-select"
+                @change="updateSelectedAnnotation({ fontFamily: selectedAnnotation.fontFamily })">
+                <el-option v-for="fontFamily in annotationFontFamilyOptions" :key="fontFamily" :label="fontFamily"
+                    :value="fontFamily" />
+            </el-select>
+            <el-input-number v-model="selectedAnnotation.fontSize" size="small" :min="8" :max="96" :step="1"
+                controls-position="right" @change="updateSelectedAnnotation({ fontSize: selectedAnnotation.fontSize })" />
+            <el-select v-model="selectedAnnotation.fontWeight" size="small" class="annotation-small-select"
+                @change="updateSelectedAnnotation({ fontWeight: selectedAnnotation.fontWeight })">
+                <el-option v-for="item in annotationFontWeightOptions" :key="item.value" :label="item.label"
+                    :value="item.value" />
+            </el-select>
+            <el-select v-model="selectedAnnotation.fontStyle" size="small" class="annotation-small-select"
+                @change="updateSelectedAnnotation({ fontStyle: selectedAnnotation.fontStyle })">
+                <el-option v-for="item in annotationFontStyleOptions" :key="item.value" :label="item.label"
+                    :value="item.value" />
+            </el-select>
+            <span class="annotation-field-label">角度</span>
+            <el-input-number v-model="selectedAnnotation.angle" size="small" :min="-180" :max="180" :step="5"
+                controls-position="right" @change="updateSelectedAnnotation({ angle: selectedAnnotation.angle })" />
+            <span class="annotation-field-label">X</span>
+            <el-input-number v-model="selectedAnnotation.position.x" size="small" :step="10" controls-position="right"
+                @change="updateSelectedAnnotationPosition" />
+            <span class="annotation-field-label">Y</span>
+            <el-input-number v-model="selectedAnnotation.position.y" size="small" :step="10" controls-position="right"
+                @change="updateSelectedAnnotationPosition" />
+        </div>
         <div class="station-layout-editor-frame">
             <StationLayoutEditor ref="stationLayoutEditorRef" :display-scale-x="layoutScaleX"
-                :display-scale-y="layoutScaleY" />
+                :display-scale-y="layoutScaleY" @selected-annotation-change="handleSelectedAnnotationChange" />
         </div>
         <el-dialog v-model="extractDwgDialogVisible" title="从DWG文件提取" width="420px" :close-on-click-modal="false">
             <div class="dwg-extract-form">
@@ -570,6 +633,38 @@ watch(
 .scale-slider :deep(.el-slider) {
     flex: 1;
     min-width: 100px;
+}
+
+.annotation-editor-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 6px 12px;
+    background-color: #f5f7fa;
+    border-bottom: 1px solid var(--el-border-color-light);
+}
+
+.annotation-text-input {
+    width: 220px;
+}
+
+.annotation-font-select {
+    width: 150px;
+}
+
+.annotation-small-select {
+    width: 96px;
+}
+
+.annotation-field-label {
+    font-size: 12px;
+    color: #606266;
+    white-space: nowrap;
+}
+
+.annotation-editor-row :deep(.el-input-number) {
+    width: 96px;
 }
 
 .station-layout-editor-frame {
