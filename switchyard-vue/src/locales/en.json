@@ -1013,6 +1013,69 @@
         },
         "empty": "No instances yet. Create one to get started."
     },
+    "capacityInstance": {
+        "buttons": {
+            "create": "Create Instance",
+            "copy": "Copy",
+            "edit": "Edit",
+            "delete": "Delete",
+            "refresh": "Refresh",
+            "save": "Save",
+            "cancel": "Cancel",
+            "confirm": "Confirm"
+        },
+        "columns": {
+            "name": "Instance Name",
+            "owner": "Owner",
+            "createdDate": "Created Date",
+            "isActive": "Status",
+            "actions": "Actions"
+        },
+        "status": {
+            "active": "Active",
+            "inactive": "Inactive"
+        },
+        "dialogs": {
+            "createTitle": "Create Capacity Instance",
+            "editTitle": "Edit Capacity Instance",
+            "deleteTitle": "Delete Confirmation"
+        },
+        "placeholder": {
+            "name": "Please enter instance name"
+        },
+        "validation": {
+            "nameRequired": "Please enter instance name",
+            "nameLength": "Instance name length should be between 2 and 100 characters"
+        },
+        "messages": {
+            "loadError": "Failed to load capacity instances",
+            "createSuccess": "Instance created successfully",
+            "createError": "Failed to create instance",
+            "editSuccess": "Instance updated successfully",
+            "editError": "Failed to update instance",
+            "deleteSuccess": "Instance deleted successfully",
+            "deleteError": "Failed to delete instance",
+            "deleteConfirm": "Are you sure you want to delete instance {name}? This action cannot be undone."
+        }
+    },
+    "capacityInstanceManagement": {
+        "dialogs": {
+            "copyTitle": "Copy Capacity Instance"
+        },
+        "copy": {
+            "source": "Source Instance",
+            "newName": "New Instance Name",
+            "defaultName": "{name} Copy",
+            "generatedIdHint": "The new instance ID will be generated automatically"
+        },
+        "placeholder": {
+            "newName": "Please enter a new instance name"
+        },
+        "messages": {
+            "copySuccess": "Instance copied successfully. New ID: {id}",
+            "copyError": "Failed to copy instance"
+        }
+    },
     "capacityMain": {
         "buttons": {
             "instanceManager": "Instance Manager"
@@ -1055,7 +1118,12 @@
         "group": {
             "mode": "Mode",
             "drawingObject": "Drawing Object",
-            "tools": "Tools"
+            "tools": "Tools",
+            "displayScale": "Display Scale"
+        },
+        "scale": {
+            "x": "X",
+            "y": "Y"
         },
         "mode": {
             "select": "Select",

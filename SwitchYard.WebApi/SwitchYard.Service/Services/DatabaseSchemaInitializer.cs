@@ -19,7 +19,23 @@ namespace SwitchYard.Service.Services
         {
             DBConnector.SetConfiguration(_configuration);
 
-            var scriptName = DBConnector.IsMySql() ? "mysql-schema.sql" : "sqlite-schema.sql";
+            EnsureSchemaCreatedFor(
+                DBConnector.HumpDatabaseSectionName,
+                "sqlite-schema.sql",
+                "mysql-schema.sql");
+
+            if (HasDatabaseConfiguration(DBConnector.CapacityDatabaseSectionName))
+            {
+                EnsureSchemaCreatedFor(
+                    DBConnector.CapacityDatabaseSectionName,
+                    "capacity-sqlite-schema.sql",
+                    "capacity-mysql-schema.sql");
+            }
+        }
+
+        private void EnsureSchemaCreatedFor(string databaseSectionName, string sqliteScriptName, string mysqlScriptName)
+        {
+            var scriptName = DBConnector.IsMySql(databaseSectionName) ? mysqlScriptName : sqliteScriptName;
             var scriptPath = Path.Combine(AppContext.BaseDirectory, "Database", scriptName);
             if (!File.Exists(scriptPath))
             {
@@ -31,16 +47,38 @@ namespace SwitchYard.Service.Services
                 .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .Where(statement => !string.IsNullOrWhiteSpace(statement));
 
-            var dbConnector = DBConnector.GetDBConnector();
+            var dbConnector = DBConnector.GetDBConnector(databaseSectionName);
             foreach (var statement in statements)
             {
                 dbConnector.ExecuteNonQuery(statement);
             }
 
             _logger.LogInformation(
-                "Database schema ensured using {ScriptName} for {DatabaseType}.",
+                "Database schema ensured using {ScriptName} for {DatabaseType} in {DatabaseSectionName}.",
                 scriptName,
-                DBConnector.GetConfiguredDatabaseType());
+                DBConnector.GetConfiguredDatabaseType(databaseSectionName),
+                databaseSectionName);
+        }
+
+        private bool HasDatabaseConfiguration(string databaseSectionName)
+        {
+            var section = _configuration.GetSection(databaseSectionName);
+            if (!section.Exists())
+            {
+                return false;
+            }
+
+            if (DBConnector.IsMySql(databaseSectionName))
+            {
+                return !string.IsNullOrWhiteSpace(_configuration[$"{databaseSectionName}:MysqlConfig:Database"]);
+            }
+
+            if (DBConnector.IsSqlite(databaseSectionName))
+            {
+                return !string.IsNullOrWhiteSpace(_configuration[$"{databaseSectionName}:SqlliteConfig:DatabaseFile"]);
+            }
+
+            return false;
         }
     }
 }

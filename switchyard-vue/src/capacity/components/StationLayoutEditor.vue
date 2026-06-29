@@ -1,9 +1,11 @@
 <script setup>
-import { computed, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 
 const props = defineProps({
     width: { type: Number, default: 1920 },
     height: { type: Number, default: 1080 },
+    displayScaleX: { type: Number, default: 1 },
+    displayScaleY: { type: Number, default: 1 },
 });
 
 const svgRef = ref(null);
@@ -19,8 +21,17 @@ const autoMergeNodeTolerance = ref(10);
 const grid = { visible: true, verticalSpace: 20, horizontalSpace: 20 };
 const cursorParam = ref({ size: 10, barVisible: false, barLength: 100, x: 200, y: 200 });
 const anchorParam = { size: 10 };
+const safeDisplayScaleX = computed(() => normalizeDisplayScale(props.displayScaleX));
+const safeDisplayScaleY = computed(() => normalizeDisplayScale(props.displayScaleY));
+const svgScreenWidth = computed(() => props.width * safeDisplayScaleX.value);
+const svgScreenHeight = computed(() => props.height * safeDisplayScaleY.value);
+const svgStyle = computed(() => ({
+    width: `${svgScreenWidth.value}px`,
+    height: `${svgScreenHeight.value}px`,
+}));
 
 const latestElementID = ref(0);
+const layoutMetadata = ref({});
 
 const tracks = ref([]);
 const nodes = ref([]);
@@ -44,11 +55,95 @@ const tempSignal = ref({ visible: false, direction: "w", x: 0, y: 0 });
 const tempInsulationJoint = ref({ visible: false, x: 0, y: 0 });
 const tempNode = ref({ visible: false, x: 0, y: 0 });
 const tempPlatformPosition = ref(null);
+const selectionBox = ref(null);
+const selectionBoxDragThreshold = 4;
 
 const movingAnchor = ref(null);
 
 const finishedCmdList = ref([]);
 const revokedCmdList = ref([]);
+
+const selectionBoxView = computed(() => {
+    if (!selectionBox.value) {
+        return { visible: false, x: 0, y: 0, width: 0, height: 0 };
+    }
+
+    const rect = normalizeSelectionBox(selectionBox.value);
+    return {
+        visible: isSelectionBoxLarge(selectionBox.value),
+        x: screenX(rect.minX),
+        y: screenY(rect.minY),
+        width: screenDeltaX(rect.maxX - rect.minX),
+        height: screenDeltaY(rect.maxY - rect.minY),
+    };
+});
+
+function normalizeDisplayScale(value) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed <= 0) return 1;
+    return parsed;
+}
+
+function toFiniteNumber(value) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function screenX(value) {
+    return toFiniteNumber(value) * safeDisplayScaleX.value;
+}
+
+function screenY(value) {
+    return toFiniteNumber(value) * safeDisplayScaleY.value;
+}
+
+function screenDeltaX(value) {
+    return toFiniteNumber(value) * safeDisplayScaleX.value;
+}
+
+function screenDeltaY(value) {
+    return toFiniteNumber(value) * safeDisplayScaleY.value;
+}
+
+function screenCenterX(origin, size) {
+    return screenX(toFiniteNumber(origin) + toFiniteNumber(size) / 2);
+}
+
+function screenCenterY(origin, size) {
+    return screenY(toFiniteNumber(origin) + toFiniteNumber(size) / 2);
+}
+
+function dataX(value) {
+    return toFiniteNumber(value) / safeDisplayScaleX.value;
+}
+
+function dataY(value) {
+    return toFiniteNumber(value) / safeDisplayScaleY.value;
+}
+
+function anchorScreenX(anchor) {
+    return screenX(toFiniteNumber(anchor.x) + anchorParam.size / 2) - anchorParam.size / 2;
+}
+
+function anchorScreenY(anchor) {
+    return screenY(toFiniteNumber(anchor.y) + anchorParam.size / 2) - anchorParam.size / 2;
+}
+
+function normalizeSelectionBox(box) {
+    return {
+        minX: Math.min(toFiniteNumber(box.startX), toFiniteNumber(box.endX)),
+        minY: Math.min(toFiniteNumber(box.startY), toFiniteNumber(box.endY)),
+        maxX: Math.max(toFiniteNumber(box.startX), toFiniteNumber(box.endX)),
+        maxY: Math.max(toFiniteNumber(box.startY), toFiniteNumber(box.endY)),
+    };
+}
+
+function isSelectionBoxLarge(box) {
+    return (
+        Math.abs(screenDeltaX(toFiniteNumber(box.endX) - toFiniteNumber(box.startX))) >= selectionBoxDragThreshold ||
+        Math.abs(screenDeltaY(toFiniteNumber(box.endY) - toFiniteNumber(box.startY))) >= selectionBoxDragThreshold
+    );
+}
 
 const anchorRects = computed(() => {
     const list = [];
@@ -197,11 +292,31 @@ function getSnapObjects() {
     return list;
 }
 
-function updateCursorPosition(clientX, clientY) {
+function clientPointToSvgPoint(clientX, clientY) {
     if (!svgRef.value) return;
-    const rect = svgRef.value.getBoundingClientRect();
-    const x = clientX - rect.left;
-    const y = clientY - rect.top;
+    const screenCtm = svgRef.value.getScreenCTM();
+    if (!screenCtm) return;
+
+    const point = svgRef.value.createSVGPoint();
+    point.x = clientX;
+    point.y = clientY;
+    return point.matrixTransform(screenCtm.inverse());
+}
+
+function clientPointToDataPoint(clientX, clientY) {
+    const svgPoint = clientPointToSvgPoint(clientX, clientY);
+    if (!svgPoint) return null;
+    return {
+        x: dataX(svgPoint.x),
+        y: dataY(svgPoint.y),
+    };
+}
+
+function updateCursorPosition(clientX, clientY) {
+    const dataPoint = clientPointToDataPoint(clientX, clientY);
+    if (!dataPoint) return;
+    const x = dataPoint.x;
+    const y = dataPoint.y;
 
     let snapX = x;
     let snapY = y;
@@ -229,6 +344,174 @@ function updateCursorPosition(clientX, clientY) {
     if (editModeCode.value === 1) {
         snapPointToLine(x, y);
     }
+}
+
+function isPointInRect(point, rect) {
+    const x = toFiniteNumber(point.x);
+    const y = toFiniteNumber(point.y);
+    return x >= rect.minX && x <= rect.maxX && y >= rect.minY && y <= rect.maxY;
+}
+
+function crossProduct(a, b, c) {
+    return (toFiniteNumber(b.x) - toFiniteNumber(a.x)) * (toFiniteNumber(c.y) - toFiniteNumber(a.y)) -
+        (toFiniteNumber(b.y) - toFiniteNumber(a.y)) * (toFiniteNumber(c.x) - toFiniteNumber(a.x));
+}
+
+function isPointOnSegment(point, segmentStart, segmentEnd) {
+    const tolerance = 1e-6;
+    if (Math.abs(crossProduct(segmentStart, segmentEnd, point)) > tolerance) return false;
+    return (
+        toFiniteNumber(point.x) >= Math.min(toFiniteNumber(segmentStart.x), toFiniteNumber(segmentEnd.x)) - tolerance &&
+        toFiniteNumber(point.x) <= Math.max(toFiniteNumber(segmentStart.x), toFiniteNumber(segmentEnd.x)) + tolerance &&
+        toFiniteNumber(point.y) >= Math.min(toFiniteNumber(segmentStart.y), toFiniteNumber(segmentEnd.y)) - tolerance &&
+        toFiniteNumber(point.y) <= Math.max(toFiniteNumber(segmentStart.y), toFiniteNumber(segmentEnd.y)) + tolerance
+    );
+}
+
+function doSegmentsIntersect(a, b, c, d) {
+    const abC = crossProduct(a, b, c);
+    const abD = crossProduct(a, b, d);
+    const cdA = crossProduct(c, d, a);
+    const cdB = crossProduct(c, d, b);
+    const tolerance = 1e-6;
+
+    if (Math.abs(abC) <= tolerance && isPointOnSegment(c, a, b)) return true;
+    if (Math.abs(abD) <= tolerance && isPointOnSegment(d, a, b)) return true;
+    if (Math.abs(cdA) <= tolerance && isPointOnSegment(a, c, d)) return true;
+    if (Math.abs(cdB) <= tolerance && isPointOnSegment(b, c, d)) return true;
+
+    return ((abC > 0 && abD < 0) || (abC < 0 && abD > 0)) && ((cdA > 0 && cdB < 0) || (cdA < 0 && cdB > 0));
+}
+
+function doesLineIntersectRect(line, rect) {
+    const start = { x: toFiniteNumber(line.x1), y: toFiniteNumber(line.y1) };
+    const end = { x: toFiniteNumber(line.x2), y: toFiniteNumber(line.y2) };
+    if (isPointInRect(start, rect) || isPointInRect(end, rect)) return true;
+    if (Math.max(start.x, end.x) < rect.minX || Math.min(start.x, end.x) > rect.maxX) return false;
+    if (Math.max(start.y, end.y) < rect.minY || Math.min(start.y, end.y) > rect.maxY) return false;
+
+    const topLeft = { x: rect.minX, y: rect.minY };
+    const topRight = { x: rect.maxX, y: rect.minY };
+    const bottomRight = { x: rect.maxX, y: rect.maxY };
+    const bottomLeft = { x: rect.minX, y: rect.maxY };
+
+    return (
+        doSegmentsIntersect(start, end, topLeft, topRight) ||
+        doSegmentsIntersect(start, end, topRight, bottomRight) ||
+        doSegmentsIntersect(start, end, bottomRight, bottomLeft) ||
+        doSegmentsIntersect(start, end, bottomLeft, topLeft)
+    );
+}
+
+function normalizeElementRect(x, y, width, height) {
+    const left = toFiniteNumber(x);
+    const top = toFiniteNumber(y);
+    const right = left + toFiniteNumber(width);
+    const bottom = top + toFiniteNumber(height);
+    return {
+        minX: Math.min(left, right),
+        minY: Math.min(top, bottom),
+        maxX: Math.max(left, right),
+        maxY: Math.max(top, bottom),
+    };
+}
+
+function doRectsIntersect(a, b) {
+    return a.minX <= b.maxX && a.maxX >= b.minX && a.minY <= b.maxY && a.maxY >= b.minY;
+}
+
+function selectElementsInBox(box) {
+    const rect = normalizeSelectionBox(box);
+    const nextLineIds = box.additive ? new Set(selectedLineIds.value) : new Set();
+    const nextNodeIds = box.additive ? new Set(selectedNodeIds.value) : new Set();
+    const nextSignalIds = box.additive ? new Set(selectedSignalIds.value) : new Set();
+    const nextInsulationJointIds = box.additive ? new Set(selectedInsulationJointIds.value) : new Set();
+    const nextSwitchIds = box.additive ? new Set(selectedSwitchIds.value) : new Set();
+    const nextPlatformIds = box.additive ? new Set(selectedPlatformIds.value) : new Set();
+
+    for (const line of tracks.value) {
+        if (doesLineIntersectRect(line, rect)) nextLineIds.add(line.id);
+    }
+    for (const node of nodes.value) {
+        if (isPointInRect(node, rect)) nextNodeIds.add(node.id);
+    }
+    for (const signal of signals.value) {
+        if (isPointInRect(signal.position || {}, rect)) nextSignalIds.add(signal.id);
+    }
+    for (const insulationJoint of insulationJoints.value) {
+        if (isPointInRect(insulationJoint.position || {}, rect)) nextInsulationJointIds.add(insulationJoint.id);
+    }
+    for (const sw of switches.value) {
+        if (isPointInRect(sw.position || {}, rect)) nextSwitchIds.add(sw.id);
+    }
+    for (const platform of platforms.value) {
+        if (doRectsIntersect(normalizeElementRect(platform.x, platform.y, platform.width, platform.height), rect)) {
+            nextPlatformIds.add(platform.id);
+        }
+    }
+
+    selectedLineIds.value = nextLineIds;
+    selectedNodeIds.value = nextNodeIds;
+    selectedSignalIds.value = nextSignalIds;
+    selectedInsulationJointIds.value = nextInsulationJointIds;
+    selectedSwitchIds.value = nextSwitchIds;
+    selectedPlatformIds.value = nextPlatformIds;
+    movingAnchor.value = null;
+}
+
+function addSelectionBoxWindowListeners() {
+    window.addEventListener("mousemove", onSelectionBoxWindowMouseMove);
+    window.addEventListener("mouseup", onSelectionBoxWindowMouseUp);
+}
+
+function removeSelectionBoxWindowListeners() {
+    window.removeEventListener("mousemove", onSelectionBoxWindowMouseMove);
+    window.removeEventListener("mouseup", onSelectionBoxWindowMouseUp);
+}
+
+function startSelectionBox(event) {
+    const dataPoint = clientPointToDataPoint(event.clientX, event.clientY);
+    if (!dataPoint) return;
+    selectionBox.value = {
+        startX: dataPoint.x,
+        startY: dataPoint.y,
+        endX: dataPoint.x,
+        endY: dataPoint.y,
+        additive: event.shiftKey,
+    };
+    addSelectionBoxWindowListeners();
+}
+
+function updateSelectionBox(clientX, clientY) {
+    if (!selectionBox.value) return;
+    const dataPoint = clientPointToDataPoint(clientX, clientY);
+    if (!dataPoint) return;
+    selectionBox.value.endX = dataPoint.x;
+    selectionBox.value.endY = dataPoint.y;
+}
+
+function finishSelectionBox() {
+    if (!selectionBox.value) return;
+    const box = selectionBox.value;
+    removeSelectionBoxWindowListeners();
+    if (isSelectionBoxLarge(box)) {
+        selectElementsInBox(box);
+    }
+    selectionBox.value = null;
+}
+
+function cancelSelectionBox() {
+    selectionBox.value = null;
+    removeSelectionBoxWindowListeners();
+}
+
+function onSelectionBoxWindowMouseMove(event) {
+    updateSelectionBox(event.clientX, event.clientY);
+}
+
+function onSelectionBoxWindowMouseUp(event) {
+    updateSelectionBox(event.clientX, event.clientY);
+    finishSelectionBox();
 }
 
 function beginDrawLine(x, y) {
@@ -975,7 +1258,7 @@ const tempPlatformView = computed(() => {
 
 function buildJsonData() {
     return JSON.stringify({
-        metadata: { latestElementID: latestElementID.value },
+        metadata: { ...layoutMetadata.value, latestElementID: latestElementID.value },
         tracks: tracks.value,
         nodes: nodes.value,
         signals: signals.value,
@@ -986,6 +1269,7 @@ function buildJsonData() {
 }
 
 function clearElements() {
+    layoutMetadata.value = {};
     tracks.value = [];
     nodes.value = [];
     signals.value = [];
@@ -1000,6 +1284,7 @@ function clearElements() {
 function loadDataFromJson(jsonObj) {
     executeMutation(() => {
         clearElements();
+        layoutMetadata.value = { ...(jsonObj?.metadata || {}) };
         latestElementID.value = Number(jsonObj?.metadata?.latestElementID || 0);
         tracks.value = (jsonObj?.tracks || []).map((track) => ({ ...track }));
         nodes.value = (jsonObj?.nodes || []).map((node) => ({ ...node }));
@@ -1083,6 +1368,11 @@ function onMouseMove(event) {
     const x = cursorParam.value.x;
     const y = cursorParam.value.y;
 
+    if (selectionBox.value) {
+        updateSelectionBox(event.clientX, event.clientY);
+        return;
+    }
+
     if (editModeCode.value === 0) {
         return;
     }
@@ -1100,13 +1390,19 @@ function onMouseMove(event) {
     }
 }
 
-function onMouseDown() {
+function onMouseDown(event) {
+    updateCursorPosition(event.clientX, event.clientY);
     const x = cursorParam.value.x;
     const y = cursorParam.value.y;
 
     if (editModeCode.value === 0) {
         if (movingAnchor.value) {
             moveSelectedAnchor(x, y);
+            return;
+        }
+        if (event.button === 0) {
+            event.preventDefault();
+            startSelectionBox(event);
         }
         return;
     }
@@ -1125,8 +1421,15 @@ function onMouseDown() {
     }
 }
 
+function onMouseUp(event) {
+    if (!selectionBox.value) return;
+    updateSelectionBox(event.clientX, event.clientY);
+    finishSelectionBox();
+}
+
 function onKeydown(event) {
     if (event.key === "Escape") {
+        cancelSelectionBox();
         clearSelectedEquipment();
         clearSelectedLines();
         clearSelectedNodes();
@@ -1180,7 +1483,7 @@ function signalTransform(signal) {
         d: { coefScaleX: 1, coefShiftY: 0 },
     };
     const d = directionView[signal.direction || "e"];
-    return `translate(${signal.position.x},${signal.position.y - 20 * d.coefShiftY})scale(${0.5 * d.coefScaleX},0.5)`;
+    return `translate(${screenX(signal.position.x)},${screenY(signal.position.y) - 20 * d.coefShiftY})scale(${0.5 * d.coefScaleX},0.5)`;
 }
 
 function tempSignalTransform() {
@@ -1188,23 +1491,28 @@ function tempSignalTransform() {
 }
 
 function switchTransform(sw) {
-    return `translate(${sw.position.x},${sw.position.y})`;
+    return `translate(${screenX(sw.position.x)},${screenY(sw.position.y)})`;
 }
 
 function switchBranch(sw, lineVec) {
     const len = 10;
-    if (lineVec.x === 0) {
-        return { x1: 0, y1: 0, x2: 0, y2: lineVec.y > 0 ? len : -len };
+    const displayVec = {
+        x: toFiniteNumber(lineVec.x) * safeDisplayScaleX.value,
+        y: toFiniteNumber(lineVec.y) * safeDisplayScaleY.value,
+    };
+
+    if (displayVec.x === 0) {
+        return { x1: 0, y1: 0, x2: 0, y2: displayVec.y > 0 ? len : -len };
     }
 
-    const k = lineVec.y / lineVec.x;
+    const k = displayVec.y / displayVec.x;
     const solx1 = Math.sqrt((len * len) / (1 + k * k));
     const soly1 = solx1 * k;
     const solx2 = -Math.sqrt((len * len) / (1 + k * k));
     const soly2 = solx2 * k;
 
-    const innerProduct = solx1 * lineVec.x + soly1 * lineVec.y;
-    const absVec = Math.hypot(lineVec.x, lineVec.y);
+    const innerProduct = solx1 * displayVec.x + soly1 * displayVec.y;
+    const absVec = Math.hypot(displayVec.x, displayVec.y);
     const absSol = Math.hypot(solx1, soly1);
     const cos = innerProduct / (absVec * absSol);
 
@@ -1216,6 +1524,10 @@ function switchBranch(sw, lineVec) {
 
 onMounted(() => {
     svgRef.value?.focus({ preventScroll: true });
+});
+
+onBeforeUnmount(() => {
+    removeSelectionBoxWindowListeners();
 });
 
 defineExpose({
@@ -1253,37 +1565,41 @@ defineExpose({
 </script>
 
 <template>
-    <svg id="layout-editor-svg" ref="svgRef" tabindex="0" @mousemove="onMouseMove" @mousedown="onMouseDown"
+    <svg id="layout-editor-svg" ref="svgRef" tabindex="0" :width="svgScreenWidth" :height="svgScreenHeight"
+        :style="svgStyle" @mousemove="onMouseMove" @mousedown="onMouseDown" @mouseup="onMouseUp"
         @keydown="onKeydown">
         <g id="grid">
-            <circle v-for="(dot, idx) in gridDots" :key="`g-${idx}`" class="griddot" :cx="dot.x" :cy="dot.y" r="0.5" />
+            <circle v-for="(dot, idx) in gridDots" :key="`g-${idx}`" class="griddot" :cx="screenX(dot.x)"
+                :cy="screenY(dot.y)" r="0.5" />
         </g>
 
         <g id="linegroup">
             <line v-for="line in tracks" :id="line.id" :key="`line-${line.id}`" class="track"
-                :class="{ 'track-selected': isLineSelected(line.id) }" :x1="line.x1" :y1="line.y1" :x2="line.x2"
-                :y2="line.y2" @click.stop="handleLineClick(line.id)" />
+                :class="{ 'track-selected': isLineSelected(line.id) }" :x1="screenX(line.x1)"
+                :y1="screenY(line.y1)" :x2="screenX(line.x2)" :y2="screenY(line.y2)"
+                @mousedown.stop @click.stop="handleLineClick(line.id)" />
 
-            <line v-if="tempLine" class="track track-temp" :x1="tempLine.x1" :y1="tempLine.y1" :x2="tempLine.x2"
-                :y2="tempLine.y2" />
+            <line v-if="tempLine" class="track track-temp" :x1="screenX(tempLine.x1)" :y1="screenY(tempLine.y1)"
+                :x2="screenX(tempLine.x2)" :y2="screenY(tempLine.y2)" />
 
-            <rect v-for="anchor in anchorRects" :id="anchor.id" :key="anchor.id" class="anchor snapobj" :x="anchor.x"
-                :y="anchor.y" :width="anchorParam.size" :height="anchorParam.size"
+            <rect v-for="anchor in anchorRects" :id="anchor.id" :key="anchor.id" class="anchor snapobj"
+                :x="anchorScreenX(anchor)" :y="anchorScreenY(anchor)" :width="anchorParam.size" :height="anchorParam.size"
                 @mousedown="handleAnchorDown($event, anchor)" />
 
             <circle v-for="(cp, idx) in crossPoints" :key="`cp-${idx}`" class="crosspoint" :class="`rela${cp.code}`"
-                :cx="cp.x" :cy="cp.y" r="4" />
+                :cx="screenX(cp.x)" :cy="screenY(cp.y)" r="4" />
 
-            <circle v-if="perpendicularPoint" class="perpendicular" :cx="perpendicularPoint.x"
-                :cy="perpendicularPoint.y" r="4" />
+            <circle v-if="perpendicularPoint" class="perpendicular" :cx="screenX(perpendicularPoint.x)"
+                :cy="screenY(perpendicularPoint.y)" r="4" />
         </g>
 
         <g id="nodegroup">
             <circle v-for="node in nodes" :id="node.id" :key="`node-${node.id}`" class="node snapobj"
-                :class="{ 'node-selected': isNodeSelected(node.id) }" :cx="node.x" :cy="node.y" r="5"
+                :class="{ 'node-selected': isNodeSelected(node.id) }" :cx="screenX(node.x)" :cy="screenY(node.y)" r="5"
                 @mousedown="handleNodeClick($event, node.id)" />
 
-            <circle v-if="tempNode.visible" class="node node-temp" :cx="tempNode.x" :cy="tempNode.y" r="5" />
+            <circle v-if="tempNode.visible" class="node node-temp" :cx="screenX(tempNode.x)" :cy="screenY(tempNode.y)"
+                r="5" />
         </g>
 
         <g id="signalgroup">
@@ -1314,14 +1630,14 @@ defineExpose({
             <g v-for="ij in insulationJoints" :id="String(ij.id)" :key="`ij-${ij.id}`"
                 class="insulationjoint insulationjoint-normal"
                 :class="{ 'insulationjoint-selected': isInsulationJointSelected(ij.id) }"
-                :transform="`translate(${ij.position.x},${ij.position.y})`"
+                :transform="`translate(${screenX(ij.position.x)},${screenY(ij.position.y)})`"
                 @mousedown="handleInsulationJointClick($event, ij.id)">
                 <line x1="0" y1="-5" x2="0" y2="5" />
             </g>
 
             <g v-if="tempInsulationJoint.visible" id="tempinsulationjoint" class="insulationjoint insulationjoint-temp">
-                <line :x1="tempInsulationJoint.x" :x2="tempInsulationJoint.x" :y1="tempInsulationJoint.y - 5"
-                    :y2="tempInsulationJoint.y + 5" />
+                <line :x1="screenX(tempInsulationJoint.x)" :x2="screenX(tempInsulationJoint.x)"
+                    :y1="screenY(tempInsulationJoint.y) - 5" :y2="screenY(tempInsulationJoint.y) + 5" />
             </g>
         </g>
 
@@ -1340,23 +1656,30 @@ defineExpose({
             <g v-for="platform in platforms" :id="String(platform.id)" :key="`platform-${platform.id}`" class="platform"
                 :class="{ 'platform-selected': isPlatformSelected(platform.id) }"
                 @mousedown="handlePlatformClick($event, platform.id)">
-                <rect :x="platform.x" :y="platform.y" :width="platform.width" :height="platform.height" />
-                <text class="platformname" :x="platform.x + platform.width / 2" :y="platform.y + platform.height / 2">
+                <rect :x="screenX(platform.x)" :y="screenY(platform.y)" :width="screenDeltaX(platform.width)"
+                    :height="screenDeltaY(platform.height)" />
+                <text class="platformname" :x="screenCenterX(platform.x, platform.width)"
+                    :y="screenCenterY(platform.y, platform.height)">
                     PLATFORM
                 </text>
             </g>
 
-            <rect class="platform platform-temp" :x="tempPlatformView.x" :y="tempPlatformView.y"
-                :width="tempPlatformView.width" :height="tempPlatformView.height" />
+            <rect class="platform platform-temp" :x="screenX(tempPlatformView.x)" :y="screenY(tempPlatformView.y)"
+                :width="screenDeltaX(tempPlatformView.width)" :height="screenDeltaY(tempPlatformView.height)" />
         </g>
 
         <g id="cursor">
-            <rect class="cursor" :x="cursorParam.x - cursorParam.size / 2" :y="cursorParam.y - cursorParam.size / 2"
-                :width="cursorParam.size" :height="cursorParam.size" />
-            <line id="cursorlineh" class="cursor" :x1="cursorParam.x - cursorParam.barLength / 2"
-                :x2="cursorParam.x + cursorParam.barLength / 2" :y1="cursorParam.y" :y2="cursorParam.y" />
-            <line id="cursorlinev" class="cursor" :x1="cursorParam.x" :x2="cursorParam.x"
-                :y1="cursorParam.y - cursorParam.barLength / 2" :y2="cursorParam.y + cursorParam.barLength / 2" />
+            <rect v-if="selectionBoxView.visible" class="selection-box" :x="selectionBoxView.x"
+                :y="selectionBoxView.y" :width="selectionBoxView.width" :height="selectionBoxView.height" />
+            <rect class="cursor" :x="screenX(cursorParam.x) - cursorParam.size / 2"
+                :y="screenY(cursorParam.y) - cursorParam.size / 2" :width="cursorParam.size"
+                :height="cursorParam.size" />
+            <line id="cursorlineh" class="cursor" :x1="screenX(cursorParam.x) - cursorParam.barLength / 2"
+                :x2="screenX(cursorParam.x) + cursorParam.barLength / 2" :y1="screenY(cursorParam.y)"
+                :y2="screenY(cursorParam.y)" />
+            <line id="cursorlinev" class="cursor" :x1="screenX(cursorParam.x)" :x2="screenX(cursorParam.x)"
+                :y1="screenY(cursorParam.y) - cursorParam.barLength / 2"
+                :y2="screenY(cursorParam.y) + cursorParam.barLength / 2" />
         </g>
     </svg>
 </template>

@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from 'vue-i18n';
 import axios from "@/utils/axios";
 import { ElMessage } from "element-plus";
@@ -16,12 +16,26 @@ import {
 } from '@element-plus/icons-vue';
 
 const { t } = useI18n();
+const props = defineProps({
+    selectedInstanceId: {
+        type: String,
+        default: "",
+    },
+});
 const stationLayoutEditorRef = ref(null);
 const extractDwgDialogVisible = ref(false);
 const dwgFileInputRef = ref(null);
+const importJsonFileInputRef = ref(null);
 const selectedDwgFile = ref(null);
 const dwgLayerName = ref("0");
 const extractingDwg = ref(false);
+const loadingData = ref(false);
+const savingData = ref(false);
+const currentStationSchemeId = ref("");
+const layoutScaleX = ref(1);
+const layoutScaleY = ref(1);
+const layoutScaleXDisplay = computed(() => layoutScaleX.value.toFixed(2));
+const layoutScaleYDisplay = computed(() => layoutScaleY.value.toFixed(2));
 
 function setSelectMode() {
     stationLayoutEditorRef.value?.setEditMode(0);
@@ -54,14 +68,32 @@ function mouseGridSnapChange(e) {
     }
 }
 function saveData() {
+    if (!props.selectedInstanceId) {
+        ElMessage.warning(t('capacityMain.placeholders.selectInstance'));
+        return;
+    }
+
     var dataStr = stationLayoutEditorRef.value?.buildJsonData();
+    const params = {
+        instanceID: props.selectedInstanceId,
+    };
+    if (currentStationSchemeId.value) {
+        params.stationSchemeID = currentStationSchemeId.value;
+    }
+
+    savingData.value = true;
     axios
         .post("/StationLayout/SaveJson", {
             json: dataStr,
+            instanceID: props.selectedInstanceId,
+            stationSchemeID: currentStationSchemeId.value,
+        }, {
+            params,
         })
         .then((res) => {
             console.log(res);
-            alert(t('stationLayout.messages.saveSuccess') + res.data);
+            currentStationSchemeId.value = res.data?.stationSchemeID || currentStationSchemeId.value;
+            alert(t('stationLayout.messages.saveSuccess') + (res.data?.message || res.data));
         })
         .catch((err) => {
             // alert(err);
@@ -70,12 +102,27 @@ function saveData() {
                 serverMsg = err.response.data;
             }
             alert(t('stationLayout.messages.saveFailed') + err + "\r\n" + serverMsg);
+        })
+        .finally(() => {
+            savingData.value = false;
         });
 }
 function getData() {
+    if (!props.selectedInstanceId) {
+        currentStationSchemeId.value = "";
+        stationLayoutEditorRef.value?.clearElements();
+        return;
+    }
+
+    loadingData.value = true;
     axios
-        .post("/StationLayout/GetJson")
+        .post("/StationLayout/GetJson", null, {
+            params: {
+                instanceID: props.selectedInstanceId,
+            },
+        })
         .then((res) => {
+            currentStationSchemeId.value = res.data?.metadata?.stationSchemeID || "";
             stationLayoutEditorRef.value?.loadDataFromJson(res.data);
         })
         .catch((err) => {
@@ -84,7 +131,94 @@ function getData() {
                 serverMsg = err.response.data;
             }
             alert(t('stationLayout.messages.loadFailed') + err + "\r\n" + serverMsg);
+        })
+        .finally(() => {
+            loadingData.value = false;
         });
+}
+function exportJsonFile() {
+    const dataStr = stationLayoutEditorRef.value?.buildJsonData();
+    if (!dataStr) {
+        ElMessage.warning("当前没有可导出的车站布置图数据");
+        return;
+    }
+
+    try {
+        const jsonObj = JSON.parse(dataStr);
+        const prettyJson = JSON.stringify(jsonObj, null, 2);
+        const blob = new Blob([prettyJson], { type: "application/json;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = buildExportJsonFileName(jsonObj);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        ElMessage.success("JSON 文件已导出");
+    } catch (err) {
+        console.error("Failed to export station layout JSON:", err);
+        ElMessage.error("导出 JSON 文件失败");
+    }
+}
+
+function buildExportJsonFileName(jsonObj) {
+    const instanceID = jsonObj?.metadata?.instanceID || props.selectedInstanceId || "station-layout";
+    const stationSchemeID = jsonObj?.metadata?.stationSchemeID || currentStationSchemeId.value || "scheme";
+    const timestamp = new Date()
+        .toISOString()
+        .replace(/[-:]/g, "")
+        .replace(/\.\d{3}Z$/, "");
+    const safeName = `${instanceID}-${stationSchemeID}-${timestamp}`
+        .replace(/[\\/:*?"<>|]/g, "_");
+    return `${safeName}.json`;
+}
+
+function openImportJsonFile() {
+    if (importJsonFileInputRef.value) {
+        importJsonFileInputRef.value.value = "";
+        importJsonFileInputRef.value.click();
+    }
+}
+
+async function handleImportJsonFileChange(event) {
+    const file = event.target.files?.[0];
+    if (!file) {
+        return;
+    }
+
+    if (!file.name.toLowerCase().endsWith(".json")) {
+        event.target.value = "";
+        ElMessage.error("请选择 JSON 格式文件");
+        return;
+    }
+
+    try {
+        const text = await file.text();
+        const jsonObj = JSON.parse(text);
+        validateStationLayoutJson(jsonObj);
+        currentStationSchemeId.value = jsonObj?.metadata?.stationSchemeID || currentStationSchemeId.value;
+        stationLayoutEditorRef.value?.loadDataFromJson(jsonObj);
+        ElMessage.success("JSON 文件已导入");
+    } catch (err) {
+        console.error("Failed to import station layout JSON:", err);
+        ElMessage.error("导入 JSON 文件失败，请检查文件格式");
+    } finally {
+        event.target.value = "";
+    }
+}
+
+function validateStationLayoutJson(jsonObj) {
+    if (!jsonObj || typeof jsonObj !== "object" || Array.isArray(jsonObj)) {
+        throw new Error("Invalid station layout JSON root.");
+    }
+
+    const arrayFields = ["tracks", "nodes", "signals", "insulationJoints", "platforms", "switches"];
+    for (const field of arrayFields) {
+        if (jsonObj[field] !== undefined && !Array.isArray(jsonObj[field])) {
+            throw new Error(`Invalid station layout JSON field: ${field}`);
+        }
+    }
 }
 function autoSeparateLine() {
     stationLayoutEditorRef.value?.autoSeparateLine();
@@ -159,8 +293,17 @@ function extractDwgFile() {
         })
         .then((res) => {
             extractDwgDialogVisible.value = false;
+            const layout = res.data?.layout;
+            if (!layout) {
+                ElMessage.error("DWG 提取失败：服务器未返回图形数据");
+                return;
+            }
+
+            validateStationLayoutJson(layout);
+            stationLayoutEditorRef.value?.clearElements();
+            currentStationSchemeId.value = layout?.metadata?.stationSchemeID || currentStationSchemeId.value;
+            stationLayoutEditorRef.value?.loadDataFromJson(layout);
             ElMessage.success(`DWG 提取完成，共生成 ${res.data?.segmentCount || 0} 条线段`);
-            getData();
         })
         .catch((err) => {
             var serverMsg = "";
@@ -173,10 +316,21 @@ function extractDwgFile() {
             extractingDwg.value = false;
         });
 }
+
+onMounted(() => {
+    getData();
+});
+
+watch(
+    () => props.selectedInstanceId,
+    () => {
+        getData();
+    }
+);
 </script>
 
 <template>
-    <div style="max-width: 100%; overflow: hidden;">
+    <div v-loading="loadingData || savingData" style="max-width: 100%; overflow: hidden;">
         <el-menu mode="horizontal" class="station-toolbar" :ellipsis="false">
             <!-- 文件操作 -->
             <el-sub-menu index="file">
@@ -194,6 +348,16 @@ function extractDwgFile() {
                     <el-icon>
                         <Upload />
                     </el-icon>{{ t('stationLayout.menu.saveData') }}
+                </el-menu-item>
+                <el-menu-item index="file-import-json" @click="openImportJsonFile">
+                    <el-icon>
+                        <Upload />
+                    </el-icon> 导入JSON文件
+                </el-menu-item>
+                <el-menu-item index="file-export-json" @click="exportJsonFile">
+                    <el-icon>
+                        <Download />
+                    </el-icon> 导出JSON文件
                 </el-menu-item>
                 <el-menu-item index="extract-dwg-file" @click="openExtractDwgDialog">
                     <el-icon>
@@ -235,6 +399,8 @@ function extractDwgFile() {
                 </el-icon>{{ t('stationLayout.menu.deleteSelection') }}
             </el-menu-item>
         </el-menu>
+        <input ref="importJsonFileInputRef" type="file" accept=".json,application/json" class="hidden-file-input"
+            @change="handleImportJsonFileChange" />
 
         <!-- 第二行：模式 / 绘图对象 / 工具 -->
         <div class="toolbar-row">
@@ -285,8 +451,25 @@ function extractDwgFile() {
                         }}</el-button>
                 </el-button-group>
             </div>
+            <el-divider direction="vertical" />
+            <div class="toolbar-group scale-toolbar-group">
+                <span class="toolbar-group-label">{{ t('stationLayout.group.displayScale') }}</span>
+                <div class="scale-slider">
+                    <span class="scale-slider-label">{{ t('stationLayout.scale.x') }}</span>
+                    <el-slider v-model="layoutScaleX" :min="0.25" :max="4" :step="0.05" size="small" />
+                    <span class="scale-slider-value">{{ layoutScaleXDisplay }}</span>
+                </div>
+                <div class="scale-slider">
+                    <span class="scale-slider-label">{{ t('stationLayout.scale.y') }}</span>
+                    <el-slider v-model="layoutScaleY" :min="0.25" :max="4" :step="0.05" size="small" />
+                    <span class="scale-slider-value">{{ layoutScaleYDisplay }}</span>
+                </div>
+            </div>
         </div>
-        <StationLayoutEditor ref="stationLayoutEditorRef" />
+        <div class="station-layout-editor-frame">
+            <StationLayoutEditor ref="stationLayoutEditorRef" :display-scale-x="layoutScaleX"
+                :display-scale-y="layoutScaleY" />
+        </div>
         <el-dialog v-model="extractDwgDialogVisible" title="从DWG文件提取" width="420px" :close-on-click-modal="false">
             <div class="dwg-extract-form">
                 <label class="dwg-extract-label">DWG 文件</label>
@@ -359,6 +542,43 @@ function extractDwgFile() {
     font-weight: 500;
 }
 
+.scale-toolbar-group {
+    flex-wrap: wrap;
+}
+
+.scale-slider {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 190px;
+}
+
+.scale-slider-label {
+    width: 12px;
+    font-size: 12px;
+    color: #606266;
+}
+
+.scale-slider-value {
+    width: 34px;
+    text-align: right;
+    font-size: 12px;
+    color: #606266;
+    font-variant-numeric: tabular-nums;
+}
+
+.scale-slider :deep(.el-slider) {
+    flex: 1;
+    min-width: 100px;
+}
+
+.station-layout-editor-frame {
+    max-width: 100%;
+    max-height: calc(100vh - 160px);
+    overflow: auto;
+    background-color: #31363f;
+}
+
 .dwg-extract-form {
     display: grid;
     gap: 10px;
@@ -368,5 +588,9 @@ function extractDwgFile() {
     font-size: 13px;
     color: #606266;
     font-weight: 500;
+}
+
+.hidden-file-input {
+    display: none;
 }
 </style>

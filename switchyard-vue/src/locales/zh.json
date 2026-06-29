@@ -1001,6 +1001,69 @@
         },
         "empty": "暂无实例，先新增一个吧。"
     },
+    "capacityInstance": {
+        "buttons": {
+            "create": "新建实例",
+            "copy": "复制",
+            "edit": "编辑",
+            "delete": "删除",
+            "refresh": "刷新",
+            "save": "保存",
+            "cancel": "取消",
+            "confirm": "确定"
+        },
+        "columns": {
+            "name": "实例名称",
+            "owner": "所有者",
+            "createdDate": "创建时间",
+            "isActive": "状态",
+            "actions": "操作"
+        },
+        "status": {
+            "active": "生效",
+            "inactive": "未生效"
+        },
+        "dialogs": {
+            "createTitle": "新建能力计算实例",
+            "editTitle": "编辑能力计算实例",
+            "deleteTitle": "删除确认"
+        },
+        "placeholder": {
+            "name": "请输入实例名称"
+        },
+        "validation": {
+            "nameRequired": "请输入实例名称",
+            "nameLength": "实例名称长度应在2-100个字符之间"
+        },
+        "messages": {
+            "loadError": "加载能力计算实例列表失败",
+            "createSuccess": "创建实例成功",
+            "createError": "创建实例失败",
+            "editSuccess": "编辑实例成功",
+            "editError": "编辑实例失败",
+            "deleteSuccess": "删除实例成功",
+            "deleteError": "删除实例失败",
+            "deleteConfirm": "确定要删除实例 {name} 吗？此操作不可恢复。"
+        }
+    },
+    "capacityInstanceManagement": {
+        "dialogs": {
+            "copyTitle": "复制能力计算实例"
+        },
+        "copy": {
+            "source": "原实例",
+            "newName": "新实例名称",
+            "defaultName": "{name}副本",
+            "generatedIdHint": "新实例编号将由系统自动生成"
+        },
+        "placeholder": {
+            "newName": "请输入新实例名称"
+        },
+        "messages": {
+            "copySuccess": "实例复制成功，新实例编号：{id}",
+            "copyError": "实例复制失败"
+        }
+    },
     "capacityMain": {
         "buttons": {
             "instanceManager": "实例管理"
@@ -1043,7 +1106,12 @@
         "group": {
             "mode": "模式",
             "drawingObject": "绘图对象",
-            "tools": "工具"
+            "tools": "工具",
+            "displayScale": "显示比例"
+        },
+        "scale": {
+            "x": "X",
+            "y": "Y"
         },
         "mode": {
             "select": "选择",
