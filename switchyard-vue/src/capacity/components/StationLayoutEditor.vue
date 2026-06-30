@@ -7,7 +7,7 @@ const props = defineProps({
     displayScaleX: { type: Number, default: 1 },
     displayScaleY: { type: Number, default: 1 },
 });
-const emit = defineEmits(["selected-annotation-change"]);
+const emit = defineEmits(["selected-annotation-change", "selected-equipment-change"]);
 
 const svgRef = ref(null);
 
@@ -18,6 +18,9 @@ const mouseObjectSnapModeCode = ref(1);
 const snapDistance = ref(10);
 const autoSeparateLineTolerance = ref(10);
 const autoMergeNodeTolerance = ref(10);
+const defaultCurveRadius = 100;
+const curveCornerMinAngle = 90;
+const curveCornerMaxAngle = 160;
 
 const grid = { visible: true, verticalSpace: 20, horizontalSpace: 20 };
 const cursorParam = ref({ size: 10, barVisible: false, barLength: 100, x: 200, y: 200 });
@@ -35,6 +38,7 @@ const latestElementID = ref(0);
 const layoutMetadata = ref({});
 
 const tracks = ref([]);
+const curves = ref([]);
 const nodes = ref([]);
 const signals = ref([]);
 const insulationJoints = ref([]);
@@ -134,14 +138,18 @@ function anchorScreenY(anchor) {
     return screenY(toFiniteNumber(anchor.y) + anchorParam.size / 2) - anchorParam.size / 2;
 }
 
+function normalizePosition(position) {
+    return {
+        x: toFiniteNumber(position?.x),
+        y: toFiniteNumber(position?.y),
+    };
+}
+
 function normalizeAnnotation(annotation) {
     return {
         id: annotation?.id ?? nextId(),
         text: annotation?.text ?? "Annotation",
-        position: {
-            x: toFiniteNumber(annotation?.position?.x),
-            y: toFiniteNumber(annotation?.position?.y),
-        },
+        position: normalizePosition(annotation?.position),
         fontFamily: annotation?.fontFamily || "Arial",
         fontSize: toFiniteNumber(annotation?.fontSize) || 16,
         fontWeight: annotation?.fontWeight || "normal",
@@ -159,6 +167,23 @@ function buildDefaultAnnotation(x, y) {
     });
 }
 
+function normalizeCurve(curve) {
+    return {
+        id: curve?.id ?? nextId(),
+        nodeID: curve?.nodeID ?? curve?.vertexNodeID ?? "",
+        tangentLinkID1: curve?.tangentLinkID1 ?? curve?.linkID1 ?? "",
+        tangentLinkID2: curve?.tangentLinkID2 ?? curve?.linkID2 ?? "",
+        radius: toFiniteNumber(curve?.radius) || defaultCurveRadius,
+        angle: toFiniteNumber(curve?.angle),
+        tangentDistance: toFiniteNumber(curve?.tangentDistance),
+        start: normalizePosition(curve?.start ?? { x: curve?.startX, y: curve?.startY }),
+        end: normalizePosition(curve?.end ?? { x: curve?.endX, y: curve?.endY }),
+        center: normalizePosition(curve?.center ?? { x: curve?.centerX, y: curve?.centerY }),
+        largeArcFlag: Number(curve?.largeArcFlag) === 1 ? 1 : 0,
+        sweepFlag: Number(curve?.sweepFlag) === 1 ? 1 : 0,
+    };
+}
+
 function getSelectedAnnotation() {
     if (selectedAnnotationIds.value.size !== 1) return null;
     const [selectedId] = [...selectedAnnotationIds.value];
@@ -172,6 +197,60 @@ function getAnnotationSnapshot(annotation) {
 
 function emitSelectedAnnotationChange() {
     emit("selected-annotation-change", getAnnotationSnapshot(getSelectedAnnotation()));
+}
+
+function getEquipmentCollection(kind) {
+    if (kind === "link") return tracks.value;
+    if (kind === "signal") return signals.value;
+    if (kind === "insulationJoint") return insulationJoints.value;
+    if (kind === "switch") return switches.value;
+    if (kind === "platform") return platforms.value;
+    return [];
+}
+
+function getEquipmentSelectedSet(kind) {
+    if (kind === "link") return selectedLineIds.value;
+    if (kind === "signal") return selectedSignalIds.value;
+    if (kind === "insulationJoint") return selectedInsulationJointIds.value;
+    if (kind === "switch") return selectedSwitchIds.value;
+    if (kind === "platform") return selectedPlatformIds.value;
+    return new Set();
+}
+
+function cloneEquipment(kind, equipment) {
+    if (!equipment) return null;
+    return {
+        kind,
+        id: equipment.id,
+        data: JSON.parse(JSON.stringify(equipment)),
+    };
+}
+
+function getSelectedEquipment() {
+    const selected = [];
+    for (const kind of ["link", "signal", "insulationJoint", "switch", "platform"]) {
+        const selectedIds = [...getEquipmentSelectedSet(kind)];
+        if (selectedIds.length !== 1) {
+            if (selectedIds.length > 1) return null;
+            continue;
+        }
+
+        const equipment = getEquipmentCollection(kind).find((item) => item.id === selectedIds[0]);
+        if (equipment) selected.push(cloneEquipment(kind, equipment));
+    }
+
+    return selected.length === 1 ? selected[0] : null;
+}
+
+function emitSelectedEquipmentChange() {
+    emit("selected-equipment-change", getSelectedEquipment());
+}
+
+function clearSelectedDeviceIds() {
+    selectedSignalIds.value = new Set();
+    selectedInsulationJointIds.value = new Set();
+    selectedSwitchIds.value = new Set();
+    selectedPlatformIds.value = new Set();
 }
 
 function setSelectedAnnotationIds(ids) {
@@ -256,11 +335,152 @@ const gridDots = computed(() => {
     return dots;
 });
 
+function getLinePointAtRate(line, rate) {
+    const x1 = toFiniteNumber(line.x1);
+    const y1 = toFiniteNumber(line.y1);
+    const x2 = toFiniteNumber(line.x2);
+    const y2 = toFiniteNumber(line.y2);
+    return {
+        x: x1 + (x2 - x1) * rate,
+        y: y1 + (y2 - y1) * rate,
+    };
+}
+
+function getPointRateOnLine(line, point) {
+    const x1 = toFiniteNumber(line.x1);
+    const y1 = toFiniteNumber(line.y1);
+    const dx = toFiniteNumber(line.x2) - x1;
+    const dy = toFiniteNumber(line.y2) - y1;
+    const lengthSquared = dx * dx + dy * dy;
+    if (lengthSquared <= 0) return null;
+
+    const rawRate = ((toFiniteNumber(point?.x) - x1) * dx + (toFiniteNumber(point?.y) - y1) * dy) / lengthSquared;
+    if (!Number.isFinite(rawRate)) return null;
+    return Math.max(0, Math.min(1, rawRate));
+}
+
+function mergeHiddenRateRanges(ranges) {
+    const normalizedRanges = ranges
+        .map((range) => ({
+            start: Math.max(0, Math.min(1, Math.min(range.start, range.end))),
+            end: Math.max(0, Math.min(1, Math.max(range.start, range.end))),
+        }))
+        .filter((range) => range.end - range.start > 0.000001)
+        .sort((a, b) => a.start - b.start);
+
+    const merged = [];
+    for (const range of normalizedRanges) {
+        const previous = merged[merged.length - 1];
+        if (previous && range.start <= previous.end + 0.000001) {
+            previous.end = Math.max(previous.end, range.end);
+        } else {
+            merged.push({ ...range });
+        }
+    }
+
+    return merged;
+}
+
+function buildVisibleRateRanges(hiddenRanges) {
+    const mergedHiddenRanges = mergeHiddenRateRanges(hiddenRanges);
+    const visibleRanges = [];
+    let cursor = 0;
+
+    for (const hiddenRange of mergedHiddenRanges) {
+        if (hiddenRange.start > cursor + 0.000001) {
+            visibleRanges.push({ start: cursor, end: hiddenRange.start });
+        }
+        cursor = Math.max(cursor, hiddenRange.end);
+    }
+
+    if (cursor < 1 - 0.000001) {
+        visibleRanges.push({ start: cursor, end: 1 });
+    }
+
+    return visibleRanges;
+}
+
+function addCurveHiddenRange(hiddenRangesByLineID, lineByID, nodeByID, curve, tangentLinkIDKey, tangentPointKey) {
+    const lineID = curve?.[tangentLinkIDKey];
+    const line = lineByID.get(lineID);
+    const node = nodeByID.get(curve?.nodeID);
+    if (!line || !node) return;
+
+    const nodeRate = getPointRateOnLine(line, node);
+    const tangentRate = getPointRateOnLine(line, curve?.[tangentPointKey]);
+    if (nodeRate == null || tangentRate == null) return;
+
+    if (!hiddenRangesByLineID.has(line.id)) {
+        hiddenRangesByLineID.set(line.id, []);
+    }
+    hiddenRangesByLineID.get(line.id).push({ start: nodeRate, end: tangentRate });
+}
+
+const renderedTrackSegments = computed(() => {
+    const lineByID = new Map(tracks.value.map((line) => [line.id, line]));
+    const nodeByID = new Map(nodes.value.map((node) => [node.id, node]));
+    const hiddenRangesByLineID = new Map();
+
+    for (const curve of curves.value) {
+        addCurveHiddenRange(hiddenRangesByLineID, lineByID, nodeByID, curve, "tangentLinkID1", "start");
+        addCurveHiddenRange(hiddenRangesByLineID, lineByID, nodeByID, curve, "tangentLinkID2", "end");
+    }
+
+    const segments = [];
+    for (const line of tracks.value) {
+        const visibleRanges = buildVisibleRateRanges(hiddenRangesByLineID.get(line.id) || []);
+        visibleRanges.forEach((range, index) => {
+            const start = getLinePointAtRate(line, range.start);
+            const end = getLinePointAtRate(line, range.end);
+            segments.push({
+                id: `${line.id}-visible-${index}`,
+                line,
+                x1: start.x,
+                y1: start.y,
+                x2: end.x,
+                y2: end.y,
+                rateStart: range.start,
+                rateEnd: range.end,
+            });
+        });
+    }
+
+    return segments;
+});
+
+const lineNameViews = computed(() => {
+    return tracks.value
+        .filter((line) => getLineName(line))
+        .map((line) => {
+            const visibleSegments = renderedTrackSegments.value.filter((segment) => segment.line.id === line.id);
+            const labelSegment = visibleSegments
+                .map((segment) => ({
+                    segment,
+                    length: Math.hypot(
+                        toFiniteNumber(segment.x2) - toFiniteNumber(segment.x1),
+                        toFiniteNumber(segment.y2) - toFiniteNumber(segment.y1)
+                    ),
+                }))
+                .sort((a, b) => b.length - a.length)[0]?.segment;
+
+            if (!labelSegment) return null;
+
+            return {
+                id: line.id,
+                line,
+                x: (toFiniteNumber(labelSegment.x1) + toFiniteNumber(labelSegment.x2)) / 2,
+                y: (toFiniteNumber(labelSegment.y1) + toFiniteNumber(labelSegment.y2)) / 2,
+            };
+        })
+        .filter((lineNameView) => lineNameView != null);
+});
+
 function cloneState() {
     return JSON.parse(
         JSON.stringify({
             latestElementID: latestElementID.value,
             tracks: tracks.value,
+            curves: curves.value,
             nodes: nodes.value,
             signals: signals.value,
             insulationJoints: insulationJoints.value,
@@ -281,6 +501,7 @@ function cloneState() {
 function applyState(state) {
     latestElementID.value = state.latestElementID;
     tracks.value = state.tracks || [];
+    curves.value = (state.curves || []).map((curve) => normalizeCurve(curve));
     nodes.value = state.nodes || [];
     signals.value = (state.signals || []).map((signal) => normalizeNamedEquipment(signal));
     insulationJoints.value = state.insulationJoints || [];
@@ -295,6 +516,7 @@ function applyState(state) {
     selectedPlatformIds.value = new Set(state.selectedPlatformIds || []);
     selectedAnnotationIds.value = new Set(state.selectedAnnotationIds || []);
     emitSelectedAnnotationChange();
+    emitSelectedEquipmentChange();
 }
 
 function executeMutation(mutator) {
@@ -344,6 +566,7 @@ function getEquipmentDisplayName(equipment, placeholder) {
 function clearSelectedLines() {
     selectedLineIds.value = new Set();
     movingAnchor.value = null;
+    emitSelectedEquipmentChange();
 }
 
 function clearSelectedNodes() {
@@ -351,13 +574,11 @@ function clearSelectedNodes() {
 }
 
 function clearSelectedEquipment() {
-    selectedSignalIds.value = new Set();
-    selectedInsulationJointIds.value = new Set();
-    selectedSwitchIds.value = new Set();
-    selectedPlatformIds.value = new Set();
+    clearSelectedDeviceIds();
     selectedAnnotationIds.value = new Set();
     finishAnnotationInteraction();
     emitSelectedAnnotationChange();
+    emitSelectedEquipmentChange();
 }
 
 function setEditMode(code) {
@@ -571,6 +792,7 @@ function selectElementsInBox(box) {
     selectedAnnotationIds.value = nextAnnotationIds;
     movingAnchor.value = null;
     emitSelectedAnnotationChange();
+    emitSelectedEquipmentChange();
 }
 
 function addSelectionBoxWindowListeners() {
@@ -642,6 +864,7 @@ function endDrawLine() {
     if (!tempLine.value) return;
     const line = {
         id: nextId(),
+        name: "",
         x1: tempLine.value.x1,
         y1: tempLine.value.y1,
         x2: tempLine.value.x2,
@@ -651,27 +874,38 @@ function endDrawLine() {
     };
     executeMutation(() => {
         tracks.value.push(line);
+        curves.value = [];
     });
     tempLine.value = null;
 }
 
 function selectLine(lineId) {
-    selectedLineIds.value = new Set([...selectedLineIds.value, lineId]);
+    clearSelectedDeviceIds();
+    selectedNodeIds.value = new Set();
+    selectedLineIds.value = new Set([lineId]);
+    emitSelectedEquipmentChange();
 }
 
 function deleteLine() {
     if (selectedLineIds.value.size === 0) return;
     executeMutation(() => {
+        const deletedLineIds = new Set(selectedLineIds.value);
         tracks.value = tracks.value.filter((line) => !selectedLineIds.value.has(line.id));
+        curves.value = curves.value.filter((curve) =>
+            !deletedLineIds.has(curve.tangentLinkID1) &&
+            !deletedLineIds.has(curve.tangentLinkID2));
         selectedLineIds.value = new Set();
         movingAnchor.value = null;
     });
+    emitSelectedEquipmentChange();
 }
 
 function deleteNode() {
     if (selectedNodeIds.value.size === 0) return;
     executeMutation(() => {
+        const deletedNodeIds = new Set(selectedNodeIds.value);
         nodes.value = nodes.value.filter((n) => !selectedNodeIds.value.has(n.id));
+        curves.value = curves.value.filter((curve) => !deletedNodeIds.has(curve.nodeID));
         selectedNodeIds.value = new Set();
     });
 }
@@ -881,6 +1115,7 @@ function snapLine() {
             target[`y${op.pointid}`] = op.y;
         }
 
+        curves.value = [];
         markCrossPoint();
     });
 }
@@ -1012,6 +1247,7 @@ function autoMergeNode() {
         selectedNodeIds.value = new Set([...selectedNodeIds.value].map((nodeID) => resolveNodeID(nodeID)).filter((nodeID) => nodeByID.has(nodeID)));
         selectedLineIds.value = new Set([...selectedLineIds.value].filter((lineID) => !removedLineIDs.has(lineID)));
         movingAnchor.value = null;
+        curves.value = [];
         markCrossPoint();
     });
 }
@@ -1093,6 +1329,7 @@ function autoSeparateLine() {
         }
 
         tracks.value = nextTracks;
+        curves.value = [];
         markCrossPoint();
     });
 }
@@ -1233,6 +1470,7 @@ function drawingNodeMouseDown(x, y) {
         tracks.value = tracks.value.filter((line) => line.id !== minDistLine.id);
         tracks.value.push(l1, l2);
         nodes.value.push(n);
+        curves.value = [];
     });
 }
 
@@ -1258,6 +1496,7 @@ function autoGenerateNodes() {
         }
 
         nodes.value = nodeList;
+        curves.value = [];
     });
 }
 
@@ -1325,6 +1564,144 @@ function autoGenerateSwitches() {
     });
 }
 
+function clampCos(value) {
+    return Math.max(-1, Math.min(1, value));
+}
+
+function roundCurveNumber(value) {
+    return Math.round(toFiniteNumber(value) * 1000) / 1000;
+}
+
+function getOutgoingLineVector(line, node) {
+    if (line.fromNodeID === node.id) {
+        return {
+            x: toFiniteNumber(line.x2) - toFiniteNumber(line.x1),
+            y: toFiniteNumber(line.y2) - toFiniteNumber(line.y1),
+        };
+    }
+
+    if (line.toNodeID === node.id) {
+        return {
+            x: toFiniteNumber(line.x1) - toFiniteNumber(line.x2),
+            y: toFiniteNumber(line.y1) - toFiniteNumber(line.y2),
+        };
+    }
+
+    if (isSamePoint(node, { x: line.x1, y: line.y1 })) {
+        return {
+            x: toFiniteNumber(line.x2) - toFiniteNumber(line.x1),
+            y: toFiniteNumber(line.y2) - toFiniteNumber(line.y1),
+        };
+    }
+
+    if (isSamePoint(node, { x: line.x2, y: line.y2 })) {
+        return {
+            x: toFiniteNumber(line.x1) - toFiniteNumber(line.x2),
+            y: toFiniteNumber(line.y1) - toFiniteNumber(line.y2),
+        };
+    }
+
+    return null;
+}
+
+function buildCurveForCorner(node, line1, line2, radius = defaultCurveRadius) {
+    const vec1 = getOutgoingLineVector(line1, node);
+    const vec2 = getOutgoingLineVector(line2, node);
+    if (!vec1 || !vec2) return null;
+
+    const len1 = Math.hypot(vec1.x, vec1.y);
+    const len2 = Math.hypot(vec2.x, vec2.y);
+    if (len1 <= 0 || len2 <= 0) return null;
+
+    const unit1 = { x: vec1.x / len1, y: vec1.y / len1 };
+    const unit2 = { x: vec2.x / len2, y: vec2.y / len2 };
+    const cos = clampCos(unit1.x * unit2.x + unit1.y * unit2.y);
+    const angle = Math.acos(cos);
+    const angleDeg = angle * 180 / Math.PI;
+    if (angleDeg <= curveCornerMinAngle || angleDeg >= curveCornerMaxAngle) return null;
+
+    const tangentDistance = radius / Math.tan(angle / 2);
+    if (!Number.isFinite(tangentDistance) || tangentDistance <= 0) return null;
+    if (tangentDistance > len1 || tangentDistance > len2) return null;
+
+    const bisector = {
+        x: unit1.x + unit2.x,
+        y: unit1.y + unit2.y,
+    };
+    const bisectorLength = Math.hypot(bisector.x, bisector.y);
+    if (bisectorLength <= 0) return null;
+
+    const centerDistance = radius / Math.sin(angle / 2);
+    const vertex = { x: toFiniteNumber(node.x), y: toFiniteNumber(node.y) };
+    const start = {
+        x: vertex.x + unit1.x * tangentDistance,
+        y: vertex.y + unit1.y * tangentDistance,
+    };
+    const end = {
+        x: vertex.x + unit2.x * tangentDistance,
+        y: vertex.y + unit2.y * tangentDistance,
+    };
+    const center = {
+        x: vertex.x + (bisector.x / bisectorLength) * centerDistance,
+        y: vertex.y + (bisector.y / bisectorLength) * centerDistance,
+    };
+    const startRadius = { x: start.x - center.x, y: start.y - center.y };
+    const endRadius = { x: end.x - center.x, y: end.y - center.y };
+    const sweepFlag = startRadius.x * endRadius.y - startRadius.y * endRadius.x >= 0 ? 1 : 0;
+
+    return normalizeCurve({
+        id: nextId(),
+        nodeID: node.id,
+        tangentLinkID1: line1.id,
+        tangentLinkID2: line2.id,
+        radius,
+        angle: roundCurveNumber(angleDeg),
+        tangentDistance: roundCurveNumber(tangentDistance),
+        start: {
+            x: roundCurveNumber(start.x),
+            y: roundCurveNumber(start.y),
+        },
+        end: {
+            x: roundCurveNumber(end.x),
+            y: roundCurveNumber(end.y),
+        },
+        center: {
+            x: roundCurveNumber(center.x),
+            y: roundCurveNumber(center.y),
+        },
+        largeArcFlag: 0,
+        sweepFlag,
+    });
+}
+
+function autoGenerateCurves() {
+    executeMutation(() => {
+        rebuildNodeAdjacentLineIds();
+
+        const lineByID = new Map(tracks.value.map((line) => [line.id, line]));
+        const generated = [];
+        for (const node of nodes.value) {
+            const adjacentLineIDList = Array.isArray(node.adjacentLineIDList)
+                ? node.adjacentLineIDList
+                : [];
+            if (adjacentLineIDList.length !== 2) continue;
+
+            const line1 = lineByID.get(adjacentLineIDList[0]);
+            const line2 = lineByID.get(adjacentLineIDList[1]);
+            if (!line1 || !line2) continue;
+
+            const curve = buildCurveForCorner(node, line1, line2, defaultCurveRadius);
+            if (curve) {
+                generated.push(curve);
+            }
+        }
+
+        curves.value = generated;
+    });
+
+    return curves.value.length;
+}
+
 function startDrawingPlatform() {
     tempPlatformPosition.value = null;
 }
@@ -1389,6 +1766,7 @@ function buildJsonData() {
     return JSON.stringify({
         metadata: { ...layoutMetadata.value, latestElementID: latestElementID.value },
         tracks: tracks.value,
+        curves: curves.value,
         nodes: nodes.value,
         signals: signals.value,
         insulationJoints: insulationJoints.value,
@@ -1401,6 +1779,7 @@ function buildJsonData() {
 function clearElements() {
     layoutMetadata.value = {};
     tracks.value = [];
+    curves.value = [];
     nodes.value = [];
     signals.value = [];
     insulationJoints.value = [];
@@ -1417,7 +1796,8 @@ function loadDataFromJson(jsonObj) {
         clearElements();
         layoutMetadata.value = { ...(jsonObj?.metadata || {}) };
         latestElementID.value = Number(jsonObj?.metadata?.latestElementID || 0);
-        tracks.value = (jsonObj?.tracks || []).map((track) => ({ ...track }));
+        tracks.value = (jsonObj?.tracks || []).map((track) => ({ name: "", ...track }));
+        curves.value = (jsonObj?.curves || []).map((curve) => normalizeCurve(curve));
         nodes.value = (jsonObj?.nodes || []).map((node) => ({ ...node }));
         signals.value = (jsonObj?.signals || []).map((signal) => normalizeNamedEquipment(signal));
         insulationJoints.value = (jsonObj?.insulationJoints || []).map((ij) => ({ ...ij }));
@@ -1442,36 +1822,54 @@ function shouldHandleElementMouseDown(event) {
 
 function handleNodeClick(event, nodeId) {
     if (!shouldHandleElementMouseDown(event)) return;
+    clearSelectedDeviceIds();
     setSelectedAnnotationIds([]);
+    emitSelectedEquipmentChange();
     selectedNodeIds.value = new Set([...selectedNodeIds.value, nodeId]);
+}
+
+function selectEquipment(kind, id, additive = false) {
+    if (!additive) {
+        clearSelectedDeviceIds();
+    }
+
+    const targetSet = new Set(additive ? [...getEquipmentSelectedSet(kind)] : []);
+    targetSet.add(id);
+    if (kind === "signal") selectedSignalIds.value = targetSet;
+    if (kind === "insulationJoint") selectedInsulationJointIds.value = targetSet;
+    if (kind === "switch") selectedSwitchIds.value = targetSet;
+    if (kind === "platform") selectedPlatformIds.value = targetSet;
+    emitSelectedEquipmentChange();
 }
 
 function handleSignalClick(event, signalId) {
     if (!shouldHandleElementMouseDown(event)) return;
     setSelectedAnnotationIds([]);
-    selectedSignalIds.value = new Set([...selectedSignalIds.value, signalId]);
+    selectEquipment("signal", signalId, event.shiftKey);
 }
 
 function handleInsulationJointClick(event, id) {
     if (!shouldHandleElementMouseDown(event)) return;
     setSelectedAnnotationIds([]);
-    selectedInsulationJointIds.value = new Set([...selectedInsulationJointIds.value, id]);
+    selectEquipment("insulationJoint", id, event.shiftKey);
 }
 
 function handleSwitchClick(event, id) {
     if (!shouldHandleElementMouseDown(event)) return;
     setSelectedAnnotationIds([]);
-    selectedSwitchIds.value = new Set([...selectedSwitchIds.value, id]);
+    selectEquipment("switch", id, event.shiftKey);
 }
 
 function handlePlatformClick(event, id) {
     if (!shouldHandleElementMouseDown(event)) return;
     setSelectedAnnotationIds([]);
-    selectedPlatformIds.value = new Set([...selectedPlatformIds.value, id]);
+    selectEquipment("platform", id, event.shiftKey);
 }
 
 function handleAnnotationClick(event, id) {
     if (!shouldHandleElementMouseDown(event)) return;
+    clearSelectedDeviceIds();
+    emitSelectedEquipmentChange();
     if (event.shiftKey) {
         setSelectedAnnotationIds([...selectedAnnotationIds.value, id]);
         return;
@@ -1481,6 +1879,156 @@ function handleAnnotationClick(event, id) {
 
 function getAnnotationById(id) {
     return annotations.value.find((annotation) => annotation.id === id) || null;
+}
+
+function updateSelectedEquipment(kind, id, patch) {
+    const collection = getEquipmentCollection(kind);
+    const target = collection.find((item) => item.id === id);
+    if (!target) return;
+
+    executeMutation(() => {
+        const previousId = target.id;
+        const previousLinkState = kind === "link"
+            ? {
+                fromNodeID: target.fromNodeID,
+                toNodeID: target.toNodeID,
+                x1: target.x1,
+                y1: target.y1,
+                x2: target.x2,
+                y2: target.y2,
+            }
+            : null;
+        const normalizedPatch = { ...patch };
+        if (patch.position) {
+            target.position = {
+                ...(target.position || {}),
+                ...patch.position,
+            };
+            normalizedPatch.position = target.position;
+        }
+        Object.assign(target, normalizedPatch);
+
+        if (kind === "signal" || kind === "switch" || kind === "platform") {
+            Object.assign(target, normalizeNamedEquipment(target));
+        }
+
+        if (kind === "link" && previousLinkState) {
+            syncLinkEndpointNodes(target, previousLinkState);
+            curves.value = [];
+        }
+
+        if (kind === "link" && patch.id != null && patch.id !== previousId) {
+            updateLinkReferences(previousId, patch.id);
+            selectedLineIds.value = new Set([patch.id]);
+        } else if (patch.id != null && patch.id !== id) {
+            selectEquipment(kind, patch.id, false);
+        }
+    });
+
+    emitSelectedEquipmentChange();
+}
+
+function hasOwnProperty(object, key) {
+    return Object.prototype.hasOwnProperty.call(object, key);
+}
+
+function updateLinkReferences(previousId, nextId) {
+    for (const node of nodes.value) {
+        if (!Array.isArray(node.adjacentLineIDList)) continue;
+        node.adjacentLineIDList = node.adjacentLineIDList.map((lineID) => lineID === previousId ? nextId : lineID);
+    }
+
+    for (const sw of switches.value) {
+        for (const vector of sw.branchVectorList || []) {
+            if (vector.lineID === previousId) {
+                vector.lineID = nextId;
+            }
+        }
+    }
+
+    for (const curve of curves.value) {
+        if (curve.tangentLinkID1 === previousId) {
+            curve.tangentLinkID1 = nextId;
+        }
+        if (curve.tangentLinkID2 === previousId) {
+            curve.tangentLinkID2 = nextId;
+        }
+    }
+}
+
+function hasCoordinateChanged(values, key, previousValue) {
+    if (!hasOwnProperty(values, key)) return false;
+    return Math.abs(toFiniteNumber(values[key]) - toFiniteNumber(previousValue)) > 0.000001;
+}
+
+function updateLinesForNode(node) {
+    for (const line of tracks.value) {
+        if (line.fromNodeID === node.id) {
+            line.x1 = node.x;
+            line.y1 = node.y;
+        }
+        if (line.toNodeID === node.id) {
+            line.x2 = node.x;
+            line.y2 = node.y;
+        }
+    }
+}
+
+function rebuildNodeAdjacentLineIds() {
+    const adjacentLineIDSetByNodeID = new Map(nodes.value.map((node) => [node.id, new Set()]));
+    for (const line of tracks.value) {
+        const fromLineIDSet = adjacentLineIDSetByNodeID.get(line.fromNodeID);
+        const toLineIDSet = adjacentLineIDSetByNodeID.get(line.toNodeID);
+        if (fromLineIDSet) fromLineIDSet.add(line.id);
+        if (toLineIDSet) toLineIDSet.add(line.id);
+    }
+
+    for (const node of nodes.value) {
+        node.adjacentLineIDList = [...(adjacentLineIDSetByNodeID.get(node.id) || [])];
+    }
+}
+
+function syncLinkEndpointNode(line, previousState, endpointConfig) {
+    const { nodeIDKey, xKey, yKey } = endpointConfig;
+    const node = nodes.value.find((item) => item.id === line[nodeIDKey]);
+    if (!node) return;
+
+    const nodeChanged = line[nodeIDKey] !== previousState[nodeIDKey];
+    const coordinateChanged =
+        hasCoordinateChanged(line, xKey, previousState[xKey]) ||
+        hasCoordinateChanged(line, yKey, previousState[yKey]);
+
+    if (coordinateChanged) {
+        node.x = toFiniteNumber(line[xKey]);
+        node.y = toFiniteNumber(line[yKey]);
+        updateLinesForNode(node);
+        return;
+    }
+
+    if (nodeChanged) {
+        line[xKey] = toFiniteNumber(node.x);
+        line[yKey] = toFiniteNumber(node.y);
+    }
+}
+
+function syncLinkEndpointNodes(line, previousState) {
+    const fromNodeChanged = line.fromNodeID !== previousState.fromNodeID;
+    const toNodeChanged = line.toNodeID !== previousState.toNodeID;
+
+    syncLinkEndpointNode(line, previousState, {
+        nodeIDKey: "fromNodeID",
+        xKey: "x1",
+        yKey: "y1",
+    });
+    syncLinkEndpointNode(line, previousState, {
+        nodeIDKey: "toNodeID",
+        xKey: "x2",
+        yKey: "y2",
+    });
+
+    if (fromNodeChanged || toNodeChanged) {
+        rebuildNodeAdjacentLineIds();
+    }
 }
 
 function getAnnotationInteractionStartState(annotation) {
@@ -1740,6 +2288,29 @@ function signalTransform(signal) {
     return `translate(${screenX(signal.position.x)},${screenY(signal.position.y) - 20 * d.coefShiftY})scale(${0.5 * d.coefScaleX},0.5)`;
 }
 
+function lineMidpointX(line) {
+    return screenX((toFiniteNumber(line.x1) + toFiniteNumber(line.x2)) / 2);
+}
+
+function lineMidpointY(line) {
+    return screenY((toFiniteNumber(line.y1) + toFiniteNumber(line.y2)) / 2);
+}
+
+function getLineName(line) {
+    return String(line?.name || "").trim();
+}
+
+function curvePath(curve) {
+    const start = normalizePosition(curve?.start);
+    const end = normalizePosition(curve?.end);
+    const radius = toFiniteNumber(curve?.radius) || defaultCurveRadius;
+    const rx = Math.max(0.001, screenDeltaX(radius));
+    const ry = Math.max(0.001, screenDeltaY(radius));
+    const largeArcFlag = Number(curve?.largeArcFlag) === 1 ? 1 : 0;
+    const sweepFlag = Number(curve?.sweepFlag) === 1 ? 1 : 0;
+    return `M ${screenX(start.x)} ${screenY(start.y)} A ${rx} ${ry} 0 ${largeArcFlag} ${sweepFlag} ${screenX(end.x)} ${screenY(end.y)}`;
+}
+
 function tempSignalTransform() {
     return signalTransform({ position: { x: tempSignal.value.x, y: tempSignal.value.y }, direction: tempSignal.value.direction });
 }
@@ -1811,11 +2382,13 @@ defineExpose({
     autoMergeNode,
     autoGenerateNodes,
     autoGenerateSwitches,
+    autoGenerateCurves,
     startDrawingSignal,
     startDrawingInsulationJoint,
     startDrawingNode,
     startDrawingPlatform,
     updateSelectedAnnotation,
+    updateSelectedEquipment,
     clearElements,
 });
 </script>
@@ -1830,10 +2403,18 @@ defineExpose({
         </g>
 
         <g id="linegroup">
-            <line v-for="line in tracks" :id="line.id" :key="`line-${line.id}`" class="track"
-                :class="{ 'track-selected': isLineSelected(line.id) }" :x1="screenX(line.x1)"
-                :y1="screenY(line.y1)" :x2="screenX(line.x2)" :y2="screenY(line.y2)"
-                @mousedown.stop @click.stop="handleLineClick(line.id)" />
+            <line v-for="segment in renderedTrackSegments" :id="segment.id" :key="`line-${segment.id}`" class="track"
+                :class="{ 'track-selected': isLineSelected(segment.line.id) }" :x1="screenX(segment.x1)"
+                :y1="screenY(segment.y1)" :x2="screenX(segment.x2)" :y2="screenY(segment.y2)"
+                @mousedown.stop @click.stop="handleLineClick(segment.line.id)" />
+            <text v-for="lineName in lineNameViews" v-show="getLineName(lineName.line)" :key="`line-name-${lineName.id}`"
+                class="trackname" :x="screenX(lineName.x)" :y="screenY(lineName.y)" @mousedown.stop
+                @click.stop="handleLineClick(lineName.line.id)">
+                {{ getLineName(lineName.line) }}
+            </text>
+
+            <path v-for="curve in curves" :id="String(curve.id)" :key="`curve-${curve.id}`" class="curve"
+                :d="curvePath(curve)" />
 
             <line v-if="tempLine" class="track track-temp" :x1="screenX(tempLine.x1)" :y1="screenY(tempLine.y1)"
                 :x2="screenX(tempLine.x2)" :y2="screenY(tempLine.y2)" />
@@ -1916,7 +2497,7 @@ defineExpose({
                     :height="screenDeltaY(platform.height)" />
                 <text class="platformname" :x="screenCenterX(platform.x, platform.width)"
                     :y="screenCenterY(platform.y, platform.height)">
-                    PLATFORM
+                    {{ getEquipmentDisplayName(platform, "PLATFORM") }}
                 </text>
             </g>
 

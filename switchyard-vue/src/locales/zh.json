@@ -1079,6 +1079,7 @@
         },
         "tabs": {
             "stationLayout": "车站布置图",
+            "layout3d": "3D",
             "calcParams": "计算参数",
             "operationPlan": "作业计划",
             "resultAnalysis": "结果分析",
@@ -1134,12 +1135,31 @@
             "snapLine": "处理虚接",
             "separateLine": "线路分段",
             "generateNode": "节点生成",
-            "generateSwitch": "道岔生成"
+            "generateSwitch": "道岔生成",
+            "generateCurve": "曲线生成"
         },
         "messages": {
             "saveSuccess": "保存成功：",
             "saveFailed": "保存失败：",
             "loadFailed": "获取失败："
+        }
+    },
+    "stationLayout3d": {
+        "buttons": {
+            "refresh": "刷新布置图",
+            "resetView": "重置视角"
+        },
+        "labels": {
+            "showLabels": "显示标签"
+        },
+        "metrics": {
+            "tracks": "轨道",
+            "signals": "信号机",
+            "platforms": "站台"
+        },
+        "messages": {
+            "empty": "当前实例没有可显示的布置图数据",
+            "loadFailed": "加载 3D 布置图失败"
         }
     }
 }

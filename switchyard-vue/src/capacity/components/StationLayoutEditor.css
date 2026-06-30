@@ -39,6 +39,26 @@
     stroke-width: 4px;
 }
 
+.curve {
+    fill: none;
+    stroke: #ffb347;
+    stroke-width: 4px;
+    stroke-linecap: round;
+    pointer-events: none;
+}
+
+.trackname {
+    fill: #ffffff;
+    stroke: #31363f;
+    stroke-width: 3px;
+    paint-order: stroke;
+    font-size: 10px;
+    text-anchor: middle;
+    dominant-baseline: middle;
+    cursor: pointer;
+    user-select: none;
+}
+
 .anchor {
     fill: #97e7e1;
 }

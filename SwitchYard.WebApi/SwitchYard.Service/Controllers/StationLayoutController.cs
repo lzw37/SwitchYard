@@ -211,6 +211,7 @@ namespace SwitchYard.Service.Controllers
             {
                 metadata = new { latestElementID = 0 },
                 tracks = Array.Empty<object>(),
+                curves = Array.Empty<object>(),
                 nodes = Array.Empty<object>(),
                 signals = Array.Empty<object>(),
                 insulationJoints = Array.Empty<object>(),
@@ -313,6 +314,7 @@ namespace SwitchYard.Service.Controllers
         {
             var nodeTable = QuoteIdentifier("node");
             var linkTable = QuoteIdentifier("link");
+            var curveTable = QuoteIdentifier("curve");
             var signalTable = QuoteIdentifier("signal");
             var insulationJointTable = QuoteIdentifier("insulationjoint");
             var platformTable = QuoteIdentifier("platform");
@@ -320,6 +322,8 @@ namespace SwitchYard.Service.Controllers
             var switchBranchVectorTable = QuoteIdentifier("switchbranchvector");
             var annotationTable = QuoteIdentifier("annotation");
 
+            EnsureLinkSchema(dbConnector);
+            EnsureCurveSchema(dbConnector);
             EnsureNamedDeviceSchemas(dbConnector);
 
             var nodes = dbConnector.Query<StationNodeRow>(
@@ -335,6 +339,13 @@ namespace SwitchYard.Service.Controllers
                    WHERE InstanceID = @instanceID AND StationSchemeID = @stationSchemeID
                    ORDER BY ID",
                 new { instanceID, stationSchemeID }) ?? new List<StationLinkRow>();
+
+            var curves = dbConnector.Query<StationCurveRow>(
+                $@"SELECT *
+                   FROM {curveTable}
+                   WHERE InstanceID = @instanceID AND StationSchemeID = @stationSchemeID
+                   ORDER BY ID",
+                new { instanceID, stationSchemeID }) ?? new List<StationCurveRow>();
 
             var signals = dbConnector.Query<StationSignalRow>(
                 $@"SELECT *
@@ -411,6 +422,7 @@ namespace SwitchYard.Service.Controllers
                     return new
                     {
                         id = ToInvariantString(link.ID),
+                        name = link.Name ?? string.Empty,
                         x1 = fromPoint.x,
                         y1 = fromPoint.y,
                         x2 = toPoint.x,
@@ -420,6 +432,30 @@ namespace SwitchYard.Service.Controllers
                     };
                 })
                 .Where(track => track != null)
+                .ToArray();
+
+            var curveViews = curves
+                .Select(curve =>
+                {
+                    var start = nodeTransform.MapPoint(curve.StartX, curve.StartY);
+                    var end = nodeTransform.MapPoint(curve.EndX, curve.EndY);
+                    var center = nodeTransform.MapPoint(curve.CenterX, curve.CenterY);
+                    return new
+                    {
+                        id = curve.ID ?? string.Empty,
+                        nodeID = curve.VertexNodeID ?? string.Empty,
+                        tangentLinkID1 = curve.TangentLinkID1 ?? string.Empty,
+                        tangentLinkID2 = curve.TangentLinkID2 ?? string.Empty,
+                        radius = nodeTransform.MapLength(curve.Radius),
+                        angle = curve.Angle,
+                        tangentDistance = nodeTransform.MapLength(curve.TangentDistance),
+                        start = new { x = start.x, y = start.y },
+                        end = new { x = end.x, y = end.y },
+                        center = new { x = center.x, y = center.y },
+                        largeArcFlag = curve.LargeArcFlag == 1 ? 1 : 0,
+                        sweepFlag = curve.SweepFlag == 1 ? 1 : 0
+                    };
+                })
                 .ToArray();
 
             var signalViews = signals
@@ -539,6 +575,7 @@ namespace SwitchYard.Service.Controllers
             var latestElementID = CalculateLatestElementID(
                 nodes.Select(node => ToInvariantString(node.ID))
                     .Concat(links.Select(link => ToInvariantString(link.ID)))
+                    .Concat(curves.Select(curve => curve.ID ?? string.Empty))
                     .Concat(signals.Select(signal => signal.ID ?? string.Empty))
                     .Concat(insulationJoints.Select(insulationJoint => insulationJoint.ID ?? string.Empty))
                     .Concat(platforms.Select(platform => platform.ID ?? string.Empty))
@@ -555,6 +592,7 @@ namespace SwitchYard.Service.Controllers
                     coordinateTransform = nodeTransform.ToMetadata()
                 },
                 tracks = trackViews,
+                curves = curveViews,
                 nodes = nodeViews,
                 signals = signalViews,
                 insulationJoints = insulationJointViews,
@@ -572,6 +610,7 @@ namespace SwitchYard.Service.Controllers
         {
             var nodeTable = QuoteIdentifier("node");
             var linkTable = QuoteIdentifier("link");
+            var curveTable = QuoteIdentifier("curve");
             var signalTable = QuoteIdentifier("signal");
             var insulationJointTable = QuoteIdentifier("insulationjoint");
             var platformTable = QuoteIdentifier("platform");
@@ -579,6 +618,8 @@ namespace SwitchYard.Service.Controllers
             var switchBranchVectorTable = QuoteIdentifier("switchbranchvector");
             var annotationTable = QuoteIdentifier("annotation");
 
+            EnsureLinkSchema(dbConnector);
+            EnsureCurveSchema(dbConnector);
             EnsureNamedDeviceSchemas(dbConnector);
 
             var transform = StationLayoutPersistenceTransform.FromMetadata(layout.Metadata?.CoordinateTransform);
@@ -596,6 +637,7 @@ namespace SwitchYard.Service.Controllers
                 DeleteStationLayoutTableRows(dbConnector, signalTable, instanceID, stationSchemeID);
                 DeleteStationLayoutTableRows(dbConnector, platformTable, instanceID, stationSchemeID);
                 DeleteStationLayoutTableRows(dbConnector, annotationTable, instanceID, stationSchemeID);
+                DeleteStationLayoutTableRows(dbConnector, curveTable, instanceID, stationSchemeID);
                 DeleteStationLayoutTableRows(dbConnector, linkTable, instanceID, stationSchemeID);
                 DeleteStationLayoutTableRows(dbConnector, nodeTable, instanceID, stationSchemeID);
 
@@ -620,13 +662,14 @@ namespace SwitchYard.Service.Controllers
                 {
                     EnsureInserted(
                         dbConnector.ExecuteNonQuery(
-                            $@"INSERT INTO {linkTable} (InstanceID, StationSchemeID, ID, FromNodeID, ToNodeID)
-                               VALUES (@InstanceID, @StationSchemeID, @ID, @FromNodeID, @ToNodeID)",
+                            $@"INSERT INTO {linkTable} (InstanceID, StationSchemeID, ID, Name, FromNodeID, ToNodeID)
+                               VALUES (@InstanceID, @StationSchemeID, @ID, @Name, @FromNodeID, @ToNodeID)",
                             new
                             {
                                 InstanceID = instanceID,
                                 StationSchemeID = stationSchemeID,
                                 link.ID,
+                                link.Name,
                                 link.FromNodeID,
                                 link.ToNodeID
                             }),
@@ -635,6 +678,7 @@ namespace SwitchYard.Service.Controllers
 
                 var platformCount = SavePlatforms(dbConnector, platformTable, instanceID, stationSchemeID, layout, transform);
                 var annotationCount = SaveAnnotations(dbConnector, annotationTable, instanceID, stationSchemeID, layout, transform);
+                var curveCount = SaveCurves(dbConnector, curveTable, instanceID, stationSchemeID, layout, transform, nodeSaveContext, linkSaveContext);
                 var signalCount = SaveSignals(dbConnector, signalTable, instanceID, stationSchemeID, layout, nodeSaveContext);
                 var insulationJointCount = SaveInsulationJoints(dbConnector, insulationJointTable, instanceID, stationSchemeID, layout, nodeSaveContext);
                 var switchSaveResult = SaveSwitches(
@@ -656,6 +700,7 @@ namespace SwitchYard.Service.Controllers
                     StationSchemeID = stationSchemeID,
                     NodeCount = nodeSaveContext.Nodes.Count,
                     LinkCount = linkSaveContext.Links.Count,
+                    CurveCount = curveCount,
                     SignalCount = signalCount,
                     InsulationJointCount = insulationJointCount,
                     PlatformCount = platformCount,
@@ -745,6 +790,7 @@ namespace SwitchYard.Service.Controllers
                 {
                     SourceID = sourceID,
                     ID = dbID,
+                    Name = track.Name ?? string.Empty,
                     FromNodeID = fromNodeID,
                     ToNodeID = toNodeID
                 });
@@ -875,6 +921,64 @@ namespace SwitchYard.Service.Controllers
                             TextColor = string.IsNullOrWhiteSpace(annotation.TextColor) ? "#ffffff" : annotation.TextColor
                         }),
                     "annotation");
+                count++;
+            }
+
+            return count;
+        }
+
+        private int SaveCurves(
+            DBConnector dbConnector,
+            string curveTable,
+            string instanceID,
+            string stationSchemeID,
+            StationLayoutJson layout,
+            StationLayoutPersistenceTransform transform,
+            StationLayoutNodeSaveContext nodeContext,
+            StationLayoutLinkSaveContext linkContext)
+        {
+            var count = 0;
+            foreach (var curve in layout.Curves ?? new List<StationLayoutCurveJson>())
+            {
+                var start = curve.Start ?? new StationLayoutPositionJson();
+                var end = curve.End ?? new StationLayoutPositionJson();
+                var center = curve.Center ?? new StationLayoutPositionJson();
+                var databaseStart = transform.UnmapPoint(start.X, start.Y);
+                var databaseEnd = transform.UnmapPoint(end.X, end.Y);
+                var databaseCenter = transform.UnmapPoint(center.X, center.Y);
+                var curveID = NormalizeStringID(curve.ID, "curve", count);
+
+                EnsureInserted(
+                    dbConnector.ExecuteNonQuery(
+                        $@"INSERT INTO {curveTable} (
+                               InstanceID, StationSchemeID, ID, VertexNodeID, TangentLinkID1, TangentLinkID2,
+                               Radius, Angle, TangentDistance, StartX, StartY, EndX, EndY,
+                               CenterX, CenterY, LargeArcFlag, SweepFlag)
+                           VALUES (
+                               @InstanceID, @StationSchemeID, @ID, @VertexNodeID, @TangentLinkID1, @TangentLinkID2,
+                               @Radius, @Angle, @TangentDistance, @StartX, @StartY, @EndX, @EndY,
+                               @CenterX, @CenterY, @LargeArcFlag, @SweepFlag)",
+                        new
+                        {
+                            InstanceID = instanceID,
+                            StationSchemeID = stationSchemeID,
+                            ID = curveID,
+                            VertexNodeID = ResolveCurveNodeID(nodeContext, curve.NodeID),
+                            TangentLinkID1 = ResolveBindingLinkID(linkContext, curve.TangentLinkID1),
+                            TangentLinkID2 = ResolveBindingLinkID(linkContext, curve.TangentLinkID2),
+                            Radius = transform.UnmapLength(curve.Radius <= 0 ? 100 : curve.Radius),
+                            Angle = curve.Angle,
+                            TangentDistance = transform.UnmapLength(curve.TangentDistance),
+                            StartX = databaseStart.x,
+                            StartY = databaseStart.y,
+                            EndX = databaseEnd.x,
+                            EndY = databaseEnd.y,
+                            CenterX = databaseCenter.x,
+                            CenterY = databaseCenter.y,
+                            LargeArcFlag = curve.LargeArcFlag == 1 ? 1 : 0,
+                            SweepFlag = curve.SweepFlag == 1 ? 1 : 0
+                        }),
+                    "curve");
                 count++;
             }
 
@@ -1073,6 +1177,18 @@ namespace SwitchYard.Service.Controllers
                 : sourceLineID.Trim();
         }
 
+        private static string ResolveCurveNodeID(StationLayoutNodeSaveContext nodeContext, string? sourceNodeID)
+        {
+            if (string.IsNullOrWhiteSpace(sourceNodeID))
+            {
+                return string.Empty;
+            }
+
+            return nodeContext.NodeIDBySourceID.TryGetValue(sourceNodeID.Trim(), out var nodeID)
+                ? ToInvariantString(nodeID)
+                : sourceNodeID.Trim();
+        }
+
         private static string NormalizeStringID(string? id, string prefix, int index)
         {
             return string.IsNullOrWhiteSpace(id)
@@ -1183,6 +1299,119 @@ namespace SwitchYard.Service.Controllers
             {
                 EnsureNamedDeviceSchema(dbConnector, tableName);
             }
+        }
+
+        private static void EnsureLinkSchema(DBConnector dbConnector)
+        {
+            EnsureNullableNameColumn(dbConnector, "link");
+        }
+
+        private static void EnsureCurveSchema(DBConnector dbConnector)
+        {
+            var tableName = QuoteIdentifier("curve");
+            if (!TableExists(dbConnector, "curve"))
+            {
+                if (DBConnector.IsMySql(DBConnector.CapacityDatabaseSectionName))
+                {
+                    dbConnector.ExecuteNonQuery(
+                        $@"CREATE TABLE IF NOT EXISTS {tableName} (
+                            {QuoteIdentifier("InstanceID")} VARCHAR(50) NULL,
+                            {QuoteIdentifier("StationSchemeID")} VARCHAR(50) NULL,
+                            {QuoteIdentifier("ID")} VARCHAR(50) NULL,
+                            {QuoteIdentifier("VertexNodeID")} VARCHAR(50) NULL,
+                            {QuoteIdentifier("TangentLinkID1")} VARCHAR(50) NULL,
+                            {QuoteIdentifier("TangentLinkID2")} VARCHAR(50) NULL,
+                            {QuoteIdentifier("Radius")} DOUBLE NULL,
+                            {QuoteIdentifier("Angle")} DOUBLE NULL,
+                            {QuoteIdentifier("TangentDistance")} DOUBLE NULL,
+                            {QuoteIdentifier("StartX")} DOUBLE NULL,
+                            {QuoteIdentifier("StartY")} DOUBLE NULL,
+                            {QuoteIdentifier("EndX")} DOUBLE NULL,
+                            {QuoteIdentifier("EndY")} DOUBLE NULL,
+                            {QuoteIdentifier("CenterX")} DOUBLE NULL,
+                            {QuoteIdentifier("CenterY")} DOUBLE NULL,
+                            {QuoteIdentifier("LargeArcFlag")} TINYINT NULL,
+                            {QuoteIdentifier("SweepFlag")} TINYINT NULL
+                        )");
+                }
+                else
+                {
+                    dbConnector.ExecuteNonQuery(
+                        $@"CREATE TABLE IF NOT EXISTS {tableName} (
+                            {QuoteIdentifier("InstanceID")} TEXT NULL,
+                            {QuoteIdentifier("StationSchemeID")} TEXT NULL,
+                            {QuoteIdentifier("ID")} TEXT NULL,
+                            {QuoteIdentifier("VertexNodeID")} TEXT NULL,
+                            {QuoteIdentifier("TangentLinkID1")} TEXT NULL,
+                            {QuoteIdentifier("TangentLinkID2")} TEXT NULL,
+                            {QuoteIdentifier("Radius")} REAL NULL,
+                            {QuoteIdentifier("Angle")} REAL NULL,
+                            {QuoteIdentifier("TangentDistance")} REAL NULL,
+                            {QuoteIdentifier("StartX")} REAL NULL,
+                            {QuoteIdentifier("StartY")} REAL NULL,
+                            {QuoteIdentifier("EndX")} REAL NULL,
+                            {QuoteIdentifier("EndY")} REAL NULL,
+                            {QuoteIdentifier("CenterX")} REAL NULL,
+                            {QuoteIdentifier("CenterY")} REAL NULL,
+                            {QuoteIdentifier("LargeArcFlag")} INTEGER NULL,
+                            {QuoteIdentifier("SweepFlag")} INTEGER NULL
+                        )");
+                }
+
+                return;
+            }
+
+            var existingColumns = GetColumnNames(dbConnector, "curve");
+            var textType = DBConnector.IsMySql(DBConnector.CapacityDatabaseSectionName) ? "VARCHAR(50) NULL" : "TEXT NULL";
+            var numberType = DBConnector.IsMySql(DBConnector.CapacityDatabaseSectionName) ? "DOUBLE NULL" : "REAL NULL";
+            var flagType = DBConnector.IsMySql(DBConnector.CapacityDatabaseSectionName) ? "TINYINT NULL" : "INTEGER NULL";
+            var requiredColumns = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["InstanceID"] = textType,
+                ["StationSchemeID"] = textType,
+                ["ID"] = textType,
+                ["VertexNodeID"] = textType,
+                ["TangentLinkID1"] = textType,
+                ["TangentLinkID2"] = textType,
+                ["Radius"] = numberType,
+                ["Angle"] = numberType,
+                ["TangentDistance"] = numberType,
+                ["StartX"] = numberType,
+                ["StartY"] = numberType,
+                ["EndX"] = numberType,
+                ["EndY"] = numberType,
+                ["CenterX"] = numberType,
+                ["CenterY"] = numberType,
+                ["LargeArcFlag"] = flagType,
+                ["SweepFlag"] = flagType
+            };
+
+            foreach (var column in requiredColumns)
+            {
+                if (existingColumns.Any(existing => string.Equals(existing, column.Key, StringComparison.OrdinalIgnoreCase)))
+                {
+                    continue;
+                }
+
+                dbConnector.ExecuteNonQuery(
+                    $@"ALTER TABLE {tableName} ADD COLUMN {QuoteIdentifier(column.Key)} {column.Value}");
+            }
+        }
+
+        private static void EnsureNullableNameColumn(DBConnector dbConnector, string tableName)
+        {
+            var columnNames = GetColumnNames(dbConnector, tableName);
+            if (columnNames.Count == 0 ||
+                columnNames.Any(column => string.Equals(column, "Name", StringComparison.OrdinalIgnoreCase)))
+            {
+                return;
+            }
+
+            var nameColumnType = DBConnector.IsMySql(DBConnector.CapacityDatabaseSectionName)
+                ? "VARCHAR(100) NULL"
+                : "TEXT NULL";
+            dbConnector.ExecuteNonQuery(
+                $@"ALTER TABLE {QuoteIdentifier(tableName)} ADD COLUMN {QuoteIdentifier("Name")} {nameColumnType}");
         }
 
         private static void EnsureNamedDeviceSchema(DBConnector dbConnector, string tableName)
@@ -1471,9 +1700,44 @@ namespace SwitchYard.Service.Controllers
         {
             public int ID { get; set; }
 
+            public string? Name { get; set; }
+
             public int FromNodeID { get; set; }
 
             public int ToNodeID { get; set; }
+        }
+
+        private sealed class StationCurveRow
+        {
+            public string? ID { get; set; }
+
+            public string? VertexNodeID { get; set; }
+
+            public string? TangentLinkID1 { get; set; }
+
+            public string? TangentLinkID2 { get; set; }
+
+            public double Radius { get; set; }
+
+            public double Angle { get; set; }
+
+            public double TangentDistance { get; set; }
+
+            public double StartX { get; set; }
+
+            public double StartY { get; set; }
+
+            public double EndX { get; set; }
+
+            public double EndY { get; set; }
+
+            public double CenterX { get; set; }
+
+            public double CenterY { get; set; }
+
+            public int LargeArcFlag { get; set; }
+
+            public int SweepFlag { get; set; }
         }
 
         private sealed class StationSignalRow
@@ -1573,6 +1837,9 @@ namespace SwitchYard.Service.Controllers
             [JsonPropertyName("tracks")]
             public List<StationLayoutTrackJson> Tracks { get; set; } = new();
 
+            [JsonPropertyName("curves")]
+            public List<StationLayoutCurveJson> Curves { get; set; } = new();
+
             [JsonPropertyName("nodes")]
             public List<StationLayoutNodeJson> Nodes { get; set; } = new();
 
@@ -1630,6 +1897,9 @@ namespace SwitchYard.Service.Controllers
             [JsonPropertyName("id")]
             public string? ID { get; set; }
 
+            [JsonPropertyName("name")]
+            public string? Name { get; set; }
+
             [JsonPropertyName("x1")]
             public double X1 { get; set; }
 
@@ -1647,6 +1917,45 @@ namespace SwitchYard.Service.Controllers
 
             [JsonPropertyName("toNodeID")]
             public string? ToNodeID { get; set; }
+        }
+
+        private sealed class StationLayoutCurveJson
+        {
+            [JsonPropertyName("id")]
+            public string? ID { get; set; }
+
+            [JsonPropertyName("nodeID")]
+            public string? NodeID { get; set; }
+
+            [JsonPropertyName("tangentLinkID1")]
+            public string? TangentLinkID1 { get; set; }
+
+            [JsonPropertyName("tangentLinkID2")]
+            public string? TangentLinkID2 { get; set; }
+
+            [JsonPropertyName("radius")]
+            public double Radius { get; set; }
+
+            [JsonPropertyName("angle")]
+            public double Angle { get; set; }
+
+            [JsonPropertyName("tangentDistance")]
+            public double TangentDistance { get; set; }
+
+            [JsonPropertyName("start")]
+            public StationLayoutPositionJson? Start { get; set; }
+
+            [JsonPropertyName("end")]
+            public StationLayoutPositionJson? End { get; set; }
+
+            [JsonPropertyName("center")]
+            public StationLayoutPositionJson? Center { get; set; }
+
+            [JsonPropertyName("largeArcFlag")]
+            public int LargeArcFlag { get; set; }
+
+            [JsonPropertyName("sweepFlag")]
+            public int SweepFlag { get; set; }
         }
 
         private sealed class StationLayoutNodeJson
@@ -1831,6 +2140,8 @@ namespace SwitchYard.Service.Controllers
 
             public int ID { get; set; }
 
+            public string Name { get; set; } = string.Empty;
+
             public int FromNodeID { get; set; }
 
             public int ToNodeID { get; set; }
@@ -1859,6 +2170,9 @@ namespace SwitchYard.Service.Controllers
 
             [JsonPropertyName("linkCount")]
             public int LinkCount { get; set; }
+
+            [JsonPropertyName("curveCount")]
+            public int CurveCount { get; set; }
 
             [JsonPropertyName("signalCount")]
             public int SignalCount { get; set; }
@@ -2015,6 +2329,7 @@ namespace SwitchYard.Service.Controllers
             {
                 metadata = new { latestElementID = segments.Count },
                 tracks,
+                curves = Array.Empty<object>(),
                 nodes = Array.Empty<object>(),
                 signals = Array.Empty<object>(),
                 insulationJoints = Array.Empty<object>(),

@@ -1091,6 +1091,7 @@
         },
         "tabs": {
             "stationLayout": "Station Layout",
+            "layout3d": "3D",
             "calcParams": "Calc Params",
             "operationPlan": "Operation Plan",
             "resultAnalysis": "Result Analysis",
@@ -1146,12 +1147,31 @@
             "snapLine": "Snap Line",
             "separateLine": "Separate",
             "generateNode": "Gen Node",
-            "generateSwitch": "Gen Switch"
+            "generateSwitch": "Gen Switch",
+            "generateCurve": "Gen Curve"
         },
         "messages": {
             "saveSuccess": "Save successful: ",
             "saveFailed": "Save failed: ",
             "loadFailed": "Load failed: "
+        }
+    },
+    "stationLayout3d": {
+        "buttons": {
+            "refresh": "Refresh layout",
+            "resetView": "Reset view"
+        },
+        "labels": {
+            "showLabels": "Show labels"
+        },
+        "metrics": {
+            "tracks": "Tracks",
+            "signals": "Signals",
+            "platforms": "Platforms"
+        },
+        "messages": {
+            "empty": "The selected instance has no layout data to render",
+            "loadFailed": "Failed to load 3D station layout"
         }
     }
 }

@@ -37,6 +37,10 @@ const layoutScaleY = ref(1);
 const layoutScaleXDisplay = computed(() => layoutScaleX.value.toFixed(2));
 const layoutScaleYDisplay = computed(() => layoutScaleY.value.toFixed(2));
 const selectedAnnotation = ref(null);
+const selectedEquipment = ref(null);
+const equipmentDrawerVisible = ref(false);
+const equipmentForm = ref({});
+const equipmentSaving = ref(false);
 
 const annotationFontFamilyOptions = ["Arial", "Microsoft YaHei", "SimSun", "SimHei", "Times New Roman", "Consolas"];
 const annotationFontWeightOptions = [
@@ -47,6 +51,18 @@ const annotationFontStyleOptions = [
     { label: "常规", value: "normal" },
     { label: "斜体", value: "italic" },
 ];
+const equipmentKindLabels = {
+    link: "Link",
+    signal: "信号机",
+    switch: "道岔",
+    platform: "站台",
+    insulationJoint: "钢轨绝缘",
+};
+const equipmentDrawerTitle = computed(() => {
+    if (!selectedEquipment.value) return "设备信息";
+    const label = equipmentKindLabels[selectedEquipment.value.kind] || "设备";
+    return `${label} ${selectedEquipment.value.id || ""}`;
+});
 
 function setSelectMode() {
     stationLayoutEditorRef.value?.setEditMode(0);
@@ -78,10 +94,11 @@ function mouseGridSnapChange(e) {
         stationLayoutEditorRef.value?.setMouseGridSnapModeCode(1);
     }
 }
-function saveData() {
+function saveData(options = {}) {
+    const silent = options?.silent === true;
     if (!props.selectedInstanceId) {
         ElMessage.warning(t('capacityMain.placeholders.selectInstance'));
-        return;
+        return Promise.resolve(false);
     }
 
     var dataStr = stationLayoutEditorRef.value?.buildJsonData();
@@ -93,7 +110,7 @@ function saveData() {
     }
 
     savingData.value = true;
-    axios
+    return axios
         .post("/StationLayout/SaveJson", {
             json: dataStr,
             instanceID: props.selectedInstanceId,
@@ -104,7 +121,12 @@ function saveData() {
         .then((res) => {
             console.log(res);
             currentStationSchemeId.value = res.data?.stationSchemeID || currentStationSchemeId.value;
-            alert(t('stationLayout.messages.saveSuccess') + (res.data?.message || res.data));
+            if (silent) {
+                ElMessage.success("设备信息已保存");
+            } else {
+                alert(t('stationLayout.messages.saveSuccess') + (res.data?.message || res.data));
+            }
+            return true;
         })
         .catch((err) => {
             // alert(err);
@@ -112,7 +134,12 @@ function saveData() {
             if (err.response != undefined) {
                 serverMsg = err.response.data;
             }
-            alert(t('stationLayout.messages.saveFailed') + err + "\r\n" + serverMsg);
+            if (silent) {
+                ElMessage.error("设备信息保存失败：" + (serverMsg || err));
+            } else {
+                alert(t('stationLayout.messages.saveFailed') + err + "\r\n" + serverMsg);
+            }
+            return false;
         })
         .finally(() => {
             savingData.value = false;
@@ -175,6 +202,131 @@ function exportJsonFile() {
 
 function handleSelectedAnnotationChange(annotation) {
     selectedAnnotation.value = annotation;
+}
+
+function handleSelectedEquipmentChange(equipment) {
+    selectedEquipment.value = equipment;
+    if (!equipment) {
+        equipmentDrawerVisible.value = false;
+        equipmentForm.value = {};
+        return;
+    }
+
+    equipmentForm.value = buildEquipmentForm(equipment);
+    equipmentDrawerVisible.value = true;
+}
+
+function buildEquipmentForm(equipment) {
+    const data = equipment?.data || {};
+    const shouldFallbackNameToId = ["signal", "switch", "platform"].includes(equipment?.kind);
+    const form = {
+        kind: equipment?.kind || "",
+        originalId: data.id || equipment?.id || "",
+        id: data.id || "",
+        name: data.name ?? (shouldFallbackNameToId ? data.id || "" : ""),
+        type: data.type || "",
+        direction: data.direction || "",
+        bindingNodeID: data.bindingNodeID || "",
+        x: Number(data.x ?? data.position?.x ?? 0),
+        y: Number(data.y ?? data.position?.y ?? 0),
+        x1: Number(data.x1 ?? 0),
+        y1: Number(data.y1 ?? 0),
+        x2: Number(data.x2 ?? 0),
+        y2: Number(data.y2 ?? 0),
+        width: Number(data.width ?? 0),
+        height: Number(data.height ?? 0),
+        fromNodeID: data.fromNodeID || "",
+        toNodeID: data.toNodeID || "",
+        branchVectorListText: "",
+    };
+
+    if (equipment?.kind === "switch") {
+        form.branchVectorListText = JSON.stringify(data.branchVectorList || [], null, 2);
+    }
+
+    return form;
+}
+
+function toNumber(value) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function buildEquipmentPatchFromForm() {
+    const form = equipmentForm.value;
+    const patch = {
+        id: String(form.id || "").trim(),
+    };
+
+    if (form.kind === "signal") {
+        patch.name = String(form.name || "").trim();
+        patch.type = String(form.type || "").trim();
+        patch.direction = String(form.direction || "").trim();
+        patch.bindingNodeID = String(form.bindingNodeID || "").trim();
+        patch.position = { x: toNumber(form.x), y: toNumber(form.y) };
+    } else if (form.kind === "switch") {
+        patch.name = String(form.name || "").trim();
+        patch.type = String(form.type || "").trim();
+        patch.bindingNodeID = String(form.bindingNodeID || "").trim();
+        patch.position = { x: toNumber(form.x), y: toNumber(form.y) };
+        try {
+            const branchVectorList = form.branchVectorListText?.trim()
+                ? JSON.parse(form.branchVectorListText)
+                : [];
+            if (!Array.isArray(branchVectorList)) {
+                throw new Error("branchVectorList must be an array.");
+            }
+            patch.branchVectorList = branchVectorList;
+        } catch (err) {
+            ElMessage.error("道岔分支向量 JSON 格式不正确");
+            return null;
+        }
+    } else if (form.kind === "platform") {
+        patch.name = String(form.name || "").trim();
+        patch.x = toNumber(form.x);
+        patch.y = toNumber(form.y);
+        patch.width = toNumber(form.width);
+        patch.height = toNumber(form.height);
+    } else if (form.kind === "insulationJoint") {
+        patch.type = String(form.type || "").trim();
+        patch.bindingNodeID = String(form.bindingNodeID || "").trim();
+        patch.position = { x: toNumber(form.x), y: toNumber(form.y) };
+    } else if (form.kind === "link") {
+        patch.name = String(form.name || "").trim();
+        patch.x1 = toNumber(form.x1);
+        patch.y1 = toNumber(form.y1);
+        patch.x2 = toNumber(form.x2);
+        patch.y2 = toNumber(form.y2);
+        patch.fromNodeID = String(form.fromNodeID || "").trim();
+        patch.toNodeID = String(form.toNodeID || "").trim();
+    }
+
+    return patch;
+}
+
+async function saveEquipmentForm() {
+    if (!selectedEquipment.value) return;
+    const patch = buildEquipmentPatchFromForm();
+    if (!patch) return;
+    if (!patch.id) {
+        ElMessage.warning("设备 ID 不能为空");
+        return;
+    }
+
+    equipmentSaving.value = true;
+    try {
+        stationLayoutEditorRef.value?.updateSelectedEquipment(
+            selectedEquipment.value.kind,
+            equipmentForm.value.originalId,
+            patch
+        );
+        const saved = await saveData({ silent: true });
+        if (saved) {
+            equipmentForm.value.originalId = patch.id;
+        }
+    } finally {
+        equipmentSaving.value = false;
+    }
 }
 
 function updateSelectedAnnotation(patch) {
@@ -243,7 +395,7 @@ function validateStationLayoutJson(jsonObj) {
         throw new Error("Invalid station layout JSON root.");
     }
 
-    const arrayFields = ["tracks", "nodes", "signals", "insulationJoints", "platforms", "switches", "annotations"];
+    const arrayFields = ["tracks", "curves", "nodes", "signals", "insulationJoints", "platforms", "switches", "annotations"];
     for (const field of arrayFields) {
         if (jsonObj[field] !== undefined && !Array.isArray(jsonObj[field])) {
             throw new Error(`Invalid station layout JSON field: ${field}`);
@@ -276,6 +428,11 @@ function autoMergeNode() {
 
 function autoGenerateSwitch() {
     stationLayoutEditorRef.value?.autoGenerateSwitches();
+}
+
+function autoGenerateCurve() {
+    const count = stationLayoutEditorRef.value?.autoGenerateCurves?.() ?? 0;
+    ElMessage.success(`已生成 ${count} 条曲线`);
 }
 
 function openExtractDwgDialog() {
@@ -481,6 +638,8 @@ watch(
                         <el-button :icon="Share" @click="autoMergeNode">节点合并</el-button>
                     <el-button :icon="SetUp" @click="autoGenerateSwitch">{{ t('stationLayout.tools.generateSwitch')
                         }}</el-button>
+                    <el-button :icon="Connection" @click="autoGenerateCurve">{{ t('stationLayout.tools.generateCurve')
+                        }}</el-button>
                 </el-button-group>
             </div>
             <el-divider direction="vertical" />
@@ -529,9 +688,105 @@ watch(
             <el-input-number v-model="selectedAnnotation.position.y" size="small" :step="10" controls-position="right"
                 @change="updateSelectedAnnotationPosition" />
         </div>
-        <div class="station-layout-editor-frame">
-            <StationLayoutEditor ref="stationLayoutEditorRef" :display-scale-x="layoutScaleX"
-                :display-scale-y="layoutScaleY" @selected-annotation-change="handleSelectedAnnotationChange" />
+        <div class="station-layout-workspace">
+            <div class="station-layout-editor-frame">
+                <StationLayoutEditor ref="stationLayoutEditorRef" :display-scale-x="layoutScaleX"
+                    :display-scale-y="layoutScaleY" @selected-annotation-change="handleSelectedAnnotationChange"
+                    @selected-equipment-change="handleSelectedEquipmentChange" />
+            </div>
+            <aside v-if="equipmentDrawerVisible" class="equipment-side-panel">
+                <div class="equipment-side-panel-header">
+                    <div>
+                        <div class="equipment-side-panel-title">{{ equipmentDrawerTitle }}</div>
+                        <div class="equipment-side-panel-subtitle">设备信息</div>
+                    </div>
+                    <el-button text size="small" @click="equipmentDrawerVisible = false">关闭</el-button>
+                </div>
+                <div class="equipment-side-panel-body">
+                    <el-form v-if="selectedEquipment" label-position="top" class="equipment-form">
+                        <el-form-item label="设备类型">
+                            <el-tag type="info">{{ equipmentKindLabels[equipmentForm.kind] || "设备" }}</el-tag>
+                        </el-form-item>
+                        <el-form-item label="ID">
+                            <el-input v-model="equipmentForm.id" />
+                        </el-form-item>
+                        <el-form-item v-if="['link', 'signal', 'switch', 'platform'].includes(equipmentForm.kind)"
+                            label="Name">
+                            <el-input v-model="equipmentForm.name" />
+                        </el-form-item>
+                        <el-form-item v-if="['signal', 'switch', 'insulationJoint'].includes(equipmentForm.kind)"
+                            label="Type">
+                            <el-input v-model="equipmentForm.type" />
+                        </el-form-item>
+                        <el-form-item v-if="equipmentForm.kind === 'signal'" label="Direction">
+                            <el-select v-model="equipmentForm.direction">
+                                <el-option label="e" value="e" />
+                                <el-option label="w" value="w" />
+                                <el-option label="s" value="s" />
+                                <el-option label="d" value="d" />
+                            </el-select>
+                        </el-form-item>
+                        <el-form-item v-if="['signal', 'switch', 'insulationJoint'].includes(equipmentForm.kind)"
+                            label="BindingNodeID">
+                            <el-input v-model="equipmentForm.bindingNodeID" />
+                        </el-form-item>
+                        <div v-if="['signal', 'switch', 'insulationJoint'].includes(equipmentForm.kind)"
+                            class="equipment-form-grid">
+                            <el-form-item label="X">
+                                <el-input-number v-model="equipmentForm.x" controls-position="right" :step="10" />
+                            </el-form-item>
+                            <el-form-item label="Y">
+                                <el-input-number v-model="equipmentForm.y" controls-position="right" :step="10" />
+                            </el-form-item>
+                        </div>
+                        <div v-if="equipmentForm.kind === 'platform'" class="equipment-form-grid">
+                            <el-form-item label="X">
+                                <el-input-number v-model="equipmentForm.x" controls-position="right" :step="10" />
+                            </el-form-item>
+                            <el-form-item label="Y">
+                                <el-input-number v-model="equipmentForm.y" controls-position="right" :step="10" />
+                            </el-form-item>
+                            <el-form-item label="Width">
+                                <el-input-number v-model="equipmentForm.width" controls-position="right" :min="0"
+                                    :step="10" />
+                            </el-form-item>
+                            <el-form-item label="Height">
+                                <el-input-number v-model="equipmentForm.height" controls-position="right" :min="0"
+                                    :step="10" />
+                            </el-form-item>
+                        </div>
+                        <div v-if="equipmentForm.kind === 'link'" class="equipment-form-grid">
+                            <el-form-item label="X1">
+                                <el-input-number v-model="equipmentForm.x1" controls-position="right" :step="10" />
+                            </el-form-item>
+                            <el-form-item label="Y1">
+                                <el-input-number v-model="equipmentForm.y1" controls-position="right" :step="10" />
+                            </el-form-item>
+                            <el-form-item label="X2">
+                                <el-input-number v-model="equipmentForm.x2" controls-position="right" :step="10" />
+                            </el-form-item>
+                            <el-form-item label="Y2">
+                                <el-input-number v-model="equipmentForm.y2" controls-position="right" :step="10" />
+                            </el-form-item>
+                        </div>
+                        <el-form-item v-if="equipmentForm.kind === 'link'" label="FromNodeID">
+                            <el-input v-model="equipmentForm.fromNodeID" />
+                        </el-form-item>
+                        <el-form-item v-if="equipmentForm.kind === 'link'" label="ToNodeID">
+                            <el-input v-model="equipmentForm.toNodeID" />
+                        </el-form-item>
+                        <el-form-item v-if="equipmentForm.kind === 'switch'" label="BranchVectorList">
+                            <el-input v-model="equipmentForm.branchVectorListText" type="textarea" :rows="8" />
+                        </el-form-item>
+                    </el-form>
+                </div>
+                <div class="equipment-side-panel-footer">
+                    <el-button @click="equipmentDrawerVisible = false">关闭</el-button>
+                    <el-button type="primary" :loading="equipmentSaving || savingData" @click="saveEquipmentForm">
+                        保存
+                    </el-button>
+                </div>
+            </aside>
         </div>
         <el-dialog v-model="extractDwgDialogVisible" title="从DWG文件提取" width="420px" :close-on-click-modal="false">
             <div class="dwg-extract-form">
@@ -667,11 +922,91 @@ watch(
     width: 96px;
 }
 
+.station-layout-workspace {
+    display: flex;
+    align-items: stretch;
+    width: 100%;
+    height: calc(100vh - 160px);
+    min-height: 420px;
+    overflow: hidden;
+    background-color: #31363f;
+}
+
 .station-layout-editor-frame {
-    max-width: 100%;
-    max-height: calc(100vh - 160px);
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 100%;
     overflow: auto;
     background-color: #31363f;
+}
+
+.equipment-side-panel {
+    flex: 0 0 360px;
+    width: 360px;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    background-color: #fff;
+    border-left: 1px solid var(--el-border-color-light);
+    box-shadow: -4px 0 12px rgba(0, 0, 0, 0.08);
+}
+
+.equipment-side-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 16px 12px;
+    border-bottom: 1px solid var(--el-border-color-lighter);
+}
+
+.equipment-side-panel-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #303133;
+    line-height: 1.3;
+}
+
+.equipment-side-panel-subtitle {
+    margin-top: 2px;
+    font-size: 12px;
+    color: #909399;
+}
+
+.equipment-side-panel-body {
+    flex: 1 1 auto;
+    overflow: auto;
+    padding: 12px 16px 4px;
+}
+
+.equipment-side-panel-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 12px 16px;
+    border-top: 1px solid var(--el-border-color-lighter);
+    background-color: #fff;
+}
+
+.equipment-form {
+    padding-bottom: 8px;
+}
+
+.equipment-form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0 10px;
+}
+
+.equipment-form-grid :deep(.el-input-number) {
+    width: 100%;
+}
+
+@media (max-width: 960px) {
+    .equipment-side-panel {
+        flex-basis: 320px;
+        width: 320px;
+    }
 }
 
 .dwg-extract-form {

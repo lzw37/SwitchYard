@@ -20,3 +20,23 @@ CREATE TABLE IF NOT EXISTS "annotation" (
     "Angle" REAL NULL,
     "TextColor" TEXT NULL
 );
+
+CREATE TABLE IF NOT EXISTS "curve" (
+    "InstanceID" TEXT NULL,
+    "StationSchemeID" TEXT NULL,
+    "ID" TEXT NULL,
+    "VertexNodeID" TEXT NULL,
+    "TangentLinkID1" TEXT NULL,
+    "TangentLinkID2" TEXT NULL,
+    "Radius" REAL NULL,
+    "Angle" REAL NULL,
+    "TangentDistance" REAL NULL,
+    "StartX" REAL NULL,
+    "StartY" REAL NULL,
+    "EndX" REAL NULL,
+    "EndY" REAL NULL,
+    "CenterX" REAL NULL,
+    "CenterY" REAL NULL,
+    "LargeArcFlag" INTEGER NULL,
+    "SweepFlag" INTEGER NULL
+);

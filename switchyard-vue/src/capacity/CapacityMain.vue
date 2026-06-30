@@ -53,6 +53,15 @@
                     </div>
                     <el-empty v-else :description="t('capacityMain.placeholders.selectInstance')" />
                 </el-tab-pane>
+                <el-tab-pane :label="t('capacityMain.tabs.layout3d')" name="layout3d" lazy>
+                    <div v-if="hasSelectedInstance" class="station-layout-3d-pane">
+                        <StationLayout3D
+                            :selected-instance-id="selectedInstance || ''"
+                            :activation-key="layout3DActivationKey"
+                        />
+                    </div>
+                    <el-empty v-else :description="t('capacityMain.placeholders.selectInstance')" />
+                </el-tab-pane>
                 <el-tab-pane :label="t('capacityMain.tabs.calcParams')" name="calcParams">
                     <div class="tab-placeholder">
                         <el-empty :description="t('capacityMain.placeholders.calcParams')" />
@@ -92,13 +101,14 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import axios from '@/utils/axios'
 import { ElMessage } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import StationLayout from './StationLayout.vue'
+import StationLayout3D from './StationLayout3D.vue'
 import CapacityInstanceManager from './CapacityInstanceManager.vue'
 import UserManagement from '@/views/UserManagement.vue'
 
@@ -122,6 +132,7 @@ const instances = ref<CapacityInstance[]>([])
 const showInstanceManager = ref(false)
 const showUserManagement = ref(false)
 const loadingInstances = ref(false)
+const layout3DActivationKey = ref(0)
 const activeInstances = computed(() => instances.value.filter((item) => Number(item.isActive) === 1))
 const hasSelectedInstance = computed(() => Boolean(selectedInstance.value))
 const userDisplayName = computed(() => authStore.username.trim() || t('common.userMenu.guest'))
@@ -195,6 +206,18 @@ const handleCloseInstanceManager = (done: () => void) => {
 // 组件挂载时加载实例
 onMounted(() => {
     void loadInstances()
+})
+
+watch(activeTab, (tab) => {
+    if (tab === 'layout3d') {
+        layout3DActivationKey.value += 1
+    }
+})
+
+watch(selectedInstance, () => {
+    if (activeTab.value === 'layout3d') {
+        layout3DActivationKey.value += 1
+    }
 })
 </script>
 
@@ -279,11 +302,19 @@ onMounted(() => {
 
 .capacity-tabs {
     margin: 0 auto;
+    width: 100%;
+    min-width: 0;
 }
 
 .capacity-tabs :deep(.el-tabs__header) {
     padding-left: 450px;
     padding-right: 300px;
+}
+
+.capacity-tabs :deep(.el-tabs__content),
+.capacity-tabs :deep(.el-tab-pane) {
+    width: 100%;
+    min-width: 0;
 }
 
 .tab-placeholder {
@@ -298,6 +329,14 @@ onMounted(() => {
 
 .station-layout-pane {
     min-height: 400px;
+}
+
+.station-layout-3d-pane {
+    width: 100%;
+    max-width: 100%;
+    height: calc(100dvh - 118px);
+    min-height: 420px;
+    overflow: hidden;
 }
 
 @media (max-width: 768px) {
@@ -320,6 +359,11 @@ onMounted(() => {
     .capacity-tabs-wrapper {
         display: flex;
         flex-direction: column;
+    }
+
+    .station-layout-3d-pane {
+        height: calc(100dvh - 188px);
+        min-height: 420px;
     }
 }
 
