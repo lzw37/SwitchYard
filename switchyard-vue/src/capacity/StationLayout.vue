@@ -34,6 +34,7 @@ const savingData = ref(false);
 const currentStationSchemeId = ref("");
 const layoutScaleX = ref(1);
 const layoutScaleY = ref(1);
+const showCurveArc = ref(true);
 const layoutScaleXDisplay = computed(() => layoutScaleX.value.toFixed(2));
 const layoutScaleYDisplay = computed(() => layoutScaleY.value.toFixed(2));
 const selectedAnnotation = ref(null);
@@ -643,6 +644,13 @@ watch(
                 </el-button-group>
             </div>
             <el-divider direction="vertical" />
+            <div class="toolbar-group curve-display-toolbar-group">
+                <span class="toolbar-group-label">{{ t('stationLayout.group.curveDisplay') }}</span>
+                <el-switch v-model="showCurveArc" class="curve-display-switch" inline-prompt
+                    :active-text="t('stationLayout.curveDisplay.arc')"
+                    :inactive-text="t('stationLayout.curveDisplay.tangent')" />
+            </div>
+            <el-divider direction="vertical" />
             <div class="toolbar-group scale-toolbar-group">
                 <span class="toolbar-group-label">{{ t('stationLayout.group.displayScale') }}</span>
                 <div class="scale-slider">
@@ -691,7 +699,8 @@ watch(
         <div class="station-layout-workspace">
             <div class="station-layout-editor-frame">
                 <StationLayoutEditor ref="stationLayoutEditorRef" :display-scale-x="layoutScaleX"
-                    :display-scale-y="layoutScaleY" @selected-annotation-change="handleSelectedAnnotationChange"
+                    :display-scale-y="layoutScaleY" :show-curve-arc="showCurveArc"
+                    @selected-annotation-change="handleSelectedAnnotationChange"
                     @selected-equipment-change="handleSelectedEquipmentChange" />
             </div>
             <aside v-if="equipmentDrawerVisible" class="equipment-side-panel">
@@ -862,6 +871,19 @@ watch(
 
 .scale-toolbar-group {
     flex-wrap: wrap;
+}
+
+.curve-display-toolbar-group {
+    min-height: 24px;
+}
+
+.curve-display-switch {
+    --el-switch-on-color: #409eff;
+    --el-switch-off-color: #909399;
+}
+
+.curve-display-switch :deep(.el-switch__core) {
+    min-width: 56px;
 }
 
 .scale-slider {

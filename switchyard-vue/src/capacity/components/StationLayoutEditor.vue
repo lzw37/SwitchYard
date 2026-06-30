@@ -6,6 +6,7 @@ const props = defineProps({
     height: { type: Number, default: 1080 },
     displayScaleX: { type: Number, default: 1 },
     displayScaleY: { type: Number, default: 1 },
+    showCurveArc: { type: Boolean, default: true },
 });
 const emit = defineEmits(["selected-annotation-change", "selected-equipment-change"]);
 
@@ -421,9 +422,11 @@ const renderedTrackSegments = computed(() => {
     const nodeByID = new Map(nodes.value.map((node) => [node.id, node]));
     const hiddenRangesByLineID = new Map();
 
-    for (const curve of curves.value) {
-        addCurveHiddenRange(hiddenRangesByLineID, lineByID, nodeByID, curve, "tangentLinkID1", "start");
-        addCurveHiddenRange(hiddenRangesByLineID, lineByID, nodeByID, curve, "tangentLinkID2", "end");
+    if (props.showCurveArc) {
+        for (const curve of curves.value) {
+            addCurveHiddenRange(hiddenRangesByLineID, lineByID, nodeByID, curve, "tangentLinkID1", "start");
+            addCurveHiddenRange(hiddenRangesByLineID, lineByID, nodeByID, curve, "tangentLinkID2", "end");
+        }
     }
 
     const segments = [];
@@ -447,6 +450,8 @@ const renderedTrackSegments = computed(() => {
 
     return segments;
 });
+
+const displayedCurves = computed(() => props.showCurveArc ? curves.value : []);
 
 const lineNameViews = computed(() => {
     return tracks.value
@@ -2413,7 +2418,7 @@ defineExpose({
                 {{ getLineName(lineName.line) }}
             </text>
 
-            <path v-for="curve in curves" :id="String(curve.id)" :key="`curve-${curve.id}`" class="curve"
+            <path v-for="curve in displayedCurves" :id="String(curve.id)" :key="`curve-${curve.id}`" class="curve"
                 :d="curvePath(curve)" />
 
             <line v-if="tempLine" class="track track-temp" :x1="screenX(tempLine.x1)" :y1="screenY(tempLine.y1)"

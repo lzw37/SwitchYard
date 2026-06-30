@@ -443,10 +443,10 @@ namespace SwitchYard.Service.Controllers
                     return new
                     {
                         id = curve.ID ?? string.Empty,
-                        nodeID = curve.VertexNodeID ?? string.Empty,
-                        tangentLinkID1 = curve.TangentLinkID1 ?? string.Empty,
-                        tangentLinkID2 = curve.TangentLinkID2 ?? string.Empty,
-                        radius = nodeTransform.MapLength(curve.Radius),
+                        nodeID = FirstNonEmpty(curve.BindingNodeID, curve.VertexNodeID) ?? string.Empty,
+                        tangentLinkID1 = FirstNonEmpty(curve.BindingLink1ID, curve.TangentLinkID1) ?? string.Empty,
+                        tangentLinkID2 = FirstNonEmpty(curve.BindingLink2ID, curve.TangentLinkID2) ?? string.Empty,
+                        radius = nodeTransform.MapLength(ParseDoubleOrDefault(curve.Radius)),
                         angle = curve.Angle,
                         tangentDistance = nodeTransform.MapLength(curve.TangentDistance),
                         start = new { x = start.x, y = start.y },
@@ -951,11 +951,11 @@ namespace SwitchYard.Service.Controllers
                 EnsureInserted(
                     dbConnector.ExecuteNonQuery(
                         $@"INSERT INTO {curveTable} (
-                               InstanceID, StationSchemeID, ID, VertexNodeID, TangentLinkID1, TangentLinkID2,
+                               InstanceID, StationSchemeID, ID, BindingNodeID, BindingLink1ID, BindingLink2ID,
                                Radius, Angle, TangentDistance, StartX, StartY, EndX, EndY,
                                CenterX, CenterY, LargeArcFlag, SweepFlag)
                            VALUES (
-                               @InstanceID, @StationSchemeID, @ID, @VertexNodeID, @TangentLinkID1, @TangentLinkID2,
+                               @InstanceID, @StationSchemeID, @ID, @BindingNodeID, @BindingLink1ID, @BindingLink2ID,
                                @Radius, @Angle, @TangentDistance, @StartX, @StartY, @EndX, @EndY,
                                @CenterX, @CenterY, @LargeArcFlag, @SweepFlag)",
                         new
@@ -963,10 +963,10 @@ namespace SwitchYard.Service.Controllers
                             InstanceID = instanceID,
                             StationSchemeID = stationSchemeID,
                             ID = curveID,
-                            VertexNodeID = ResolveCurveNodeID(nodeContext, curve.NodeID),
-                            TangentLinkID1 = ResolveBindingLinkID(linkContext, curve.TangentLinkID1),
-                            TangentLinkID2 = ResolveBindingLinkID(linkContext, curve.TangentLinkID2),
-                            Radius = transform.UnmapLength(curve.Radius <= 0 ? 100 : curve.Radius),
+                            BindingNodeID = ResolveCurveNodeID(nodeContext, curve.NodeID),
+                            BindingLink1ID = ResolveBindingLinkID(linkContext, curve.TangentLinkID1),
+                            BindingLink2ID = ResolveBindingLinkID(linkContext, curve.TangentLinkID2),
+                            Radius = ToRoundedInt(transform.UnmapLength(curve.Radius <= 0 ? 100 : curve.Radius)),
                             Angle = curve.Angle,
                             TangentDistance = transform.UnmapLength(curve.TangentDistance),
                             StartX = databaseStart.x,
@@ -1318,10 +1318,10 @@ namespace SwitchYard.Service.Controllers
                             {QuoteIdentifier("InstanceID")} VARCHAR(50) NULL,
                             {QuoteIdentifier("StationSchemeID")} VARCHAR(50) NULL,
                             {QuoteIdentifier("ID")} VARCHAR(50) NULL,
-                            {QuoteIdentifier("VertexNodeID")} VARCHAR(50) NULL,
-                            {QuoteIdentifier("TangentLinkID1")} VARCHAR(50) NULL,
-                            {QuoteIdentifier("TangentLinkID2")} VARCHAR(50) NULL,
-                            {QuoteIdentifier("Radius")} DOUBLE NULL,
+                            {QuoteIdentifier("BindingNodeID")} VARCHAR(50) NULL,
+                            {QuoteIdentifier("BindingLink1ID")} VARCHAR(50) NULL,
+                            {QuoteIdentifier("BindingLink2ID")} VARCHAR(50) NULL,
+                            {QuoteIdentifier("Radius")} INT NULL,
                             {QuoteIdentifier("Angle")} DOUBLE NULL,
                             {QuoteIdentifier("TangentDistance")} DOUBLE NULL,
                             {QuoteIdentifier("StartX")} DOUBLE NULL,
@@ -1341,10 +1341,10 @@ namespace SwitchYard.Service.Controllers
                             {QuoteIdentifier("InstanceID")} TEXT NULL,
                             {QuoteIdentifier("StationSchemeID")} TEXT NULL,
                             {QuoteIdentifier("ID")} TEXT NULL,
-                            {QuoteIdentifier("VertexNodeID")} TEXT NULL,
-                            {QuoteIdentifier("TangentLinkID1")} TEXT NULL,
-                            {QuoteIdentifier("TangentLinkID2")} TEXT NULL,
-                            {QuoteIdentifier("Radius")} REAL NULL,
+                            {QuoteIdentifier("BindingNodeID")} TEXT NULL,
+                            {QuoteIdentifier("BindingLink1ID")} TEXT NULL,
+                            {QuoteIdentifier("BindingLink2ID")} TEXT NULL,
+                            {QuoteIdentifier("Radius")} INTEGER NULL,
                             {QuoteIdentifier("Angle")} REAL NULL,
                             {QuoteIdentifier("TangentDistance")} REAL NULL,
                             {QuoteIdentifier("StartX")} REAL NULL,
@@ -1365,15 +1365,16 @@ namespace SwitchYard.Service.Controllers
             var textType = DBConnector.IsMySql(DBConnector.CapacityDatabaseSectionName) ? "VARCHAR(50) NULL" : "TEXT NULL";
             var numberType = DBConnector.IsMySql(DBConnector.CapacityDatabaseSectionName) ? "DOUBLE NULL" : "REAL NULL";
             var flagType = DBConnector.IsMySql(DBConnector.CapacityDatabaseSectionName) ? "TINYINT NULL" : "INTEGER NULL";
+            var radiusType = DBConnector.IsMySql(DBConnector.CapacityDatabaseSectionName) ? "INT NULL" : "INTEGER NULL";
             var requiredColumns = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 ["InstanceID"] = textType,
                 ["StationSchemeID"] = textType,
                 ["ID"] = textType,
-                ["VertexNodeID"] = textType,
-                ["TangentLinkID1"] = textType,
-                ["TangentLinkID2"] = textType,
-                ["Radius"] = numberType,
+                ["BindingNodeID"] = textType,
+                ["BindingLink1ID"] = textType,
+                ["BindingLink2ID"] = textType,
+                ["Radius"] = radiusType,
                 ["Angle"] = numberType,
                 ["TangentDistance"] = numberType,
                 ["StartX"] = numberType,
@@ -1395,6 +1396,12 @@ namespace SwitchYard.Service.Controllers
 
                 dbConnector.ExecuteNonQuery(
                     $@"ALTER TABLE {tableName} ADD COLUMN {QuoteIdentifier(column.Key)} {column.Value}");
+            }
+
+            if (DBConnector.IsMySql(DBConnector.CapacityDatabaseSectionName))
+            {
+                dbConnector.ExecuteNonQuery(
+                    $@"ALTER TABLE {tableName} MODIFY COLUMN {QuoteIdentifier("Radius")} INT NULL");
             }
         }
 
@@ -1509,6 +1516,11 @@ namespace SwitchYard.Service.Controllers
             return value.ToString(CultureInfo.InvariantCulture);
         }
 
+        private static int ToRoundedInt(double value)
+        {
+            return Convert.ToInt32(Math.Round(value, MidpointRounding.AwayFromZero));
+        }
+
         private static string? FirstNonEmpty(params string?[] values)
         {
             foreach (var value in values)
@@ -1520,6 +1532,18 @@ namespace SwitchYard.Service.Controllers
             }
 
             return null;
+        }
+
+        private static double ParseDoubleOrDefault(object? value)
+        {
+            if (value == null)
+            {
+                return 0;
+            }
+
+            return double.TryParse(Convert.ToString(value, CultureInfo.InvariantCulture), NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed)
+                ? parsed
+                : 0;
         }
 
         private static int? ParseNullableInt(string? value)
@@ -1711,13 +1735,19 @@ namespace SwitchYard.Service.Controllers
         {
             public string? ID { get; set; }
 
+            public string? BindingNodeID { get; set; }
+
+            public string? BindingLink1ID { get; set; }
+
+            public string? BindingLink2ID { get; set; }
+
             public string? VertexNodeID { get; set; }
 
             public string? TangentLinkID1 { get; set; }
 
             public string? TangentLinkID2 { get; set; }
 
-            public double Radius { get; set; }
+            public object? Radius { get; set; }
 
             public double Angle { get; set; }
 

@@ -1120,6 +1120,7 @@
             "mode": "Mode",
             "drawingObject": "Drawing Object",
             "tools": "Tools",
+            "curveDisplay": "Curve View",
             "displayScale": "Display Scale"
         },
         "scale": {
@@ -1149,6 +1150,10 @@
             "generateNode": "Gen Node",
             "generateSwitch": "Gen Switch",
             "generateCurve": "Gen Curve"
+        },
+        "curveDisplay": {
+            "arc": "Arc",
+            "tangent": "Tangent"
         },
         "messages": {
             "saveSuccess": "Save successful: ",

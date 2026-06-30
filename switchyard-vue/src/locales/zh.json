@@ -1108,6 +1108,7 @@
             "mode": "模式",
             "drawingObject": "绘图对象",
             "tools": "工具",
+            "curveDisplay": "曲线显示",
             "displayScale": "显示比例"
         },
         "scale": {
@@ -1137,6 +1138,10 @@
             "generateNode": "节点生成",
             "generateSwitch": "道岔生成",
             "generateCurve": "曲线生成"
+        },
+        "curveDisplay": {
+            "arc": "圆弧",
+            "tangent": "切线"
         },
         "messages": {
             "saveSuccess": "保存成功：",
