@@ -1106,6 +1106,7 @@
     },
     "stationLayout": {
         "menu": {
+            "stationScheme": "Station Scheme",
             "file": "File",
             "loadData": "Load",
             "saveData": "Save",
@@ -1115,6 +1116,34 @@
             "redo": "Redo",
             "clearSelection": "Clear Sel",
             "deleteSelection": "Delete Sel"
+        },
+        "placeholders": {
+            "selectStationScheme": "Select station scheme"
+        },
+        "schemeManager": {
+            "manage": "Manage",
+            "title": "Station Scheme Manager",
+            "add": "Add",
+            "edit": "Edit",
+            "save": "Save",
+            "cancel": "Cancel",
+            "delete": "Delete",
+            "close": "Close",
+            "confirm": "Confirm",
+            "id": "Scheme ID",
+            "name": "Scheme Name",
+            "operation": "Operation",
+            "namePlaceholder": "Scheme name",
+            "idRequired": "Scheme ID is required",
+            "nameRequired": "Scheme name is required",
+            "createSuccess": "Station scheme created",
+            "createFailed": "Failed to create station scheme",
+            "updateSuccess": "Station scheme updated",
+            "updateFailed": "Failed to update station scheme",
+            "deleteSuccess": "Station scheme deleted",
+            "deleteFailed": "Failed to delete station scheme",
+            "deleteTitle": "Delete station scheme",
+            "deleteConfirm": "Delete \"{name}\" and all of its layout data?"
         },
         "group": {
             "mode": "Mode",
@@ -1158,7 +1187,8 @@
         "messages": {
             "saveSuccess": "Save successful: ",
             "saveFailed": "Save failed: ",
-            "loadFailed": "Load failed: "
+            "loadFailed": "Load failed: ",
+            "loadSchemesFailed": "Failed to load station schemes"
         }
     },
     "stationLayout3d": {

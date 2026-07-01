@@ -7,10 +7,23 @@ const props = defineProps({
     displayScaleX: { type: Number, default: 1 },
     displayScaleY: { type: Number, default: 1 },
     showCurveArc: { type: Boolean, default: true },
+    showNodes: { type: Boolean, default: true },
+    displayStyles: { type: Object, default: () => ({}) },
 });
 const emit = defineEmits(["selected-annotation-change", "selected-equipment-change"]);
 
 const svgRef = ref(null);
+const defaultEditorDisplayStyles = {
+    switchName: { fontSize: 8, fontFamily: "Arial", fontWeight: "normal", fontStyle: "normal", color: "#ffffff" },
+    platformName: { fontSize: 10, fontFamily: "Arial", fontWeight: "normal", fontStyle: "normal", color: "#ffffff" },
+    signalName: { fontSize: 8, fontFamily: "Arial", fontWeight: "normal", fontStyle: "normal", color: "#ffffff" },
+    lineName: { fontSize: 10, fontFamily: "Arial", fontWeight: "normal", fontStyle: "normal", color: "#ffffff" },
+    track: { strokeWidth: 2, color: "#fefded" },
+    platform: { strokeWidth: 1, color: "#87ceeb" },
+    signal: { scale: 0.5 },
+    switch: { strokeWidth: 5, color: "#00ffff" },
+    node: { radius: 5, color: "#ffffff" },
+};
 
 const editModeCode = ref(0);
 const drawingObject = ref("l");
@@ -22,6 +35,16 @@ const autoMergeNodeTolerance = ref(10);
 const defaultCurveRadius = 100;
 const curveCornerMinAngle = 90;
 const curveCornerMaxAngle = 160;
+const linkArrowShape = {
+    length: 12,
+    gap: 4,
+    halfWidth: 5,
+    minLength: 4,
+    tailLineSpacing: 4,
+    tailCircleRadius: 4,
+    tailCircleGap: 1,
+    tailGap: 3,
+};
 
 const grid = { visible: true, verticalSpace: 20, horizontalSpace: 20 };
 const cursorParam = ref({ size: 10, barVisible: false, barLength: 100, x: 200, y: 200 });
@@ -34,6 +57,7 @@ const svgStyle = computed(() => ({
     width: `${svgScreenWidth.value}px`,
     height: `${svgScreenHeight.value}px`,
 }));
+const editorDisplayStyles = computed(() => normalizeDisplayStyles(props.displayStyles));
 
 const latestElementID = ref(0);
 const layoutMetadata = ref({});
@@ -68,6 +92,7 @@ const selectionBoxDragThreshold = 4;
 const annotationTextAnchorRadius = 5;
 
 const movingAnchor = ref(null);
+const nodeInteraction = ref(null);
 const annotationInteraction = ref(null);
 
 const finishedCmdList = ref([]);
@@ -92,6 +117,52 @@ function normalizeDisplayScale(value) {
     const parsed = Number(value);
     if (!Number.isFinite(parsed) || parsed <= 0) return 1;
     return parsed;
+}
+
+function clampDisplayNumber(value, fallback, min, max) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return fallback;
+    return Math.min(max, Math.max(min, parsed));
+}
+
+function normalizeDisplayTextStyle(source, fallback) {
+    const style = source && typeof source === "object" ? source : {};
+    return {
+        fontSize: clampDisplayNumber(style.fontSize, fallback.fontSize, 6, 96),
+        fontFamily: String(style.fontFamily || fallback.fontFamily),
+        fontWeight: String(style.fontWeight || fallback.fontWeight),
+        fontStyle: String(style.fontStyle || fallback.fontStyle),
+        color: String(style.color || fallback.color),
+    };
+}
+
+function normalizeDisplayStyles(source) {
+    const styles = source && typeof source === "object" ? source : {};
+    return {
+        switchName: normalizeDisplayTextStyle(styles.switchName, defaultEditorDisplayStyles.switchName),
+        platformName: normalizeDisplayTextStyle(styles.platformName, defaultEditorDisplayStyles.platformName),
+        signalName: normalizeDisplayTextStyle(styles.signalName, defaultEditorDisplayStyles.signalName),
+        lineName: normalizeDisplayTextStyle(styles.lineName, defaultEditorDisplayStyles.lineName),
+        track: {
+            strokeWidth: clampDisplayNumber(styles.track?.strokeWidth, defaultEditorDisplayStyles.track.strokeWidth, 0.5, 24),
+            color: String(styles.track?.color || defaultEditorDisplayStyles.track.color),
+        },
+        platform: {
+            strokeWidth: clampDisplayNumber(styles.platform?.strokeWidth, defaultEditorDisplayStyles.platform.strokeWidth, 0.5, 24),
+            color: String(styles.platform?.color || defaultEditorDisplayStyles.platform.color),
+        },
+        signal: {
+            scale: clampDisplayNumber(styles.signal?.scale, defaultEditorDisplayStyles.signal.scale, 0.2, 3),
+        },
+        switch: {
+            strokeWidth: clampDisplayNumber(styles.switch?.strokeWidth, defaultEditorDisplayStyles.switch.strokeWidth, 1, 32),
+            color: String(styles.switch?.color || defaultEditorDisplayStyles.switch.color),
+        },
+        node: {
+            radius: clampDisplayNumber(styles.node?.radius, defaultEditorDisplayStyles.node.radius, 1, 48),
+            color: String(styles.node?.color || defaultEditorDisplayStyles.node.color),
+        },
+    };
 }
 
 function toFiniteNumber(value) {
@@ -313,14 +384,7 @@ const anchorRects = computed(() => {
         const half = anchorParam.size / 2;
         const sp = { id: `sp${line.id}`, lineId: line.id, type: "sp", x: Number(line.x1) - half, y: Number(line.y1) - half };
         const ep = { id: `ep${line.id}`, lineId: line.id, type: "ep", x: Number(line.x2) - half, y: Number(line.y2) - half };
-        const cp = {
-            id: `cp${line.id}`,
-            lineId: line.id,
-            type: "cp",
-            x: (Number(line.x1) + Number(line.x2)) / 2 - half,
-            y: (Number(line.y1) + Number(line.y2)) / 2 - half,
-        };
-        list.push(sp, ep, cp);
+        list.push(sp, ep);
     }
     return list;
 });
@@ -453,6 +517,10 @@ const renderedTrackSegments = computed(() => {
 
 const displayedCurves = computed(() => props.showCurveArc ? curves.value : []);
 
+const linkArrowViews = computed(() => {
+    return tracks.value.flatMap((line) => buildLinkArrowViews(line));
+});
+
 const lineNameViews = computed(() => {
     return tracks.value
         .filter((line) => getLineName(line))
@@ -570,12 +638,13 @@ function getEquipmentDisplayName(equipment, placeholder) {
 
 function clearSelectedLines() {
     selectedLineIds.value = new Set();
-    movingAnchor.value = null;
+    finishAnchorInteraction();
     emitSelectedEquipmentChange();
 }
 
 function clearSelectedNodes() {
     selectedNodeIds.value = new Set();
+    finishNodeInteraction();
 }
 
 function clearSelectedEquipment() {
@@ -644,6 +713,20 @@ function clientPointToDataPoint(clientX, clientY) {
     };
 }
 
+function snapPointToGrid(point) {
+    const gridX = toFiniteNumber(grid.horizontalSpace) || 1;
+    const gridY = toFiniteNumber(grid.verticalSpace) || 1;
+    return {
+        x: Math.round(toFiniteNumber(point?.x) / gridX) * gridX,
+        y: Math.round(toFiniteNumber(point?.y) / gridY) * gridY,
+    };
+}
+
+function applyGridSnapWhenEnabled(point) {
+    if (mouseGridSnapModeCode.value !== 1) return normalizePosition(point);
+    return snapPointToGrid(point);
+}
+
 function updateCursorPosition(clientX, clientY) {
     const dataPoint = clientPointToDataPoint(clientX, clientY);
     if (!dataPoint) return;
@@ -654,8 +737,9 @@ function updateCursorPosition(clientX, clientY) {
     let snapY = y;
 
     if (mouseGridSnapModeCode.value === 1) {
-        snapX = Math.round(x / grid.horizontalSpace) * grid.horizontalSpace;
-        snapY = Math.round(y / grid.verticalSpace) * grid.verticalSpace;
+        const gridPoint = snapPointToGrid({ x, y });
+        snapX = gridPoint.x;
+        snapY = gridPoint.y;
     }
 
     if (mouseObjectSnapModeCode.value === 1) {
@@ -795,7 +879,7 @@ function selectElementsInBox(box) {
     selectedSwitchIds.value = nextSwitchIds;
     selectedPlatformIds.value = nextPlatformIds;
     selectedAnnotationIds.value = nextAnnotationIds;
-    movingAnchor.value = null;
+    finishAnchorInteraction();
     emitSelectedAnnotationChange();
     emitSelectedEquipmentChange();
 }
@@ -879,7 +963,6 @@ function endDrawLine() {
     };
     executeMutation(() => {
         tracks.value.push(line);
-        curves.value = [];
     });
     tempLine.value = null;
 }
@@ -894,13 +977,9 @@ function selectLine(lineId) {
 function deleteLine() {
     if (selectedLineIds.value.size === 0) return;
     executeMutation(() => {
-        const deletedLineIds = new Set(selectedLineIds.value);
         tracks.value = tracks.value.filter((line) => !selectedLineIds.value.has(line.id));
-        curves.value = curves.value.filter((curve) =>
-            !deletedLineIds.has(curve.tangentLinkID1) &&
-            !deletedLineIds.has(curve.tangentLinkID2));
         selectedLineIds.value = new Set();
-        movingAnchor.value = null;
+        finishAnchorInteraction();
     });
     emitSelectedEquipmentChange();
 }
@@ -908,9 +987,7 @@ function deleteLine() {
 function deleteNode() {
     if (selectedNodeIds.value.size === 0) return;
     executeMutation(() => {
-        const deletedNodeIds = new Set(selectedNodeIds.value);
         nodes.value = nodes.value.filter((n) => !selectedNodeIds.value.has(n.id));
-        curves.value = curves.value.filter((curve) => !deletedNodeIds.has(curve.nodeID));
         selectedNodeIds.value = new Set();
     });
 }
@@ -1120,7 +1197,9 @@ function snapLine() {
             target[`y${op.pointid}`] = op.y;
         }
 
-        curves.value = [];
+        refreshCurvesForChangedGeometry({
+            lineIds: new Set(snapOperations.map((op) => op.lineId)),
+        });
         markCrossPoint();
     });
 }
@@ -1251,8 +1330,14 @@ function autoMergeNode() {
 
         selectedNodeIds.value = new Set([...selectedNodeIds.value].map((nodeID) => resolveNodeID(nodeID)).filter((nodeID) => nodeByID.has(nodeID)));
         selectedLineIds.value = new Set([...selectedLineIds.value].filter((lineID) => !removedLineIDs.has(lineID)));
-        movingAnchor.value = null;
-        curves.value = [];
+        finishAnchorInteraction();
+        for (const curve of curves.value) {
+            curve.nodeID = resolveNodeID(curve.nodeID);
+        }
+        refreshCurvesForChangedGeometry({
+            lineIds: new Set(tracks.value.map((line) => line.id)),
+            nodeIds: new Set(nodes.value.map((node) => node.id)),
+        });
         markCrossPoint();
     });
 }
@@ -1334,7 +1419,6 @@ function autoSeparateLine() {
         }
 
         tracks.value = nextTracks;
-        curves.value = [];
         markCrossPoint();
     });
 }
@@ -1451,21 +1535,23 @@ function drawingNodeMouseDown(x, y) {
     if (!minSnapPoint || !minDistLine) return;
 
     executeMutation(() => {
-        const n = { id: nextId(), x, y, adjacentLineIDList: [`${minDistLine.id}s1`, `${minDistLine.id}s2`] };
+        const nodeX = roundLayoutNumber(minSnapPoint.x);
+        const nodeY = roundLayoutNumber(minSnapPoint.y);
+        const n = { id: nextId(), x: nodeX, y: nodeY, adjacentLineIDList: [`${minDistLine.id}s1`, `${minDistLine.id}s2`] };
 
         const l1 = {
             id: `${minDistLine.id}s1`,
             x1: minDistLine.x1,
             y1: minDistLine.y1,
-            x2: x,
-            y2: y,
+            x2: nodeX,
+            y2: nodeY,
             fromNodeID: minDistLine.fromNodeID,
             toNodeID: n.id,
         };
         const l2 = {
             id: `${minDistLine.id}s2`,
-            x1: x,
-            y1: y,
+            x1: nodeX,
+            y1: nodeY,
             x2: minDistLine.x2,
             y2: minDistLine.y2,
             fromNodeID: n.id,
@@ -1475,12 +1561,12 @@ function drawingNodeMouseDown(x, y) {
         tracks.value = tracks.value.filter((line) => line.id !== minDistLine.id);
         tracks.value.push(l1, l2);
         nodes.value.push(n);
-        curves.value = [];
     });
 }
 
 function autoGenerateNodes() {
     executeMutation(() => {
+        const previousNodeByID = new Map(nodes.value.map((node) => [node.id, { ...node }]));
         nodes.value = [];
         const nodeList = [];
         const getOrCreateNode = (x, y) => {
@@ -1501,7 +1587,18 @@ function autoGenerateNodes() {
         }
 
         nodes.value = nodeList;
-        curves.value = [];
+        for (const curve of curves.value) {
+            const previousNode = previousNodeByID.get(curve.nodeID);
+            if (!previousNode) continue;
+            const nextNode = nodeList.find((node) => isSamePoint(node, previousNode));
+            if (nextNode) {
+                curve.nodeID = nextNode.id;
+            }
+        }
+        refreshCurvesForChangedGeometry({
+            lineIds: new Set(tracks.value.map((line) => line.id)),
+            nodeIds: new Set(nodes.value.map((node) => node.id)),
+        });
     });
 }
 
@@ -1609,7 +1706,7 @@ function getOutgoingLineVector(line, node) {
     return null;
 }
 
-function buildCurveForCorner(node, line1, line2, radius = defaultCurveRadius) {
+function buildCurveForCorner(node, line1, line2, radius = defaultCurveRadius, id = nextId()) {
     const vec1 = getOutgoingLineVector(line1, node);
     const vec2 = getOutgoingLineVector(line2, node);
     if (!vec1 || !vec2) return null;
@@ -1655,7 +1752,7 @@ function buildCurveForCorner(node, line1, line2, radius = defaultCurveRadius) {
     const sweepFlag = startRadius.x * endRadius.y - startRadius.y * endRadius.x >= 0 ? 1 : 0;
 
     return normalizeCurve({
-        id: nextId(),
+        id,
         nodeID: node.id,
         tangentLinkID1: line1.id,
         tangentLinkID2: line2.id,
@@ -1827,10 +1924,14 @@ function shouldHandleElementMouseDown(event) {
 
 function handleNodeClick(event, nodeId) {
     if (!shouldHandleElementMouseDown(event)) return;
+    event.preventDefault();
+    cancelSelectionBox();
+    finishAnnotationInteraction();
     clearSelectedDeviceIds();
     setSelectedAnnotationIds([]);
     emitSelectedEquipmentChange();
     selectedNodeIds.value = new Set([...selectedNodeIds.value, nodeId]);
+    beginNodeMove(event, nodeId);
 }
 
 function selectEquipment(kind, id, additive = false) {
@@ -1917,16 +2018,15 @@ function updateSelectedEquipment(kind, id, patch) {
             Object.assign(target, normalizeNamedEquipment(target));
         }
 
-        if (kind === "link" && previousLinkState) {
-            syncLinkEndpointNodes(target, previousLinkState);
-            curves.value = [];
-        }
-
         if (kind === "link" && patch.id != null && patch.id !== previousId) {
             updateLinkReferences(previousId, patch.id);
             selectedLineIds.value = new Set([patch.id]);
         } else if (patch.id != null && patch.id !== id) {
             selectEquipment(kind, patch.id, false);
+        }
+
+        if (kind === "link" && previousLinkState) {
+            syncLineEndpointMoveEffects(target, previousLinkState);
         }
     });
 
@@ -1977,6 +2077,164 @@ function updateLinesForNode(node) {
             line.y2 = node.y;
         }
     }
+}
+
+function syncBoundEquipmentForNode(node) {
+    const isBoundToNode = (equipment) => String(equipment?.bindingNodeID || "") === String(node.id);
+    const moveEquipmentToNode = (equipment) => {
+        equipment.position = {
+            ...(equipment.position || {}),
+            x: toFiniteNumber(node.x),
+            y: toFiniteNumber(node.y),
+        };
+    };
+
+    for (const signal of signals.value) {
+        if (isBoundToNode(signal)) moveEquipmentToNode(signal);
+    }
+    for (const insulationJoint of insulationJoints.value) {
+        if (isBoundToNode(insulationJoint)) moveEquipmentToNode(insulationJoint);
+    }
+    for (const sw of switches.value) {
+        if (!isBoundToNode(sw)) continue;
+        moveEquipmentToNode(sw);
+        sw.branchVectorList = buildSwitchBranchVectorList(node);
+    }
+}
+
+function refreshCurvesForChangedGeometry({ lineIds = new Set(), nodeIds = new Set() } = {}) {
+    if (curves.value.length === 0) return;
+    if (lineIds.size === 0 && nodeIds.size === 0) return;
+
+    const nodeByID = new Map(nodes.value.map((item) => [item.id, item]));
+    const lineByID = new Map(tracks.value.map((line) => [line.id, line]));
+    curves.value = curves.value.map((curve) => {
+        const shouldUpdate =
+            nodeIds.has(curve.nodeID) ||
+            lineIds.has(curve.tangentLinkID1) ||
+            lineIds.has(curve.tangentLinkID2);
+        if (!shouldUpdate) return curve;
+
+        const curveNode = nodeByID.get(curve.nodeID);
+        const line1 = lineByID.get(curve.tangentLinkID1);
+        const line2 = lineByID.get(curve.tangentLinkID2);
+        if (!curveNode || !line1 || !line2) return curve;
+
+        return buildCurveForCorner(
+            curveNode,
+            line1,
+            line2,
+            toFiniteNumber(curve.radius) || defaultCurveRadius,
+            curve.id
+        ) || curve;
+    });
+}
+
+function updateCurvesForNodeMove(node) {
+    const changedLineIds = new Set();
+    for (const line of tracks.value) {
+        if (line.fromNodeID === node.id || line.toNodeID === node.id) {
+            changedLineIds.add(line.id);
+        }
+    }
+
+    refreshCurvesForChangedGeometry({
+        lineIds: changedLineIds,
+        nodeIds: new Set([node.id]),
+    });
+}
+
+function getNodeById(nodeId) {
+    return nodes.value.find((node) => node.id === nodeId) || null;
+}
+
+function pushNodeInteractionUndoSnapshot() {
+    const interaction = nodeInteraction.value;
+    if (!interaction || interaction.undoCaptured) return;
+    finishedCmdList.value.push(cloneState());
+    if (finishedCmdList.value.length > 30) {
+        finishedCmdList.value.shift();
+    }
+    revokedCmdList.value = [];
+    interaction.undoCaptured = true;
+}
+
+function addNodeInteractionWindowListeners() {
+    window.addEventListener("mousemove", onNodeInteractionWindowMouseMove);
+    window.addEventListener("mouseup", onNodeInteractionWindowMouseUp);
+}
+
+function removeNodeInteractionWindowListeners() {
+    window.removeEventListener("mousemove", onNodeInteractionWindowMouseMove);
+    window.removeEventListener("mouseup", onNodeInteractionWindowMouseUp);
+}
+
+function beginNodeMove(event, nodeId) {
+    finishNodeInteraction();
+
+    const node = getNodeById(nodeId);
+    if (!node) return;
+
+    const startPointer = clientPointToDataPoint(event.clientX, event.clientY);
+    if (!startPointer) return;
+
+    nodeInteraction.value = {
+        nodeId,
+        startNode: {
+            x: toFiniteNumber(node.x),
+            y: toFiniteNumber(node.y),
+        },
+        startPointer,
+        undoCaptured: false,
+    };
+    addNodeInteractionWindowListeners();
+}
+
+function updateNodeInteraction(event) {
+    const interaction = nodeInteraction.value;
+    if (!interaction) return;
+
+    const node = getNodeById(interaction.nodeId);
+    if (!node) {
+        finishNodeInteraction();
+        return;
+    }
+
+    const currentPointer = clientPointToDataPoint(event.clientX, event.clientY);
+    if (!currentPointer) return;
+
+    const dx = currentPointer.x - interaction.startPointer.x;
+    const dy = currentPointer.y - interaction.startPointer.y;
+    const nextPosition = applyGridSnapWhenEnabled({
+        x: interaction.startNode.x + dx,
+        y: interaction.startNode.y + dy,
+    });
+    const nextX = roundLayoutNumber(nextPosition.x);
+    const nextY = roundLayoutNumber(nextPosition.y);
+    if (nextX === toFiniteNumber(node.x) && nextY === toFiniteNumber(node.y)) return;
+
+    pushNodeInteractionUndoSnapshot();
+    node.x = nextX;
+    node.y = nextY;
+    updateLinesForNode(node);
+    syncBoundEquipmentForNode(node);
+    updateCurvesForNodeMove(node);
+}
+
+function finishNodeInteraction() {
+    nodeInteraction.value = null;
+    removeNodeInteractionWindowListeners();
+}
+
+function onNodeInteractionWindowMouseMove(event) {
+    event.preventDefault();
+    updateNodeInteraction(event);
+}
+
+function onNodeInteractionWindowMouseUp(event) {
+    event.preventDefault();
+    updateNodeInteraction(event);
+    finishNodeInteraction();
 }
 
 function rebuildNodeAdjacentLineIds() {
@@ -2131,35 +2389,144 @@ function onAnnotationInteractionWindowMouseUp(event) {
     finishAnnotationInteraction();
 }
 
-function handleAnchorDown(event, anchor) {
-    if (!shouldHandleElementMouseDown(event)) return;
-    movingAnchor.value = anchor;
+function getLinkEndpointState(line) {
+    return {
+        fromNodeID: line.fromNodeID,
+        toNodeID: line.toNodeID,
+        x1: line.x1,
+        y1: line.y1,
+        x2: line.x2,
+        y2: line.y2,
+    };
 }
 
-function moveSelectedAnchor(x, y) {
-    if (!movingAnchor.value) return;
-    executeMutation(() => {
-        const line = tracks.value.find((item) => item.id === movingAnchor.value.lineId);
-        if (!line) return;
+function getLineById(lineId) {
+    return tracks.value.find((line) => line.id === lineId) || null;
+}
 
-        if (movingAnchor.value.type === "sp") {
-            line.x1 = x;
-            line.y1 = y;
-        } else if (movingAnchor.value.type === "ep") {
-            line.x2 = x;
-            line.y2 = y;
-        } else {
-            const oldCX = (Number(line.x1) + Number(line.x2)) / 2;
-            const oldCY = (Number(line.y1) + Number(line.y2)) / 2;
-            const dx = x - oldCX;
-            const dy = y - oldCY;
-            line.x1 = Number(line.x1) + dx;
-            line.y1 = Number(line.y1) + dy;
-            line.x2 = Number(line.x2) + dx;
-            line.y2 = Number(line.y2) + dy;
-        }
+function pushAnchorInteractionUndoSnapshot() {
+    const interaction = movingAnchor.value;
+    if (!interaction || interaction.undoCaptured) return;
+    finishedCmdList.value.push(cloneState());
+    if (finishedCmdList.value.length > 30) {
+        finishedCmdList.value.shift();
+    }
+    revokedCmdList.value = [];
+    interaction.undoCaptured = true;
+}
+
+function addAnchorInteractionWindowListeners() {
+    window.addEventListener("mousemove", onAnchorInteractionWindowMouseMove);
+    window.addEventListener("mouseup", onAnchorInteractionWindowMouseUp);
+}
+
+function removeAnchorInteractionWindowListeners() {
+    window.removeEventListener("mousemove", onAnchorInteractionWindowMouseMove);
+    window.removeEventListener("mouseup", onAnchorInteractionWindowMouseUp);
+}
+
+function handleAnchorDown(event, anchor) {
+    if (!shouldHandleElementMouseDown(event)) return;
+    event.preventDefault();
+    finishAnchorInteraction();
+    cancelSelectionBox();
+    finishAnnotationInteraction();
+
+    const line = getLineById(anchor.lineId);
+    const startPointer = clientPointToDataPoint(event.clientX, event.clientY);
+    if (!line || !startPointer) return;
+
+    movingAnchor.value = {
+        lineId: anchor.lineId,
+        type: anchor.type,
+        startPointer,
+        startLine: getLinkEndpointState(line),
+        undoCaptured: false,
+    };
+    addAnchorInteractionWindowListeners();
+}
+
+function getAnchorInteractionTargetPosition(interaction, currentPointer) {
+    const dx = currentPointer.x - interaction.startPointer.x;
+    const dy = currentPointer.y - interaction.startPointer.y;
+    const startX = interaction.type === "sp"
+        ? interaction.startLine.x1
+        : interaction.startLine.x2;
+    const startY = interaction.type === "sp"
+        ? interaction.startLine.y1
+        : interaction.startLine.y2;
+    const nextPosition = applyGridSnapWhenEnabled({
+        x: toFiniteNumber(startX) + dx,
+        y: toFiniteNumber(startY) + dy,
     });
+    return {
+        x: roundLayoutNumber(nextPosition.x),
+        y: roundLayoutNumber(nextPosition.y),
+    };
+}
+
+function syncLineEndpointMoveEffects(line, previousState) {
+    syncLinkEndpointNodes(line, previousState);
+
+    const affectedNodeIds = new Set([
+        previousState.fromNodeID,
+        previousState.toNodeID,
+        line.fromNodeID,
+        line.toNodeID,
+    ].filter((nodeId) => nodeId != null && nodeId !== ""));
+
+    for (const nodeId of affectedNodeIds) {
+        const node = getNodeById(nodeId);
+        if (!node) continue;
+        syncBoundEquipmentForNode(node);
+    }
+
+    refreshCurvesForChangedGeometry({
+        lineIds: new Set([line.id]),
+        nodeIds: affectedNodeIds,
+    });
+}
+
+function updateAnchorInteraction(event) {
+    const interaction = movingAnchor.value;
+    if (!interaction) return;
+
+    const line = getLineById(interaction.lineId);
+    if (!line) {
+        finishAnchorInteraction();
+        return;
+    }
+
+    const currentPointer = clientPointToDataPoint(event.clientX, event.clientY);
+    if (!currentPointer) return;
+
+    const nextPosition = getAnchorInteractionTargetPosition(interaction, currentPointer);
+    const xKey = interaction.type === "sp" ? "x1" : "x2";
+    const yKey = interaction.type === "sp" ? "y1" : "y2";
+    if (nextPosition.x === toFiniteNumber(line[xKey]) && nextPosition.y === toFiniteNumber(line[yKey])) return;
+
+    pushAnchorInteractionUndoSnapshot();
+    const previousState = getLinkEndpointState(line);
+    line[xKey] = nextPosition.x;
+    line[yKey] = nextPosition.y;
+    syncLineEndpointMoveEffects(line, previousState);
+    emitSelectedEquipmentChange();
+}
+
+function finishAnchorInteraction() {
     movingAnchor.value = null;
+    removeAnchorInteractionWindowListeners();
+}
+
+function onAnchorInteractionWindowMouseMove(event) {
+    event.preventDefault();
+    updateAnchorInteraction(event);
+}
+
+function onAnchorInteractionWindowMouseUp(event) {
+    event.preventDefault();
+    updateAnchorInteraction(event);
+    finishAnchorInteraction();
 }
 
 function onMouseMove(event) {
@@ -2196,10 +2563,6 @@ function onMouseDown(event) {
     const y = cursorParam.value.y;
 
     if (editModeCode.value === 0) {
-        if (movingAnchor.value) {
-            moveSelectedAnchor(x, y);
-            return;
-        }
         if (event.button === 0) {
             event.preventDefault();
             startSelectionBox(event);
@@ -2232,6 +2595,7 @@ function onMouseUp(event) {
 function onKeydown(event) {
     if (event.key === "Escape") {
         cancelSelectionBox();
+        finishNodeInteraction();
         finishAnnotationInteraction();
         clearSelectedEquipment();
         clearSelectedLines();
@@ -2282,15 +2646,86 @@ function isAnnotationSelected(id) {
     return selectedAnnotationIds.value.has(id);
 }
 
-function signalTransform(signal) {
-    const directionView = {
+function getSignalDirectionView(signal) {
+    const directionViews = {
         e: { coefScaleX: 1, coefShiftY: 1 },
         w: { coefScaleX: -1, coefShiftY: 1 },
         s: { coefScaleX: -1, coefShiftY: 0 },
         d: { coefScaleX: 1, coefShiftY: 0 },
     };
-    const d = directionView[signal.direction || "e"];
-    return `translate(${screenX(signal.position.x)},${screenY(signal.position.y) - 20 * d.coefShiftY})scale(${0.5 * d.coefScaleX},0.5)`;
+    return directionViews[signal.direction || "e"] || directionViews.e;
+}
+
+function signalTransform(signal) {
+    const d = getSignalDirectionView(signal);
+    const scale = editorDisplayStyles.value.signal.scale;
+    return `translate(${screenX(signal.position.x)},${screenY(signal.position.y) - 40 * scale * d.coefShiftY})scale(${scale * d.coefScaleX},${scale})`;
+}
+
+function signalNameX(signal) {
+    return screenX(signal.position.x);
+}
+
+function signalNameY(signal) {
+    const d = getSignalDirectionView(signal);
+    const scale = editorDisplayStyles.value.signal.scale;
+    return screenY(signal.position.y) - 40 * scale * d.coefShiftY + 45 * scale;
+}
+
+function textDisplayStyle(styleKey) {
+    const style = editorDisplayStyles.value[styleKey];
+    return {
+        fill: style.color,
+        fontFamily: style.fontFamily,
+        fontSize: `${style.fontSize}px`,
+        fontWeight: style.fontWeight,
+        fontStyle: style.fontStyle,
+    };
+}
+
+function trackDisplayStyle(lineId) {
+    const style = editorDisplayStyles.value.track;
+    const selected = isLineSelected(lineId);
+    return {
+        stroke: style.color,
+        strokeWidth: selected ? Math.max(style.strokeWidth + 2, style.strokeWidth * 2) : style.strokeWidth,
+    };
+}
+
+function nodeDisplayStyle(nodeId) {
+    if (nodeId != null && isNodeSelected(nodeId)) {
+        return {
+            fill: "yellow",
+            stroke: "red",
+            strokeWidth: 2,
+        };
+    }
+    return {
+        fill: editorDisplayStyles.value.node.color,
+    };
+}
+
+function platformLineDisplayStyle(platformId) {
+    const style = editorDisplayStyles.value.platform;
+    const selected = isPlatformSelected(platformId);
+    return {
+        stroke: style.color,
+        strokeWidth: selected ? style.strokeWidth + 2 : style.strokeWidth,
+    };
+}
+
+function switchBranchDisplayStyle(switchId) {
+    const style = editorDisplayStyles.value.switch;
+    if (isSwitchSelected(switchId)) {
+        return {
+            stroke: "yellow",
+            strokeWidth: style.strokeWidth,
+        };
+    }
+    return {
+        stroke: style.color,
+        strokeWidth: style.strokeWidth,
+    };
 }
 
 function lineMidpointX(line) {
@@ -2303,6 +2738,218 @@ function lineMidpointY(line) {
 
 function getLineName(line) {
     return String(line?.name || "").trim();
+}
+
+function getLinkArrowDirection(line) {
+    return String(line?.arrowDirection ?? line?.ArrowDirection ?? "").trim().toUpperCase();
+}
+
+function getLinkArrowType(line) {
+    return String(line?.arrowType ?? line?.ArrowType ?? "").trim().toUpperCase();
+}
+
+function getLinkArrowCount(line) {
+    const arrowType = getLinkArrowType(line);
+    if (arrowType === "F") return 1;
+    if (arrowType === "P") return 2;
+    if (arrowType === "PF") return 3;
+    if (["LO", "LI", "LIRO", "LORI", "OF"].includes(arrowType)) return 1;
+    return 0;
+}
+
+function getLinkArrowSides(line) {
+    const arrowDirection = getLinkArrowDirection(line);
+    const arrowType = getLinkArrowType(line);
+    if ((arrowType === "LIRO" || arrowType === "LORI") && arrowDirection) return ["L", "R"];
+    if (arrowDirection === "L") return ["L"];
+    if (arrowDirection === "R") return ["R"];
+    if (arrowDirection === "LR") return ["L", "R"];
+    return [];
+}
+
+function formatSvgNumber(value) {
+    return Number.isFinite(value) ? Number(value.toFixed(3)) : 0;
+}
+
+function getLinkArrowTailMarkerType(arrowType, side) {
+    if (arrowType === "LO") return "out";
+    if (arrowType === "LI") return "in";
+    if (arrowType === "LIRO") return side === "L" ? "in" : "out";
+    if (arrowType === "LORI") return side === "L" ? "out" : "in";
+    if (arrowType === "OF") return "oversize";
+    return "";
+}
+
+function getLinkArrowTailDepth(arrowType) {
+    const tailGap = linkArrowShape.tailGap;
+    if (arrowType === "LI" || arrowType === "LIRO" || arrowType === "LORI") {
+        return tailGap + linkArrowShape.tailLineSpacing;
+    }
+    if (arrowType === "OF") {
+        return tailGap + linkArrowShape.tailCircleRadius * 2 + linkArrowShape.tailCircleGap;
+    }
+    if (arrowType === "LO") return tailGap;
+    return 0;
+}
+
+function buildLinkArrowGeometry(tip, direction, arrowLength, halfWidth) {
+    const base = {
+        x: tip.x - direction.x * arrowLength,
+        y: tip.y - direction.y * arrowLength,
+    };
+    const perpendicular = { x: -direction.y, y: direction.x };
+    const baseA = {
+        x: base.x + perpendicular.x * halfWidth,
+        y: base.y + perpendicular.y * halfWidth,
+    };
+    const baseB = {
+        x: base.x - perpendicular.x * halfWidth,
+        y: base.y - perpendicular.y * halfWidth,
+    };
+
+    return {
+        base,
+        perpendicular,
+        path: [
+            "M", formatSvgNumber(tip.x), formatSvgNumber(tip.y),
+            "L", formatSvgNumber(baseA.x), formatSvgNumber(baseA.y),
+            "L", formatSvgNumber(baseB.x), formatSvgNumber(baseB.y),
+            "Z",
+        ].join(" "),
+    };
+}
+
+function buildTailLine(center, perpendicular, length) {
+    const halfLength = length / 2;
+    return {
+        x1: formatSvgNumber(center.x + perpendicular.x * halfLength),
+        y1: formatSvgNumber(center.y + perpendicular.y * halfLength),
+        x2: formatSvgNumber(center.x - perpendicular.x * halfLength),
+        y2: formatSvgNumber(center.y - perpendicular.y * halfLength),
+    };
+}
+
+function buildLinkArrowTailMarkers(markerType, base, direction, perpendicular, tailLineLength) {
+    if (!markerType) {
+        return { lines: [], circles: [] };
+    }
+
+    const firstMarkerCenter = {
+        x: base.x - direction.x * linkArrowShape.tailGap,
+        y: base.y - direction.y * linkArrowShape.tailGap,
+    };
+    if (markerType === "out") {
+        return {
+            lines: [buildTailLine(firstMarkerCenter, perpendicular, tailLineLength)],
+            circles: [],
+        };
+    }
+
+    if (markerType === "in") {
+        const secondLineCenter = {
+            x: firstMarkerCenter.x - direction.x * linkArrowShape.tailLineSpacing,
+            y: firstMarkerCenter.y - direction.y * linkArrowShape.tailLineSpacing,
+        };
+        return {
+            lines: [
+                buildTailLine(firstMarkerCenter, perpendicular, tailLineLength),
+                buildTailLine(secondLineCenter, perpendicular, tailLineLength),
+            ],
+            circles: [],
+        };
+    }
+
+    if (markerType === "oversize") {
+        const radius = linkArrowShape.tailCircleRadius;
+        return {
+            lines: [],
+            circles: [{
+                cx: formatSvgNumber(base.x - direction.x * (radius + linkArrowShape.tailCircleGap + linkArrowShape.tailGap)),
+                cy: formatSvgNumber(base.y - direction.y * (radius + linkArrowShape.tailCircleGap + linkArrowShape.tailGap)),
+                r: radius,
+            }],
+        };
+    }
+
+    return { lines: [], circles: [] };
+}
+
+function getLinkScreenVector(line) {
+    const x1 = screenX(line?.x1);
+    const y1 = screenY(line?.y1);
+    const x2 = screenX(line?.x2);
+    const y2 = screenY(line?.y2);
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const length = Math.hypot(dx, dy);
+    if (!Number.isFinite(length) || length <= 0) return null;
+
+    const visualSign = x1 < x2 || (x1 === x2 && y1 <= y2) ? 1 : -1;
+    return {
+        center: {
+            x: (x1 + x2) / 2,
+            y: (y1 + y2) / 2,
+        },
+        ux: (dx / length) * visualSign,
+        uy: (dy / length) * visualSign,
+        length,
+    };
+}
+
+function buildLinkArrowViews(line) {
+    const sides = getLinkArrowSides(line);
+    const count = getLinkArrowCount(line);
+    if (sides.length === 0 || count === 0) return [];
+
+    const arrowType = getLinkArrowType(line);
+    const vector = getLinkScreenVector(line);
+    if (!vector) return [];
+
+    const availableLength = vector.length / 2 - linkArrowShape.gap - getLinkArrowTailDepth(arrowType);
+    if (availableLength < linkArrowShape.minLength) return [];
+
+    const arrowLength = Math.min(linkArrowShape.length, availableLength / count);
+    if (arrowLength < linkArrowShape.minLength) return [];
+
+    const halfWidth = Math.min(linkArrowShape.halfWidth, arrowLength * 0.45);
+    const arrows = [];
+
+    for (const side of sides) {
+        const direction = side === "L"
+            ? { x: vector.ux, y: vector.uy }
+            : { x: -vector.ux, y: -vector.uy };
+        const nearestTip = {
+            x: vector.center.x - direction.x * linkArrowShape.gap,
+            y: vector.center.y - direction.y * linkArrowShape.gap,
+        };
+
+        for (let index = 0; index < count; index++) {
+            const tip = {
+                x: nearestTip.x - direction.x * arrowLength * index,
+                y: nearestTip.y - direction.y * arrowLength * index,
+            };
+            const geometry = buildLinkArrowGeometry(tip, direction, arrowLength, halfWidth);
+            const markerType = index === count - 1
+                ? getLinkArrowTailMarkerType(arrowType, side)
+                : "";
+            const tailMarkers = buildLinkArrowTailMarkers(
+                markerType,
+                geometry.base,
+                direction,
+                geometry.perpendicular,
+                halfWidth * 2
+            );
+            arrows.push({
+                id: `${line.id}-arrow-${side}-${index}`,
+                lineId: line.id,
+                path: geometry.path,
+                tailLines: tailMarkers.lines,
+                tailCircles: tailMarkers.circles,
+            });
+        }
+    }
+
+    return arrows;
 }
 
 function curvePath(curve) {
@@ -2358,6 +3005,8 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
     removeSelectionBoxWindowListeners();
+    removeAnchorInteractionWindowListeners();
+    removeNodeInteractionWindowListeners();
     removeAnnotationInteractionWindowListeners();
 });
 
@@ -2411,9 +3060,10 @@ defineExpose({
             <line v-for="segment in renderedTrackSegments" :id="segment.id" :key="`line-${segment.id}`" class="track"
                 :class="{ 'track-selected': isLineSelected(segment.line.id) }" :x1="screenX(segment.x1)"
                 :y1="screenY(segment.y1)" :x2="screenX(segment.x2)" :y2="screenY(segment.y2)"
+                :style="trackDisplayStyle(segment.line.id)"
                 @mousedown.stop @click.stop="handleLineClick(segment.line.id)" />
             <text v-for="lineName in lineNameViews" v-show="getLineName(lineName.line)" :key="`line-name-${lineName.id}`"
-                class="trackname" :x="screenX(lineName.x)" :y="screenY(lineName.y)" @mousedown.stop
+                class="trackname" :style="textDisplayStyle('lineName')" :x="screenX(lineName.x)" :y="screenY(lineName.y)" @mousedown.stop
                 @click.stop="handleLineClick(lineName.line.id)">
                 {{ getLineName(lineName.line) }}
             </text>
@@ -2421,8 +3071,20 @@ defineExpose({
             <path v-for="curve in displayedCurves" :id="String(curve.id)" :key="`curve-${curve.id}`" class="curve"
                 :d="curvePath(curve)" />
 
+            <g v-for="arrow in linkArrowViews" :key="arrow.id" class="link-arrow"
+                :class="{ 'link-arrow-selected': isLineSelected(arrow.lineId) }">
+                <path :d="arrow.path" />
+                <line v-for="(tailLine, tailLineIndex) in arrow.tailLines" :key="`tail-line-${tailLineIndex}`"
+                    class="link-arrow-tail-line" :x1="tailLine.x1" :y1="tailLine.y1" :x2="tailLine.x2"
+                    :y2="tailLine.y2" />
+                <circle v-for="(tailCircle, tailCircleIndex) in arrow.tailCircles"
+                    :key="`tail-circle-${tailCircleIndex}`" class="link-arrow-tail-circle" :cx="tailCircle.cx"
+                    :cy="tailCircle.cy" :r="tailCircle.r" />
+            </g>
+
             <line v-if="tempLine" class="track track-temp" :x1="screenX(tempLine.x1)" :y1="screenY(tempLine.y1)"
-                :x2="screenX(tempLine.x2)" :y2="screenY(tempLine.y2)" />
+                :x2="screenX(tempLine.x2)" :y2="screenY(tempLine.y2)"
+                :style="{ strokeWidth: editorDisplayStyles.track.strokeWidth }" />
 
             <rect v-for="anchor in anchorRects" :id="anchor.id" :key="anchor.id" class="anchor snapobj"
                 :x="anchorScreenX(anchor)" :y="anchorScreenY(anchor)" :width="anchorParam.size" :height="anchorParam.size"
@@ -2435,13 +3097,14 @@ defineExpose({
                 :cy="screenY(perpendicularPoint.y)" r="4" />
         </g>
 
-        <g id="nodegroup">
+        <g v-if="props.showNodes" id="nodegroup">
             <circle v-for="node in nodes" :id="node.id" :key="`node-${node.id}`" class="node snapobj"
-                :class="{ 'node-selected': isNodeSelected(node.id) }" :cx="screenX(node.x)" :cy="screenY(node.y)" r="5"
+                :class="{ 'node-selected': isNodeSelected(node.id) }" :cx="screenX(node.x)" :cy="screenY(node.y)"
+                :r="editorDisplayStyles.node.radius" :style="nodeDisplayStyle(node.id)"
                 @mousedown="handleNodeClick($event, node.id)" />
 
             <circle v-if="tempNode.visible" class="node node-temp" :cx="screenX(tempNode.x)" :cy="screenY(tempNode.y)"
-                r="5" />
+                :r="editorDisplayStyles.node.radius" />
         </g>
 
         <g id="signalgroup">
@@ -2454,8 +3117,13 @@ defineExpose({
                 <circle cx="103" cy="17" r="16" style="fill:#e60012;" />
                 <line x1="22" y1="17" x2="1" y2="17" style="fill:none;" />
                 <line x1="1" y1="1" x2="1" y2="33" style="fill:none;" />
-                <text class="signalname" x="0" y="45">{{ getEquipmentDisplayName(signal, "SIGNAL") }}</text>
             </g>
+            <text v-for="signal in signals" v-show="getEquipmentDisplayName(signal, 'SIGNAL')"
+                :key="`signal-name-${signal.id}`" class="signalname" :style="textDisplayStyle('signalName')"
+                :x="signalNameX(signal)" :y="signalNameY(signal)"
+                @mousedown="handleSignalClick($event, signal.id)">
+                {{ getEquipmentDisplayName(signal, "SIGNAL") }}
+            </text>
 
             <g v-if="tempSignal.visible" id="tempsignal" class="signal signal-departure signal-temp"
                 :transform="tempSignalTransform()">
@@ -2489,8 +3157,9 @@ defineExpose({
                 @mousedown="handleSwitchClick($event, sw.id)">
                 <line v-for="(lineVec, idx) in sw.branchVectorList" :key="`sw-line-${sw.id}-${idx}`"
                     class="switchbranch" :x1="switchBranch(sw, lineVec).x1" :y1="switchBranch(sw, lineVec).y1"
-                    :x2="switchBranch(sw, lineVec).x2" :y2="switchBranch(sw, lineVec).y2" />
-                <text class="switchname" x="4" y="-4">{{ getEquipmentDisplayName(sw, "SWITCH") }}</text>
+                    :x2="switchBranch(sw, lineVec).x2" :y2="switchBranch(sw, lineVec).y2"
+                    :style="switchBranchDisplayStyle(sw.id)" />
+                <text class="switchname" :style="textDisplayStyle('switchName')" x="4" y="-4">{{ getEquipmentDisplayName(sw, "SWITCH") }}</text>
             </g>
         </g>
 
@@ -2499,15 +3168,16 @@ defineExpose({
                 :class="{ 'platform-selected': isPlatformSelected(platform.id) }"
                 @mousedown="handlePlatformClick($event, platform.id)">
                 <rect :x="screenX(platform.x)" :y="screenY(platform.y)" :width="screenDeltaX(platform.width)"
-                    :height="screenDeltaY(platform.height)" />
+                    :height="screenDeltaY(platform.height)" :style="platformLineDisplayStyle(platform.id)" />
                 <text class="platformname" :x="screenCenterX(platform.x, platform.width)"
-                    :y="screenCenterY(platform.y, platform.height)">
+                    :y="screenCenterY(platform.y, platform.height)" :style="textDisplayStyle('platformName')">
                     {{ getEquipmentDisplayName(platform, "PLATFORM") }}
                 </text>
             </g>
 
             <rect class="platform platform-temp" :x="screenX(tempPlatformView.x)" :y="screenY(tempPlatformView.y)"
-                :width="screenDeltaX(tempPlatformView.width)" :height="screenDeltaY(tempPlatformView.height)" />
+                :width="screenDeltaX(tempPlatformView.width)" :height="screenDeltaY(tempPlatformView.height)"
+                :style="platformLineDisplayStyle()" />
         </g>
 
         <g id="annotationgroup">
@@ -2527,15 +3197,17 @@ defineExpose({
         <g id="cursor">
             <rect v-if="selectionBoxView.visible" class="selection-box" :x="selectionBoxView.x"
                 :y="selectionBoxView.y" :width="selectionBoxView.width" :height="selectionBoxView.height" />
-            <rect class="cursor" :x="screenX(cursorParam.x) - cursorParam.size / 2"
-                :y="screenY(cursorParam.y) - cursorParam.size / 2" :width="cursorParam.size"
-                :height="cursorParam.size" />
-            <line id="cursorlineh" class="cursor" :x1="screenX(cursorParam.x) - cursorParam.barLength / 2"
-                :x2="screenX(cursorParam.x) + cursorParam.barLength / 2" :y1="screenY(cursorParam.y)"
-                :y2="screenY(cursorParam.y)" />
-            <line id="cursorlinev" class="cursor" :x1="screenX(cursorParam.x)" :x2="screenX(cursorParam.x)"
-                :y1="screenY(cursorParam.y) - cursorParam.barLength / 2"
-                :y2="screenY(cursorParam.y) + cursorParam.barLength / 2" />
+            <template v-if="editModeCode !== 0">
+                <rect class="cursor" :x="screenX(cursorParam.x) - cursorParam.size / 2"
+                    :y="screenY(cursorParam.y) - cursorParam.size / 2" :width="cursorParam.size"
+                    :height="cursorParam.size" />
+                <line id="cursorlineh" class="cursor" :x1="screenX(cursorParam.x) - cursorParam.barLength / 2"
+                    :x2="screenX(cursorParam.x) + cursorParam.barLength / 2" :y1="screenY(cursorParam.y)"
+                    :y2="screenY(cursorParam.y)" />
+                <line id="cursorlinev" class="cursor" :x1="screenX(cursorParam.x)" :x2="screenX(cursorParam.x)"
+                    :y1="screenY(cursorParam.y) - cursorParam.barLength / 2"
+                    :y2="screenY(cursorParam.y) + cursorParam.barLength / 2" />
+            </template>
         </g>
     </svg>
 </template>

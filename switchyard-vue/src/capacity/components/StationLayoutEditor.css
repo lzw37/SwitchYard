@@ -47,6 +47,36 @@
     pointer-events: none;
 }
 
+.link-arrow {
+    color: #fefded;
+    fill: #fefded;
+    stroke: none;
+    pointer-events: none;
+}
+
+.link-arrow path {
+    fill: currentColor;
+    stroke: none;
+}
+
+.link-arrow-tail-line {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2px;
+    stroke-linecap: round;
+}
+
+.link-arrow-tail-circle {
+    fill: #31363f;
+    stroke: currentColor;
+    stroke-width: 2px;
+}
+
+.link-arrow-selected {
+    color: yellow;
+    fill: yellow;
+}
+
 .trackname {
     fill: #ffffff;
     stroke: #31363f;
@@ -61,6 +91,7 @@
 
 .anchor {
     fill: #97e7e1;
+    cursor: move;
 }
 
 .crosspoint {
@@ -108,8 +139,11 @@
     stroke: yellow;
 }
 
-.signalname{
-    fill:white;
+.signalname {
+    fill: white;
+    font-size: 8px;
+    cursor: pointer;
+    user-select: none;
 }
 
 .insulationjoint line {
@@ -133,6 +167,7 @@
 .node {
     fill: white;
     opacity: 0.8;
+    cursor: move;
 }
 
 .node-temp {

@@ -6,6 +6,13 @@ CREATE TABLE IF NOT EXISTS "capacityinstance" (
     "IsActive" INTEGER NULL
 );
 
+CREATE TABLE IF NOT EXISTS "stationscheme" (
+    "InstanceID" TEXT NULL,
+    "ID" TEXT NULL,
+    "Name" TEXT NULL,
+    "DisplayStyles" TEXT NULL
+);
+
 CREATE TABLE IF NOT EXISTS "annotation" (
     "InstanceID" TEXT NULL,
     "StationSchemeID" TEXT NULL,

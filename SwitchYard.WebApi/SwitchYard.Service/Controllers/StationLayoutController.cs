@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using SwitchYard.Capacity;
+using SwitchYard.Service.Utils;
 
 namespace SwitchYard.Service.Controllers
 {
@@ -17,21 +18,38 @@ namespace SwitchYard.Service.Controllers
     {
         private readonly ILogger<StationLayoutController> _logger;
         private readonly IWebHostEnvironment _environment;
+        private readonly SnowflakeIdGenerator _snowflakeIdGenerator;
 
         private const long MaxDwgFileSize = 20L * 1024 * 1024; // 20 MB
         private const string DefaultStationSchemeID = "station_layout_scheme";
         private const string DefaultStationSchemeName = "车站布置图";
         private static readonly string[] NamedDeviceTables = new[] { "signal", "switch", "cell", "route", "platform" };
+        private static readonly string[] StationLayoutDataTables = new[]
+        {
+            "switchbranchvector",
+            "switch",
+            "insulationjoint",
+            "signal",
+            "platform",
+            "annotation",
+            "curve",
+            "link",
+            "node"
+        };
         private static readonly Regex LayerNameRegex = new("^[A-Za-z0-9_\\-]{1,255}$", RegexOptions.Compiled);
         private static readonly JsonSerializerOptions StationLayoutJsonOptions = new()
         {
             PropertyNameCaseInsensitive = true
         };
 
-        public StationLayoutController(ILogger<StationLayoutController> logger, IWebHostEnvironment environment)
+        public StationLayoutController(
+            ILogger<StationLayoutController> logger,
+            IWebHostEnvironment environment,
+            SnowflakeIdGenerator snowflakeIdGenerator)
         {
             _logger = logger;
             _environment = environment;
+            _snowflakeIdGenerator = snowflakeIdGenerator;
         }
         
         [HttpPost(Name ="SaveJson")]
@@ -64,6 +82,7 @@ namespace SwitchYard.Service.Controllers
                     return authResult;
                 }
 
+                EnsureStationSchemeSchema(dbConnector);
                 var normalizedStationSchemeID = ResolveStationSchemeIDForSave(
                     dbConnector,
                     normalizedInstanceID,
@@ -112,6 +131,7 @@ namespace SwitchYard.Service.Controllers
                     return authResult;
                 }
 
+                EnsureStationSchemeSchema(dbConnector);
                 var normalizedStationSchemeID = ResolveStationSchemeID(dbConnector, normalizedInstanceID, stationSchemeID);
                 if (string.IsNullOrWhiteSpace(normalizedStationSchemeID))
                 {
@@ -134,6 +154,177 @@ namespace SwitchYard.Service.Controllers
             {
                 _logger.LogError(ex, "Failed to load station layout JSON from capacity database.");
                 return StatusCode(500, "Failed to load station layout data.");
+            }
+        }
+
+        [HttpGet(Name = "GetStationSchemes")]
+        public IActionResult GetStationSchemes([FromQuery] string? instanceID = null)
+        {
+            try
+            {
+                var normalizedInstanceID = instanceID?.Trim();
+                if (string.IsNullOrWhiteSpace(normalizedInstanceID))
+                {
+                    return BadRequest("instanceID is required when loading station schemes.");
+                }
+
+                var dbConnector = GetCapacityDbConnector();
+                var authResult = ValidateCapacityInstanceOwnershipOrFail(dbConnector, normalizedInstanceID);
+                if (authResult != null)
+                {
+                    return authResult;
+                }
+
+                var stationSchemes = LoadStationSchemes(dbConnector, normalizedInstanceID);
+                return Ok(stationSchemes);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to load station schemes from capacity database.");
+                return StatusCode(500, "Failed to load station schemes.");
+            }
+        }
+
+        [HttpPost(Name = "CreateStationScheme")]
+        public IActionResult CreateStationScheme([FromBody] StationSchemeRequest? request)
+        {
+            try
+            {
+                var normalizedInstanceID = request?.InstanceID?.Trim();
+                if (string.IsNullOrWhiteSpace(normalizedInstanceID))
+                {
+                    return BadRequest("instanceID is required when creating a station scheme.");
+                }
+
+                var dbConnector = GetCapacityDbConnector();
+                var authResult = ValidateCapacityInstanceOwnershipOrFail(dbConnector, normalizedInstanceID);
+                if (authResult != null)
+                {
+                    return authResult;
+                }
+
+                EnsureStationSchemeSchema(dbConnector);
+                var normalizedID = GenerateStationSchemeID(dbConnector, normalizedInstanceID);
+                var normalizedName = NormalizeStationSchemeName(request?.Name, normalizedID);
+
+                var stationSchemeTable = QuoteIdentifier("stationscheme");
+                var result = dbConnector.ExecuteNonQuery(
+                    $@"INSERT INTO {stationSchemeTable} (InstanceID, ID, Name)
+                       VALUES (@InstanceID, @ID, @Name)",
+                    new
+                    {
+                        InstanceID = normalizedInstanceID,
+                        ID = normalizedID,
+                        Name = normalizedName
+                    });
+                if (result <= 0)
+                {
+                    return StatusCode(500, "Failed to create station scheme.");
+                }
+
+                return Ok(new StationSchemeLookupRow { ID = normalizedID, Name = normalizedName });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to create station scheme.");
+                return StatusCode(500, "Failed to create station scheme.");
+            }
+        }
+
+        [HttpPut(Name = "EditStationScheme")]
+        public IActionResult EditStationScheme([FromBody] StationSchemeUpdateRequest? request)
+        {
+            DBConnector? dbConnector = null;
+            try
+            {
+                var normalizedInstanceID = request?.InstanceID?.Trim();
+                var originalID = request?.OriginalID?.Trim();
+                if (string.IsNullOrWhiteSpace(normalizedInstanceID) ||
+                    string.IsNullOrWhiteSpace(originalID))
+                {
+                    return BadRequest("instanceID and originalID are required when editing a station scheme.");
+                }
+
+                var normalizedName = NormalizeStationSchemeName(request?.Name, originalID);
+                dbConnector = GetCapacityDbConnector();
+                var authResult = ValidateCapacityInstanceOwnershipOrFail(dbConnector, normalizedInstanceID);
+                if (authResult != null)
+                {
+                    return authResult;
+                }
+
+                EnsureStationSchemeSchema(dbConnector);
+                if (!StationSchemeIDExists(dbConnector, normalizedInstanceID, originalID))
+                {
+                    return NotFound("Station scheme not found.");
+                }
+
+                dbConnector.BeginTransaction();
+                UpsertStationSchemeMetadata(
+                    dbConnector,
+                    normalizedInstanceID,
+                    originalID,
+                    originalID,
+                    normalizedName);
+                dbConnector.Commit();
+
+                return Ok(new StationSchemeLookupRow { ID = originalID, Name = normalizedName });
+            }
+            catch (Exception ex)
+            {
+                dbConnector?.Rollback();
+                _logger.LogError(ex, "Failed to edit station scheme.");
+                return StatusCode(500, "Failed to edit station scheme.");
+            }
+        }
+
+        [HttpDelete(Name = "DeleteStationScheme")]
+        public IActionResult DeleteStationScheme(
+            [FromQuery] string? instanceID = null,
+            [FromQuery] string? stationSchemeID = null)
+        {
+            DBConnector? dbConnector = null;
+            try
+            {
+                var normalizedInstanceID = instanceID?.Trim();
+                var normalizedStationSchemeID = stationSchemeID?.Trim();
+                if (string.IsNullOrWhiteSpace(normalizedInstanceID) ||
+                    string.IsNullOrWhiteSpace(normalizedStationSchemeID))
+                {
+                    return BadRequest("instanceID and stationSchemeID are required when deleting a station scheme.");
+                }
+
+                dbConnector = GetCapacityDbConnector();
+                var authResult = ValidateCapacityInstanceOwnershipOrFail(dbConnector, normalizedInstanceID);
+                if (authResult != null)
+                {
+                    return authResult;
+                }
+
+                EnsureStationSchemeSchema(dbConnector);
+                if (!StationSchemeIDExists(dbConnector, normalizedInstanceID, normalizedStationSchemeID))
+                {
+                    return NotFound("Station scheme not found.");
+                }
+
+                dbConnector.BeginTransaction();
+                DeleteStationLayoutTableRowsForExistingTables(
+                    dbConnector,
+                    normalizedInstanceID,
+                    normalizedStationSchemeID);
+                DeleteStationSchemeMetadata(
+                    dbConnector,
+                    normalizedInstanceID,
+                    normalizedStationSchemeID);
+                dbConnector.Commit();
+
+                return Ok("Station scheme deleted successfully.");
+            }
+            catch (Exception ex)
+            {
+                dbConnector?.Rollback();
+                _logger.LogError(ex, "Failed to delete station scheme.");
+                return StatusCode(500, "Failed to delete station scheme.");
             }
         }
 
@@ -281,8 +472,296 @@ namespace SwitchYard.Service.Controllers
                 ?? DefaultStationSchemeID;
         }
 
+        private List<StationSchemeLookupRow> LoadStationSchemes(DBConnector dbConnector, string instanceID)
+        {
+            EnsureStationSchemeSchema(dbConnector);
+
+            var stationSchemeTable = QuoteIdentifier("stationscheme");
+            var rows = dbConnector.Query<StationSchemeLookupRow>(
+                $@"SELECT ID, Name
+                   FROM {stationSchemeTable}
+                   WHERE InstanceID = @instanceID
+                   ORDER BY CASE WHEN Name IS NULL OR TRIM(Name) = '' THEN ID ELSE Name END, ID",
+                new { instanceID }) ?? new List<StationSchemeLookupRow>();
+
+            var schemesByID = new Dictionary<string, StationSchemeLookupRow>(StringComparer.OrdinalIgnoreCase);
+            foreach (var row in rows)
+            {
+                AddStationSchemeLookupRow(schemesByID, row.ID, row.Name);
+            }
+
+            foreach (var tableName in new[]
+            {
+                "node",
+                "link",
+                "curve",
+                "signal",
+                "insulationjoint",
+                "platform",
+                "switch",
+                "switchbranchvector",
+                "annotation"
+            })
+            {
+                AddStationSchemeIdsFromLayoutTable(dbConnector, schemesByID, tableName, instanceID);
+            }
+
+            return schemesByID.Values
+                .OrderBy(
+                    row => string.IsNullOrWhiteSpace(row.Name) ? row.ID ?? string.Empty : row.Name ?? string.Empty,
+                    StringComparer.OrdinalIgnoreCase)
+                .ThenBy(row => row.ID ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
+        private static void AddStationSchemeLookupRow(
+            IDictionary<string, StationSchemeLookupRow> schemesByID,
+            string? id,
+            string? name)
+        {
+            var normalizedID = id?.Trim();
+            if (string.IsNullOrWhiteSpace(normalizedID))
+            {
+                return;
+            }
+
+            var normalizedName = string.IsNullOrWhiteSpace(name) ? normalizedID : name.Trim();
+            if (schemesByID.TryGetValue(normalizedID, out var existing))
+            {
+                if (string.IsNullOrWhiteSpace(existing.Name) ||
+                    string.Equals(existing.Name, existing.ID, StringComparison.OrdinalIgnoreCase))
+                {
+                    existing.Name = normalizedName;
+                }
+
+                return;
+            }
+
+            schemesByID[normalizedID] = new StationSchemeLookupRow
+            {
+                ID = normalizedID,
+                Name = normalizedName
+            };
+        }
+
+        private static void AddStationSchemeIdsFromLayoutTable(
+            DBConnector dbConnector,
+            IDictionary<string, StationSchemeLookupRow> schemesByID,
+            string tableName,
+            string instanceID)
+        {
+            var columnNames = GetColumnNames(dbConnector, tableName);
+            if (!columnNames.Any(column => string.Equals(column, "StationSchemeID", StringComparison.OrdinalIgnoreCase)))
+            {
+                return;
+            }
+
+            var rows = dbConnector.Query<StationSchemeLookupRow>(
+                $@"SELECT {QuoteIdentifier("StationSchemeID")} AS ID
+                   FROM {QuoteIdentifier(tableName)}
+                   WHERE {QuoteIdentifier("InstanceID")} = @instanceID
+                     AND {QuoteIdentifier("StationSchemeID")} IS NOT NULL
+                     AND TRIM({QuoteIdentifier("StationSchemeID")}) <> ''
+                   GROUP BY {QuoteIdentifier("StationSchemeID")}
+                   ORDER BY {QuoteIdentifier("StationSchemeID")}",
+                new { instanceID }) ?? new List<StationSchemeLookupRow>();
+
+            foreach (var row in rows)
+            {
+                AddStationSchemeLookupRow(schemesByID, row.ID, row.ID);
+            }
+        }
+
+        private static bool StationSchemeIDExists(DBConnector dbConnector, string instanceID, string stationSchemeID)
+        {
+            if (string.IsNullOrWhiteSpace(stationSchemeID))
+            {
+                return false;
+            }
+
+            if (StationSchemeMetadataExists(dbConnector, instanceID, stationSchemeID))
+            {
+                return true;
+            }
+
+            return StationLayoutDataTables.Any(tableName =>
+                StationSchemeIDExistsInLayoutTable(dbConnector, tableName, instanceID, stationSchemeID));
+        }
+
+        private string GenerateStationSchemeID(DBConnector dbConnector, string instanceID)
+        {
+            for (var attempt = 0; attempt < 10; attempt++)
+            {
+                var candidate = _snowflakeIdGenerator.NextIdString();
+                if (!StationSchemeIDExists(dbConnector, instanceID, candidate))
+                {
+                    return candidate;
+                }
+            }
+
+            throw new InvalidOperationException("Failed to generate a unique station scheme ID.");
+        }
+
+        private static bool StationSchemeMetadataExists(DBConnector dbConnector, string instanceID, string stationSchemeID)
+        {
+            EnsureStationSchemeSchema(dbConnector);
+            var stationSchemeTable = QuoteIdentifier("stationscheme");
+            return (dbConnector.Query<StationSchemeLookupRow>(
+                $@"SELECT ID
+                   FROM {stationSchemeTable}
+                   WHERE InstanceID = @instanceID AND ID = @stationSchemeID
+                   LIMIT 1",
+                new { instanceID, stationSchemeID }) ?? new List<StationSchemeLookupRow>()).Any();
+        }
+
+        private static bool StationSchemeIDExistsInLayoutTable(
+            DBConnector dbConnector,
+            string tableName,
+            string instanceID,
+            string stationSchemeID)
+        {
+            var columnNames = GetColumnNames(dbConnector, tableName);
+            if (!columnNames.Any(column => string.Equals(column, "StationSchemeID", StringComparison.OrdinalIgnoreCase)))
+            {
+                return false;
+            }
+
+            var rows = dbConnector.Query<StationSchemeLookupRow>(
+                $@"SELECT {QuoteIdentifier("StationSchemeID")} AS ID
+                   FROM {QuoteIdentifier(tableName)}
+                   WHERE {QuoteIdentifier("InstanceID")} = @instanceID
+                     AND {QuoteIdentifier("StationSchemeID")} = @stationSchemeID
+                   LIMIT 1",
+                new { instanceID, stationSchemeID }) ?? new List<StationSchemeLookupRow>();
+            return rows.Any();
+        }
+
+        private static void UpsertStationSchemeMetadata(
+            DBConnector dbConnector,
+            string instanceID,
+            string originalStationSchemeID,
+            string stationSchemeID,
+            string name)
+        {
+            var stationSchemeTable = QuoteIdentifier("stationscheme");
+            if (StationSchemeMetadataExists(dbConnector, instanceID, originalStationSchemeID))
+            {
+                dbConnector.ExecuteNonQuery(
+                    $@"UPDATE {stationSchemeTable}
+                       SET ID = @stationSchemeID, Name = @name
+                       WHERE InstanceID = @instanceID AND ID = @originalStationSchemeID",
+                    new { instanceID, originalStationSchemeID, stationSchemeID, name });
+                return;
+            }
+
+            dbConnector.ExecuteNonQuery(
+                $@"INSERT INTO {stationSchemeTable} (InstanceID, ID, Name)
+                   VALUES (@InstanceID, @ID, @Name)",
+                new
+                {
+                    InstanceID = instanceID,
+                    ID = stationSchemeID,
+                    Name = name
+                });
+        }
+
+        private static string? LoadStationSchemeDisplayStyles(
+            DBConnector dbConnector,
+            string instanceID,
+            string stationSchemeID)
+        {
+            EnsureStationSchemeSchema(dbConnector);
+            var stationSchemeTable = QuoteIdentifier("stationscheme");
+            return (dbConnector.Query<StationSchemeLookupRow>(
+                $@"SELECT {QuoteIdentifier("DisplayStyles")} AS DisplayStyles
+                   FROM {stationSchemeTable}
+                   WHERE InstanceID = @instanceID AND ID = @stationSchemeID
+                   LIMIT 1",
+                new { instanceID, stationSchemeID }) ?? new List<StationSchemeLookupRow>())
+                .FirstOrDefault()
+                ?.DisplayStyles;
+        }
+
+        private static JsonElement? ParseStationSchemeDisplayStyles(string? displayStyles)
+        {
+            if (string.IsNullOrWhiteSpace(displayStyles))
+            {
+                return null;
+            }
+
+            try
+            {
+                using var document = JsonDocument.Parse(displayStyles);
+                return document.RootElement.Clone();
+            }
+            catch (JsonException)
+            {
+                return null;
+            }
+        }
+
+        private static void PersistStationSchemeDisplayStyles(
+            DBConnector dbConnector,
+            string instanceID,
+            string stationSchemeID,
+            JsonElement? displayStyles)
+        {
+            if (!displayStyles.HasValue ||
+                displayStyles.Value.ValueKind == JsonValueKind.Null ||
+                displayStyles.Value.ValueKind == JsonValueKind.Undefined)
+            {
+                return;
+            }
+
+            var stationSchemeTable = QuoteIdentifier("stationscheme");
+            dbConnector.ExecuteNonQuery(
+                $@"UPDATE {stationSchemeTable}
+                   SET {QuoteIdentifier("DisplayStyles")} = @displayStyles
+                   WHERE InstanceID = @instanceID AND ID = @stationSchemeID",
+                new
+                {
+                    instanceID,
+                    stationSchemeID,
+                    displayStyles = displayStyles.Value.GetRawText()
+                });
+        }
+
+        private static void DeleteStationSchemeMetadata(
+            DBConnector dbConnector,
+            string instanceID,
+            string stationSchemeID)
+        {
+            dbConnector.ExecuteNonQuery(
+                $@"DELETE FROM {QuoteIdentifier("stationscheme")}
+                   WHERE InstanceID = @instanceID AND ID = @stationSchemeID",
+                new { instanceID, stationSchemeID });
+        }
+
+        private static void DeleteStationLayoutTableRowsForExistingTables(
+            DBConnector dbConnector,
+            string instanceID,
+            string stationSchemeID)
+        {
+            foreach (var tableName in StationLayoutDataTables)
+            {
+                var columnNames = GetColumnNames(dbConnector, tableName);
+                if (!columnNames.Any(column => string.Equals(column, "StationSchemeID", StringComparison.OrdinalIgnoreCase)))
+                {
+                    continue;
+                }
+
+                DeleteStationLayoutTableRows(dbConnector, QuoteIdentifier(tableName), instanceID, stationSchemeID);
+            }
+        }
+
+        private static string NormalizeStationSchemeName(string? name, string stationSchemeID)
+        {
+            return string.IsNullOrWhiteSpace(name) ? stationSchemeID : name.Trim();
+        }
+
         private void EnsureStationSchemeExists(DBConnector dbConnector, string instanceID, string stationSchemeID)
         {
+            EnsureStationSchemeSchema(dbConnector);
             var stationSchemeTable = QuoteIdentifier("stationscheme");
             var exists = (dbConnector.Query<StationSchemeLookupRow>(
                 $@"SELECT ID
@@ -423,6 +902,8 @@ namespace SwitchYard.Service.Controllers
                     {
                         id = ToInvariantString(link.ID),
                         name = link.Name ?? string.Empty,
+                        arrowDirection = link.ArrowDirection ?? string.Empty,
+                        arrowType = link.ArrowType ?? string.Empty,
                         x1 = fromPoint.x,
                         y1 = fromPoint.y,
                         x2 = toPoint.x,
@@ -572,6 +1053,8 @@ namespace SwitchYard.Service.Controllers
                 })
                 .ToArray();
 
+            var displayStyles = ParseStationSchemeDisplayStyles(
+                LoadStationSchemeDisplayStyles(dbConnector, instanceID, stationSchemeID));
             var latestElementID = CalculateLatestElementID(
                 nodes.Select(node => ToInvariantString(node.ID))
                     .Concat(links.Select(link => ToInvariantString(link.ID)))
@@ -589,7 +1072,8 @@ namespace SwitchYard.Service.Controllers
                     latestElementID,
                     instanceID,
                     stationSchemeID,
-                    coordinateTransform = nodeTransform.ToMetadata()
+                    coordinateTransform = nodeTransform.ToMetadata(),
+                    displayStyles
                 },
                 tracks = trackViews,
                 curves = curveViews,
@@ -630,6 +1114,11 @@ namespace SwitchYard.Service.Controllers
             try
             {
                 EnsureStationSchemeExists(dbConnector, instanceID, stationSchemeID);
+                PersistStationSchemeDisplayStyles(
+                    dbConnector,
+                    instanceID,
+                    stationSchemeID,
+                    layout.Metadata?.DisplayStyles);
 
                 DeleteStationLayoutTableRows(dbConnector, switchBranchVectorTable, instanceID, stationSchemeID);
                 DeleteStationLayoutTableRows(dbConnector, switchTable, instanceID, stationSchemeID);
@@ -662,8 +1151,8 @@ namespace SwitchYard.Service.Controllers
                 {
                     EnsureInserted(
                         dbConnector.ExecuteNonQuery(
-                            $@"INSERT INTO {linkTable} (InstanceID, StationSchemeID, ID, Name, FromNodeID, ToNodeID)
-                               VALUES (@InstanceID, @StationSchemeID, @ID, @Name, @FromNodeID, @ToNodeID)",
+                            $@"INSERT INTO {linkTable} (InstanceID, StationSchemeID, ID, Name, FromNodeID, ToNodeID, ArrowDirection, ArrowType)
+                               VALUES (@InstanceID, @StationSchemeID, @ID, @Name, @FromNodeID, @ToNodeID, @ArrowDirection, @ArrowType)",
                             new
                             {
                                 InstanceID = instanceID,
@@ -671,7 +1160,9 @@ namespace SwitchYard.Service.Controllers
                                 link.ID,
                                 link.Name,
                                 link.FromNodeID,
-                                link.ToNodeID
+                                link.ToNodeID,
+                                link.ArrowDirection,
+                                link.ArrowType
                             }),
                         "link");
                 }
@@ -791,6 +1282,8 @@ namespace SwitchYard.Service.Controllers
                     SourceID = sourceID,
                     ID = dbID,
                     Name = track.Name ?? string.Empty,
+                    ArrowDirection = NormalizeOptionalCode(track.ArrowDirection),
+                    ArrowType = NormalizeOptionalCode(track.ArrowType),
                     FromNodeID = fromNodeID,
                     ToNodeID = toNodeID
                 });
@@ -1293,6 +1786,64 @@ namespace SwitchYard.Service.Controllers
             return $"\"{escapedIdentifier}\"";
         }
 
+        private static void EnsureStationSchemeSchema(DBConnector dbConnector)
+        {
+            var tableName = QuoteIdentifier("stationscheme");
+            if (!TableExists(dbConnector, "stationscheme"))
+            {
+                if (DBConnector.IsMySql(DBConnector.CapacityDatabaseSectionName))
+                {
+                    dbConnector.ExecuteNonQuery(
+                        $@"CREATE TABLE IF NOT EXISTS {tableName} (
+                            {QuoteIdentifier("InstanceID")} VARCHAR(50) NULL,
+                            {QuoteIdentifier("ID")} VARCHAR(50) NULL,
+                            {QuoteIdentifier("Name")} VARCHAR(100) NULL,
+                            {QuoteIdentifier("DisplayStyles")} TEXT NULL
+                        )");
+                }
+                else
+                {
+                    dbConnector.ExecuteNonQuery(
+                        $@"CREATE TABLE IF NOT EXISTS {tableName} (
+                            {QuoteIdentifier("InstanceID")} TEXT NULL,
+                            {QuoteIdentifier("ID")} TEXT NULL,
+                            {QuoteIdentifier("Name")} TEXT NULL,
+                            {QuoteIdentifier("DisplayStyles")} TEXT NULL
+                        )");
+                }
+
+                return;
+            }
+
+            var existingColumns = GetColumnNames(dbConnector, "stationscheme");
+            var requiredColumns = DBConnector.IsMySql(DBConnector.CapacityDatabaseSectionName)
+                ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["InstanceID"] = "VARCHAR(50) NULL",
+                    ["ID"] = "VARCHAR(50) NULL",
+                    ["Name"] = "VARCHAR(100) NULL",
+                    ["DisplayStyles"] = "TEXT NULL"
+                }
+                : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["InstanceID"] = "TEXT NULL",
+                    ["ID"] = "TEXT NULL",
+                    ["Name"] = "TEXT NULL",
+                    ["DisplayStyles"] = "TEXT NULL"
+                };
+
+            foreach (var column in requiredColumns)
+            {
+                if (existingColumns.Any(existing => string.Equals(existing, column.Key, StringComparison.OrdinalIgnoreCase)))
+                {
+                    continue;
+                }
+
+                dbConnector.ExecuteNonQuery(
+                    $@"ALTER TABLE {tableName} ADD COLUMN {QuoteIdentifier(column.Key)} {column.Value}");
+            }
+        }
+
         private static void EnsureNamedDeviceSchemas(DBConnector dbConnector)
         {
             foreach (var tableName in NamedDeviceTables)
@@ -1304,6 +1855,26 @@ namespace SwitchYard.Service.Controllers
         private static void EnsureLinkSchema(DBConnector dbConnector)
         {
             EnsureNullableNameColumn(dbConnector, "link");
+            var columnNames = GetColumnNames(dbConnector, "link");
+            if (columnNames.Count == 0)
+            {
+                return;
+            }
+
+            var textType = DBConnector.IsMySql(DBConnector.CapacityDatabaseSectionName)
+                ? "VARCHAR(10) NULL"
+                : "TEXT NULL";
+            var tableName = QuoteIdentifier("link");
+            foreach (var columnName in new[] { "ArrowDirection", "ArrowType" })
+            {
+                if (columnNames.Any(column => string.Equals(column, columnName, StringComparison.OrdinalIgnoreCase)))
+                {
+                    continue;
+                }
+
+                dbConnector.ExecuteNonQuery(
+                    $@"ALTER TABLE {tableName} ADD COLUMN {QuoteIdentifier(columnName)} {textType}");
+            }
         }
 
         private static void EnsureCurveSchema(DBConnector dbConnector)
@@ -1511,6 +2082,13 @@ namespace SwitchYard.Service.Controllers
             return string.IsNullOrWhiteSpace(name) ? id : name.Trim();
         }
 
+        private static string? NormalizeOptionalCode(string? value)
+        {
+            return string.IsNullOrWhiteSpace(value)
+                ? null
+                : value.Trim().ToUpperInvariant();
+        }
+
         private static string ToInvariantString(int value)
         {
             return value.ToString(CultureInfo.InvariantCulture);
@@ -1709,6 +2287,10 @@ namespace SwitchYard.Service.Controllers
         private sealed class StationSchemeLookupRow
         {
             public string? ID { get; set; }
+
+            public string? Name { get; set; }
+
+            public string? DisplayStyles { get; set; }
         }
 
         private sealed class StationNodeRow
@@ -1725,6 +2307,10 @@ namespace SwitchYard.Service.Controllers
             public int ID { get; set; }
 
             public string? Name { get; set; }
+
+            public string? ArrowDirection { get; set; }
+
+            public string? ArrowType { get; set; }
 
             public int FromNodeID { get; set; }
 
@@ -1902,6 +2488,9 @@ namespace SwitchYard.Service.Controllers
 
             [JsonPropertyName("coordinateTransform")]
             public StationLayoutJsonCoordinateTransform? CoordinateTransform { get; set; }
+
+            [JsonPropertyName("displayStyles")]
+            public JsonElement? DisplayStyles { get; set; }
         }
 
         private sealed class StationLayoutJsonCoordinateTransform
@@ -1929,6 +2518,12 @@ namespace SwitchYard.Service.Controllers
 
             [JsonPropertyName("name")]
             public string? Name { get; set; }
+
+            [JsonPropertyName("arrowDirection")]
+            public string? ArrowDirection { get; set; }
+
+            [JsonPropertyName("arrowType")]
+            public string? ArrowType { get; set; }
 
             [JsonPropertyName("x1")]
             public double X1 { get; set; }
@@ -2172,6 +2767,10 @@ namespace SwitchYard.Service.Controllers
 
             public string Name { get; set; } = string.Empty;
 
+            public string? ArrowDirection { get; set; }
+
+            public string? ArrowType { get; set; }
+
             public int FromNodeID { get; set; }
 
             public int ToNodeID { get; set; }
@@ -2230,6 +2829,22 @@ namespace SwitchYard.Service.Controllers
             public string? InstanceID { get; set; }
 
             public string? StationSchemeID { get; set; }
+        }
+
+        public sealed class StationSchemeRequest
+        {
+            public string InstanceID { get; set; } = string.Empty;
+
+            public string? Name { get; set; }
+        }
+
+        public sealed class StationSchemeUpdateRequest
+        {
+            public string InstanceID { get; set; } = string.Empty;
+
+            public string OriginalID { get; set; } = string.Empty;
+
+            public string? Name { get; set; }
         }
 
         [HttpPost(Name = "ExtractDwgFile")]

@@ -2,7 +2,7 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from 'vue-i18n';
 import axios from "@/utils/axios";
-import { ElMessage } from "element-plus";
+import { ElMessage, ElMessageBox } from "element-plus";
 import SignalInfoTabVue from "./components/SignalInfoTab.vue";
 import StationLayoutEditor from "./components/StationLayoutEditor.vue";
 import {
@@ -32,9 +32,18 @@ const extractingDwg = ref(false);
 const loadingData = ref(false);
 const savingData = ref(false);
 const currentStationSchemeId = ref("");
+const loadingStationSchemes = ref(false);
+const stationSchemeOptions = ref([]);
+const stationSchemeManagerVisible = ref(false);
+const stationSchemeManagerSaving = ref(false);
+const stationSchemeDraft = ref({ name: "" });
+const editingStationSchemeOriginalId = ref("");
+const editingStationSchemeForm = ref({ name: "" });
 const layoutScaleX = ref(1);
 const layoutScaleY = ref(1);
 const showCurveArc = ref(true);
+const showNodes = ref(true);
+const layoutStyleDialogVisible = ref(false);
 const layoutScaleXDisplay = computed(() => layoutScaleX.value.toFixed(2));
 const layoutScaleYDisplay = computed(() => layoutScaleY.value.toFixed(2));
 const selectedAnnotation = ref(null);
@@ -42,6 +51,8 @@ const selectedEquipment = ref(null);
 const equipmentDrawerVisible = ref(false);
 const equipmentForm = ref({});
 const equipmentSaving = ref(false);
+const activeEditMode = ref(0);
+const isSelectMode = computed(() => activeEditMode.value === 0);
 
 const annotationFontFamilyOptions = ["Arial", "Microsoft YaHei", "SimSun", "SimHei", "Times New Roman", "Consolas"];
 const annotationFontWeightOptions = [
@@ -51,6 +62,41 @@ const annotationFontWeightOptions = [
 const annotationFontStyleOptions = [
     { label: "常规", value: "normal" },
     { label: "斜体", value: "italic" },
+];
+const layoutTextStyleRows = [
+    { key: "switchName", label: "道岔编号" },
+    { key: "platformName", label: "站台名称" },
+    { key: "signalName", label: "信号机名称" },
+    { key: "lineName", label: "线路名称" },
+];
+const defaultLayoutDisplayStyles = {
+    switchName: { fontSize: 8, fontFamily: "Arial", fontWeight: "normal", fontStyle: "normal", color: "#ffffff" },
+    platformName: { fontSize: 10, fontFamily: "Arial", fontWeight: "normal", fontStyle: "normal", color: "#ffffff" },
+    signalName: { fontSize: 8, fontFamily: "Arial", fontWeight: "normal", fontStyle: "normal", color: "#ffffff" },
+    lineName: { fontSize: 10, fontFamily: "Arial", fontWeight: "normal", fontStyle: "normal", color: "#ffffff" },
+    track: { strokeWidth: 2, color: "#fefded" },
+    platform: { strokeWidth: 1, color: "#87ceeb" },
+    signal: { scale: 0.5 },
+    switch: { strokeWidth: 5, color: "#00ffff" },
+    node: { radius: 5, color: "#ffffff" },
+};
+const layoutDisplayStyles = ref(createDefaultLayoutDisplayStyles());
+const linkArrowDirectionOptions = [
+    { label: "不绘制", value: "" },
+    { label: "左侧", value: "L" },
+    { label: "右侧", value: "R" },
+    { label: "左右两侧", value: "LR" },
+];
+const linkArrowTypeOptions = [
+    { label: "不绘制", value: "" },
+    { label: "旅客列车进路", value: "P" },
+    { label: "货物列车进路", value: "F" },
+    { label: "客货列车进路", value: "PF" },
+    { label: "机车出段", value: "LO" },
+    { label: "机车入段", value: "LI" },
+    { label: "机车出入段（左入右出）", value: "LIRO" },
+    { label: "机车出入段（左出右入）", value: "LORI" },
+    { label: "超限货物列车进路", value: "OF" },
 ];
 const equipmentKindLabels = {
     link: "Link",
@@ -66,10 +112,63 @@ const equipmentDrawerTitle = computed(() => {
 });
 
 function setSelectMode() {
+    activeEditMode.value = 0;
     stationLayoutEditorRef.value?.setEditMode(0);
 }
 function setDrawMode() {
+    activeEditMode.value = 1;
     stationLayoutEditorRef.value?.setEditMode(1);
+}
+function handleEditModeChange(mode) {
+    if (Number(mode) === 0) {
+        setSelectMode();
+    } else {
+        setDrawMode();
+    }
+}
+function createDefaultLayoutDisplayStyles() {
+    return JSON.parse(JSON.stringify(defaultLayoutDisplayStyles));
+}
+function normalizeLayoutDisplayStyles(styles) {
+    const normalized = createDefaultLayoutDisplayStyles();
+    const source = styles && typeof styles === "object" && !Array.isArray(styles) ? styles : {};
+    for (const row of layoutTextStyleRows) {
+        if (source[row.key] && typeof source[row.key] === "object" && !Array.isArray(source[row.key])) {
+            normalized[row.key] = { ...normalized[row.key], ...source[row.key] };
+        }
+    }
+
+    for (const key of ["track", "platform", "signal", "switch", "node"]) {
+        if (source[key] && typeof source[key] === "object" && !Array.isArray(source[key])) {
+            normalized[key] = { ...normalized[key], ...source[key] };
+        }
+    }
+
+    return normalized;
+}
+function applyLayoutDisplayStyles(styles) {
+    layoutDisplayStyles.value = normalizeLayoutDisplayStyles(styles);
+}
+function buildLayoutJsonWithDisplayStyles(dataStr) {
+    const jsonObj = JSON.parse(dataStr);
+    jsonObj.metadata = {
+        ...(jsonObj.metadata || {}),
+        displayStyles: normalizeLayoutDisplayStyles(layoutDisplayStyles.value),
+    };
+    return JSON.stringify(jsonObj);
+}
+function resetLayoutDisplayStyles() {
+    layoutDisplayStyles.value = createDefaultLayoutDisplayStyles();
+}
+async function saveLayoutDisplayStyles() {
+    const saved = await saveData({
+        silent: true,
+        successMessage: "显示样式已保存",
+        failurePrefix: "显示样式保存失败：",
+    });
+    if (saved) {
+        layoutStyleDialogVisible.value = false;
+    }
 }
 function clearSelection() {
     stationLayoutEditorRef.value?.clearSelectedLines();
@@ -95,6 +194,230 @@ function mouseGridSnapChange(e) {
         stationLayoutEditorRef.value?.setMouseGridSnapModeCode(1);
     }
 }
+
+function normalizeStationSchemeOption(item) {
+    const id = String(item?.id ?? item?.ID ?? "").trim();
+    if (!id) return null;
+
+    const name = String(item?.name ?? item?.Name ?? id).trim() || id;
+    return { id, name };
+}
+
+function setStationSchemeOptions(options, includeCurrent = true) {
+    const optionsById = new Map();
+    for (const option of options) {
+        if (!option?.id || optionsById.has(option.id)) continue;
+        optionsById.set(option.id, option);
+    }
+
+    stationSchemeOptions.value = Array.from(optionsById.values());
+    if (includeCurrent) {
+        ensureCurrentStationSchemeOption();
+    }
+}
+
+function ensureCurrentStationSchemeOption(name) {
+    const id = currentStationSchemeId.value?.trim();
+    if (!id) return;
+    if (stationSchemeOptions.value.some((option) => option.id === id)) return;
+
+    stationSchemeOptions.value = [
+        ...stationSchemeOptions.value,
+        {
+            id,
+            name: name || id,
+        },
+    ];
+}
+
+function formatStationSchemeLabel(option) {
+    if (!option?.id) return "";
+    return option.name || option.id;
+}
+
+function loadStationSchemes(options = {}) {
+    const includeCurrent = options?.includeCurrent !== false;
+    const instanceId = props.selectedInstanceId;
+    if (!instanceId) {
+        stationSchemeOptions.value = [];
+        loadingStationSchemes.value = false;
+        return Promise.resolve([]);
+    }
+
+    loadingStationSchemes.value = true;
+    return axios
+        .get("/StationLayout/GetStationSchemes", {
+            params: {
+                instanceID: instanceId,
+            },
+        })
+        .then((res) => {
+            if (props.selectedInstanceId !== instanceId) {
+                return [];
+            }
+
+            const options = (res.data || [])
+                .map(normalizeStationSchemeOption)
+                .filter(Boolean);
+            setStationSchemeOptions(options, includeCurrent);
+            return options;
+        })
+        .catch((err) => {
+            if (props.selectedInstanceId !== instanceId) {
+                return [];
+            }
+
+            console.error("Failed to load station schemes:", err);
+            ElMessage.error(t('stationLayout.messages.loadSchemesFailed'));
+            stationSchemeOptions.value = [];
+            return [];
+        })
+        .finally(() => {
+            if (props.selectedInstanceId === instanceId) {
+                loadingStationSchemes.value = false;
+            }
+        });
+}
+
+function getHttpErrorMessage(err, fallback) {
+    return err?.response?.data || err?.message || fallback;
+}
+
+function resetStationSchemeDraft() {
+    stationSchemeDraft.value = { name: "" };
+}
+
+function cancelStationSchemeEdit() {
+    editingStationSchemeOriginalId.value = "";
+    editingStationSchemeForm.value = { name: "" };
+}
+
+async function openStationSchemeManager() {
+    if (!props.selectedInstanceId) {
+        ElMessage.warning(t('capacityMain.placeholders.selectInstance'));
+        return;
+    }
+
+    stationSchemeManagerVisible.value = true;
+    resetStationSchemeDraft();
+    cancelStationSchemeEdit();
+    await loadStationSchemes();
+}
+
+async function createStationScheme() {
+    const name = stationSchemeDraft.value.name.trim();
+    if (!name) {
+        ElMessage.warning(t('stationLayout.schemeManager.nameRequired'));
+        return;
+    }
+
+    stationSchemeManagerSaving.value = true;
+    try {
+        const res = await axios.post("/StationLayout/CreateStationScheme", {
+            instanceID: props.selectedInstanceId,
+            name,
+        });
+        const createdOption = normalizeStationSchemeOption(res.data);
+        const createdStationSchemeId = createdOption?.id || "";
+        resetStationSchemeDraft();
+        currentStationSchemeId.value = createdStationSchemeId;
+        await loadStationSchemes();
+        if (createdStationSchemeId) {
+            getData({ stationSchemeId: createdStationSchemeId });
+        }
+        ElMessage.success(t('stationLayout.schemeManager.createSuccess'));
+    } catch (err) {
+        ElMessage.error(getHttpErrorMessage(err, t('stationLayout.schemeManager.createFailed')));
+    } finally {
+        stationSchemeManagerSaving.value = false;
+    }
+}
+
+function startEditStationScheme(row) {
+    editingStationSchemeOriginalId.value = row.id;
+    editingStationSchemeForm.value = {
+        name: row.name || row.id,
+    };
+}
+
+async function saveStationSchemeEdit() {
+    const originalID = editingStationSchemeOriginalId.value;
+    const name = editingStationSchemeForm.value.name.trim();
+    if (!originalID) {
+        ElMessage.warning(t('stationLayout.schemeManager.idRequired'));
+        return;
+    }
+
+    const wasCurrent = currentStationSchemeId.value === originalID;
+    stationSchemeManagerSaving.value = true;
+    try {
+        await axios.put("/StationLayout/EditStationScheme", {
+            instanceID: props.selectedInstanceId,
+            originalID,
+            name,
+        });
+        cancelStationSchemeEdit();
+        await loadStationSchemes();
+        if (wasCurrent) {
+            getData({ stationSchemeId: originalID });
+        }
+        ElMessage.success(t('stationLayout.schemeManager.updateSuccess'));
+    } catch (err) {
+        ElMessage.error(getHttpErrorMessage(err, t('stationLayout.schemeManager.updateFailed')));
+    } finally {
+        stationSchemeManagerSaving.value = false;
+    }
+}
+
+async function deleteStationScheme(row) {
+    try {
+        await ElMessageBox.confirm(
+            t('stationLayout.schemeManager.deleteConfirm', { name: formatStationSchemeLabel(row) }),
+            t('stationLayout.schemeManager.deleteTitle'),
+            {
+                confirmButtonText: t('stationLayout.schemeManager.confirm'),
+                cancelButtonText: t('stationLayout.schemeManager.cancel'),
+                type: 'warning',
+            }
+        );
+    } catch (err) {
+        return;
+    }
+
+    const deletedCurrent = currentStationSchemeId.value === row.id;
+    stationSchemeManagerSaving.value = true;
+    try {
+        await axios.delete("/StationLayout/DeleteStationScheme", {
+            params: {
+                instanceID: props.selectedInstanceId,
+                stationSchemeID: row.id,
+            },
+        });
+
+        if (deletedCurrent) {
+            currentStationSchemeId.value = "";
+        }
+        cancelStationSchemeEdit();
+        await loadStationSchemes({ includeCurrent: !deletedCurrent });
+
+        if (deletedCurrent) {
+            const nextStationSchemeId = stationSchemeOptions.value[0]?.id || "";
+            currentStationSchemeId.value = nextStationSchemeId;
+            if (nextStationSchemeId) {
+                getData({ stationSchemeId: nextStationSchemeId });
+            } else {
+                stationLayoutEditorRef.value?.clearElements();
+            }
+        }
+
+        ElMessage.success(t('stationLayout.schemeManager.deleteSuccess'));
+    } catch (err) {
+        ElMessage.error(getHttpErrorMessage(err, t('stationLayout.schemeManager.deleteFailed')));
+    } finally {
+        stationSchemeManagerSaving.value = false;
+    }
+}
+
 function saveData(options = {}) {
     const silent = options?.silent === true;
     if (!props.selectedInstanceId) {
@@ -103,6 +426,21 @@ function saveData(options = {}) {
     }
 
     var dataStr = stationLayoutEditorRef.value?.buildJsonData();
+    if (!dataStr) {
+        ElMessage.warning("当前没有可保存的车站布置图数据");
+        return Promise.resolve(false);
+    }
+
+    try {
+        dataStr = buildLayoutJsonWithDisplayStyles(dataStr);
+    } catch (err) {
+        console.error("Failed to attach layout display styles:", err);
+        ElMessage.error("显示样式保存失败，请检查车站布置图数据");
+        return Promise.resolve(false);
+    }
+
+    const silentSuccessMessage = options?.successMessage || "设备信息已保存";
+    const silentFailurePrefix = options?.failurePrefix || "设备信息保存失败：";
     const params = {
         instanceID: props.selectedInstanceId,
     };
@@ -122,8 +460,10 @@ function saveData(options = {}) {
         .then((res) => {
             console.log(res);
             currentStationSchemeId.value = res.data?.stationSchemeID || currentStationSchemeId.value;
+            ensureCurrentStationSchemeOption();
+            void loadStationSchemes();
             if (silent) {
-                ElMessage.success("设备信息已保存");
+                ElMessage.success(silentSuccessMessage);
             } else {
                 alert(t('stationLayout.messages.saveSuccess') + (res.data?.message || res.data));
             }
@@ -136,7 +476,7 @@ function saveData(options = {}) {
                 serverMsg = err.response.data;
             }
             if (silent) {
-                ElMessage.error("设备信息保存失败：" + (serverMsg || err));
+                ElMessage.error(silentFailurePrefix + (serverMsg || err));
             } else {
                 alert(t('stationLayout.messages.saveFailed') + err + "\r\n" + serverMsg);
             }
@@ -146,25 +486,44 @@ function saveData(options = {}) {
             savingData.value = false;
         });
 }
-function getData() {
+function getData(options = {}) {
     if (!props.selectedInstanceId) {
         currentStationSchemeId.value = "";
+        stationSchemeOptions.value = [];
+        resetLayoutDisplayStyles();
         stationLayoutEditorRef.value?.clearElements();
         return;
+    }
+
+    const instanceId = props.selectedInstanceId;
+    const requestedStationSchemeId = options?.stationSchemeId ?? currentStationSchemeId.value;
+    const params = {
+        instanceID: instanceId,
+    };
+    if (requestedStationSchemeId) {
+        params.stationSchemeID = requestedStationSchemeId;
     }
 
     loadingData.value = true;
     axios
         .post("/StationLayout/GetJson", null, {
-            params: {
-                instanceID: props.selectedInstanceId,
-            },
+            params,
         })
         .then((res) => {
-            currentStationSchemeId.value = res.data?.metadata?.stationSchemeID || "";
+            if (props.selectedInstanceId !== instanceId) {
+                return;
+            }
+
+            currentStationSchemeId.value = res.data?.metadata?.stationSchemeID || requestedStationSchemeId || "";
+            applyLayoutDisplayStyles(res.data?.metadata?.displayStyles);
+            ensureCurrentStationSchemeOption();
             stationLayoutEditorRef.value?.loadDataFromJson(res.data);
         })
         .catch((err) => {
+            if (props.selectedInstanceId !== instanceId) {
+                return;
+            }
+
             var serverMsg = "";
             if (err.response != undefined) {
                 serverMsg = err.response.data;
@@ -172,9 +531,17 @@ function getData() {
             alert(t('stationLayout.messages.loadFailed') + err + "\r\n" + serverMsg);
         })
         .finally(() => {
-            loadingData.value = false;
+            if (props.selectedInstanceId === instanceId) {
+                loadingData.value = false;
+            }
         });
 }
+
+function handleStationSchemeChange(stationSchemeId) {
+    if (!stationSchemeId) return;
+    getData({ stationSchemeId });
+}
+
 function exportJsonFile() {
     const dataStr = stationLayoutEditorRef.value?.buildJsonData();
     if (!dataStr) {
@@ -183,7 +550,7 @@ function exportJsonFile() {
     }
 
     try {
-        const jsonObj = JSON.parse(dataStr);
+        const jsonObj = JSON.parse(buildLayoutJsonWithDisplayStyles(dataStr));
         const prettyJson = JSON.stringify(jsonObj, null, 2);
         const blob = new Blob([prettyJson], { type: "application/json;charset=utf-8" });
         const url = URL.createObjectURL(blob);
@@ -238,6 +605,8 @@ function buildEquipmentForm(equipment) {
         height: Number(data.height ?? 0),
         fromNodeID: data.fromNodeID || "",
         toNodeID: data.toNodeID || "",
+        arrowDirection: String(data.arrowDirection ?? data.ArrowDirection ?? "").trim().toUpperCase(),
+        arrowType: String(data.arrowType ?? data.ArrowType ?? "").trim().toUpperCase(),
         branchVectorListText: "",
     };
 
@@ -300,6 +669,8 @@ function buildEquipmentPatchFromForm() {
         patch.y2 = toNumber(form.y2);
         patch.fromNodeID = String(form.fromNodeID || "").trim();
         patch.toNodeID = String(form.toNodeID || "").trim();
+        patch.arrowDirection = String(form.arrowDirection || "").trim().toUpperCase();
+        patch.arrowType = String(form.arrowType || "").trim().toUpperCase();
     }
 
     return patch;
@@ -381,6 +752,8 @@ async function handleImportJsonFileChange(event) {
         const jsonObj = JSON.parse(text);
         validateStationLayoutJson(jsonObj);
         currentStationSchemeId.value = jsonObj?.metadata?.stationSchemeID || currentStationSchemeId.value;
+        applyLayoutDisplayStyles(jsonObj?.metadata?.displayStyles);
+        ensureCurrentStationSchemeOption();
         stationLayoutEditorRef.value?.loadDataFromJson(jsonObj);
         ElMessage.success("JSON 文件已导入");
     } catch (err) {
@@ -416,6 +789,7 @@ function snapLine() {
     stationLayoutEditorRef.value?.snapLine();
 }
 function setDrawingObject(drawingObj) {
+    if (isSelectMode.value) return;
     stationLayoutEditorRef.value?.setDrawingObject(drawingObj);
 }
 
@@ -490,6 +864,7 @@ function extractDwgFile() {
             validateStationLayoutJson(layout);
             stationLayoutEditorRef.value?.clearElements();
             currentStationSchemeId.value = layout?.metadata?.stationSchemeID || currentStationSchemeId.value;
+            ensureCurrentStationSchemeOption();
             stationLayoutEditorRef.value?.loadDataFromJson(layout);
             ElMessage.success(`DWG 提取完成，共生成 ${res.data?.segmentCount || 0} 条线段`);
         })
@@ -506,12 +881,16 @@ function extractDwgFile() {
 }
 
 onMounted(() => {
+    loadStationSchemes();
     getData();
 });
 
 watch(
     () => props.selectedInstanceId,
     () => {
+        currentStationSchemeId.value = "";
+        stationSchemeOptions.value = [];
+        loadStationSchemes();
         getData();
     }
 );
@@ -520,6 +899,24 @@ watch(
 <template>
     <div v-loading="loadingData || savingData" style="max-width: 100%; overflow: hidden;">
         <el-menu mode="horizontal" class="station-toolbar" :ellipsis="false">
+            <el-menu-item index="station-scheme" class="station-scheme-menu-item" @click.stop>
+                <div class="station-scheme-selector" @click.stop>
+                    <span class="toolbar-group-label">{{ t('stationLayout.menu.stationScheme') }}</span>
+                    <el-select v-model="currentStationSchemeId" size="small" filterable
+                        class="station-scheme-select" :loading="loadingStationSchemes"
+                        :disabled="!props.selectedInstanceId || loadingStationSchemes || loadingData || savingData"
+                        :placeholder="t('stationLayout.placeholders.selectStationScheme')"
+                        @change="handleStationSchemeChange">
+                        <el-option v-for="option in stationSchemeOptions" :key="option.id"
+                            :label="formatStationSchemeLabel(option)" :value="option.id" />
+                    </el-select>
+                    <el-button size="small" :icon="Grid"
+                        :disabled="!props.selectedInstanceId || loadingStationSchemes || loadingData || savingData"
+                        @click.stop="openStationSchemeManager">
+                        {{ t('stationLayout.schemeManager.manage') }}
+                    </el-button>
+                </div>
+            </el-menu-item>
             <!-- 文件操作 -->
             <el-sub-menu index="file">
                 <template #title>
@@ -590,36 +987,200 @@ watch(
         <input ref="importJsonFileInputRef" type="file" accept=".json,application/json" class="hidden-file-input"
             @change="handleImportJsonFileChange" />
 
+        <el-dialog v-model="stationSchemeManagerVisible" :title="t('stationLayout.schemeManager.title')" width="760px"
+            :close-on-click-modal="false">
+            <div class="station-scheme-manager">
+                <div class="station-scheme-create-row">
+                    <el-input v-model="stationSchemeDraft.name" size="small" class="station-scheme-name-input"
+                        :placeholder="t('stationLayout.schemeManager.namePlaceholder')" />
+                    <el-button type="primary" size="small" :loading="stationSchemeManagerSaving"
+                        @click="createStationScheme">
+                        {{ t('stationLayout.schemeManager.add') }}
+                    </el-button>
+                </div>
+                <el-table :data="stationSchemeOptions" v-loading="loadingStationSchemes || stationSchemeManagerSaving"
+                    height="360" class="station-scheme-table">
+                    <el-table-column prop="id" :label="t('stationLayout.schemeManager.id')" width="220">
+                        <template #default="{ row }">
+                            <span>{{ row.id }}</span>
+                        </template>
+                    </el-table-column>
+                    <el-table-column prop="name" :label="t('stationLayout.schemeManager.name')">
+                        <template #default="{ row }">
+                            <el-input v-if="editingStationSchemeOriginalId === row.id"
+                                v-model="editingStationSchemeForm.name" size="small" />
+                            <span v-else>{{ row.name || row.id }}</span>
+                        </template>
+                    </el-table-column>
+                    <el-table-column :label="t('stationLayout.schemeManager.operation')" width="220">
+                        <template #default="{ row }">
+                            <div v-if="editingStationSchemeOriginalId === row.id" class="station-scheme-actions">
+                                <el-button type="success" size="small" @click="saveStationSchemeEdit">
+                                    {{ t('stationLayout.schemeManager.save') }}
+                                </el-button>
+                                <el-button size="small" @click="cancelStationSchemeEdit">
+                                    {{ t('stationLayout.schemeManager.cancel') }}
+                                </el-button>
+                            </div>
+                            <div v-else class="station-scheme-actions">
+                                <el-button type="primary" size="small" @click="startEditStationScheme(row)">
+                                    {{ t('stationLayout.schemeManager.edit') }}
+                                </el-button>
+                                <el-button type="danger" size="small" @click="deleteStationScheme(row)">
+                                    {{ t('stationLayout.schemeManager.delete') }}
+                                </el-button>
+                            </div>
+                        </template>
+                    </el-table-column>
+                </el-table>
+            </div>
+            <template #footer>
+                <el-button @click="stationSchemeManagerVisible = false">
+                    {{ t('stationLayout.schemeManager.close') }}
+                </el-button>
+            </template>
+        </el-dialog>
+
+        <el-dialog v-model="layoutStyleDialogVisible" title="显示样式配置" width="920px" class="layout-style-dialog"
+            :close-on-click-modal="false">
+            <el-tabs>
+                <el-tab-pane label="文字">
+                    <div class="layout-style-table">
+                        <div class="layout-style-table-header">对象</div>
+                        <div class="layout-style-table-header">大小</div>
+                        <div class="layout-style-table-header">字体</div>
+                        <div class="layout-style-table-header">粗细</div>
+                        <div class="layout-style-table-header">样式</div>
+                        <div class="layout-style-table-header">颜色</div>
+                        <template v-for="row in layoutTextStyleRows" :key="row.key">
+                            <div class="layout-style-label">{{ row.label }}</div>
+                            <el-input-number v-model="layoutDisplayStyles[row.key].fontSize" size="small" :min="6"
+                                :max="48" :step="1" controls-position="right" />
+                            <el-select v-model="layoutDisplayStyles[row.key].fontFamily" size="small">
+                                <el-option v-for="fontFamily in annotationFontFamilyOptions" :key="fontFamily"
+                                    :label="fontFamily" :value="fontFamily" />
+                            </el-select>
+                            <el-select v-model="layoutDisplayStyles[row.key].fontWeight" size="small">
+                                <el-option v-for="item in annotationFontWeightOptions" :key="item.value"
+                                    :label="item.label" :value="item.value" />
+                            </el-select>
+                            <el-select v-model="layoutDisplayStyles[row.key].fontStyle" size="small">
+                                <el-option v-for="item in annotationFontStyleOptions" :key="item.value"
+                                    :label="item.label" :value="item.value" />
+                            </el-select>
+                            <el-color-picker v-model="layoutDisplayStyles[row.key].color" size="small"
+                                show-alpha />
+                        </template>
+                    </div>
+                </el-tab-pane>
+                <el-tab-pane label="线条与设备">
+                    <div class="layout-style-grid">
+                        <section class="layout-style-section">
+                            <h4>轨道线条</h4>
+                            <div class="layout-style-field">
+                                <span>粗细</span>
+                                <el-input-number v-model="layoutDisplayStyles.track.strokeWidth" size="small" :min="0.5"
+                                    :max="12" :step="0.5" controls-position="right" />
+                            </div>
+                            <div class="layout-style-field">
+                                <span>颜色</span>
+                                <el-color-picker v-model="layoutDisplayStyles.track.color" size="small" show-alpha />
+                            </div>
+                        </section>
+                        <section class="layout-style-section">
+                            <h4>站台线条</h4>
+                            <div class="layout-style-field">
+                                <span>粗细</span>
+                                <el-input-number v-model="layoutDisplayStyles.platform.strokeWidth" size="small"
+                                    :min="0.5" :max="12" :step="0.5" controls-position="right" />
+                            </div>
+                            <div class="layout-style-field">
+                                <span>颜色</span>
+                                <el-color-picker v-model="layoutDisplayStyles.platform.color" size="small" show-alpha />
+                            </div>
+                        </section>
+                        <section class="layout-style-section">
+                            <h4>信号机</h4>
+                            <div class="layout-style-field">
+                                <span>大小</span>
+                                <el-input-number v-model="layoutDisplayStyles.signal.scale" size="small" :min="0.2"
+                                    :max="2" :step="0.05" controls-position="right" />
+                            </div>
+                        </section>
+                        <section class="layout-style-section">
+                            <h4>道岔</h4>
+                            <div class="layout-style-field">
+                                <span>线条粗细</span>
+                                <el-input-number v-model="layoutDisplayStyles.switch.strokeWidth" size="small" :min="1"
+                                    :max="16" :step="0.5" controls-position="right" />
+                            </div>
+                            <div class="layout-style-field">
+                                <span>颜色</span>
+                                <el-color-picker v-model="layoutDisplayStyles.switch.color" size="small" show-alpha />
+                            </div>
+                        </section>
+                        <section class="layout-style-section">
+                            <h4>节点</h4>
+                            <div class="layout-style-field">
+                                <span>大小</span>
+                                <el-input-number v-model="layoutDisplayStyles.node.radius" size="small" :min="1"
+                                    :max="24" :step="1" controls-position="right" />
+                            </div>
+                            <div class="layout-style-field">
+                                <span>颜色</span>
+                                <el-color-picker v-model="layoutDisplayStyles.node.color" size="small" show-alpha />
+                            </div>
+                        </section>
+                    </div>
+                </el-tab-pane>
+            </el-tabs>
+            <template #footer>
+                <el-button @click="resetLayoutDisplayStyles">恢复默认</el-button>
+                <el-button type="primary" :loading="savingData" @click="saveLayoutDisplayStyles">保存</el-button>
+                <el-button @click="layoutStyleDialogVisible = false">关闭</el-button>
+            </template>
+        </el-dialog>
+
         <!-- 第二行：模式 / 绘图对象 / 工具 -->
         <div class="toolbar-row">
             <div class="toolbar-group">
                 <span class="toolbar-group-label">{{ t('stationLayout.group.mode') }}</span>
-                <el-button-group>
-                    <el-button :icon="Pointer" @click="setSelectMode">{{ t('stationLayout.mode.select') }}</el-button>
-                    <el-button :icon="EditPen" @click="setDrawMode">{{ t('stationLayout.mode.draw') }}</el-button>
-                </el-button-group>
+                <el-radio-group v-model="activeEditMode" class="mode-toggle" size="small" @change="handleEditModeChange">
+                    <el-radio-button :value="0">
+                        <el-icon>
+                            <Pointer />
+                        </el-icon>
+                        <span>{{ t('stationLayout.mode.select') }}</span>
+                    </el-radio-button>
+                    <el-radio-button :value="1">
+                        <el-icon>
+                            <EditPen />
+                        </el-icon>
+                        <span>{{ t('stationLayout.mode.draw') }}</span>
+                    </el-radio-button>
+                </el-radio-group>
             </div>
             <el-divider direction="vertical" />
             <div class="toolbar-group">
                 <span class="toolbar-group-label">{{ t('stationLayout.group.drawingObject') }}</span>
                 <el-button-group>
-                    <el-button :icon="Minus" @click="setDrawingObject('l')">{{ t('stationLayout.draw.line')
+                    <el-button :icon="Minus" :disabled="isSelectMode" @click="setDrawingObject('l')">{{ t('stationLayout.draw.line')
                         }}</el-button>
-                    <el-button :icon="Location" @click="setDrawingObject('n')">{{ t('stationLayout.draw.node')
+                    <el-button :icon="Location" :disabled="isSelectMode" @click="setDrawingObject('n')">{{ t('stationLayout.draw.node')
                         }}</el-button>
-                    <el-button :icon="Bell" @click="setDrawingObject('s')">{{ t('stationLayout.draw.signal')
+                    <el-button :icon="Bell" :disabled="isSelectMode" @click="setDrawingObject('s')">{{ t('stationLayout.draw.signal')
                         }}</el-button>
-                    <el-button :icon="Switch" @click="setDrawingObject('w')">{{ t('stationLayout.draw.switch')
+                    <el-button :icon="Switch" :disabled="isSelectMode" @click="setDrawingObject('w')">{{ t('stationLayout.draw.switch')
                         }}</el-button>
-                    <el-button :icon="Filter" @click="setDrawingObject('i')">{{ t('stationLayout.draw.insulation')
+                    <el-button :icon="Filter" :disabled="isSelectMode" @click="setDrawingObject('i')">{{ t('stationLayout.draw.insulation')
                         }}</el-button>
-                    <el-button :icon="Guide" @click="setDrawingObject('r')">{{ t('stationLayout.draw.route')
+                    <el-button :icon="Guide" :disabled="isSelectMode" @click="setDrawingObject('r')">{{ t('stationLayout.draw.route')
                         }}</el-button>
-                    <el-button :icon="Stopwatch" @click="setDrawingObject('e')">{{ t('stationLayout.draw.buffer')
+                    <el-button :icon="Stopwatch" :disabled="isSelectMode" @click="setDrawingObject('e')">{{ t('stationLayout.draw.buffer')
                         }}</el-button>
-                    <el-button :icon="Platform" @click="setDrawingObject('p')">{{ t('stationLayout.draw.platform')
+                    <el-button :icon="Platform" :disabled="isSelectMode" @click="setDrawingObject('p')">{{ t('stationLayout.draw.platform')
                         }}</el-button>
-                    <el-button :icon="EditPen" @click="setDrawingObject('a')">{{ t('stationLayout.draw.annotation')
+                    <el-button :icon="EditPen" :disabled="isSelectMode" @click="setDrawingObject('a')">{{ t('stationLayout.draw.annotation')
                         }}</el-button>
                 </el-button-group>
             </div>
@@ -649,6 +1210,17 @@ watch(
                 <el-switch v-model="showCurveArc" class="curve-display-switch" inline-prompt
                     :active-text="t('stationLayout.curveDisplay.arc')"
                     :inactive-text="t('stationLayout.curveDisplay.tangent')" />
+            </div>
+            <el-divider direction="vertical" />
+            <div class="toolbar-group node-display-toolbar-group">
+                <span class="toolbar-group-label">节点显示</span>
+                <el-switch v-model="showNodes" class="node-display-switch" inline-prompt active-text="显示"
+                    inactive-text="隐藏" />
+            </div>
+            <el-divider direction="vertical" />
+            <div class="toolbar-group">
+                <span class="toolbar-group-label">显示样式</span>
+                <el-button :icon="SetUp" @click="layoutStyleDialogVisible = true">配置</el-button>
             </div>
             <el-divider direction="vertical" />
             <div class="toolbar-group scale-toolbar-group">
@@ -699,7 +1271,8 @@ watch(
         <div class="station-layout-workspace">
             <div class="station-layout-editor-frame">
                 <StationLayoutEditor ref="stationLayoutEditorRef" :display-scale-x="layoutScaleX"
-                    :display-scale-y="layoutScaleY" :show-curve-arc="showCurveArc"
+                    :display-scale-y="layoutScaleY" :show-curve-arc="showCurveArc" :show-nodes="showNodes"
+                    :display-styles="layoutDisplayStyles"
                     @selected-annotation-change="handleSelectedAnnotationChange"
                     @selected-equipment-change="handleSelectedEquipmentChange" />
             </div>
@@ -722,6 +1295,18 @@ watch(
                         <el-form-item v-if="['link', 'signal', 'switch', 'platform'].includes(equipmentForm.kind)"
                             label="Name">
                             <el-input v-model="equipmentForm.name" />
+                        </el-form-item>
+                        <el-form-item v-if="equipmentForm.kind === 'link'" label="ArrowDirection">
+                            <el-select v-model="equipmentForm.arrowDirection">
+                                <el-option v-for="option in linkArrowDirectionOptions" :key="option.value"
+                                    :label="option.label" :value="option.value" />
+                            </el-select>
+                        </el-form-item>
+                        <el-form-item v-if="equipmentForm.kind === 'link'" label="ArrowType">
+                            <el-select v-model="equipmentForm.arrowType">
+                                <el-option v-for="option in linkArrowTypeOptions" :key="option.value"
+                                    :label="option.label" :value="option.value" />
+                            </el-select>
                         </el-form-item>
                         <el-form-item v-if="['signal', 'switch', 'insulationJoint'].includes(equipmentForm.kind)"
                             label="Type">
@@ -838,6 +1423,114 @@ watch(
     font-size: 13px;
 }
 
+.station-scheme-menu-item {
+    padding: 0 10px;
+    cursor: default;
+}
+
+.station-scheme-menu-item:hover {
+    background-color: transparent !important;
+}
+
+.station-scheme-selector {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 32px;
+}
+
+.station-scheme-select {
+    width: 240px;
+}
+
+.station-scheme-manager {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.station-scheme-create-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.station-scheme-name-input {
+    flex: 1;
+    min-width: 180px;
+}
+
+.station-scheme-table {
+    width: 100%;
+}
+
+.station-scheme-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.layout-style-table {
+    display: grid;
+    grid-template-columns: 100px 110px minmax(150px, 1fr) 110px 110px 72px;
+    gap: 10px 12px;
+    align-items: center;
+}
+
+.layout-style-table-header {
+    font-size: 12px;
+    font-weight: 600;
+    color: #606266;
+}
+
+.layout-style-label {
+    font-size: 13px;
+    color: #303133;
+    white-space: nowrap;
+}
+
+.layout-style-table :deep(.el-input-number) {
+    width: 100%;
+}
+
+.layout-style-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.layout-style-section {
+    padding: 12px;
+    border: 1px solid var(--el-border-color-lighter);
+    border-radius: 6px;
+    background-color: #fff;
+}
+
+.layout-style-section h4 {
+    margin: 0 0 10px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #303133;
+}
+
+.layout-style-field {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-height: 32px;
+    font-size: 13px;
+    color: #606266;
+}
+
+.layout-style-field + .layout-style-field {
+    margin-top: 8px;
+}
+
+.layout-style-field :deep(.el-input-number) {
+    width: 140px;
+}
+
 .toolbar-checkbox-item:hover {
     background-color: transparent !important;
 }
@@ -862,6 +1555,12 @@ watch(
     gap: 6px;
 }
 
+.mode-toggle :deep(.el-radio-button__inner) {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
 .toolbar-group-label {
     font-size: 12px;
     color: #909399;
@@ -877,13 +1576,26 @@ watch(
     min-height: 24px;
 }
 
+.node-display-toolbar-group {
+    min-height: 24px;
+}
+
 .curve-display-switch {
+    --el-switch-on-color: #409eff;
+    --el-switch-off-color: #909399;
+}
+
+.node-display-switch {
     --el-switch-on-color: #409eff;
     --el-switch-off-color: #909399;
 }
 
 .curve-display-switch :deep(.el-switch__core) {
     min-width: 56px;
+}
+
+.node-display-switch :deep(.el-switch__core) {
+    min-width: 52px;
 }
 
 .scale-slider {

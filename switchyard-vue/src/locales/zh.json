@@ -1094,6 +1094,7 @@
     },
     "stationLayout": {
         "menu": {
+            "stationScheme": "车站方案",
             "file": "文件",
             "loadData": "载入数据",
             "saveData": "保存数据",
@@ -1103,6 +1104,34 @@
             "redo": "重做",
             "clearSelection": "清除选择",
             "deleteSelection": "删除选择"
+        },
+        "placeholders": {
+            "selectStationScheme": "选择车站方案"
+        },
+        "schemeManager": {
+            "manage": "管理",
+            "title": "车站方案管理",
+            "add": "新增",
+            "edit": "编辑",
+            "save": "保存",
+            "cancel": "取消",
+            "delete": "删除",
+            "close": "关闭",
+            "confirm": "确定",
+            "id": "方案 ID",
+            "name": "方案名称",
+            "operation": "操作",
+            "namePlaceholder": "方案名称",
+            "idRequired": "方案 ID 不能为空",
+            "nameRequired": "方案名称不能为空",
+            "createSuccess": "车站方案已新增",
+            "createFailed": "新增车站方案失败",
+            "updateSuccess": "车站方案已更新",
+            "updateFailed": "更新车站方案失败",
+            "deleteSuccess": "车站方案已删除",
+            "deleteFailed": "删除车站方案失败",
+            "deleteTitle": "删除车站方案",
+            "deleteConfirm": "确定删除“{name}”及其全部布置图数据吗？"
         },
         "group": {
             "mode": "模式",
@@ -1146,7 +1175,8 @@
         "messages": {
             "saveSuccess": "保存成功：",
             "saveFailed": "保存失败：",
-            "loadFailed": "获取失败："
+            "loadFailed": "获取失败：",
+            "loadSchemesFailed": "加载车站方案失败"
         }
     },
     "stationLayout3d": {

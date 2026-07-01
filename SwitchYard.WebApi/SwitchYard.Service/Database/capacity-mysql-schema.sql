@@ -6,6 +6,13 @@ CREATE TABLE IF NOT EXISTS `capacityinstance` (
     `IsActive` TINYINT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
+CREATE TABLE IF NOT EXISTS `stationscheme` (
+    `InstanceID` VARCHAR(50) NULL,
+    `ID` VARCHAR(50) NULL,
+    `Name` VARCHAR(100) NULL,
+    `DisplayStyles` TEXT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
 CREATE TABLE IF NOT EXISTS `annotation` (
     `InstanceID` VARCHAR(50) NULL,
     `StationSchemeID` VARCHAR(50) NULL,
