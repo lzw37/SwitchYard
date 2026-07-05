@@ -3,6 +3,13 @@ import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from 'vue-i18n';
 import axios from "@/utils/axios";
 import { ElMessage, ElMessageBox } from "element-plus";
+import {
+    DEFAULT_BUFFER_STOP_DIRECTION,
+    DEFAULT_BUFFER_STOP_TYPE,
+    bufferStopDirectionOptions,
+    bufferStopTypeOptions,
+} from "@/assets/stationLayoutBufferStopStyles";
+import { DEFAULT_SIGNAL_TYPE, signalTypeMenuOptions } from "@/assets/stationLayoutSignalStyles";
 import SignalInfoTabVue from "./components/SignalInfoTab.vue";
 import StationLayoutEditor from "./components/StationLayoutEditor.vue";
 import {
@@ -12,7 +19,7 @@ import {
     Minus, Location, Bell, Switch, Filter, Guide, Stopwatch, Platform,
     Grid, Magnet,
     RefreshLeft, RefreshRight,
-    CircleClose, Delete
+    CircleClose, Delete, ArrowDown
 } from '@element-plus/icons-vue';
 
 const { t } = useI18n();
@@ -23,6 +30,7 @@ const props = defineProps({
     },
 });
 const stationLayoutEditorRef = ref(null);
+const signalDropdownRef = ref(null);
 const extractDwgDialogVisible = ref(false);
 const dwgFileInputRef = ref(null);
 const importJsonFileInputRef = ref(null);
@@ -43,6 +51,7 @@ const layoutScaleX = ref(1);
 const layoutScaleY = ref(1);
 const showCurveArc = ref(true);
 const showNodes = ref(true);
+const showGrid = ref(true);
 const layoutStyleDialogVisible = ref(false);
 const layoutScaleXDisplay = computed(() => layoutScaleX.value.toFixed(2));
 const layoutScaleYDisplay = computed(() => layoutScaleY.value.toFixed(2));
@@ -53,6 +62,10 @@ const equipmentForm = ref({});
 const equipmentSaving = ref(false);
 const activeEditMode = ref(0);
 const isSelectMode = computed(() => activeEditMode.value === 0);
+const selectedDrawingBufferStopDirection = ref(DEFAULT_BUFFER_STOP_DIRECTION);
+const selectedDrawingBufferStopType = ref(DEFAULT_BUFFER_STOP_TYPE);
+const selectedDrawingSignalType = ref(DEFAULT_SIGNAL_TYPE);
+const signalTypeCascaderProps = { emitPath: false };
 
 const annotationFontFamilyOptions = ["Arial", "Microsoft YaHei", "SimSun", "SimHei", "Times New Roman", "Consolas"];
 const annotationFontWeightOptions = [
@@ -75,6 +88,7 @@ const defaultLayoutDisplayStyles = {
     signalName: { fontSize: 8, fontFamily: "Arial", fontWeight: "normal", fontStyle: "normal", color: "#ffffff" },
     lineName: { fontSize: 10, fontFamily: "Arial", fontWeight: "normal", fontStyle: "normal", color: "#ffffff" },
     track: { strokeWidth: 2, color: "#fefded" },
+    curve: { strokeWidth: 4, color: "#ffb347" },
     platform: { strokeWidth: 1, color: "#87ceeb" },
     signal: { scale: 0.5 },
     switch: { strokeWidth: 5, color: "#00ffff" },
@@ -104,6 +118,7 @@ const equipmentKindLabels = {
     switch: "道岔",
     platform: "站台",
     insulationJoint: "钢轨绝缘",
+    bufferStop: "车挡",
 };
 const equipmentDrawerTitle = computed(() => {
     if (!selectedEquipment.value) return "设备信息";
@@ -138,7 +153,7 @@ function normalizeLayoutDisplayStyles(styles) {
         }
     }
 
-    for (const key of ["track", "platform", "signal", "switch", "node"]) {
+    for (const key of ["track", "curve", "platform", "signal", "switch", "node"]) {
         if (source[key] && typeof source[key] === "object" && !Array.isArray(source[key])) {
             normalized[key] = { ...normalized[key], ...source[key] };
         }
@@ -187,12 +202,18 @@ function redo() {
     stationLayoutEditorRef.value?.redo();
 }
 const mouseSnap = ref(true);
+const objectSnap = ref(true);
+const objectSnapDistance = ref(10);
 function mouseGridSnapChange(e) {
     if (mouseSnap.value === false) {
         stationLayoutEditorRef.value?.setMouseGridSnapModeCode(0);
     } else {
         stationLayoutEditorRef.value?.setMouseGridSnapModeCode(1);
     }
+}
+
+function mouseObjectSnapChange() {
+    stationLayoutEditorRef.value?.setMouseObjectSnapModeCode(objectSnap.value ? 1 : 0);
 }
 
 function normalizeStationSchemeOption(item) {
@@ -584,16 +605,33 @@ function handleSelectedEquipmentChange(equipment) {
     equipmentDrawerVisible.value = true;
 }
 
+function readSignalType(data) {
+    return data?.type || data?.SignalType || data?.signalType || "";
+}
+
+function readEquipmentDirection(data) {
+    return data?.direction || data?.Direction || "";
+}
+
+function readEquipmentType(data) {
+    return data?.type || data?.Type || "";
+}
+
 function buildEquipmentForm(equipment) {
     const data = equipment?.data || {};
     const shouldFallbackNameToId = ["signal", "switch", "platform"].includes(equipment?.kind);
+    const equipmentType = equipment?.kind === "signal"
+        ? readSignalType(data)
+        : equipment?.kind === "bufferStop"
+            ? readEquipmentType(data) || DEFAULT_BUFFER_STOP_TYPE
+            : readEquipmentType(data);
     const form = {
         kind: equipment?.kind || "",
         originalId: data.id || equipment?.id || "",
         id: data.id || "",
         name: data.name ?? (shouldFallbackNameToId ? data.id || "" : ""),
-        type: data.type || "",
-        direction: data.direction || "",
+        type: equipmentType,
+        direction: readEquipmentDirection(data),
         bindingNodeID: data.bindingNodeID || "",
         x: Number(data.x ?? data.position?.x ?? 0),
         y: Number(data.y ?? data.position?.y ?? 0),
@@ -659,6 +697,11 @@ function buildEquipmentPatchFromForm() {
         patch.height = toNumber(form.height);
     } else if (form.kind === "insulationJoint") {
         patch.type = String(form.type || "").trim();
+        patch.bindingNodeID = String(form.bindingNodeID || "").trim();
+        patch.position = { x: toNumber(form.x), y: toNumber(form.y) };
+    } else if (form.kind === "bufferStop") {
+        patch.type = String(form.type || DEFAULT_BUFFER_STOP_TYPE).trim();
+        patch.direction = String(form.direction || DEFAULT_BUFFER_STOP_DIRECTION).trim();
         patch.bindingNodeID = String(form.bindingNodeID || "").trim();
         patch.position = { x: toNumber(form.x), y: toNumber(form.y) };
     } else if (form.kind === "link") {
@@ -769,7 +812,7 @@ function validateStationLayoutJson(jsonObj) {
         throw new Error("Invalid station layout JSON root.");
     }
 
-    const arrayFields = ["tracks", "curves", "nodes", "signals", "insulationJoints", "platforms", "switches", "annotations"];
+    const arrayFields = ["tracks", "curves", "nodes", "signals", "insulationJoints", "bufferStops", "platforms", "switches", "annotations"];
     for (const field of arrayFields) {
         if (jsonObj[field] !== undefined && !Array.isArray(jsonObj[field])) {
             throw new Error(`Invalid station layout JSON field: ${field}`);
@@ -791,6 +834,36 @@ function snapLine() {
 function setDrawingObject(drawingObj) {
     if (isSelectMode.value) return;
     stationLayoutEditorRef.value?.setDrawingObject(drawingObj);
+}
+
+function setDrawingSignalType(signalType) {
+    if (isSelectMode.value) return;
+    selectedDrawingSignalType.value = signalType;
+    stationLayoutEditorRef.value?.setDrawingSignalType(signalType);
+    stationLayoutEditorRef.value?.setDrawingObject("s");
+    signalDropdownRef.value?.handleClose?.();
+}
+
+function setDrawingBufferStopOption(option) {
+    if (isSelectMode.value) return;
+    const type = String(option?.type || selectedDrawingBufferStopType.value || DEFAULT_BUFFER_STOP_TYPE);
+    const direction = String(option?.direction || selectedDrawingBufferStopDirection.value || DEFAULT_BUFFER_STOP_DIRECTION);
+    selectedDrawingBufferStopType.value = type;
+    selectedDrawingBufferStopDirection.value = direction;
+    stationLayoutEditorRef.value?.setDrawingBufferStopType(type);
+    stationLayoutEditorRef.value?.setDrawingBufferStopDirection(direction);
+    stationLayoutEditorRef.value?.setDrawingObject("e");
+}
+
+function setDrawingBufferStopDirection(direction) {
+    setDrawingBufferStopOption({
+        type: selectedDrawingBufferStopType.value,
+        direction,
+    });
+}
+
+function isSelectedDrawingBufferStopOption(type, direction) {
+    return type === selectedDrawingBufferStopType.value && direction === selectedDrawingBufferStopDirection.value;
 }
 
 function autoGenerateNode() {
@@ -957,7 +1030,16 @@ watch(
                     @change="mouseGridSnapChange" />
             </el-menu-item>
             <el-menu-item index="snap-obj" class="toolbar-checkbox-item">
-                <el-checkbox :label="t('stationLayout.menu.objectSnap')" />
+                <el-checkbox v-model="objectSnap" :label="t('stationLayout.menu.objectSnap')"
+                    @change="mouseObjectSnapChange" />
+            </el-menu-item>
+            <el-menu-item index="snap-distance" class="toolbar-field-item" @click.stop>
+                <span class="toolbar-group-label">{{ t('stationLayout.menu.snapDistance') }}</span>
+                <el-input-number v-model="objectSnapDistance" size="small" :min="0" :max="200" :step="1"
+                    controls-position="right" :disabled="!objectSnap" />
+            </el-menu-item>
+            <el-menu-item index="show-grid" class="toolbar-checkbox-item">
+                <el-checkbox v-model="showGrid" :label="t('stationLayout.menu.showGrid')" />
             </el-menu-item>
 
             <!-- 撤销/重做 -->
@@ -1088,6 +1170,18 @@ watch(
                             </div>
                         </section>
                         <section class="layout-style-section">
+                            <h4>曲线线条</h4>
+                            <div class="layout-style-field">
+                                <span>粗细</span>
+                                <el-input-number v-model="layoutDisplayStyles.curve.strokeWidth" size="small" :min="0.5"
+                                    :max="12" :step="0.5" controls-position="right" />
+                            </div>
+                            <div class="layout-style-field">
+                                <span>颜色</span>
+                                <el-color-picker v-model="layoutDisplayStyles.curve.color" size="small" show-alpha />
+                            </div>
+                        </section>
+                        <section class="layout-style-section">
                             <h4>站台线条</h4>
                             <div class="layout-style-field">
                                 <span>粗细</span>
@@ -1168,16 +1262,56 @@ watch(
                         }}</el-button>
                     <el-button :icon="Location" :disabled="isSelectMode" @click="setDrawingObject('n')">{{ t('stationLayout.draw.node')
                         }}</el-button>
-                    <el-button :icon="Bell" :disabled="isSelectMode" @click="setDrawingObject('s')">{{ t('stationLayout.draw.signal')
-                        }}</el-button>
+                    <el-dropdown ref="signalDropdownRef" trigger="click" :disabled="isSelectMode" :hide-on-click="false">
+                        <el-button :icon="Bell" :disabled="isSelectMode">
+                            {{ t('stationLayout.draw.signal') }}
+                            <el-icon class="el-icon--right">
+                                <ArrowDown />
+                            </el-icon>
+                        </el-button>
+                        <template #dropdown>
+                            <el-dropdown-menu class="signal-type-dropdown-menu">
+                                <li class="signal-type-cascader-item">
+                                    <el-cascader-panel class="signal-type-cascader-panel"
+                                        :model-value="selectedDrawingSignalType"
+                                        :options="signalTypeMenuOptions"
+                                        :props="signalTypeCascaderProps"
+                                        @change="setDrawingSignalType" />
+                                </li>
+                            </el-dropdown-menu>
+                        </template>
+                    </el-dropdown>
                     <el-button :icon="Switch" :disabled="isSelectMode" @click="setDrawingObject('w')">{{ t('stationLayout.draw.switch')
                         }}</el-button>
                     <el-button :icon="Filter" :disabled="isSelectMode" @click="setDrawingObject('i')">{{ t('stationLayout.draw.insulation')
                         }}</el-button>
                     <el-button :icon="Guide" :disabled="isSelectMode" @click="setDrawingObject('r')">{{ t('stationLayout.draw.route')
                         }}</el-button>
-                    <el-button :icon="Stopwatch" :disabled="isSelectMode" @click="setDrawingObject('e')">{{ t('stationLayout.draw.buffer')
-                        }}</el-button>
+                    <el-dropdown trigger="click" :disabled="isSelectMode" @command="setDrawingBufferStopOption">
+                        <el-button :icon="Stopwatch" :disabled="isSelectMode">
+                            {{ t('stationLayout.draw.buffer') }}
+                            <el-icon class="el-icon--right">
+                                <ArrowDown />
+                            </el-icon>
+                        </el-button>
+                        <template #dropdown>
+                            <el-dropdown-menu>
+                                <template v-for="(typeOption, typeIndex) in bufferStopTypeOptions"
+                                    :key="typeOption.value">
+                                    <el-dropdown-item disabled class="drawing-option-group-label"
+                                        :divided="typeIndex > 0">
+                                        {{ typeOption.label }}
+                                    </el-dropdown-item>
+                                    <el-dropdown-item v-for="directionOption in bufferStopDirectionOptions"
+                                        :key="`${typeOption.value}-${directionOption.value}`"
+                                        :command="{ type: typeOption.value, direction: directionOption.value }"
+                                        :class="{ 'drawing-option-selected': isSelectedDrawingBufferStopOption(typeOption.value, directionOption.value) }">
+                                        {{ directionOption.label }}
+                                    </el-dropdown-item>
+                                </template>
+                            </el-dropdown-menu>
+                        </template>
+                    </el-dropdown>
                     <el-button :icon="Platform" :disabled="isSelectMode" @click="setDrawingObject('p')">{{ t('stationLayout.draw.platform')
                         }}</el-button>
                     <el-button :icon="EditPen" :disabled="isSelectMode" @click="setDrawingObject('a')">{{ t('stationLayout.draw.annotation')
@@ -1272,6 +1406,7 @@ watch(
             <div class="station-layout-editor-frame">
                 <StationLayoutEditor ref="stationLayoutEditorRef" :display-scale-x="layoutScaleX"
                     :display-scale-y="layoutScaleY" :show-curve-arc="showCurveArc" :show-nodes="showNodes"
+                    :show-grid="showGrid" :object-snap-distance="objectSnapDistance"
                     :display-styles="layoutDisplayStyles"
                     @selected-annotation-change="handleSelectedAnnotationChange"
                     @selected-equipment-change="handleSelectedEquipmentChange" />
@@ -1312,6 +1447,12 @@ watch(
                             label="Type">
                             <el-input v-model="equipmentForm.type" />
                         </el-form-item>
+                        <el-form-item v-if="equipmentForm.kind === 'bufferStop'" label="Type">
+                            <el-select v-model="equipmentForm.type">
+                                <el-option v-for="option in bufferStopTypeOptions" :key="option.value"
+                                    :label="option.label" :value="option.value" />
+                            </el-select>
+                        </el-form-item>
                         <el-form-item v-if="equipmentForm.kind === 'signal'" label="Direction">
                             <el-select v-model="equipmentForm.direction">
                                 <el-option label="e" value="e" />
@@ -1320,11 +1461,17 @@ watch(
                                 <el-option label="d" value="d" />
                             </el-select>
                         </el-form-item>
-                        <el-form-item v-if="['signal', 'switch', 'insulationJoint'].includes(equipmentForm.kind)"
+                        <el-form-item v-if="equipmentForm.kind === 'bufferStop'" label="Direction">
+                            <el-select v-model="equipmentForm.direction">
+                                <el-option v-for="option in bufferStopDirectionOptions" :key="option.value"
+                                    :label="option.label" :value="option.value" />
+                            </el-select>
+                        </el-form-item>
+                        <el-form-item v-if="['signal', 'switch', 'insulationJoint', 'bufferStop'].includes(equipmentForm.kind)"
                             label="BindingNodeID">
                             <el-input v-model="equipmentForm.bindingNodeID" />
                         </el-form-item>
-                        <div v-if="['signal', 'switch', 'insulationJoint'].includes(equipmentForm.kind)"
+                        <div v-if="['signal', 'switch', 'insulationJoint', 'bufferStop'].includes(equipmentForm.kind)"
                             class="equipment-form-grid">
                             <el-form-item label="X">
                                 <el-input-number v-model="equipmentForm.x" controls-position="right" :step="10" />
@@ -1539,6 +1686,21 @@ watch(
     cursor: default;
 }
 
+.toolbar-field-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: default;
+}
+
+.toolbar-field-item:hover {
+    background-color: transparent !important;
+}
+
+.toolbar-field-item :deep(.el-input-number) {
+    width: 92px;
+}
+
 .toolbar-row {
     display: flex;
     align-items: center;
@@ -1553,6 +1715,45 @@ watch(
     display: flex;
     align-items: center;
     gap: 6px;
+}
+
+.toolbar-group :deep(.el-button-group .el-dropdown) {
+    display: inline-flex;
+}
+
+.toolbar-group :deep(.el-button-group .el-dropdown .el-button) {
+    border-radius: 0;
+}
+
+:global(.drawing-option-selected) {
+    color: var(--el-color-primary);
+    font-weight: 600;
+    background-color: var(--el-color-primary-light-9);
+}
+
+:global(.drawing-option-group-label) {
+    color: var(--el-text-color-secondary);
+    cursor: default;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+:global(.drawing-option-group-label.is-disabled) {
+    opacity: 1;
+}
+
+:global(.signal-type-dropdown-menu) {
+    padding: 0;
+}
+
+:global(.signal-type-cascader-item) {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+:global(.signal-type-cascader-panel) {
+    border: 0;
 }
 
 .mode-toggle :deep(.el-radio-button__inner) {

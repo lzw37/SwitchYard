@@ -1,6 +1,24 @@
 #layout-editor-svg {
     background-color: #31363f;
     display: block;
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+}
+
+#layout-editor-svg text,
+#layout-editor-svg tspan {
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+}
+
+.name-selected {
+    stroke: #31363f;
+    stroke-width: 3px;
+    paint-order: stroke fill;
 }
 
 .griddot {
@@ -14,12 +32,48 @@
     pointer-events: none;
 }
 
+.signal-direction-compass {
+    pointer-events: none;
+}
+
+.signal-direction-compass text {
+    fill: #fefded;
+    stroke: rgba(17, 24, 39, 0.92);
+    stroke-width: 5px;
+    paint-order: stroke fill;
+    filter: drop-shadow(0 0 3px rgba(0, 0, 0, 0.95));
+    font-family: Arial, "Microsoft YaHei", sans-serif;
+    font-size: 15px;
+    font-weight: 700;
+    text-anchor: middle;
+    dominant-baseline: middle;
+    user-select: none;
+}
+
 .selection-box {
     fill: rgba(64, 158, 255, 0.14);
     stroke: #409eff;
     stroke-width: 1px;
     stroke-dasharray: 6, 4;
     pointer-events: none;
+}
+
+.drawing-hint {
+    pointer-events: none;
+}
+
+.drawing-hint rect {
+    fill: rgba(17, 24, 39, 0.82);
+    stroke: rgba(254, 253, 237, 0.35);
+    stroke-width: 1px;
+}
+
+.drawing-hint text {
+    fill: #fefded;
+    font-size: 13px;
+    font-family: Arial, "Microsoft YaHei", sans-serif;
+    dominant-baseline: middle;
+    user-select: none;
 }
 
 .track {
@@ -129,12 +183,25 @@
     stroke: black;
 }
 
+.signal ellipse,
+.signal rect,
+.signal path,
+.signal polygon,
+.signal polyline {
+    stroke: black;
+}
+
 .signal-temp {
     opacity: 0.5;
 }
 
 .signal-selected line,
-.signal-selected circle {
+.signal-selected circle,
+.signal-selected ellipse,
+.signal-selected rect,
+.signal-selected path,
+.signal-selected polygon,
+.signal-selected polyline {
     stroke-width: 4px;
     stroke: yellow;
 }
@@ -157,6 +224,26 @@
 }
 
 .insulationjoint-temp line {
+    opacity: 0.5;
+}
+
+.bufferstop {
+    cursor: pointer;
+}
+
+.bufferstop-shape line {
+    stroke-linecap: butt;
+    pointer-events: stroke;
+}
+
+.bufferstop-selection {
+    fill: none;
+    stroke: yellow;
+    stroke-width: 2px;
+    vector-effect: non-scaling-stroke;
+}
+
+.bufferstop-temp {
     opacity: 0.5;
 }
 

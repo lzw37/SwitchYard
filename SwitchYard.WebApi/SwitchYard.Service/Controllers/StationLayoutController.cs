@@ -28,6 +28,7 @@ namespace SwitchYard.Service.Controllers
         {
             "switchbranchvector",
             "switch",
+            "bufferstop",
             "insulationjoint",
             "signal",
             "platform",
@@ -406,6 +407,7 @@ namespace SwitchYard.Service.Controllers
                 nodes = Array.Empty<object>(),
                 signals = Array.Empty<object>(),
                 insulationJoints = Array.Empty<object>(),
+                bufferStops = Array.Empty<object>(),
                 platforms = Array.Empty<object>(),
                 switches = Array.Empty<object>(),
                 annotations = Array.Empty<object>()
@@ -796,6 +798,7 @@ namespace SwitchYard.Service.Controllers
             var curveTable = QuoteIdentifier("curve");
             var signalTable = QuoteIdentifier("signal");
             var insulationJointTable = QuoteIdentifier("insulationjoint");
+            var bufferStopTable = QuoteIdentifier("bufferstop");
             var platformTable = QuoteIdentifier("platform");
             var switchTable = QuoteIdentifier("switch");
             var switchBranchVectorTable = QuoteIdentifier("switchbranchvector");
@@ -803,6 +806,7 @@ namespace SwitchYard.Service.Controllers
 
             EnsureLinkSchema(dbConnector);
             EnsureCurveSchema(dbConnector);
+            EnsureBufferStopSchema(dbConnector);
             EnsureNamedDeviceSchemas(dbConnector);
 
             var nodes = dbConnector.Query<StationNodeRow>(
@@ -839,6 +843,13 @@ namespace SwitchYard.Service.Controllers
                    WHERE InstanceID = @instanceID AND StationSchemeID = @stationSchemeID
                    ORDER BY ID",
                 new { instanceID, stationSchemeID }) ?? new List<StationInsulationJointRow>();
+
+            var bufferStops = dbConnector.Query<StationBufferStopRow>(
+                $@"SELECT *
+                   FROM {bufferStopTable}
+                   WHERE InstanceID = @instanceID AND StationSchemeID = @stationSchemeID
+                   ORDER BY ID",
+                new { instanceID, stationSchemeID }) ?? new List<StationBufferStopRow>();
 
             var platforms = dbConnector.Query<StationPlatformRow>(
                 $@"SELECT *
@@ -983,6 +994,28 @@ namespace SwitchYard.Service.Controllers
                 .Where(insulationJoint => insulationJoint != null)
                 .ToArray();
 
+            var bufferStopViews = bufferStops
+                .Select(bufferStop =>
+                {
+                    var bindingNodeID = ParseNullableInt(bufferStop.BindingNodeID);
+                    if (bindingNodeID == null || !nodeByID.TryGetValue(bindingNodeID.Value, out var bindingNode))
+                    {
+                        return null;
+                    }
+
+                    var point = nodeTransform.MapPoint(bindingNode.X, bindingNode.Y);
+                    return new
+                    {
+                        id = bufferStop.ID ?? string.Empty,
+                        type = NormalizeBufferStopType(bufferStop.Type),
+                        direction = string.IsNullOrWhiteSpace(bufferStop.Direction) ? "right" : bufferStop.Direction,
+                        position = new { x = point.x, y = point.y },
+                        bindingNodeID = ToInvariantString(bindingNode.ID)
+                    };
+                })
+                .Where(bufferStop => bufferStop != null)
+                .ToArray();
+
             var platformViews = platforms
                 .Select(platform =>
                 {
@@ -1061,6 +1094,7 @@ namespace SwitchYard.Service.Controllers
                     .Concat(curves.Select(curve => curve.ID ?? string.Empty))
                     .Concat(signals.Select(signal => signal.ID ?? string.Empty))
                     .Concat(insulationJoints.Select(insulationJoint => insulationJoint.ID ?? string.Empty))
+                    .Concat(bufferStops.Select(bufferStop => bufferStop.ID ?? string.Empty))
                     .Concat(platforms.Select(platform => platform.ID ?? string.Empty))
                     .Concat(switches.Select(sw => sw.ID ?? string.Empty))
                     .Concat(annotations.Select(annotation => annotation.ID ?? string.Empty)));
@@ -1080,6 +1114,7 @@ namespace SwitchYard.Service.Controllers
                 nodes = nodeViews,
                 signals = signalViews,
                 insulationJoints = insulationJointViews,
+                bufferStops = bufferStopViews,
                 platforms = platformViews,
                 switches = switchViews,
                 annotations = annotationViews
@@ -1097,6 +1132,7 @@ namespace SwitchYard.Service.Controllers
             var curveTable = QuoteIdentifier("curve");
             var signalTable = QuoteIdentifier("signal");
             var insulationJointTable = QuoteIdentifier("insulationjoint");
+            var bufferStopTable = QuoteIdentifier("bufferstop");
             var platformTable = QuoteIdentifier("platform");
             var switchTable = QuoteIdentifier("switch");
             var switchBranchVectorTable = QuoteIdentifier("switchbranchvector");
@@ -1104,6 +1140,7 @@ namespace SwitchYard.Service.Controllers
 
             EnsureLinkSchema(dbConnector);
             EnsureCurveSchema(dbConnector);
+            EnsureBufferStopSchema(dbConnector);
             EnsureNamedDeviceSchemas(dbConnector);
 
             var transform = StationLayoutPersistenceTransform.FromMetadata(layout.Metadata?.CoordinateTransform);
@@ -1122,6 +1159,7 @@ namespace SwitchYard.Service.Controllers
 
                 DeleteStationLayoutTableRows(dbConnector, switchBranchVectorTable, instanceID, stationSchemeID);
                 DeleteStationLayoutTableRows(dbConnector, switchTable, instanceID, stationSchemeID);
+                DeleteStationLayoutTableRows(dbConnector, bufferStopTable, instanceID, stationSchemeID);
                 DeleteStationLayoutTableRows(dbConnector, insulationJointTable, instanceID, stationSchemeID);
                 DeleteStationLayoutTableRows(dbConnector, signalTable, instanceID, stationSchemeID);
                 DeleteStationLayoutTableRows(dbConnector, platformTable, instanceID, stationSchemeID);
@@ -1172,6 +1210,7 @@ namespace SwitchYard.Service.Controllers
                 var curveCount = SaveCurves(dbConnector, curveTable, instanceID, stationSchemeID, layout, transform, nodeSaveContext, linkSaveContext);
                 var signalCount = SaveSignals(dbConnector, signalTable, instanceID, stationSchemeID, layout, nodeSaveContext);
                 var insulationJointCount = SaveInsulationJoints(dbConnector, insulationJointTable, instanceID, stationSchemeID, layout, nodeSaveContext);
+                var bufferStopCount = SaveBufferStops(dbConnector, bufferStopTable, instanceID, stationSchemeID, layout, nodeSaveContext);
                 var switchSaveResult = SaveSwitches(
                     dbConnector,
                     switchTable,
@@ -1194,6 +1233,7 @@ namespace SwitchYard.Service.Controllers
                     CurveCount = curveCount,
                     SignalCount = signalCount,
                     InsulationJointCount = insulationJointCount,
+                    BufferStopCount = bufferStopCount,
                     PlatformCount = platformCount,
                     SwitchCount = switchSaveResult.SwitchCount,
                     SwitchBranchVectorCount = switchSaveResult.SwitchBranchVectorCount,
@@ -1547,6 +1587,43 @@ namespace SwitchYard.Service.Controllers
                             BindingNodeID = ToInvariantString(bindingNodeID.Value)
                         }),
                     "insulationjoint");
+                count++;
+            }
+
+            return count;
+        }
+
+        private int SaveBufferStops(
+            DBConnector dbConnector,
+            string bufferStopTable,
+            string instanceID,
+            string stationSchemeID,
+            StationLayoutJson layout,
+            StationLayoutNodeSaveContext nodeContext)
+        {
+            var count = 0;
+            foreach (var bufferStop in layout.BufferStops ?? new List<StationLayoutBufferStopJson>())
+            {
+                var bindingNodeID = ResolveEquipmentBindingNodeID(nodeContext, bufferStop.BindingNodeID, bufferStop.Position);
+                if (bindingNodeID == null)
+                {
+                    continue;
+                }
+
+                EnsureInserted(
+                    dbConnector.ExecuteNonQuery(
+                        $@"INSERT INTO {bufferStopTable} (InstanceID, StationSchemeID, ID, {QuoteIdentifier("Type")}, Direction, BindingNodeID)
+                           VALUES (@InstanceID, @StationSchemeID, @ID, @Type, @Direction, @BindingNodeID)",
+                        new
+                        {
+                            InstanceID = instanceID,
+                            StationSchemeID = stationSchemeID,
+                            ID = NormalizeStringID(bufferStop.ID, "bufferstop", count),
+                            Type = NormalizeBufferStopType(bufferStop.Type),
+                            Direction = NormalizeBufferStopDirection(bufferStop.Direction),
+                            BindingNodeID = ToInvariantString(bindingNodeID.Value)
+                        }),
+                    "bufferstop");
                 count++;
             }
 
@@ -1976,6 +2053,64 @@ namespace SwitchYard.Service.Controllers
             }
         }
 
+        private static void EnsureBufferStopSchema(DBConnector dbConnector)
+        {
+            var tableName = QuoteIdentifier("bufferstop");
+            if (!TableExists(dbConnector, "bufferstop"))
+            {
+                if (DBConnector.IsMySql(DBConnector.CapacityDatabaseSectionName))
+                {
+                    dbConnector.ExecuteNonQuery(
+                        $@"CREATE TABLE IF NOT EXISTS {tableName} (
+                            {QuoteIdentifier("InstanceID")} VARCHAR(50) NULL,
+                            {QuoteIdentifier("StationSchemeID")} VARCHAR(50) NULL,
+                            {QuoteIdentifier("ID")} VARCHAR(50) NULL,
+                            {QuoteIdentifier("Type")} VARCHAR(20) NULL,
+                            {QuoteIdentifier("Direction")} VARCHAR(20) NULL,
+                            {QuoteIdentifier("BindingNodeID")} VARCHAR(50) NULL
+                        )");
+                }
+                else
+                {
+                    dbConnector.ExecuteNonQuery(
+                        $@"CREATE TABLE IF NOT EXISTS {tableName} (
+                            {QuoteIdentifier("InstanceID")} TEXT NULL,
+                            {QuoteIdentifier("StationSchemeID")} TEXT NULL,
+                            {QuoteIdentifier("ID")} TEXT NULL,
+                            {QuoteIdentifier("Type")} TEXT NULL,
+                            {QuoteIdentifier("Direction")} TEXT NULL,
+                            {QuoteIdentifier("BindingNodeID")} TEXT NULL
+                        )");
+                }
+
+                return;
+            }
+
+            var existingColumns = GetColumnNames(dbConnector, "bufferstop");
+            var textType = DBConnector.IsMySql(DBConnector.CapacityDatabaseSectionName) ? "VARCHAR(50) NULL" : "TEXT NULL";
+            var directionType = DBConnector.IsMySql(DBConnector.CapacityDatabaseSectionName) ? "VARCHAR(20) NULL" : "TEXT NULL";
+            var requiredColumns = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["InstanceID"] = textType,
+                ["StationSchemeID"] = textType,
+                ["ID"] = textType,
+                ["Type"] = directionType,
+                ["Direction"] = directionType,
+                ["BindingNodeID"] = textType
+            };
+
+            foreach (var column in requiredColumns)
+            {
+                if (existingColumns.Any(existing => string.Equals(existing, column.Key, StringComparison.OrdinalIgnoreCase)))
+                {
+                    continue;
+                }
+
+                dbConnector.ExecuteNonQuery(
+                    $@"ALTER TABLE {tableName} ADD COLUMN {QuoteIdentifier(column.Key)} {column.Value}");
+            }
+        }
+
         private static void EnsureNullableNameColumn(DBConnector dbConnector, string tableName)
         {
             var columnNames = GetColumnNames(dbConnector, tableName);
@@ -2087,6 +2222,27 @@ namespace SwitchYard.Service.Controllers
             return string.IsNullOrWhiteSpace(value)
                 ? null
                 : value.Trim().ToUpperInvariant();
+        }
+
+        private static string NormalizeBufferStopDirection(string? value)
+        {
+            var normalized = value?.Trim().ToLowerInvariant();
+            return normalized switch
+            {
+                "left" or "l" or "左" or "向左" => "left",
+                "right" or "r" or "右" or "向右" => "right",
+                _ => "right"
+            };
+        }
+
+        private static string NormalizeBufferStopType(string? value)
+        {
+            var normalized = value?.Trim().ToLowerInvariant();
+            return normalized switch
+            {
+                "ext" or "e" or "extend" or "extended" or "extension" or "延伸" or "延申" => "ext",
+                _ => "normal"
+            };
         }
 
         private static string ToInvariantString(int value)
@@ -2378,6 +2534,17 @@ namespace SwitchYard.Service.Controllers
             public string? BindingNodeID { get; set; }
         }
 
+        private sealed class StationBufferStopRow
+        {
+            public string? ID { get; set; }
+
+            public string? Type { get; set; }
+
+            public string? Direction { get; set; }
+
+            public string? BindingNodeID { get; set; }
+        }
+
         private sealed class StationPlatformRow
         {
             public string? ID { get; set; }
@@ -2464,6 +2631,9 @@ namespace SwitchYard.Service.Controllers
 
             [JsonPropertyName("insulationJoints")]
             public List<StationLayoutInsulationJointJson> InsulationJoints { get; set; } = new();
+
+            [JsonPropertyName("bufferStops")]
+            public List<StationLayoutBufferStopJson> BufferStops { get; set; } = new();
 
             [JsonPropertyName("platforms")]
             public List<StationLayoutPlatformJson> Platforms { get; set; } = new();
@@ -2640,6 +2810,24 @@ namespace SwitchYard.Service.Controllers
             public string? BindingNodeID { get; set; }
         }
 
+        private sealed class StationLayoutBufferStopJson
+        {
+            [JsonPropertyName("id")]
+            public string? ID { get; set; }
+
+            [JsonPropertyName("position")]
+            public StationLayoutPositionJson? Position { get; set; }
+
+            [JsonPropertyName("type")]
+            public string? Type { get; set; }
+
+            [JsonPropertyName("direction")]
+            public string? Direction { get; set; }
+
+            [JsonPropertyName("bindingNodeID")]
+            public string? BindingNodeID { get; set; }
+        }
+
         private sealed class StationLayoutPlatformJson
         {
             [JsonPropertyName("id")]
@@ -2808,6 +2996,9 @@ namespace SwitchYard.Service.Controllers
 
             [JsonPropertyName("insulationJointCount")]
             public int InsulationJointCount { get; set; }
+
+            [JsonPropertyName("bufferStopCount")]
+            public int BufferStopCount { get; set; }
 
             [JsonPropertyName("platformCount")]
             public int PlatformCount { get; set; }
@@ -2978,6 +3169,7 @@ namespace SwitchYard.Service.Controllers
                 nodes = Array.Empty<object>(),
                 signals = Array.Empty<object>(),
                 insulationJoints = Array.Empty<object>(),
+                bufferStops = Array.Empty<object>(),
                 platforms = Array.Empty<object>(),
                 switches = Array.Empty<object>(),
                 annotations = Array.Empty<object>()

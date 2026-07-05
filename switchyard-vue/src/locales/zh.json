@@ -1100,6 +1100,8 @@
             "saveData": "保存数据",
             "gridSnap": "网格追踪",
             "objectSnap": "对象追踪",
+            "snapDistance": "吸附阈值",
+            "showGrid": "显示网格",
             "undo": "撤销",
             "redo": "重做",
             "clearSelection": "清除选择",

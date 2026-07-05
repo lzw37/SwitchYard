@@ -1,5 +1,13 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
+import {
+    DEFAULT_BUFFER_STOP_DIRECTION,
+    DEFAULT_BUFFER_STOP_TYPE,
+    getBufferStopStyleAsset,
+    normalizeBufferStopDirection,
+    normalizeBufferStopType,
+} from "@/assets/stationLayoutBufferStopStyles";
+import { DEFAULT_SIGNAL_TYPE, getSignalStyleAsset, normalizeSignalType } from "@/assets/stationLayoutSignalStyles";
 
 const props = defineProps({
     width: { type: Number, default: 1920 },
@@ -8,6 +16,8 @@ const props = defineProps({
     displayScaleY: { type: Number, default: 1 },
     showCurveArc: { type: Boolean, default: true },
     showNodes: { type: Boolean, default: true },
+    showGrid: { type: Boolean, default: true },
+    objectSnapDistance: { type: Number, default: 10 },
     displayStyles: { type: Object, default: () => ({}) },
 });
 const emit = defineEmits(["selected-annotation-change", "selected-equipment-change"]);
@@ -19,6 +29,7 @@ const defaultEditorDisplayStyles = {
     signalName: { fontSize: 8, fontFamily: "Arial", fontWeight: "normal", fontStyle: "normal", color: "#ffffff" },
     lineName: { fontSize: 10, fontFamily: "Arial", fontWeight: "normal", fontStyle: "normal", color: "#ffffff" },
     track: { strokeWidth: 2, color: "#fefded" },
+    curve: { strokeWidth: 4, color: "#ffb347" },
     platform: { strokeWidth: 1, color: "#87ceeb" },
     signal: { scale: 0.5 },
     switch: { strokeWidth: 5, color: "#00ffff" },
@@ -29,12 +40,13 @@ const editModeCode = ref(0);
 const drawingObject = ref("l");
 const mouseGridSnapModeCode = ref(1);
 const mouseObjectSnapModeCode = ref(1);
-const snapDistance = ref(10);
+const snapDistance = computed(() => Math.max(0, toFiniteNumber(props.objectSnapDistance)));
 const autoSeparateLineTolerance = ref(10);
 const autoMergeNodeTolerance = ref(10);
 const defaultCurveRadius = 100;
 const curveCornerMinAngle = 90;
-const curveCornerMaxAngle = 160;
+const curveCornerMaxAngle = 175;
+const curveRadiusLineFitRatio = 0.98;
 const linkArrowShape = {
     length: 12,
     gap: 4,
@@ -46,13 +58,32 @@ const linkArrowShape = {
     tailGap: 3,
 };
 
-const grid = { visible: true, verticalSpace: 20, horizontalSpace: 20 };
+const grid = { visible: true, verticalSpace: 20, horizontalSpace: 20, originX: 0, originY: 0 };
 const cursorParam = ref({ size: 10, barVisible: false, barLength: 100, x: 200, y: 200 });
+const signalDirectionKeyViews = [
+    { key: "w", label: "w", x: -22, y: -18 },
+    { key: "e", label: "e", x: 22, y: -18 },
+    { key: "s", label: "s", x: -22, y: 22 },
+    { key: "d", label: "d", x: 22, y: 22 },
+];
+const signalNodeExtraGap = 4;
 const anchorParam = { size: 10 };
 const safeDisplayScaleX = computed(() => normalizeDisplayScale(props.displayScaleX));
 const safeDisplayScaleY = computed(() => normalizeDisplayScale(props.displayScaleY));
-const svgScreenWidth = computed(() => props.width * safeDisplayScaleX.value);
-const svgScreenHeight = computed(() => props.height * safeDisplayScaleY.value);
+const canvasAutoExpandPadding = 240;
+const canvasEdgeTriggerMargin = 80;
+const canvasElementScreenMargin = 80;
+const createDefaultCanvasBounds = () => ({
+    minX: 0,
+    minY: 0,
+    maxX: Math.max(1, toFiniteNumber(props.width)),
+    maxY: Math.max(1, toFiniteNumber(props.height)),
+});
+const canvasBounds = ref(createDefaultCanvasBounds());
+const canvasWidth = computed(() => Math.max(1, canvasBounds.value.maxX - canvasBounds.value.minX));
+const canvasHeight = computed(() => Math.max(1, canvasBounds.value.maxY - canvasBounds.value.minY));
+const svgScreenWidth = computed(() => canvasWidth.value * safeDisplayScaleX.value);
+const svgScreenHeight = computed(() => canvasHeight.value * safeDisplayScaleY.value);
 const svgStyle = computed(() => ({
     width: `${svgScreenWidth.value}px`,
     height: `${svgScreenHeight.value}px`,
@@ -67,6 +98,7 @@ const curves = ref([]);
 const nodes = ref([]);
 const signals = ref([]);
 const insulationJoints = ref([]);
+const bufferStops = ref([]);
 const platforms = ref([]);
 const switches = ref([]);
 const annotations = ref([]);
@@ -75,6 +107,7 @@ const selectedLineIds = ref(new Set());
 const selectedNodeIds = ref(new Set());
 const selectedSignalIds = ref(new Set());
 const selectedInsulationJointIds = ref(new Set());
+const selectedBufferStopIds = ref(new Set());
 const selectedSwitchIds = ref(new Set());
 const selectedPlatformIds = ref(new Set());
 const selectedAnnotationIds = ref(new Set());
@@ -83,8 +116,9 @@ const crossPoints = ref([]);
 const perpendicularPoint = ref(null);
 
 const tempLine = ref(null);
-const tempSignal = ref({ visible: false, direction: "w", x: 0, y: 0 });
+const tempSignal = ref({ visible: false, direction: "w", x: 0, y: 0, type: DEFAULT_SIGNAL_TYPE });
 const tempInsulationJoint = ref({ visible: false, x: 0, y: 0 });
+const tempBufferStop = ref({ visible: false, direction: DEFAULT_BUFFER_STOP_DIRECTION, type: DEFAULT_BUFFER_STOP_TYPE, x: 0, y: 0 });
 const tempNode = ref({ visible: false, x: 0, y: 0 });
 const tempPlatformPosition = ref(null);
 const selectionBox = ref(null);
@@ -147,6 +181,10 @@ function normalizeDisplayStyles(source) {
             strokeWidth: clampDisplayNumber(styles.track?.strokeWidth, defaultEditorDisplayStyles.track.strokeWidth, 0.5, 24),
             color: String(styles.track?.color || defaultEditorDisplayStyles.track.color),
         },
+        curve: {
+            strokeWidth: clampDisplayNumber(styles.curve?.strokeWidth, defaultEditorDisplayStyles.curve.strokeWidth, 0.5, 24),
+            color: String(styles.curve?.color || defaultEditorDisplayStyles.curve.color),
+        },
         platform: {
             strokeWidth: clampDisplayNumber(styles.platform?.strokeWidth, defaultEditorDisplayStyles.platform.strokeWidth, 0.5, 24),
             color: String(styles.platform?.color || defaultEditorDisplayStyles.platform.color),
@@ -171,11 +209,11 @@ function toFiniteNumber(value) {
 }
 
 function screenX(value) {
-    return toFiniteNumber(value) * safeDisplayScaleX.value;
+    return (toFiniteNumber(value) - canvasBounds.value.minX) * safeDisplayScaleX.value;
 }
 
 function screenY(value) {
-    return toFiniteNumber(value) * safeDisplayScaleY.value;
+    return (toFiniteNumber(value) - canvasBounds.value.minY) * safeDisplayScaleY.value;
 }
 
 function screenDeltaX(value) {
@@ -195,11 +233,121 @@ function screenCenterY(origin, size) {
 }
 
 function dataX(value) {
-    return toFiniteNumber(value) / safeDisplayScaleX.value;
+    return toFiniteNumber(value) / safeDisplayScaleX.value + canvasBounds.value.minX;
 }
 
 function dataY(value) {
-    return toFiniteNumber(value) / safeDisplayScaleY.value;
+    return toFiniteNumber(value) / safeDisplayScaleY.value + canvasBounds.value.minY;
+}
+
+function resetCanvasBounds() {
+    const bounds = createDefaultCanvasBounds();
+    const stepX = canvasStepX();
+    const stepY = canvasStepY();
+    canvasBounds.value = {
+        minX: alignCanvasMin(bounds.minX, stepX, canvasOriginX()),
+        minY: alignCanvasMin(bounds.minY, stepY, canvasOriginY()),
+        maxX: alignCanvasMax(bounds.maxX, stepX, canvasOriginX()),
+        maxY: alignCanvasMax(bounds.maxY, stepY, canvasOriginY()),
+    };
+}
+
+function alignCanvasMin(value, step, origin = 0) {
+    const safeStep = Math.max(1, toFiniteNumber(step));
+    const safeOrigin = toFiniteNumber(origin);
+    return Math.floor((toFiniteNumber(value) - safeOrigin) / safeStep) * safeStep + safeOrigin;
+}
+
+function alignCanvasMax(value, step, origin = 0) {
+    const safeStep = Math.max(1, toFiniteNumber(step));
+    const safeOrigin = toFiniteNumber(origin);
+    return Math.ceil((toFiniteNumber(value) - safeOrigin) / safeStep) * safeStep + safeOrigin;
+}
+
+function canvasStepX() {
+    return Math.max(1, toFiniteNumber(grid.verticalSpace) || 1);
+}
+
+function canvasStepY() {
+    return Math.max(1, toFiniteNumber(grid.horizontalSpace) || 1);
+}
+
+function canvasOriginX() {
+    return toFiniteNumber(grid.originX);
+}
+
+function canvasOriginY() {
+    return toFiniteNumber(grid.originY);
+}
+
+function normalizeGridOrigin(value, step) {
+    const safeStep = Math.max(1, toFiniteNumber(step));
+    const remainder = ((toFiniteNumber(value) % safeStep) + safeStep) % safeStep;
+    return roundLayoutNumber(remainder);
+}
+
+function resetGridOrigin() {
+    grid.originX = 0;
+    grid.originY = 0;
+}
+
+function getCanvasScrollContainer() {
+    return svgRef.value?.parentElement || null;
+}
+
+function adjustCanvasScrollAfterExpansion(deltaLeft, deltaTop) {
+    if (deltaLeft <= 0 && deltaTop <= 0) return;
+    const scrollContainer = getCanvasScrollContainer();
+    if (!scrollContainer) return;
+    nextTick(() => {
+        if (deltaLeft > 0) scrollContainer.scrollLeft += deltaLeft;
+        if (deltaTop > 0) scrollContainer.scrollTop += deltaTop;
+    });
+}
+
+function expandCanvasToIncludeRect(rect, options = {}) {
+    if (!rect) return false;
+    const minX = Math.min(toFiniteNumber(rect.minX), toFiniteNumber(rect.maxX));
+    const minY = Math.min(toFiniteNumber(rect.minY), toFiniteNumber(rect.maxY));
+    const maxX = Math.max(toFiniteNumber(rect.minX), toFiniteNumber(rect.maxX));
+    const maxY = Math.max(toFiniteNumber(rect.minY), toFiniteNumber(rect.maxY));
+    const triggerMargin = Math.max(0, toFiniteNumber(options.triggerMargin));
+    const padding = Math.max(0, toFiniteNumber(options.padding ?? canvasAutoExpandPadding));
+    const bounds = canvasBounds.value;
+    const stepX = canvasStepX();
+    const stepY = canvasStepY();
+
+    let nextMinX = bounds.minX;
+    let nextMinY = bounds.minY;
+    let nextMaxX = bounds.maxX;
+    let nextMaxY = bounds.maxY;
+
+    if (minX < bounds.minX + triggerMargin) nextMinX = alignCanvasMin(minX - padding, stepX, canvasOriginX());
+    if (minY < bounds.minY + triggerMargin) nextMinY = alignCanvasMin(minY - padding, stepY, canvasOriginY());
+    if (maxX > bounds.maxX - triggerMargin) nextMaxX = alignCanvasMax(maxX + padding, stepX, canvasOriginX());
+    if (maxY > bounds.maxY - triggerMargin) nextMaxY = alignCanvasMax(maxY + padding, stepY, canvasOriginY());
+
+    if (nextMinX === bounds.minX && nextMinY === bounds.minY && nextMaxX === bounds.maxX && nextMaxY === bounds.maxY) {
+        return false;
+    }
+
+    const deltaLeft = Math.max(0, (bounds.minX - nextMinX) * safeDisplayScaleX.value);
+    const deltaTop = Math.max(0, (bounds.minY - nextMinY) * safeDisplayScaleY.value);
+    canvasBounds.value = {
+        minX: nextMinX,
+        minY: nextMinY,
+        maxX: nextMaxX,
+        maxY: nextMaxY,
+    };
+    adjustCanvasScrollAfterExpansion(deltaLeft, deltaTop);
+    return true;
+}
+
+function expandCanvasToIncludePoint(point, options = {}) {
+    if (!point) return false;
+    const x = toFiniteNumber(point.x);
+    const y = toFiniteNumber(point.y);
+    return expandCanvasToIncludeRect({ minX: x, minY: y, maxX: x, maxY: y }, options);
 }
 
 function anchorScreenX(anchor) {
@@ -275,6 +423,7 @@ function getEquipmentCollection(kind) {
     if (kind === "link") return tracks.value;
     if (kind === "signal") return signals.value;
     if (kind === "insulationJoint") return insulationJoints.value;
+    if (kind === "bufferStop") return bufferStops.value;
     if (kind === "switch") return switches.value;
     if (kind === "platform") return platforms.value;
     return [];
@@ -284,6 +433,7 @@ function getEquipmentSelectedSet(kind) {
     if (kind === "link") return selectedLineIds.value;
     if (kind === "signal") return selectedSignalIds.value;
     if (kind === "insulationJoint") return selectedInsulationJointIds.value;
+    if (kind === "bufferStop") return selectedBufferStopIds.value;
     if (kind === "switch") return selectedSwitchIds.value;
     if (kind === "platform") return selectedPlatformIds.value;
     return new Set();
@@ -300,7 +450,7 @@ function cloneEquipment(kind, equipment) {
 
 function getSelectedEquipment() {
     const selected = [];
-    for (const kind of ["link", "signal", "insulationJoint", "switch", "platform"]) {
+    for (const kind of ["link", "signal", "insulationJoint", "bufferStop", "switch", "platform"]) {
         const selectedIds = [...getEquipmentSelectedSet(kind)];
         if (selectedIds.length !== 1) {
             if (selectedIds.length > 1) return null;
@@ -321,6 +471,7 @@ function emitSelectedEquipmentChange() {
 function clearSelectedDeviceIds() {
     selectedSignalIds.value = new Set();
     selectedInsulationJointIds.value = new Set();
+    selectedBufferStopIds.value = new Set();
     selectedSwitchIds.value = new Set();
     selectedPlatformIds.value = new Set();
 }
@@ -391,14 +542,119 @@ const anchorRects = computed(() => {
 
 const gridDots = computed(() => {
     const dots = [];
-    if (!grid.visible) return dots;
-    for (let x = 0; x < props.width; x += grid.verticalSpace) {
-        for (let y = 0; y < props.height; y += grid.horizontalSpace) {
+    if (!props.showGrid || !grid.visible) return dots;
+    const stepX = canvasStepX();
+    const stepY = canvasStepY();
+    const bounds = canvasBounds.value;
+    const startX = alignCanvasMin(bounds.minX, stepX, canvasOriginX());
+    const startY = alignCanvasMin(bounds.minY, stepY, canvasOriginY());
+    const endX = alignCanvasMax(bounds.maxX, stepX, canvasOriginX());
+    const endY = alignCanvasMax(bounds.maxY, stepY, canvasOriginY());
+    for (let x = startX; x <= endX; x += stepX) {
+        for (let y = startY; y <= endY; y += stepY) {
             dots.push({ x, y });
         }
     }
     return dots;
 });
+
+function createEmptyCanvasContentRect() {
+    return {
+        minX: Infinity,
+        minY: Infinity,
+        maxX: -Infinity,
+        maxY: -Infinity,
+    };
+}
+
+function isCanvasContentRectEmpty(rect) {
+    return !Number.isFinite(rect.minX) || !Number.isFinite(rect.minY) ||
+        !Number.isFinite(rect.maxX) || !Number.isFinite(rect.maxY);
+}
+
+function includeDataRectInCanvasContentRect(rect, minX, minY, maxX, maxY, screenMargin = 0) {
+    const rectMinX = Number(minX);
+    const rectMinY = Number(minY);
+    const rectMaxX = Number(maxX);
+    const rectMaxY = Number(maxY);
+    if (![rectMinX, rectMinY, rectMaxX, rectMaxY].every(Number.isFinite)) return;
+
+    const marginX = Math.max(0, screenMargin) / safeDisplayScaleX.value;
+    const marginY = Math.max(0, screenMargin) / safeDisplayScaleY.value;
+    rect.minX = Math.min(rect.minX, Math.min(rectMinX, rectMaxX) - marginX);
+    rect.minY = Math.min(rect.minY, Math.min(rectMinY, rectMaxY) - marginY);
+    rect.maxX = Math.max(rect.maxX, Math.max(rectMinX, rectMaxX) + marginX);
+    rect.maxY = Math.max(rect.maxY, Math.max(rectMinY, rectMaxY) + marginY);
+}
+
+function includePointInCanvasContentRect(rect, point, screenMargin = canvasElementScreenMargin) {
+    if (!point) return;
+    includeDataRectInCanvasContentRect(rect, point.x, point.y, point.x, point.y, screenMargin);
+}
+
+function includePositionInCanvasContentRect(rect, item, screenMargin = canvasElementScreenMargin) {
+    includePointInCanvasContentRect(rect, item?.position, screenMargin);
+}
+
+function buildCanvasContentRect(screenMargin = canvasElementScreenMargin) {
+    const rect = createEmptyCanvasContentRect();
+
+    for (const line of tracks.value) {
+        includeDataRectInCanvasContentRect(rect, line.x1, line.y1, line.x2, line.y2, screenMargin);
+    }
+    for (const curve of curves.value) {
+        includePointInCanvasContentRect(rect, curve.start, screenMargin);
+        includePointInCanvasContentRect(rect, curve.end, screenMargin);
+    }
+    for (const node of nodes.value) {
+        includePointInCanvasContentRect(rect, node, screenMargin);
+    }
+    for (const signal of signals.value) {
+        includePositionInCanvasContentRect(rect, signal, screenMargin);
+    }
+    for (const insulationJoint of insulationJoints.value) {
+        includePositionInCanvasContentRect(rect, insulationJoint, screenMargin);
+    }
+    for (const bufferStop of bufferStops.value) {
+        includePositionInCanvasContentRect(rect, bufferStop, screenMargin);
+    }
+    for (const platform of platforms.value) {
+        includeDataRectInCanvasContentRect(
+            rect,
+            platform.x,
+            platform.y,
+            toFiniteNumber(platform.x) + toFiniteNumber(platform.width),
+            toFiniteNumber(platform.y) + toFiniteNumber(platform.height),
+            screenMargin
+        );
+    }
+    for (const sw of switches.value) {
+        includePositionInCanvasContentRect(rect, sw, screenMargin);
+    }
+    for (const annotation of annotations.value) {
+        includePositionInCanvasContentRect(rect, annotation, screenMargin);
+    }
+
+    return rect;
+}
+
+function alignGridOriginToCurrentContent() {
+    const rect = buildCanvasContentRect(0);
+    if (isCanvasContentRectEmpty(rect)) {
+        resetGridOrigin();
+        return false;
+    }
+
+    grid.originX = normalizeGridOrigin(rect.minX, canvasStepX());
+    grid.originY = normalizeGridOrigin(rect.minY, canvasStepY());
+    return true;
+}
+
+function ensureCanvasForAllElements() {
+    const rect = buildCanvasContentRect(canvasElementScreenMargin);
+    if (isCanvasContentRectEmpty(rect)) return false;
+    return expandCanvasToIncludeRect(rect, { padding: canvasAutoExpandPadding });
+}
 
 function getLinePointAtRate(line, rate) {
     const x1 = toFiniteNumber(line.x1);
@@ -557,6 +813,7 @@ function cloneState() {
             nodes: nodes.value,
             signals: signals.value,
             insulationJoints: insulationJoints.value,
+            bufferStops: bufferStops.value,
             platforms: platforms.value,
             switches: switches.value,
             annotations: annotations.value,
@@ -564,6 +821,7 @@ function cloneState() {
             selectedNodeIds: [...selectedNodeIds.value],
             selectedSignalIds: [...selectedSignalIds.value],
             selectedInsulationJointIds: [...selectedInsulationJointIds.value],
+            selectedBufferStopIds: [...selectedBufferStopIds.value],
             selectedSwitchIds: [...selectedSwitchIds.value],
             selectedPlatformIds: [...selectedPlatformIds.value],
             selectedAnnotationIds: [...selectedAnnotationIds.value],
@@ -578,16 +836,20 @@ function applyState(state) {
     nodes.value = state.nodes || [];
     signals.value = (state.signals || []).map((signal) => normalizeNamedEquipment(signal));
     insulationJoints.value = state.insulationJoints || [];
+    bufferStops.value = (state.bufferStops || []).map((bufferStop) => normalizeBufferStop(bufferStop));
     platforms.value = (state.platforms || []).map((platform) => normalizeNamedEquipment(platform));
     switches.value = (state.switches || []).map((sw) => normalizeNamedEquipment(sw));
     annotations.value = state.annotations || [];
+    syncSignalsToBindingNodes();
     selectedLineIds.value = new Set(state.selectedLineIds || []);
     selectedNodeIds.value = new Set(state.selectedNodeIds || []);
     selectedSignalIds.value = new Set(state.selectedSignalIds || []);
     selectedInsulationJointIds.value = new Set(state.selectedInsulationJointIds || []);
+    selectedBufferStopIds.value = new Set(state.selectedBufferStopIds || []);
     selectedSwitchIds.value = new Set(state.selectedSwitchIds || []);
     selectedPlatformIds.value = new Set(state.selectedPlatformIds || []);
     selectedAnnotationIds.value = new Set(state.selectedAnnotationIds || []);
+    ensureCanvasForAllElements();
     emitSelectedAnnotationChange();
     emitSelectedEquipmentChange();
 }
@@ -599,6 +861,7 @@ function executeMutation(mutator) {
     }
     revokedCmdList.value = [];
     mutator();
+    ensureCanvasForAllElements();
 }
 
 function revoke() {
@@ -627,6 +890,31 @@ function normalizeNamedEquipment(equipment) {
     const name = normalized.name == null ? "" : String(normalized.name).trim();
     normalized.name = name || id;
     return normalized;
+}
+
+function normalizeBufferStop(bufferStop) {
+    const normalized = { ...(bufferStop || {}) };
+    normalized.direction = normalizeBufferStopDirection(normalized.direction ?? normalized.Direction);
+    normalized.type = normalizeBufferStopType(normalized.type ?? normalized.Type ?? normalized.style ?? normalized.Style);
+    return normalized;
+}
+
+function syncSignalPositionToBindingNode(signal) {
+    const bindingNode = getNodeById(signal?.bindingNodeID);
+    if (!bindingNode) return signal;
+
+    signal.position = {
+        ...(signal.position || {}),
+        x: toFiniteNumber(bindingNode.x),
+        y: toFiniteNumber(bindingNode.y),
+    };
+    return signal;
+}
+
+function syncSignalsToBindingNodes() {
+    for (const signal of signals.value) {
+        syncSignalPositionToBindingNode(signal);
+    }
 }
 
 function getEquipmentDisplayName(equipment, placeholder) {
@@ -659,12 +947,26 @@ function setEditMode(code) {
     editModeCode.value = Number(code);
 }
 
+function setDrawingSignalType(type) {
+    tempSignal.value.type = normalizeSignalType(type);
+}
+
+function setDrawingBufferStopDirection(direction) {
+    tempBufferStop.value.direction = normalizeBufferStopDirection(direction);
+}
+
+function setDrawingBufferStopType(type) {
+    tempBufferStop.value.type = normalizeBufferStopType(type);
+}
+
 function setDrawingObject(obj) {
     drawingObject.value = obj;
     if (obj === "s") {
         startDrawingSignal();
     } else if (obj === "i") {
         startDrawingInsulationJoint();
+    } else if (obj === "e") {
+        startDrawingBufferStop();
     } else if (obj === "n") {
         startDrawingNode();
     } else if (obj === "p") {
@@ -680,17 +982,6 @@ function setMouseGridSnapModeCode(code) {
 
 function setMouseObjectSnapModeCode(code) {
     mouseObjectSnapModeCode.value = Number(code);
-}
-
-function getSnapObjects() {
-    const list = [];
-    for (const n of nodes.value) {
-        list.push({ x: Number(n.x), y: Number(n.y) });
-    }
-    for (const a of anchorRects.value) {
-        list.push({ x: Number(a.x) + anchorParam.size / 2, y: Number(a.y) + anchorParam.size / 2 });
-    }
-    return list;
 }
 
 function clientPointToSvgPoint(clientX, clientY) {
@@ -716,9 +1007,11 @@ function clientPointToDataPoint(clientX, clientY) {
 function snapPointToGrid(point) {
     const gridX = toFiniteNumber(grid.horizontalSpace) || 1;
     const gridY = toFiniteNumber(grid.verticalSpace) || 1;
+    const originX = canvasOriginX();
+    const originY = canvasOriginY();
     return {
-        x: Math.round(toFiniteNumber(point?.x) / gridX) * gridX,
-        y: Math.round(toFiniteNumber(point?.y) / gridY) * gridY,
+        x: originX + Math.round((toFiniteNumber(point?.x) - originX) / gridX) * gridX,
+        y: originY + Math.round((toFiniteNumber(point?.y) - originY) / gridY) * gridY,
     };
 }
 
@@ -727,38 +1020,108 @@ function applyGridSnapWhenEnabled(point) {
     return snapPointToGrid(point);
 }
 
-function updateCursorPosition(clientX, clientY) {
-    const dataPoint = clientPointToDataPoint(clientX, clientY);
-    if (!dataPoint) return;
-    const x = dataPoint.x;
-    const y = dataPoint.y;
+function getNodeSnapObjects() {
+    return nodes.value
+        .map((node) => ({
+            x: toFiniteNumber(node.x),
+            y: toFiniteNumber(node.y),
+            id: node.id,
+            kind: "node",
+        }))
+        .filter((node) => Number.isFinite(node.x) && Number.isFinite(node.y));
+}
 
-    let snapX = x;
-    let snapY = y;
+function findNearestPointSnap(point, candidates, threshold) {
+    let nearest = null;
+    const sourcePoint = normalizePosition(point);
 
-    if (mouseGridSnapModeCode.value === 1) {
-        const gridPoint = snapPointToGrid({ x, y });
-        snapX = gridPoint.x;
-        snapY = gridPoint.y;
-    }
-
-    if (mouseObjectSnapModeCode.value === 1) {
-        const snapObjs = getSnapObjects();
-        for (const obj of snapObjs) {
-            const dist = Math.hypot(obj.x - x, obj.y - y);
-            if (dist <= snapDistance.value) {
-                snapX = obj.x;
-                snapY = obj.y;
-                break;
-            }
+    for (const candidate of candidates) {
+        const candidatePoint = normalizePosition(candidate);
+        const dist = Math.hypot(candidatePoint.x - sourcePoint.x, candidatePoint.y - sourcePoint.y);
+        if (dist > threshold) continue;
+        if (!nearest || dist < nearest.dist) {
+            nearest = {
+                ...candidate,
+                x: candidatePoint.x,
+                y: candidatePoint.y,
+                dist,
+            };
         }
     }
 
+    return nearest;
+}
+
+function findNearestNodeSnap(point, threshold) {
+    return findNearestPointSnap(point, getNodeSnapObjects(), threshold);
+}
+
+function findNearestEdgeSnap(point, threshold) {
+    let nearest = null;
+    const sourcePoint = normalizePosition(point);
+
+    for (const line of tracks.value) {
+        const snapPoint = calculatePointSegmentSnap(line, sourcePoint);
+        if (!snapPoint || !Number.isFinite(snapPoint.dist)) continue;
+        if (snapPoint.dist > threshold) continue;
+        if (!nearest || snapPoint.dist < nearest.dist) {
+            nearest = {
+                x: roundLayoutNumber(snapPoint.x),
+                y: roundLayoutNumber(snapPoint.y),
+                dist: snapPoint.dist,
+                id: line.id,
+                kind: "edge",
+            };
+        }
+    }
+
+    return nearest;
+}
+
+function resolveObjectSnapPoint(point) {
+    if (mouseObjectSnapModeCode.value !== 1) return null;
+
+    const threshold = snapDistance.value;
+    const nodeSnap = findNearestNodeSnap(point, threshold);
+    if (nodeSnap) return nodeSnap;
+
+    return findNearestEdgeSnap(point, threshold);
+}
+
+function resolveCursorSnapPoint(point) {
+    const sourcePoint = normalizePosition(point);
+    const objectSnapPoint = resolveObjectSnapPoint(sourcePoint);
+    if (objectSnapPoint) return objectSnapPoint;
+
+    const gridPoint = applyGridSnapWhenEnabled(sourcePoint);
+    return {
+        ...gridPoint,
+        kind: mouseGridSnapModeCode.value === 1 ? "grid" : "free",
+    };
+}
+
+function updateCursorPosition(clientX, clientY) {
+    const dataPoint = clientPointToDataPoint(clientX, clientY);
+    if (!dataPoint) return;
+    const sourcePoint = normalizePosition(dataPoint);
+    const snapPoint = resolveCursorSnapPoint(sourcePoint);
+    const snapX = snapPoint.x;
+    const snapY = snapPoint.y;
+
     cursorParam.value.x = snapX;
     cursorParam.value.y = snapY;
+    if (editModeCode.value !== 0) {
+        expandCanvasToIncludePoint({ x: snapX, y: snapY }, { triggerMargin: canvasEdgeTriggerMargin });
+    }
 
     if (editModeCode.value === 1) {
-        snapPointToLine(x, y);
+        if (snapPoint.kind === "edge") {
+            perpendicularPoint.value = { x: snapX, y: snapY };
+        } else {
+            snapPointToLine(sourcePoint.x, sourcePoint.y);
+        }
+    } else {
+        perpendicularPoint.value = null;
     }
 }
 
@@ -842,6 +1205,7 @@ function selectElementsInBox(box) {
     const nextNodeIds = box.additive ? new Set(selectedNodeIds.value) : new Set();
     const nextSignalIds = box.additive ? new Set(selectedSignalIds.value) : new Set();
     const nextInsulationJointIds = box.additive ? new Set(selectedInsulationJointIds.value) : new Set();
+    const nextBufferStopIds = box.additive ? new Set(selectedBufferStopIds.value) : new Set();
     const nextSwitchIds = box.additive ? new Set(selectedSwitchIds.value) : new Set();
     const nextPlatformIds = box.additive ? new Set(selectedPlatformIds.value) : new Set();
     const nextAnnotationIds = box.additive ? new Set(selectedAnnotationIds.value) : new Set();
@@ -857,6 +1221,9 @@ function selectElementsInBox(box) {
     }
     for (const insulationJoint of insulationJoints.value) {
         if (isPointInRect(insulationJoint.position || {}, rect)) nextInsulationJointIds.add(insulationJoint.id);
+    }
+    for (const bufferStop of bufferStops.value) {
+        if (isPointInRect(bufferStop.position || {}, rect)) nextBufferStopIds.add(bufferStop.id);
     }
     for (const sw of switches.value) {
         if (isPointInRect(sw.position || {}, rect)) nextSwitchIds.add(sw.id);
@@ -876,6 +1243,7 @@ function selectElementsInBox(box) {
     selectedNodeIds.value = nextNodeIds;
     selectedSignalIds.value = nextSignalIds;
     selectedInsulationJointIds.value = nextInsulationJointIds;
+    selectedBufferStopIds.value = nextBufferStopIds;
     selectedSwitchIds.value = nextSwitchIds;
     selectedPlatformIds.value = nextPlatformIds;
     selectedAnnotationIds.value = nextAnnotationIds;
@@ -996,6 +1364,7 @@ function deleteEquipment() {
     executeMutation(() => {
         signals.value = signals.value.filter((s) => !selectedSignalIds.value.has(s.id));
         insulationJoints.value = insulationJoints.value.filter((i) => !selectedInsulationJointIds.value.has(i.id));
+        bufferStops.value = bufferStops.value.filter((b) => !selectedBufferStopIds.value.has(b.id));
         switches.value = switches.value.filter((s) => !selectedSwitchIds.value.has(s.id));
         platforms.value = platforms.value.filter((p) => !selectedPlatformIds.value.has(p.id));
         annotations.value = annotations.value.filter((a) => !selectedAnnotationIds.value.has(a.id));
@@ -1048,6 +1417,10 @@ function calculateCrossPoint(l1, l2) {
 
 function isSamePoint(p1, p2) {
     return Math.hypot(Number(p2.x) - Number(p1.x), Number(p2.y) - Number(p1.y)) < 1;
+}
+
+function findNodeAtPosition(x, y) {
+    return nodes.value.find((node) => isSamePoint(node, { x, y })) || null;
 }
 
 function isLineEndpoint(line, point) {
@@ -1434,15 +1807,15 @@ function drawingSignalMouseMove(x, y) {
 }
 
 function drawingSignalMouseDown(x, y) {
-    const bindingNode = nodes.value.find((n) => Number(n.x) === Number(x) && Number(n.y) === Number(y));
+    const bindingNode = findNodeAtPosition(x, y);
     if (!bindingNode) return;
     executeMutation(() => {
         const id = nextId();
         signals.value.push({
             id,
             name: id,
-            type: "departure",
-            position: { x, y },
+            type: normalizeSignalType(tempSignal.value.type),
+            position: { x: toFiniteNumber(bindingNode.x), y: toFiniteNumber(bindingNode.y) },
             direction: tempSignal.value.direction,
             bindingNodeID: bindingNode.id,
         });
@@ -1460,7 +1833,7 @@ function drawingInsulationJointMouseMove(x, y) {
 }
 
 function drawingInsulationJointMouseDown(x, y) {
-    const bindingNode = nodes.value.find((n) => Number(n.x) === Number(x) && Number(n.y) === Number(y));
+    const bindingNode = findNodeAtPosition(x, y);
     if (!bindingNode) return;
     executeMutation(() => {
         insulationJoints.value.push({
@@ -1470,6 +1843,36 @@ function drawingInsulationJointMouseDown(x, y) {
             bindingNodeID: bindingNode.id,
         });
     });
+}
+
+function startDrawingBufferStop() {
+    tempBufferStop.value.visible = true;
+}
+
+function drawingBufferStopMouseMove(x, y) {
+    if (!tempBufferStop.value.visible) return;
+    tempBufferStop.value.x = x;
+    tempBufferStop.value.y = y;
+}
+
+function drawingBufferStopMouseDown(x, y) {
+    const bindingNode = findNodeAtPosition(x, y);
+    if (!bindingNode) return;
+    executeMutation(() => {
+        bufferStops.value.push({
+            id: nextId(),
+            direction: normalizeBufferStopDirection(tempBufferStop.value.direction),
+            type: normalizeBufferStopType(tempBufferStop.value.type),
+            position: { x, y },
+            bindingNodeID: bindingNode.id,
+        });
+    });
+}
+
+function drawingSwitchMouseDown(x, y) {
+    const bindingNode = findNodeAtPosition(x, y);
+    if (!bindingNode) return;
+    generateSwitchAtNode(bindingNode);
 }
 
 function startDrawingNode() {
@@ -1516,6 +1919,8 @@ function drawingNodeMouseMove(x, y) {
 }
 
 function drawingNodeMouseDown(x, y) {
+    if (findNodeAtPosition(x, y)) return;
+
     const lineList = getLineList();
     let minDistLine = null;
     let minSnapPoint = null;
@@ -1603,13 +2008,15 @@ function autoGenerateNodes() {
 }
 
 function buildSwitchBranchVectorList(node) {
-    const adjacentLines = tracks.value.filter((line) => (node.adjacentLineIDList || []).includes(line.id));
+    const adjacentLineIDSet = new Set(getNodeAdjacentLineIds(node));
+    const adjacentLines = tracks.value.filter((line) => adjacentLineIDSet.has(String(line.id)));
     const vectorList = [];
+    const nodeID = String(node?.id ?? "");
 
     for (const line of adjacentLines) {
-        if (line.fromNodeID === node.id) {
+        if (String(line.fromNodeID ?? "") === nodeID) {
             vectorList.push({ x: Number(line.x2) - Number(line.x1), y: Number(line.y2) - Number(line.y1), lineID: line.id });
-        } else {
+        } else if (String(line.toNodeID ?? "") === nodeID) {
             vectorList.push({ x: Number(line.x1) - Number(line.x2), y: Number(line.y1) - Number(line.y2), lineID: line.id });
         }
     }
@@ -1617,9 +2024,17 @@ function buildSwitchBranchVectorList(node) {
     return vectorList;
 }
 
-function buildSwitch(node) {
-    const vectorList = buildSwitchBranchVectorList(node);
+function getNodeAdjacentLineIds(node) {
+    if (!Array.isArray(node?.adjacentLineIDList)) return [];
+    return node.adjacentLineIDList.map((lineID) => String(lineID)).filter((lineID) => lineID !== "");
+}
 
+function canAutoGenerateSwitchForNode(node) {
+    const adjacentLineCount = getNodeAdjacentLineIds(node).length;
+    return adjacentLineCount === 3 || adjacentLineCount === 4;
+}
+
+function resolveSwitchType(vectorList) {
     let acuteAngleNum = 0;
     let obtuseAngleNum = 0;
     let isSingleSwitch = false;
@@ -1629,7 +2044,8 @@ function buildSwitch(node) {
             const innerProduct = vectorList[i].x * vectorList[j].x + vectorList[i].y * vectorList[j].y;
             const absI = Math.hypot(vectorList[i].x, vectorList[i].y);
             const absJ = Math.hypot(vectorList[j].x, vectorList[j].y);
-            const cos = innerProduct / (absI * absJ);
+            if (absI === 0 || absJ === 0) continue;
+            const cos = clampCos(innerProduct / (absI * absJ));
             if (Math.abs(cos + 1) < 0.01) isSingleSwitch = true;
             if (cos > 0 && cos < 1) acuteAngleNum += 1;
             else if (cos < 0 && cos >= -1) obtuseAngleNum += 1;
@@ -1643,27 +2059,106 @@ function buildSwitch(node) {
         switchType = "slip";
     }
 
+    return switchType;
+}
+
+function buildSwitchCandidate(node) {
+    if (!canAutoGenerateSwitchForNode(node)) return null;
+    const branchVectorList = buildSwitchBranchVectorList(node);
+    return {
+        type: resolveSwitchType(branchVectorList),
+        branchVectorList,
+    };
+}
+
+function buildSwitch(node, candidate = buildSwitchCandidate(node)) {
+    if (!candidate) return null;
     const id = nextId();
     return {
         id,
         name: id,
-        type: switchType,
+        type: candidate.type,
         position: { x: node.x, y: node.y },
         bindingNodeID: node.id,
-        branchVectorList: vectorList,
+        branchVectorList: candidate.branchVectorList,
     };
+}
+
+function normalizeSwitchTypeValue(type) {
+    return String(type ?? "").trim().toLowerCase();
+}
+
+function isSwitchBoundToNode(sw, node) {
+    return String(sw?.bindingNodeID ?? "") === String(node?.id ?? "");
+}
+
+function isSwitchBranchListMatchedWithNode(sw, node) {
+    const expectedLineIds = getNodeAdjacentLineIds(node);
+    const expectedLineIdSet = new Set(expectedLineIds);
+    const branchVectorList = Array.isArray(sw?.branchVectorList) ? sw.branchVectorList : [];
+    const actualLineIds = branchVectorList.map((vector) => String(vector?.lineID ?? "")).filter((lineID) => lineID !== "");
+    const actualLineIdSet = new Set(actualLineIds);
+
+    if (expectedLineIdSet.size !== expectedLineIds.length) return false;
+    if (actualLineIdSet.size !== expectedLineIdSet.size) return false;
+    if (actualLineIds.length !== expectedLineIds.length) return false;
+
+    for (const lineID of expectedLineIdSet) {
+        if (!actualLineIdSet.has(lineID)) return false;
+    }
+
+    return true;
+}
+
+function isSwitchMatchedWithNode(sw, node, candidate) {
+    if (!candidate) return false;
+    return isSwitchBoundToNode(sw, node) &&
+        normalizeSwitchTypeValue(sw?.type) === normalizeSwitchTypeValue(candidate.type) &&
+        isSwitchBranchListMatchedWithNode(sw, node);
+}
+
+function findMatchedSwitchForNode(node, candidate) {
+    return switches.value.find((sw) => isSwitchMatchedWithNode(sw, node, candidate)) || null;
+}
+
+function trimSelectedSwitchesToExisting() {
+    const switchIdSet = new Set(switches.value.map((sw) => sw.id));
+    selectedSwitchIds.value = new Set([...selectedSwitchIds.value].filter((id) => switchIdSet.has(id)));
+}
+
+function generateSwitchAtNode(node) {
+    const candidate = buildSwitchCandidate(node);
+    if (!candidate) return;
+
+    const matchedSwitch = findMatchedSwitchForNode(node, candidate);
+    const existingSwitchesAtNode = switches.value.filter((sw) => isSwitchBoundToNode(sw, node));
+
+    if (matchedSwitch && existingSwitchesAtNode.length === 1) return;
+
+    executeMutation(() => {
+        switches.value = switches.value.filter((sw) => !isSwitchBoundToNode(sw, node));
+        switches.value.push(matchedSwitch || buildSwitch(node, candidate));
+        trimSelectedSwitchesToExisting();
+    });
+    emitSelectedEquipmentChange();
 }
 
 function autoGenerateSwitches() {
     executeMutation(() => {
         const generated = [];
+
         for (const n of nodes.value) {
-            if (n.adjacentLineIDList.length === 3 || n.adjacentLineIDList.length === 4) {
-                generated.push(buildSwitch(n));
-            }
+            const candidate = buildSwitchCandidate(n);
+            if (!candidate) continue;
+
+            const matchedSwitch = findMatchedSwitchForNode(n, candidate);
+            generated.push(matchedSwitch || buildSwitch(n, candidate));
         }
+
         switches.value = generated;
+        trimSelectedSwitchesToExisting();
     });
+    emitSelectedEquipmentChange();
 }
 
 function clampCos(value) {
@@ -1722,8 +2217,23 @@ function buildCurveForCorner(node, line1, line2, radius = defaultCurveRadius, id
     const angleDeg = angle * 180 / Math.PI;
     if (angleDeg <= curveCornerMinAngle || angleDeg >= curveCornerMaxAngle) return null;
 
-    const tangentDistance = radius / Math.tan(angle / 2);
+    const halfAngleTan = Math.tan(angle / 2);
+    if (!Number.isFinite(halfAngleTan) || halfAngleTan <= 0) return null;
+
+    let fittedRadius = toFiniteNumber(radius) || defaultCurveRadius;
+    if (fittedRadius <= 0) return null;
+
+    let tangentDistance = fittedRadius / halfAngleTan;
     if (!Number.isFinite(tangentDistance) || tangentDistance <= 0) return null;
+
+    const shortestLineLength = Math.min(len1, len2);
+    if (tangentDistance > shortestLineLength) {
+        fittedRadius = shortestLineLength * halfAngleTan * curveRadiusLineFitRatio;
+        tangentDistance = fittedRadius / halfAngleTan;
+        if (!Number.isFinite(fittedRadius) || fittedRadius <= 0 || !Number.isFinite(tangentDistance) || tangentDistance <= 0) {
+            return null;
+        }
+    }
     if (tangentDistance > len1 || tangentDistance > len2) return null;
 
     const bisector = {
@@ -1733,7 +2243,7 @@ function buildCurveForCorner(node, line1, line2, radius = defaultCurveRadius, id
     const bisectorLength = Math.hypot(bisector.x, bisector.y);
     if (bisectorLength <= 0) return null;
 
-    const centerDistance = radius / Math.sin(angle / 2);
+    const centerDistance = fittedRadius / Math.sin(angle / 2);
     const vertex = { x: toFiniteNumber(node.x), y: toFiniteNumber(node.y) };
     const start = {
         x: vertex.x + unit1.x * tangentDistance,
@@ -1756,7 +2266,7 @@ function buildCurveForCorner(node, line1, line2, radius = defaultCurveRadius, id
         nodeID: node.id,
         tangentLinkID1: line1.id,
         tangentLinkID2: line2.id,
-        radius,
+        radius: roundCurveNumber(fittedRadius),
         angle: roundCurveNumber(angleDeg),
         tangentDistance: roundCurveNumber(tangentDistance),
         start: {
@@ -1872,6 +2382,7 @@ function buildJsonData() {
         nodes: nodes.value,
         signals: signals.value,
         insulationJoints: insulationJoints.value,
+        bufferStops: bufferStops.value,
         platforms: platforms.value,
         switches: switches.value,
         annotations: annotations.value,
@@ -1885,12 +2396,15 @@ function clearElements() {
     nodes.value = [];
     signals.value = [];
     insulationJoints.value = [];
+    bufferStops.value = [];
     platforms.value = [];
     switches.value = [];
     annotations.value = [];
     clearSelectedLines();
     clearSelectedNodes();
     clearSelectedEquipment();
+    resetGridOrigin();
+    resetCanvasBounds();
 }
 
 function loadDataFromJson(jsonObj) {
@@ -1903,9 +2417,13 @@ function loadDataFromJson(jsonObj) {
         nodes.value = (jsonObj?.nodes || []).map((node) => ({ ...node }));
         signals.value = (jsonObj?.signals || []).map((signal) => normalizeNamedEquipment(signal));
         insulationJoints.value = (jsonObj?.insulationJoints || []).map((ij) => ({ ...ij }));
+        bufferStops.value = (jsonObj?.bufferStops || []).map((bufferStop) => normalizeBufferStop(bufferStop));
         platforms.value = (jsonObj?.platforms || []).map((platform) => normalizeNamedEquipment(platform));
         switches.value = (jsonObj?.switches || []).map((sw) => normalizeNamedEquipment(sw));
         annotations.value = (jsonObj?.annotations || []).map((annotation) => normalizeAnnotation(annotation));
+        syncSignalsToBindingNodes();
+        alignGridOriginToCurrentContent();
+        resetCanvasBounds();
     });
     emitSelectedAnnotationChange();
 }
@@ -1923,6 +2441,14 @@ function shouldHandleElementMouseDown(event) {
 }
 
 function handleNodeClick(event, nodeId) {
+    if (editModeCode.value === 1 && drawingObject.value === "w") {
+        event.preventDefault();
+        event.stopPropagation();
+        const node = getNodeById(nodeId);
+        if (node) generateSwitchAtNode(node);
+        return;
+    }
+
     if (!shouldHandleElementMouseDown(event)) return;
     event.preventDefault();
     cancelSelectionBox();
@@ -1943,6 +2469,7 @@ function selectEquipment(kind, id, additive = false) {
     targetSet.add(id);
     if (kind === "signal") selectedSignalIds.value = targetSet;
     if (kind === "insulationJoint") selectedInsulationJointIds.value = targetSet;
+    if (kind === "bufferStop") selectedBufferStopIds.value = targetSet;
     if (kind === "switch") selectedSwitchIds.value = targetSet;
     if (kind === "platform") selectedPlatformIds.value = targetSet;
     emitSelectedEquipmentChange();
@@ -1958,6 +2485,12 @@ function handleInsulationJointClick(event, id) {
     if (!shouldHandleElementMouseDown(event)) return;
     setSelectedAnnotationIds([]);
     selectEquipment("insulationJoint", id, event.shiftKey);
+}
+
+function handleBufferStopClick(event, id) {
+    if (!shouldHandleElementMouseDown(event)) return;
+    setSelectedAnnotationIds([]);
+    selectEquipment("bufferStop", id, event.shiftKey);
 }
 
 function handleSwitchClick(event, id) {
@@ -2016,6 +2549,12 @@ function updateSelectedEquipment(kind, id, patch) {
 
         if (kind === "signal" || kind === "switch" || kind === "platform") {
             Object.assign(target, normalizeNamedEquipment(target));
+        }
+        if (kind === "signal") {
+            syncSignalPositionToBindingNode(target);
+        }
+        if (kind === "bufferStop") {
+            Object.assign(target, normalizeBufferStop(target));
         }
 
         if (kind === "link" && patch.id != null && patch.id !== previousId) {
@@ -2095,6 +2634,9 @@ function syncBoundEquipmentForNode(node) {
     for (const insulationJoint of insulationJoints.value) {
         if (isBoundToNode(insulationJoint)) moveEquipmentToNode(insulationJoint);
     }
+    for (const bufferStop of bufferStops.value) {
+        if (isBoundToNode(bufferStop)) moveEquipmentToNode(bufferStop);
+    }
     for (const sw of switches.value) {
         if (!isBoundToNode(sw)) continue;
         moveEquipmentToNode(sw);
@@ -2145,7 +2687,8 @@ function updateCurvesForNodeMove(node) {
 }
 
 function getNodeById(nodeId) {
-    return nodes.value.find((node) => node.id === nodeId) || null;
+    const id = String(nodeId ?? "");
+    return nodes.value.find((node) => String(node.id ?? "") === id) || null;
 }
 
 function pushNodeInteractionUndoSnapshot() {
@@ -2219,6 +2762,7 @@ function updateNodeInteraction(event) {
     updateLinesForNode(node);
     syncBoundEquipmentForNode(node);
     updateCurvesForNodeMove(node);
+    expandCanvasToIncludePoint(node, { triggerMargin: canvasEdgeTriggerMargin });
 }
 
 function finishNodeInteraction() {
@@ -2356,6 +2900,7 @@ function updateAnnotationTextInteraction(annotation, interaction, currentPointer
         x: roundLayoutNumber(interaction.startState.position.x + dx),
         y: roundLayoutNumber(interaction.startState.position.y + dy),
     };
+    expandCanvasToIncludePoint(annotation.position, { triggerMargin: canvasEdgeTriggerMargin });
     emitSelectedAnnotationChange();
 }
 
@@ -2510,6 +3055,7 @@ function updateAnchorInteraction(event) {
     line[xKey] = nextPosition.x;
     line[yKey] = nextPosition.y;
     syncLineEndpointMoveEffects(line, previousState);
+    expandCanvasToIncludePoint(nextPosition, { triggerMargin: canvasEdgeTriggerMargin });
     emitSelectedEquipmentChange();
 }
 
@@ -2550,6 +3096,8 @@ function onMouseMove(event) {
         drawingSignalMouseMove(x, y);
     } else if (drawingObject.value === "i") {
         drawingInsulationJointMouseMove(x, y);
+    } else if (drawingObject.value === "e") {
+        drawingBufferStopMouseMove(x, y);
     } else if (drawingObject.value === "n") {
         drawingNodeMouseMove(x, y);
     } else if (drawingObject.value === "p") {
@@ -2577,6 +3125,10 @@ function onMouseDown(event) {
         drawingSignalMouseDown(x, y);
     } else if (drawingObject.value === "i") {
         drawingInsulationJointMouseDown(x, y);
+    } else if (drawingObject.value === "e") {
+        drawingBufferStopMouseDown(x, y);
+    } else if (drawingObject.value === "w") {
+        drawingSwitchMouseDown(x, y);
     } else if (drawingObject.value === "n") {
         drawingNodeMouseDown(x, y);
     } else if (drawingObject.value === "p") {
@@ -2616,6 +3168,20 @@ function onKeydown(event) {
             drawingSignalMouseMove(cursorParam.value.x, cursorParam.value.y);
         }
     }
+    if (editModeCode.value === 1 && drawingObject.value === "e") {
+        const bufferStopDirectionByKey = {
+            ArrowLeft: "left",
+            ArrowRight: "right",
+            l: "left",
+            r: "right",
+        };
+        const nextDirection = bufferStopDirectionByKey[event.key];
+        if (nextDirection) {
+            event.preventDefault();
+            tempBufferStop.value.direction = nextDirection;
+            drawingBufferStopMouseMove(cursorParam.value.x, cursorParam.value.y);
+        }
+    }
 }
 
 function isSignalSelected(id) {
@@ -2634,6 +3200,10 @@ function isInsulationJointSelected(id) {
     return selectedInsulationJointIds.value.has(id);
 }
 
+function isBufferStopSelected(id) {
+    return selectedBufferStopIds.value.has(id);
+}
+
 function isSwitchSelected(id) {
     return selectedSwitchIds.value.has(id);
 }
@@ -2648,37 +3218,169 @@ function isAnnotationSelected(id) {
 
 function getSignalDirectionView(signal) {
     const directionViews = {
-        e: { coefScaleX: 1, coefShiftY: 1 },
-        w: { coefScaleX: -1, coefShiftY: 1 },
-        s: { coefScaleX: -1, coefShiftY: 0 },
-        d: { coefScaleX: 1, coefShiftY: 0 },
+        e: { coefScaleX: 1, coefShiftY: 1, horizontalSide: "right", verticalSide: "top" },
+        w: { coefScaleX: -1, coefShiftY: 1, horizontalSide: "left", verticalSide: "top" },
+        s: { coefScaleX: -1, coefShiftY: 0, horizontalSide: "left", verticalSide: "bottom" },
+        d: { coefScaleX: 1, coefShiftY: 0, horizontalSide: "right", verticalSide: "bottom" },
     };
     return directionViews[signal.direction || "e"] || directionViews.e;
+}
+
+function signalAssetDimension(asset, key) {
+    const value = Number(asset?.[key]);
+    return Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+function signalAssetBounds(asset) {
+    const width = signalAssetDimension(asset, "width");
+    const height = signalAssetDimension(asset, "height");
+    const bounds = asset?.bounds || {};
+    const minX = Number(bounds.minX);
+    const minY = Number(bounds.minY);
+    const maxX = Number(bounds.maxX);
+    const maxY = Number(bounds.maxY);
+    if ([minX, minY, maxX, maxY].every(Number.isFinite)) {
+        return {
+            minX,
+            minY,
+            maxX,
+            maxY,
+            width: Math.abs(maxX - minX),
+            height: Math.abs(maxY - minY),
+        };
+    }
+
+    return {
+        minX: 0,
+        minY: 0,
+        maxX: width,
+        maxY: height,
+        width,
+        height,
+    };
+}
+
+function signalNodeGap() {
+    return editorDisplayStyles.value.node.radius + signalNodeExtraGap;
+}
+
+function signalHorizontalGap() {
+    return 0;
+}
+
+function signalVerticalGap(directionView) {
+    return directionView.verticalSide === "top" ? -signalNodeGap() : signalNodeGap();
 }
 
 function signalTransform(signal) {
     const d = getSignalDirectionView(signal);
     const scale = editorDisplayStyles.value.signal.scale;
-    return `translate(${screenX(signal.position.x)},${screenY(signal.position.y) - 40 * scale * d.coefShiftY})scale(${scale * d.coefScaleX},${scale})`;
+    const asset = signalStyleAsset(signal);
+    if (asset.placement === "quadrant") {
+        const bounds = signalAssetBounds(asset);
+        const anchorX = signalAssetDimension(asset, "width");
+        const svgCoefScaleX = d.horizontalSide === "right" ? -1 : 1;
+        const x = screenX(signal.position.x) - svgCoefScaleX * anchorX * scale + signalHorizontalGap(d);
+        const y = d.verticalSide === "top"
+            ? screenY(signal.position.y) - bounds.maxY * scale + signalVerticalGap(d)
+            : screenY(signal.position.y) - bounds.minY * scale + signalVerticalGap(d);
+        return `translate(${x},${y})scale(${scale * svgCoefScaleX},${scale})`;
+    }
+
+    const x = screenX(signal.position.x) - scale * d.coefScaleX + signalHorizontalGap(d);
+    return `translate(${x},${screenY(signal.position.y) - 40 * scale * d.coefShiftY + signalVerticalGap(d)})scale(${scale * d.coefScaleX},${scale})`;
+}
+
+function getSignalTypeValue(signal) {
+    return signal?.type ?? signal?.SignalType ?? signal?.signalType ?? DEFAULT_SIGNAL_TYPE;
+}
+
+function signalStyleAsset(signal) {
+    return getSignalStyleAsset(getSignalTypeValue(signal));
+}
+
+function signalStyleClass(signal) {
+    return signalStyleAsset(signal).className;
+}
+
+function signalStyleElements(signal) {
+    return signalStyleAsset(signal).elements;
 }
 
 function signalNameX(signal) {
-    return screenX(signal.position.x);
+    return screenX(signal.position.x) + signalHorizontalGap(getSignalDirectionView(signal));
 }
 
 function signalNameY(signal) {
     const d = getSignalDirectionView(signal);
     const scale = editorDisplayStyles.value.signal.scale;
-    return screenY(signal.position.y) - 40 * scale * d.coefShiftY + 45 * scale;
+    const asset = signalStyleAsset(signal);
+    if (asset.placement === "quadrant") {
+        const height = signalAssetBounds(asset).height * scale;
+        return screenY(signal.position.y) + signalVerticalGap(d) + (d.verticalSide === "top" ? -height - 4 : height + 12);
+    }
+
+    return screenY(signal.position.y) - 40 * scale * d.coefShiftY + 45 * scale + signalVerticalGap(d);
 }
 
-function textDisplayStyle(styleKey) {
+function getBufferStopDirectionValue(bufferStop) {
+    return bufferStop?.direction ?? bufferStop?.Direction ?? DEFAULT_BUFFER_STOP_DIRECTION;
+}
+
+function getBufferStopTypeValue(bufferStop) {
+    return bufferStop?.type ?? bufferStop?.Type ?? bufferStop?.style ?? bufferStop?.Style ?? DEFAULT_BUFFER_STOP_TYPE;
+}
+
+function bufferStopStyleAsset(bufferStop) {
+    return getBufferStopStyleAsset(getBufferStopTypeValue(bufferStop));
+}
+
+function bufferStopStyleClass(bufferStop) {
+    return bufferStopStyleAsset(bufferStop).className;
+}
+
+function bufferStopStyleElements(bufferStop) {
+    return bufferStopStyleAsset(bufferStop).elements;
+}
+
+function bufferStopAssetWidth(bufferStop) {
+    return bufferStopStyleAsset(bufferStop).width;
+}
+
+function bufferStopAssetHeight(bufferStop) {
+    return bufferStopStyleAsset(bufferStop).height;
+}
+
+function bufferStopAssetY(bufferStop) {
+    return -bufferStopAssetHeight(bufferStop) / 2;
+}
+
+function bufferStopShapeTransform(bufferStop) {
+    return `translate(0,${bufferStopAssetY(bufferStop)})`;
+}
+
+function bufferStopLineStyle() {
+    const style = editorDisplayStyles.value.track;
+    return {
+        fill: "none",
+        stroke: style.color,
+        strokeWidth: style.strokeWidth,
+    };
+}
+
+function bufferStopTransform(bufferStop) {
+    const direction = normalizeBufferStopDirection(getBufferStopDirectionValue(bufferStop));
+    const coefScaleX = direction === "left" ? -1 : 1;
+    return `translate(${screenX(bufferStop.position.x)},${screenY(bufferStop.position.y)})scale(${coefScaleX},1)`;
+}
+
+function textDisplayStyle(styleKey, selected = false) {
     const style = editorDisplayStyles.value[styleKey];
     return {
-        fill: style.color,
+        fill: selected ? "yellow" : style.color,
         fontFamily: style.fontFamily,
         fontSize: `${style.fontSize}px`,
-        fontWeight: style.fontWeight,
+        fontWeight: selected ? "700" : style.fontWeight,
         fontStyle: style.fontStyle,
     };
 }
@@ -2687,8 +3389,16 @@ function trackDisplayStyle(lineId) {
     const style = editorDisplayStyles.value.track;
     const selected = isLineSelected(lineId);
     return {
-        stroke: style.color,
+        stroke: selected ? "yellow" : style.color,
         strokeWidth: selected ? Math.max(style.strokeWidth + 2, style.strokeWidth * 2) : style.strokeWidth,
+    };
+}
+
+function curveDisplayStyle() {
+    const style = editorDisplayStyles.value.curve;
+    return {
+        stroke: style.color,
+        strokeWidth: style.strokeWidth,
     };
 }
 
@@ -2964,7 +3674,19 @@ function curvePath(curve) {
 }
 
 function tempSignalTransform() {
-    return signalTransform({ position: { x: tempSignal.value.x, y: tempSignal.value.y }, direction: tempSignal.value.direction });
+    return signalTransform({
+        position: { x: tempSignal.value.x, y: tempSignal.value.y },
+        direction: tempSignal.value.direction,
+        type: tempSignal.value.type,
+    });
+}
+
+function tempBufferStopTransform() {
+    return bufferStopTransform({
+        position: { x: tempBufferStop.value.x, y: tempBufferStop.value.y },
+        direction: tempBufferStop.value.direction,
+        type: tempBufferStop.value.type,
+    });
 }
 
 function switchTransform(sw) {
@@ -3017,6 +3739,9 @@ defineExpose({
     mouseObjectSnapModeCode,
     setEditMode,
     setDrawingObject,
+    setDrawingSignalType,
+    setDrawingBufferStopDirection,
+    setDrawingBufferStopType,
     setMouseGridSnapModeCode,
     setMouseObjectSnapModeCode,
     clearSelectedLines,
@@ -3039,6 +3764,7 @@ defineExpose({
     autoGenerateCurves,
     startDrawingSignal,
     startDrawingInsulationJoint,
+    startDrawingBufferStop,
     startDrawingNode,
     startDrawingPlatform,
     updateSelectedAnnotation,
@@ -3050,7 +3776,7 @@ defineExpose({
 <template>
     <svg id="layout-editor-svg" ref="svgRef" tabindex="0" :width="svgScreenWidth" :height="svgScreenHeight"
         :style="svgStyle" @mousemove="onMouseMove" @mousedown="onMouseDown" @mouseup="onMouseUp"
-        @keydown="onKeydown">
+        @keydown="onKeydown" @selectstart.prevent @dragstart.prevent>
         <g id="grid">
             <circle v-for="(dot, idx) in gridDots" :key="`g-${idx}`" class="griddot" :cx="screenX(dot.x)"
                 :cy="screenY(dot.y)" r="0.5" />
@@ -3063,13 +3789,14 @@ defineExpose({
                 :style="trackDisplayStyle(segment.line.id)"
                 @mousedown.stop @click.stop="handleLineClick(segment.line.id)" />
             <text v-for="lineName in lineNameViews" v-show="getLineName(lineName.line)" :key="`line-name-${lineName.id}`"
-                class="trackname" :style="textDisplayStyle('lineName')" :x="screenX(lineName.x)" :y="screenY(lineName.y)" @mousedown.stop
-                @click.stop="handleLineClick(lineName.line.id)">
+                class="trackname" :class="{ 'name-selected': isLineSelected(lineName.line.id) }"
+                :style="textDisplayStyle('lineName', isLineSelected(lineName.line.id))" :x="screenX(lineName.x)"
+                :y="screenY(lineName.y)" @mousedown.stop @click.stop="handleLineClick(lineName.line.id)">
                 {{ getLineName(lineName.line) }}
             </text>
 
             <path v-for="curve in displayedCurves" :id="String(curve.id)" :key="`curve-${curve.id}`" class="curve"
-                :d="curvePath(curve)" />
+                :d="curvePath(curve)" :style="curveDisplayStyle()" />
 
             <g v-for="arrow in linkArrowViews" :key="arrow.id" class="link-arrow"
                 :class="{ 'link-arrow-selected': isLineSelected(arrow.lineId) }">
@@ -3109,30 +3836,25 @@ defineExpose({
 
         <g id="signalgroup">
             <g v-for="signal in signals" :id="String(signal.id)" :key="`signal-${signal.id}`"
-                class="signal signal-departure" :class="{ 'signal-selected': isSignalSelected(signal.id) }"
+                :class="['signal', signalStyleClass(signal), { 'signal-selected': isSignalSelected(signal.id) }]"
                 :transform="signalTransform(signal)" @mousedown="handleSignalClick($event, signal.id)">
-                <circle cx="38" cy="17" r="16" style="fill:#fff;" />
-                <circle cx="38" cy="17" r="8" style="fill:#fff;" />
-                <circle cx="70" cy="17" r="16" style="fill:#009a3e;" />
-                <circle cx="103" cy="17" r="16" style="fill:#e60012;" />
-                <line x1="22" y1="17" x2="1" y2="17" style="fill:none;" />
-                <line x1="1" y1="1" x2="1" y2="33" style="fill:none;" />
+                <component :is="element.tag" v-for="(element, index) in signalStyleElements(signal)"
+                    :key="`signal-element-${signal.id}-${index}`" v-bind="element.attrs" />
             </g>
             <text v-for="signal in signals" v-show="getEquipmentDisplayName(signal, 'SIGNAL')"
-                :key="`signal-name-${signal.id}`" class="signalname" :style="textDisplayStyle('signalName')"
+                :key="`signal-name-${signal.id}`" class="signalname"
+                :class="{ 'name-selected': isSignalSelected(signal.id) }"
+                :style="textDisplayStyle('signalName', isSignalSelected(signal.id))"
                 :x="signalNameX(signal)" :y="signalNameY(signal)"
                 @mousedown="handleSignalClick($event, signal.id)">
                 {{ getEquipmentDisplayName(signal, "SIGNAL") }}
             </text>
 
-            <g v-if="tempSignal.visible" id="tempsignal" class="signal signal-departure signal-temp"
+            <g v-if="tempSignal.visible" id="tempsignal"
+                :class="['signal', signalStyleClass(tempSignal), 'signal-temp']"
                 :transform="tempSignalTransform()">
-                <circle cx="38" cy="17" r="16" style="fill:#fff;" />
-                <circle cx="38" cy="17" r="8" style="fill:#fff;" />
-                <circle cx="70" cy="17" r="16" style="fill:#009a3e;" />
-                <circle cx="103" cy="17" r="16" style="fill:#e60012;" />
-                <line x1="22" y1="17" x2="1" y2="17" style="fill:none;" />
-                <line x1="1" y1="1" x2="1" y2="33" style="fill:none;" />
+                <component :is="element.tag" v-for="(element, index) in signalStyleElements(tempSignal)"
+                    :key="`temp-signal-element-${index}`" v-bind="element.attrs" />
             </g>
         </g>
 
@@ -3151,6 +3873,31 @@ defineExpose({
             </g>
         </g>
 
+        <g id="bufferstopgroup">
+            <g v-for="bufferStop in bufferStops" :id="String(bufferStop.id)" :key="`buffer-stop-${bufferStop.id}`"
+                :class="['bufferstop', bufferStopStyleClass(bufferStop), { 'bufferstop-selected': isBufferStopSelected(bufferStop.id) }]"
+                :transform="bufferStopTransform(bufferStop)" @mousedown="handleBufferStopClick($event, bufferStop.id)">
+                <g class="bufferstop-shape" :style="bufferStopLineStyle()"
+                    :transform="bufferStopShapeTransform(bufferStop)">
+                    <component :is="element.tag" v-for="(element, index) in bufferStopStyleElements(bufferStop)"
+                        :key="`buffer-stop-element-${bufferStop.id}-${index}`" v-bind="element.attrs" />
+                </g>
+                <rect v-if="isBufferStopSelected(bufferStop.id)" class="bufferstop-selection" x="0"
+                    :y="bufferStopAssetY(bufferStop)" :width="bufferStopAssetWidth(bufferStop)"
+                    :height="bufferStopAssetHeight(bufferStop)" />
+            </g>
+
+            <g v-if="tempBufferStop.visible" id="tempbufferstop"
+                :class="['bufferstop', bufferStopStyleClass(tempBufferStop), 'bufferstop-temp']"
+                :transform="tempBufferStopTransform()">
+                <g class="bufferstop-shape" :style="bufferStopLineStyle()"
+                    :transform="bufferStopShapeTransform(tempBufferStop)">
+                    <component :is="element.tag" v-for="(element, index) in bufferStopStyleElements(tempBufferStop)"
+                        :key="`temp-buffer-stop-element-${index}`" v-bind="element.attrs" />
+                </g>
+            </g>
+        </g>
+
         <g id="switchgroup">
             <g v-for="sw in switches" :id="String(sw.id)" :key="`sw-${sw.id}`" class="switch"
                 :class="{ 'switch-selected': isSwitchSelected(sw.id) }" :transform="switchTransform(sw)"
@@ -3159,7 +3906,10 @@ defineExpose({
                     class="switchbranch" :x1="switchBranch(sw, lineVec).x1" :y1="switchBranch(sw, lineVec).y1"
                     :x2="switchBranch(sw, lineVec).x2" :y2="switchBranch(sw, lineVec).y2"
                     :style="switchBranchDisplayStyle(sw.id)" />
-                <text class="switchname" :style="textDisplayStyle('switchName')" x="4" y="-4">{{ getEquipmentDisplayName(sw, "SWITCH") }}</text>
+                <text class="switchname" :class="{ 'name-selected': isSwitchSelected(sw.id) }"
+                    :style="textDisplayStyle('switchName', isSwitchSelected(sw.id))" x="4" y="-4">
+                    {{ getEquipmentDisplayName(sw, "SWITCH") }}
+                </text>
             </g>
         </g>
 
@@ -3170,7 +3920,9 @@ defineExpose({
                 <rect :x="screenX(platform.x)" :y="screenY(platform.y)" :width="screenDeltaX(platform.width)"
                     :height="screenDeltaY(platform.height)" :style="platformLineDisplayStyle(platform.id)" />
                 <text class="platformname" :x="screenCenterX(platform.x, platform.width)"
-                    :y="screenCenterY(platform.y, platform.height)" :style="textDisplayStyle('platformName')">
+                    :y="screenCenterY(platform.y, platform.height)"
+                    :class="{ 'name-selected': isPlatformSelected(platform.id) }"
+                    :style="textDisplayStyle('platformName', isPlatformSelected(platform.id))">
                     {{ getEquipmentDisplayName(platform, "PLATFORM") }}
                 </text>
             </g>
@@ -3186,7 +3938,8 @@ defineExpose({
                 :transform="annotationTransform(annotation)" @mousedown="handleAnnotationClick($event, annotation.id)">
                 <text class="annotation-text" x="0" y="0" :font-family="annotation.fontFamily"
                     :font-size="annotation.fontSize" :font-weight="annotation.fontWeight" :font-style="annotation.fontStyle"
-                    :fill="annotation.textColor">
+                    :class="{ 'name-selected': isAnnotationSelected(annotation.id) }"
+                    :fill="isAnnotationSelected(annotation.id) ? 'yellow' : annotation.textColor">
                     {{ annotation.text }}
                 </text>
                 <circle v-if="shouldShowAnnotationControls(annotation)" class="annotation-text-anchor" cx="0" cy="0"
@@ -3197,6 +3950,10 @@ defineExpose({
         <g id="cursor">
             <rect v-if="selectionBoxView.visible" class="selection-box" :x="selectionBoxView.x"
                 :y="selectionBoxView.y" :width="selectionBoxView.width" :height="selectionBoxView.height" />
+            <g v-if="editModeCode === 1 && drawingObject === 's'" class="drawing-hint signal-direction-hint">
+                <rect x="12" y="12" width="245" height="28" rx="4" />
+                <text x="24" y="31">方向: 按 w / e / s / d 设置</text>
+            </g>
             <template v-if="editModeCode !== 0">
                 <rect class="cursor" :x="screenX(cursorParam.x) - cursorParam.size / 2"
                     :y="screenY(cursorParam.y) - cursorParam.size / 2" :width="cursorParam.size"
@@ -3207,6 +3964,13 @@ defineExpose({
                 <line id="cursorlinev" class="cursor" :x1="screenX(cursorParam.x)" :x2="screenX(cursorParam.x)"
                     :y1="screenY(cursorParam.y) - cursorParam.barLength / 2"
                     :y2="screenY(cursorParam.y) + cursorParam.barLength / 2" />
+                <g v-if="drawingObject === 's'" class="signal-direction-compass"
+                    :transform="`translate(${screenX(cursorParam.x)},${screenY(cursorParam.y)})`">
+                    <text v-for="keyView in signalDirectionKeyViews" :key="keyView.key" :x="keyView.x"
+                        :y="keyView.y">
+                        {{ keyView.label }}
+                    </text>
+                </g>
             </template>
         </g>
     </svg>

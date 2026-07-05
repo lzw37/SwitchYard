@@ -1112,6 +1112,8 @@
             "saveData": "Save",
             "gridSnap": "Grid Snap",
             "objectSnap": "Obj Snap",
+            "snapDistance": "Snap Dist",
+            "showGrid": "Show Grid",
             "undo": "Undo",
             "redo": "Redo",
             "clearSelection": "Clear Sel",

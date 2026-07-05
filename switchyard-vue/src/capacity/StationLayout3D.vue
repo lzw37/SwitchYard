@@ -1,19 +1,42 @@
 <template>
     <section class="station-layout-3d-page" v-loading="loadingData">
         <div class="layout3d-toolbar">
-            <div class="layout3d-metrics" aria-live="polite">
-                <span class="metric-item">
-                    <span class="metric-label">{{ t('stationLayout3d.metrics.tracks') }}</span>
-                    <strong>{{ layoutStats.tracks }}</strong>
-                </span>
-                <span class="metric-item">
-                    <span class="metric-label">{{ t('stationLayout3d.metrics.signals') }}</span>
-                    <strong>{{ layoutStats.signals }}</strong>
-                </span>
-                <span class="metric-item">
-                    <span class="metric-label">{{ t('stationLayout3d.metrics.platforms') }}</span>
-                    <strong>{{ layoutStats.platforms }}</strong>
-                </span>
+            <div class="layout3d-toolbar-left">
+                <div class="layout3d-scheme-control">
+                    <span class="layout3d-control-label">{{ t('stationLayout.menu.stationScheme') }}</span>
+                    <el-select
+                        v-model="currentStationSchemeId"
+                        size="small"
+                        filterable
+                        class="layout3d-scheme-select"
+                        :loading="loadingStationSchemes"
+                        :disabled="!selectedInstanceId || loadingStationSchemes || loadingData"
+                        :placeholder="t('stationLayout.placeholders.selectStationScheme')"
+                        @change="handleStationSchemeChange"
+                    >
+                        <el-option
+                            v-for="option in stationSchemeOptions"
+                            :key="option.id"
+                            :label="formatStationSchemeLabel(option)"
+                            :value="option.id"
+                        />
+                    </el-select>
+                </div>
+
+                <div class="layout3d-metrics" aria-live="polite">
+                    <span class="metric-item">
+                        <span class="metric-label">{{ t('stationLayout3d.metrics.tracks') }}</span>
+                        <strong>{{ layoutStats.tracks }}</strong>
+                    </span>
+                    <span class="metric-item">
+                        <span class="metric-label">{{ t('stationLayout3d.metrics.signals') }}</span>
+                        <strong>{{ layoutStats.signals }}</strong>
+                    </span>
+                    <span class="metric-item">
+                        <span class="metric-label">{{ t('stationLayout3d.metrics.platforms') }}</span>
+                        <strong>{{ layoutStats.platforms }}</strong>
+                    </span>
+                </div>
             </div>
 
             <div class="layout3d-actions">
@@ -141,6 +164,11 @@ interface StationLayoutData {
     switches: SwitchDevice[]
 }
 
+interface StationSchemeOption {
+    id: string
+    name: string
+}
+
 interface LayoutBounds {
     minX: number
     minY: number
@@ -202,6 +230,9 @@ const layoutData = ref<StationLayoutData>(createEmptyLayout())
 const loadingData = ref(false)
 const loadErrorMessage = ref('')
 const showLabels = ref(true)
+const currentStationSchemeId = ref('')
+const loadingStationSchemes = ref(false)
+const stationSchemeOptions = ref<StationSchemeOption[]>([])
 
 let renderer: THREE.WebGLRenderer | null = null
 let labelRenderer: CSS2DRenderer | null = null
@@ -214,6 +245,7 @@ let resizeObserver: ResizeObserver | null = null
 let rafId: number | null = null
 let lastMapper: LayoutMapper | null = null
 let layoutLoadVersion = 0
+let stationSchemeLoadVersion = 0
 let lastWrapperWidth = 0
 let lastWrapperHeight = 0
 
@@ -263,6 +295,85 @@ function readString(source: any, ...keys: string[]): string {
         if (value !== undefined && value !== null) return String(value)
     }
     return ''
+}
+
+function normalizeStationSchemeOption(item: any): StationSchemeOption | null {
+    const id = readString(item, 'id', 'ID').trim()
+    if (!id) return null
+
+    const name = readString(item, 'name', 'Name').trim() || id
+    return { id, name }
+}
+
+function setStationSchemeOptions(options: StationSchemeOption[], includeCurrent = true) {
+    const optionsById = new Map<string, StationSchemeOption>()
+    for (const option of options) {
+        if (!option.id || optionsById.has(option.id)) continue
+        optionsById.set(option.id, option)
+    }
+
+    stationSchemeOptions.value = Array.from(optionsById.values())
+    if (includeCurrent) ensureCurrentStationSchemeOption()
+}
+
+function ensureCurrentStationSchemeOption(name?: string) {
+    const id = currentStationSchemeId.value.trim()
+    if (!id) return
+    if (stationSchemeOptions.value.some((option) => option.id === id)) return
+
+    stationSchemeOptions.value = [
+        ...stationSchemeOptions.value,
+        {
+            id,
+            name: name || id,
+        },
+    ]
+}
+
+function formatStationSchemeLabel(option: StationSchemeOption): string {
+    return option.name || option.id
+}
+
+async function loadStationSchemes(options: { includeCurrent?: boolean } = {}) {
+    const includeCurrent = options.includeCurrent !== false
+    const instanceID = selectedInstanceId.value
+    if (!instanceID) {
+        stationSchemeLoadVersion++
+        currentStationSchemeId.value = ''
+        stationSchemeOptions.value = []
+        loadingStationSchemes.value = false
+        return []
+    }
+
+    const loadVersion = ++stationSchemeLoadVersion
+    loadingStationSchemes.value = true
+    try {
+        const response = await axios.get('/StationLayout/GetStationSchemes', {
+            params: { instanceID },
+        })
+        if (loadVersion !== stationSchemeLoadVersion || instanceID !== selectedInstanceId.value) return []
+
+        const options = (Array.isArray(response.data) ? response.data : [])
+            .map((item: any) => normalizeStationSchemeOption(item))
+            .filter((item: StationSchemeOption | null): item is StationSchemeOption => item !== null)
+        setStationSchemeOptions(options, includeCurrent)
+        return options
+    } catch (error) {
+        if (loadVersion !== stationSchemeLoadVersion || instanceID !== selectedInstanceId.value) return []
+
+        console.error('Failed to load station schemes:', error)
+        stationSchemeOptions.value = []
+        ElMessage.error(t('stationLayout.messages.loadSchemesFailed'))
+        return []
+    } finally {
+        if (loadVersion === stationSchemeLoadVersion && instanceID === selectedInstanceId.value) {
+            loadingStationSchemes.value = false
+        }
+    }
+}
+
+function handleStationSchemeChange() {
+    void loadLayout()
 }
 
 function normalizePosition(source: any): Position2D | null {
@@ -460,8 +571,9 @@ function createMapper(layout: StationLayoutData): LayoutMapper | null {
         scale,
         worldWidth: Math.max(MIN_WORLD_SPAN, width / scale),
         worldDepth: Math.max(MIN_WORLD_SPAN, depth / scale),
+        // Keep the 3D plan view aligned with the 2D editor: +x is right, +y is down.
         mapPoint: (point: Position2D, y = 0) =>
-            new THREE.Vector3((point.x - centerX) / scale, y, -(point.y - centerY) / scale),
+            new THREE.Vector3((point.x - centerX) / scale, y, (point.y - centerY) / scale),
         mapLength: (value: number) => Math.abs(value) / scale,
     }
 }
@@ -637,7 +749,7 @@ function initThree() {
     scene.fog = new THREE.Fog(0xe7edf5, 200, 950)
 
     camera = new THREE.PerspectiveCamera(52, width / height, 0.1, 3000)
-    camera.position.set(90, 62, 92)
+    camera.position.set(0, 62, 112)
 
     renderer = new THREE.WebGLRenderer({ canvas: canvasRef.value, antialias: true })
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
@@ -976,7 +1088,7 @@ function fitCameraToLayout() {
     const distance = Math.max(56, span * 0.82)
 
     controls.target.set(0, 0.22, 0)
-    camera.position.set(distance * 0.74, height, distance * 0.86)
+    camera.position.set(0, height, distance * 1.08)
     camera.near = 0.1
     camera.far = Math.max(1000, span * 14)
     camera.updateProjectionMatrix()
@@ -1033,6 +1145,7 @@ function onResize() {
 
 async function loadLayout() {
     const instanceID = selectedInstanceId.value
+    const stationSchemeID = currentStationSchemeId.value.trim()
     loadErrorMessage.value = ''
 
     if (!instanceID) {
@@ -1045,10 +1158,18 @@ async function loadLayout() {
     const loadVersion = ++layoutLoadVersion
     loadingData.value = true
     try {
+        const params: Record<string, string> = { instanceID }
+        if (stationSchemeID) params.stationSchemeID = stationSchemeID
+
         const response = await axios.post('/StationLayout/GetJson', null, {
-            params: { instanceID },
+            params,
         })
         if (loadVersion !== layoutLoadVersion) return
+        const resolvedStationSchemeId = readString(response.data?.metadata, 'stationSchemeID', 'StationSchemeID').trim()
+        if (resolvedStationSchemeId) {
+            currentStationSchemeId.value = resolvedStationSchemeId
+            ensureCurrentStationSchemeOption()
+        }
         layoutData.value = normalizeLayout(response.data)
         await nextTick()
         rebuildScene()
@@ -1065,11 +1186,17 @@ async function loadLayout() {
 }
 
 watch(() => props.selectedInstanceId, () => {
+    currentStationSchemeId.value = ''
+    stationSchemeOptions.value = []
+    void loadStationSchemes()
     void loadLayout()
 }, { immediate: true })
 
 watch(() => props.activationKey, () => {
-    if (selectedInstanceId.value) void loadLayout()
+    if (selectedInstanceId.value) {
+        void loadStationSchemes()
+        void loadLayout()
+    }
 })
 
 onMounted(() => {
@@ -1136,6 +1263,33 @@ onBeforeUnmount(() => {
     background: #f7fafc;
 }
 
+.layout3d-toolbar-left {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    min-width: 0;
+}
+
+.layout3d-scheme-control {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+.layout3d-control-label {
+    flex: 0 0 auto;
+    color: #4c5968;
+    font-size: 12px;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+.layout3d-scheme-select {
+    width: 180px;
+}
+
 .layout3d-metrics,
 .layout3d-actions {
     display: inline-flex;
@@ -1146,6 +1300,7 @@ onBeforeUnmount(() => {
 
 .layout3d-actions {
     justify-content: flex-end;
+    flex: 0 0 auto;
 }
 
 .metric-item {
