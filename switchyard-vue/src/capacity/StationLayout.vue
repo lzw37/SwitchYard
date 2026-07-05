@@ -52,6 +52,7 @@ const layoutScaleY = ref(1);
 const showCurveArc = ref(true);
 const showNodes = ref(true);
 const showGrid = ref(true);
+const gridSpacing = ref(20);
 const layoutStyleDialogVisible = ref(false);
 const layoutScaleXDisplay = computed(() => layoutScaleX.value.toFixed(2));
 const layoutScaleYDisplay = computed(() => layoutScaleY.value.toFixed(2));
@@ -1041,6 +1042,11 @@ watch(
             <el-menu-item index="show-grid" class="toolbar-checkbox-item">
                 <el-checkbox v-model="showGrid" :label="t('stationLayout.menu.showGrid')" />
             </el-menu-item>
+            <el-menu-item index="grid-spacing" class="toolbar-field-item" @click.stop>
+                <span class="toolbar-group-label">{{ t('stationLayout.menu.gridSpacing') }}</span>
+                <el-input-number v-model="gridSpacing" size="small" :min="1" :max="500" :step="1"
+                    controls-position="right" />
+            </el-menu-item>
 
             <!-- 撤销/重做 -->
             <el-menu-item index="undo" @click="revoke">
@@ -1407,6 +1413,7 @@ watch(
                 <StationLayoutEditor ref="stationLayoutEditorRef" :display-scale-x="layoutScaleX"
                     :display-scale-y="layoutScaleY" :show-curve-arc="showCurveArc" :show-nodes="showNodes"
                     :show-grid="showGrid" :object-snap-distance="objectSnapDistance"
+                    :grid-spacing="gridSpacing"
                     :display-styles="layoutDisplayStyles"
                     @selected-annotation-change="handleSelectedAnnotationChange"
                     @selected-equipment-change="handleSelectedEquipmentChange" />

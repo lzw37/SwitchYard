@@ -1102,6 +1102,7 @@
             "objectSnap": "对象追踪",
             "snapDistance": "吸附阈值",
             "showGrid": "显示网格",
+            "gridSpacing": "网格间距",
             "undo": "撤销",
             "redo": "重做",
             "clearSelection": "清除选择",

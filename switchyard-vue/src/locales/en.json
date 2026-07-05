@@ -1114,6 +1114,7 @@
             "objectSnap": "Obj Snap",
             "snapDistance": "Snap Dist",
             "showGrid": "Show Grid",
+            "gridSpacing": "Grid Spacing",
             "undo": "Undo",
             "redo": "Redo",
             "clearSelection": "Clear Sel",

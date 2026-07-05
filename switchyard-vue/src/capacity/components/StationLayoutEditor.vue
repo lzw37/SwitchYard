@@ -17,6 +17,7 @@ const props = defineProps({
     showCurveArc: { type: Boolean, default: true },
     showNodes: { type: Boolean, default: true },
     showGrid: { type: Boolean, default: true },
+    gridSpacing: { type: Number, default: 20 },
     objectSnapDistance: { type: Number, default: 10 },
     displayStyles: { type: Object, default: () => ({}) },
 });
@@ -265,11 +266,11 @@ function alignCanvasMax(value, step, origin = 0) {
 }
 
 function canvasStepX() {
-    return Math.max(1, toFiniteNumber(grid.verticalSpace) || 1);
+    return Math.max(1, toFiniteNumber(props.gridSpacing) || 1);
 }
 
 function canvasStepY() {
-    return Math.max(1, toFiniteNumber(grid.horizontalSpace) || 1);
+    return Math.max(1, toFiniteNumber(props.gridSpacing) || 1);
 }
 
 function canvasOriginX() {
@@ -1005,8 +1006,8 @@ function clientPointToDataPoint(clientX, clientY) {
 }
 
 function snapPointToGrid(point) {
-    const gridX = toFiniteNumber(grid.horizontalSpace) || 1;
-    const gridY = toFiniteNumber(grid.verticalSpace) || 1;
+    const gridX = canvasStepX();
+    const gridY = canvasStepY();
     const originX = canvasOriginX();
     const originY = canvasOriginY();
     return {

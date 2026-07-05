@@ -1,4 +1,12 @@
 #!/usr/bin/env bash
+if [ -z "${BASH_VERSION:-}" ]; then
+    if command -v bash >/dev/null 2>&1; then
+        exec bash "$0" "$@"
+    fi
+    echo "ERROR: this script requires bash. Run: sudo bash install-secrets.sh" >&2
+    exit 1
+fi
+
 set -euo pipefail
 
 SERVICE_USER="switchyard"
@@ -106,10 +114,11 @@ write_env_file() {
     local bind_url="$1"
     local db_host="$2"
     local db_port="$3"
-    local db_name="$4"
-    local db_user="$5"
-    local db_pwd="$6"
-    local jwt_secret="$7"
+    local hump_db_name="$4"
+    local capacity_db_name="$5"
+    local db_user="$6"
+    local db_pwd="$7"
+    local jwt_secret="$8"
 
     backup_if_exists "${ENV_FILE}"
 
@@ -129,12 +138,22 @@ WebApi__Hosts__1=
 HumpDatabase__DatabaseType=Mysql
 HumpDatabase__MysqlConfig__Host=${db_host}
 HumpDatabase__MysqlConfig__Port=${db_port}
-HumpDatabase__MysqlConfig__Database=${db_name}
+HumpDatabase__MysqlConfig__Database=${hump_db_name}
 HumpDatabase__MysqlConfig__Username=${db_user}
 HumpDatabase__MysqlConfig__Password=${db_pwd}
 HumpDatabase__MysqlConfig__SslMode=Preferred
 HumpDatabase__MysqlConfig__CharSet=utf8mb4
 HumpDatabase__MysqlConfig__ConnectionTimeout=15
+
+CapacityDatabase__DatabaseType=Mysql
+CapacityDatabase__MysqlConfig__Host=${db_host}
+CapacityDatabase__MysqlConfig__Port=${db_port}
+CapacityDatabase__MysqlConfig__Database=${capacity_db_name}
+CapacityDatabase__MysqlConfig__Username=${db_user}
+CapacityDatabase__MysqlConfig__Password=${db_pwd}
+CapacityDatabase__MysqlConfig__SslMode=Preferred
+CapacityDatabase__MysqlConfig__CharSet=utf8mb4
+CapacityDatabase__MysqlConfig__ConnectionTimeout=15
 
 Jwt__SecretKey=${jwt_secret}
 EOF
@@ -188,13 +207,14 @@ main() {
     echo "Input is hidden for passwords and JWT secrets."
     echo
 
-    local bind_url db_host db_port db_name db_user db_pwd jwt_secret
+    local bind_url db_host db_port hump_db_name capacity_db_name db_user db_pwd jwt_secret
 
     prompt_plain  bind_url   "Kestrel bind URL" "http://127.0.0.1:7297"
     prompt_plain  db_host    "MySQL host" "127.0.0.1"
     prompt_plain  db_port    "MySQL port" "3306"
-    prompt_plain  db_name    "MySQL database" "hump"
-    prompt_plain  db_user    "MySQL username"
+    prompt_plain  hump_db_name     "Hump MySQL database" "hump"
+    prompt_plain  capacity_db_name "Capacity MySQL database" "capacity"
+    prompt_plain  db_user    "MySQL username for both databases"
     prompt_secret db_pwd     "MySQL password"
 
     if [[ "${JWT_AUTOGEN:-0}" == "1" ]]; then
@@ -208,7 +228,7 @@ main() {
         prompt_secret jwt_secret "Jwt__SecretKey"
     fi
 
-    write_env_file "${bind_url}" "${db_host}" "${db_port}" "${db_name}" "${db_user}" "${db_pwd}" "${jwt_secret}"
+    write_env_file "${bind_url}" "${db_host}" "${db_port}" "${hump_db_name}" "${capacity_db_name}" "${db_user}" "${db_pwd}" "${jwt_secret}"
     install_unit
 
     echo
