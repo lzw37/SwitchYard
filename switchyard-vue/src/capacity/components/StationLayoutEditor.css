@@ -131,6 +131,26 @@
     fill: yellow;
 }
 
+.route-highlight-layer {
+    pointer-events: none;
+}
+
+.route-highlight-line,
+.route-highlight-curve {
+    fill: none;
+    stroke: #ffd600;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    opacity: 0.95;
+}
+
+.route-highlight-node {
+    fill: #ffd600;
+    stroke: #111827;
+    stroke-width: 2px;
+    opacity: 0.95;
+}
+
 .trackname {
     fill: #ffffff;
     stroke: #31363f;

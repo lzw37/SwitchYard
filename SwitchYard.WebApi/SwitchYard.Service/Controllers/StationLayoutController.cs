@@ -157,6 +157,107 @@ namespace SwitchYard.Service.Controllers
             }
         }
 
+        [HttpPost(Name = "SearchRoutes")]
+        public IActionResult SearchRoutes(
+            [FromBody] StationRouteSearchRequest? request,
+            [FromQuery] string? instanceID = null,
+            [FromQuery] string? stationSchemeID = null)
+        {
+            if (request == null)
+            {
+                return BadRequest("Request body is required.");
+            }
+
+            try
+            {
+                var normalizedInstanceID = FirstNonEmpty(instanceID, request.InstanceID);
+                if (string.IsNullOrWhiteSpace(normalizedInstanceID))
+                {
+                    return BadRequest("instanceID is required when searching station routes.");
+                }
+
+                var dbConnector = GetCapacityDbConnector();
+                var authResult = ValidateCapacityInstanceOwnershipOrFail(dbConnector, normalizedInstanceID);
+                if (authResult != null)
+                {
+                    return authResult;
+                }
+
+                EnsureStationSchemeSchema(dbConnector);
+                EnsureLinkSchema(dbConnector);
+                var normalizedStationSchemeID = ResolveStationSchemeID(
+                    dbConnector,
+                    normalizedInstanceID,
+                    FirstNonEmpty(stationSchemeID, request.StationSchemeID));
+                if (string.IsNullOrWhiteSpace(normalizedStationSchemeID))
+                {
+                    return BadRequest("stationSchemeID is required when searching station routes.");
+                }
+
+                var nodeTable = QuoteIdentifier("node");
+                var linkTable = QuoteIdentifier("link");
+                var nodes = dbConnector.Query<StationNodeRow>(
+                    $@"SELECT *
+                       FROM {nodeTable}
+                       WHERE InstanceID = @normalizedInstanceID AND StationSchemeID = @normalizedStationSchemeID
+                       ORDER BY ID",
+                    new { normalizedInstanceID, normalizedStationSchemeID }) ?? new List<StationNodeRow>();
+                var links = dbConnector.Query<StationLinkRow>(
+                    $@"SELECT *
+                       FROM {linkTable}
+                       WHERE InstanceID = @normalizedInstanceID AND StationSchemeID = @normalizedStationSchemeID
+                       ORDER BY ID",
+                    new { normalizedInstanceID, normalizedStationSchemeID }) ?? new List<StationLinkRow>();
+
+                var startNode = nodes.FirstOrDefault(node => node.ID == request.StartNodeId);
+                if (startNode == null)
+                {
+                    return BadRequest($"Start node {request.StartNodeId} does not exist.");
+                }
+
+                var endNode = nodes.FirstOrDefault(node => node.ID == request.EndNodeId);
+                if (endNode == null)
+                {
+                    return BadRequest($"End node {request.EndNodeId} does not exist.");
+                }
+
+                var routeSearcher = new StationRouteSearcher(nodes, links);
+                var routes = routeSearcher.Search(startNode, endNode);
+                var response = new StationRouteSearchResponse
+                {
+                    InstanceID = normalizedInstanceID,
+                    StationSchemeID = normalizedStationSchemeID,
+                    StartNodeId = request.StartNodeId,
+                    EndNodeId = request.EndNodeId,
+                    Routes = routes.Select(route => new StationRouteSearchResult
+                    {
+                        Direction = route.Direction.ToString(),
+                        NodeIds = route.Nodes.Select(node => node.ID).ToList(),
+                        LinkIds = route.Links.Select(link => link.ID).ToList(),
+                        Nodes = route.Nodes,
+                        Links = route.Links
+                    }).ToList()
+                };
+
+                return Ok(response);
+            }
+            catch (ArgumentException ex)
+            {
+                _logger.LogWarning(ex, "Invalid station route search request.");
+                return BadRequest(ex.Message);
+            }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogWarning(ex, "Station route search failed.");
+                return BadRequest(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to search station routes.");
+                return StatusCode(500, "Failed to search station routes.");
+            }
+        }
+
         [HttpGet(Name = "GetStationSchemes")]
         public IActionResult GetStationSchemes([FromQuery] string? instanceID = null)
         {

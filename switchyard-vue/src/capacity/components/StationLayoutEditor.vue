@@ -20,8 +20,11 @@ const props = defineProps({
     gridSpacing: { type: Number, default: 20 },
     objectSnapDistance: { type: Number, default: 10 },
     displayStyles: { type: Object, default: () => ({}) },
+    routePickTarget: { type: String, default: "" },
+    highlightedRouteLinkIds: { type: Array, default: () => [] },
+    highlightedRouteNodeIds: { type: Array, default: () => [] },
 });
-const emit = defineEmits(["selected-annotation-change", "selected-equipment-change"]);
+const emit = defineEmits(["selected-annotation-change", "selected-equipment-change", "route-node-pick"]);
 
 const svgRef = ref(null);
 const defaultEditorDisplayStyles = {
@@ -90,6 +93,58 @@ const svgStyle = computed(() => ({
     height: `${svgScreenHeight.value}px`,
 }));
 const editorDisplayStyles = computed(() => normalizeDisplayStyles(props.displayStyles));
+const highlightedRouteLinkIdSet = computed(() => new Set(
+    (Array.isArray(props.highlightedRouteLinkIds) ? props.highlightedRouteLinkIds : [])
+        .map((id) => String(id))
+        .filter((id) => id !== "")
+));
+const highlightedRouteNodeIdSet = computed(() => new Set(
+    (Array.isArray(props.highlightedRouteNodeIds) ? props.highlightedRouteNodeIds : [])
+        .map((id) => String(id))
+        .filter((id) => id !== "")
+));
+const highlightedRouteTransitionKeySet = computed(() => {
+    const ids = (Array.isArray(props.highlightedRouteLinkIds) ? props.highlightedRouteLinkIds : [])
+        .map((id) => String(id))
+        .filter((id) => id !== "");
+    const transitionKeys = new Set();
+
+    for (let index = 0; index < ids.length - 1; index++) {
+        transitionKeys.add(buildRouteTransitionKey(ids[index], ids[index + 1]));
+    }
+
+    return transitionKeys;
+});
+const highlightedRouteSegments = computed(() => {
+    if (highlightedRouteLinkIdSet.value.size === 0) return [];
+    return renderedTrackSegments.value.filter((segment) => highlightedRouteLinkIdSet.value.has(String(segment.line?.id ?? "")));
+});
+const highlightedRouteCurves = computed(() => {
+    if (highlightedRouteTransitionKeySet.value.size === 0) return [];
+    return displayedCurves.value.filter((curve) => isRouteCurveHighlighted(curve));
+});
+const highlightedRouteNodes = computed(() => {
+    if (highlightedRouteNodeIdSet.value.size === 0) return [];
+
+    const nodeByID = new Map(nodes.value.map((node) => [String(node.id ?? ""), node]));
+    return (Array.isArray(props.highlightedRouteNodeIds) ? props.highlightedRouteNodeIds : [])
+        .map((id) => nodeByID.get(String(id)))
+        .filter((node) => node != null);
+});
+const highlightedRouteLayerVisible = computed(() =>
+    highlightedRouteSegments.value.length > 0 ||
+    highlightedRouteCurves.value.length > 0 ||
+    highlightedRouteNodes.value.length > 0
+);
+const routeHighlightStyle = computed(() => ({
+    stroke: "#ffd600",
+    strokeWidth: Math.max(
+        editorDisplayStyles.value.track.strokeWidth + 4,
+        editorDisplayStyles.value.curve.strokeWidth + 2,
+        7
+    ),
+}));
+const routeHighlightNodeRadius = computed(() => Math.max(editorDisplayStyles.value.node.radius + 2, 6));
 
 const latestElementID = ref(0);
 const layoutMetadata = ref({});
@@ -2442,6 +2497,13 @@ function shouldHandleElementMouseDown(event) {
 }
 
 function handleNodeClick(event, nodeId) {
+    if (props.routePickTarget) {
+        event.preventDefault();
+        event.stopPropagation();
+        emitRouteNodePick(nodeId);
+        return;
+    }
+
     if (editModeCode.value === 1 && drawingObject.value === "w") {
         event.preventDefault();
         event.stopPropagation();
@@ -2461,6 +2523,28 @@ function handleNodeClick(event, nodeId) {
     beginNodeMove(event, nodeId);
 }
 
+function emitRouteNodePick(nodeId) {
+    const normalizedNodeId = String(nodeId ?? "").trim();
+    if (!normalizedNodeId) return false;
+
+    emit("route-node-pick", {
+        target: props.routePickTarget,
+        nodeId: normalizedNodeId,
+    });
+    return true;
+}
+
+function handleRouteEquipmentPick(event, equipment) {
+    if (!props.routePickTarget) return false;
+
+    const bindingNodeID = equipment?.bindingNodeID ?? equipment?.BindingNodeID;
+    if (!bindingNodeID) return false;
+
+    event.preventDefault();
+    event.stopPropagation();
+    return emitRouteNodePick(bindingNodeID);
+}
+
 function selectEquipment(kind, id, additive = false) {
     if (!additive) {
         clearSelectedDeviceIds();
@@ -2477,30 +2561,35 @@ function selectEquipment(kind, id, additive = false) {
 }
 
 function handleSignalClick(event, signalId) {
+    if (handleRouteEquipmentPick(event, signals.value.find((signal) => signal.id === signalId))) return;
     if (!shouldHandleElementMouseDown(event)) return;
     setSelectedAnnotationIds([]);
     selectEquipment("signal", signalId, event.shiftKey);
 }
 
 function handleInsulationJointClick(event, id) {
+    if (handleRouteEquipmentPick(event, insulationJoints.value.find((ij) => ij.id === id))) return;
     if (!shouldHandleElementMouseDown(event)) return;
     setSelectedAnnotationIds([]);
     selectEquipment("insulationJoint", id, event.shiftKey);
 }
 
 function handleBufferStopClick(event, id) {
+    if (handleRouteEquipmentPick(event, bufferStops.value.find((bufferStop) => bufferStop.id === id))) return;
     if (!shouldHandleElementMouseDown(event)) return;
     setSelectedAnnotationIds([]);
     selectEquipment("bufferStop", id, event.shiftKey);
 }
 
 function handleSwitchClick(event, id) {
+    if (handleRouteEquipmentPick(event, switches.value.find((sw) => sw.id === id))) return;
     if (!shouldHandleElementMouseDown(event)) return;
     setSelectedAnnotationIds([]);
     selectEquipment("switch", id, event.shiftKey);
 }
 
 function handlePlatformClick(event, id) {
+    if (handleRouteEquipmentPick(event, platforms.value.find((platform) => platform.id === id))) return;
     if (!shouldHandleElementMouseDown(event)) return;
     setSelectedAnnotationIds([]);
     selectEquipment("platform", id, event.shiftKey);
@@ -3197,6 +3286,23 @@ function isNodeSelected(id) {
     return selectedNodeIds.value.has(id);
 }
 
+function buildRouteTransitionKey(firstLinkID, secondLinkID) {
+    const first = String(firstLinkID ?? "");
+    const second = String(secondLinkID ?? "");
+    return first < second ? `${first}|${second}` : `${second}|${first}`;
+}
+
+function isRouteCurveHighlighted(curve) {
+    const firstLinkID = String(curve?.tangentLinkID1 ?? "");
+    const secondLinkID = String(curve?.tangentLinkID2 ?? "");
+    if (!firstLinkID || !secondLinkID) return false;
+
+    const nodeID = String(curve?.nodeID ?? "");
+    if (nodeID && !highlightedRouteNodeIdSet.value.has(nodeID)) return false;
+
+    return highlightedRouteTransitionKeySet.value.has(buildRouteTransitionKey(firstLinkID, secondLinkID));
+}
+
 function isInsulationJointSelected(id) {
     return selectedInsulationJointIds.value.has(id);
 }
@@ -3833,6 +3939,17 @@ defineExpose({
 
             <circle v-if="tempNode.visible" class="node node-temp" :cx="screenX(tempNode.x)" :cy="screenY(tempNode.y)"
                 :r="editorDisplayStyles.node.radius" />
+        </g>
+
+        <g v-if="highlightedRouteLayerVisible" id="route-highlight-layer" class="route-highlight-layer">
+            <line v-for="segment in highlightedRouteSegments" :key="`route-line-${segment.id}`"
+                class="route-highlight-line" :x1="screenX(segment.x1)" :y1="screenY(segment.y1)"
+                :x2="screenX(segment.x2)" :y2="screenY(segment.y2)" :style="routeHighlightStyle" />
+            <path v-for="curve in highlightedRouteCurves" :key="`route-curve-${curve.id}`"
+                class="route-highlight-curve" :d="curvePath(curve)" :style="routeHighlightStyle" />
+            <circle v-for="node in highlightedRouteNodes" :key="`route-node-${node.id}`"
+                class="route-highlight-node" :cx="screenX(node.x)" :cy="screenY(node.y)"
+                :r="routeHighlightNodeRadius" />
         </g>
 
         <g id="signalgroup">

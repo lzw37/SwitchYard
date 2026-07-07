@@ -63,6 +63,21 @@ const equipmentForm = ref({});
 const equipmentSaving = ref(false);
 const activeEditMode = ref(0);
 const isSelectMode = computed(() => activeEditMode.value === 0);
+const routeTesterVisible = ref(false);
+const routeSearchLoading = ref(false);
+const routeNodePickTarget = ref("");
+const routeSearchForm = ref({
+    startNodeId: "",
+    endNodeId: "",
+});
+const routeSearchRoutes = ref([]);
+const selectedRouteIndex = ref(-1);
+const selectedRoute = computed(() => {
+    if (selectedRouteIndex.value < 0) return null;
+    return routeSearchRoutes.value[selectedRouteIndex.value] || null;
+});
+const highlightedRouteLinkIds = computed(() => selectedRoute.value?.linkIds || []);
+const highlightedRouteNodeIds = computed(() => selectedRoute.value?.nodeIds || []);
 const selectedDrawingBufferStopDirection = ref(DEFAULT_BUFFER_STOP_DIRECTION);
 const selectedDrawingBufferStopType = ref(DEFAULT_BUFFER_STOP_TYPE);
 const selectedDrawingSignalType = ref(DEFAULT_SIGNAL_TYPE);
@@ -139,7 +154,140 @@ function handleEditModeChange(mode) {
     if (Number(mode) === 0) {
         setSelectMode();
     } else {
+        routeNodePickTarget.value = "";
         setDrawMode();
+    }
+}
+
+function toggleRouteTester() {
+    routeTesterVisible.value = !routeTesterVisible.value;
+    if (!routeTesterVisible.value) {
+        routeNodePickTarget.value = "";
+        clearSelectedRoute();
+    } else {
+        setSelectMode();
+    }
+}
+
+function setRouteNodePickTarget(target) {
+    routeNodePickTarget.value = routeNodePickTarget.value === target ? "" : target;
+    if (routeNodePickTarget.value) {
+        setSelectMode();
+    }
+}
+
+function handleRouteNodePick(payload) {
+    const nodeId = String(payload?.nodeId ?? "").trim();
+    const target = payload?.target || routeNodePickTarget.value;
+    if (!nodeId) return;
+
+    if (target === "start") {
+        routeSearchForm.value.startNodeId = nodeId;
+    } else if (target === "end") {
+        routeSearchForm.value.endNodeId = nodeId;
+    }
+
+    routeNodePickTarget.value = "";
+}
+
+function clearSelectedRoute() {
+    selectedRouteIndex.value = -1;
+}
+
+function selectStationRoute(row) {
+    selectedRouteIndex.value = Number(row?.index ?? -1);
+}
+
+function clearRouteSearchResult() {
+    routeSearchRoutes.value = [];
+    clearSelectedRoute();
+}
+
+function normalizeRouteIdList(route, keys) {
+    for (const key of keys) {
+        const value = route?.[key];
+        if (Array.isArray(value)) {
+            return value.map((id) => String(id)).filter((id) => id !== "");
+        }
+    }
+    return [];
+}
+
+function normalizeSearchRoute(route, index) {
+    const nodeIds = normalizeRouteIdList(route, ["nodeIds", "nodeIDs", "NodeIds", "NodeIDs"]);
+    const linkIds = normalizeRouteIdList(route, ["linkIds", "linkIDs", "LinkIds", "LinkIDs"]);
+    return {
+        ...route,
+        index,
+        direction: String(route?.direction ?? route?.Direction ?? ""),
+        nodeIds,
+        linkIds,
+    };
+}
+
+function getRouteDirectionLabel(direction) {
+    if (direction === "LeftToRight") return "左向右";
+    if (direction === "RightToLeft") return "右向左";
+    return direction || "-";
+}
+
+function getRouteSummary(route) {
+    if (!route) return "";
+    return route.nodeIds.length > 0
+        ? route.nodeIds.join(" -> ")
+        : `${route.linkIds.length} links`;
+}
+
+async function searchStationRoutes() {
+    if (!props.selectedInstanceId) {
+        ElMessage.warning(t('capacityMain.placeholders.selectInstance'));
+        return;
+    }
+
+    const startNodeId = String(routeSearchForm.value.startNodeId || "").trim();
+    const endNodeId = String(routeSearchForm.value.endNodeId || "").trim();
+    if (!startNodeId || !endNodeId) {
+        ElMessage.warning("请输入起点和终点 Node ID");
+        return;
+    }
+    const startNodeNumber = Number(startNodeId);
+    const endNodeNumber = Number(endNodeId);
+    if (!Number.isInteger(startNodeNumber) || !Number.isInteger(endNodeNumber)) {
+        ElMessage.warning("Node ID 必须为整数");
+        return;
+    }
+
+    const params = {
+        instanceID: props.selectedInstanceId,
+    };
+    if (currentStationSchemeId.value) {
+        params.stationSchemeID = currentStationSchemeId.value;
+    }
+
+    routeSearchLoading.value = true;
+    try {
+        const response = await axios.post("/StationLayout/SearchRoutes", {
+            instanceID: props.selectedInstanceId,
+            stationSchemeID: currentStationSchemeId.value,
+            startNodeId: startNodeNumber,
+            endNodeId: endNodeNumber,
+        }, {
+            params,
+        });
+        const routes = Array.isArray(response.data?.routes)
+            ? response.data.routes
+            : Array.isArray(response.data?.Routes)
+                ? response.data.Routes
+                : [];
+        routeSearchRoutes.value = routes.map((route, index) => normalizeSearchRoute(route, index));
+        selectedRouteIndex.value = routeSearchRoutes.value.length > 0 ? 0 : -1;
+        ElMessage.success(`搜索完成，共 ${routeSearchRoutes.value.length} 条路径`);
+    } catch (err) {
+        routeSearchRoutes.value = [];
+        selectedRouteIndex.value = -1;
+        ElMessage.error(getHttpErrorMessage(err, "路径搜索失败"));
+    } finally {
+        routeSearchLoading.value = false;
     }
 }
 function createDefaultLayoutDisplayStyles() {
@@ -514,6 +662,8 @@ function getData(options = {}) {
         stationSchemeOptions.value = [];
         resetLayoutDisplayStyles();
         stationLayoutEditorRef.value?.clearElements();
+        routeNodePickTarget.value = "";
+        clearRouteSearchResult();
         return;
     }
 
@@ -540,6 +690,8 @@ function getData(options = {}) {
             applyLayoutDisplayStyles(res.data?.metadata?.displayStyles);
             ensureCurrentStationSchemeOption();
             stationLayoutEditorRef.value?.loadDataFromJson(res.data);
+            routeNodePickTarget.value = "";
+            clearRouteSearchResult();
         })
         .catch((err) => {
             if (props.selectedInstanceId !== instanceId) {
@@ -561,6 +713,8 @@ function getData(options = {}) {
 
 function handleStationSchemeChange(stationSchemeId) {
     if (!stationSchemeId) return;
+    routeNodePickTarget.value = "";
+    clearRouteSearchResult();
     getData({ stationSchemeId });
 }
 
@@ -964,6 +1118,8 @@ watch(
     () => {
         currentStationSchemeId.value = "";
         stationSchemeOptions.value = [];
+        routeNodePickTarget.value = "";
+        clearRouteSearchResult();
         loadStationSchemes();
         getData();
     }
@@ -1345,6 +1501,13 @@ watch(
                 </el-button-group>
             </div>
             <el-divider direction="vertical" />
+            <div class="toolbar-group">
+                <span class="toolbar-group-label">路径测试</span>
+                <el-button :icon="Guide" :type="routeTesterVisible ? 'primary' : 'default'" @click="toggleRouteTester">
+                    路径搜索
+                </el-button>
+            </div>
+            <el-divider direction="vertical" />
             <div class="toolbar-group curve-display-toolbar-group">
                 <span class="toolbar-group-label">{{ t('stationLayout.group.curveDisplay') }}</span>
                 <el-switch v-model="showCurveArc" class="curve-display-switch" inline-prompt
@@ -1415,8 +1578,12 @@ watch(
                     :show-grid="showGrid" :object-snap-distance="objectSnapDistance"
                     :grid-spacing="gridSpacing"
                     :display-styles="layoutDisplayStyles"
+                    :route-pick-target="routeNodePickTarget"
+                    :highlighted-route-link-ids="highlightedRouteLinkIds"
+                    :highlighted-route-node-ids="highlightedRouteNodeIds"
                     @selected-annotation-change="handleSelectedAnnotationChange"
-                    @selected-equipment-change="handleSelectedEquipmentChange" />
+                    @selected-equipment-change="handleSelectedEquipmentChange"
+                    @route-node-pick="handleRouteNodePick" />
             </div>
             <aside v-if="equipmentDrawerVisible" class="equipment-side-panel">
                 <div class="equipment-side-panel-header">
@@ -1533,6 +1700,63 @@ watch(
                     <el-button type="primary" :loading="equipmentSaving || savingData" @click="saveEquipmentForm">
                         保存
                     </el-button>
+                </div>
+            </aside>
+            <aside v-if="routeTesterVisible" class="route-search-panel">
+                <div class="route-search-panel-header">
+                    <div>
+                        <div class="route-search-panel-title">路径搜索测试</div>
+                        <div class="route-search-panel-subtitle">{{ currentStationSchemeId || "当前方案" }}</div>
+                    </div>
+                    <el-button text size="small" @click="toggleRouteTester">关闭</el-button>
+                </div>
+                <div class="route-search-panel-body">
+                    <div class="route-search-form">
+                        <label class="route-search-label">起点 Node ID</label>
+                        <div class="route-search-input-row">
+                            <el-input v-model="routeSearchForm.startNodeId" size="small" clearable />
+                            <el-button size="small" :type="routeNodePickTarget === 'start' ? 'primary' : 'default'"
+                                @click="setRouteNodePickTarget('start')">
+                                点选
+                            </el-button>
+                        </div>
+                        <label class="route-search-label">终点 Node ID</label>
+                        <div class="route-search-input-row">
+                            <el-input v-model="routeSearchForm.endNodeId" size="small" clearable />
+                            <el-button size="small" :type="routeNodePickTarget === 'end' ? 'primary' : 'default'"
+                                @click="setRouteNodePickTarget('end')">
+                                点选
+                            </el-button>
+                        </div>
+                        <div class="route-search-actions">
+                            <el-button type="primary" size="small" :loading="routeSearchLoading"
+                                @click="searchStationRoutes">
+                                搜索
+                            </el-button>
+                            <el-button size="small" @click="clearRouteSearchResult">清空</el-button>
+                        </div>
+                    </div>
+                    <el-table :data="routeSearchRoutes" v-loading="routeSearchLoading" size="small"
+                        class="route-search-table" height="100%" highlight-current-row
+                        @row-click="selectStationRoute">
+                        <el-table-column label="#" width="48">
+                            <template #default="{ row }">
+                                {{ row.index + 1 }}
+                            </template>
+                        </el-table-column>
+                        <el-table-column label="方向" width="72">
+                            <template #default="{ row }">
+                                {{ getRouteDirectionLabel(row.direction) }}
+                            </template>
+                        </el-table-column>
+                        <el-table-column label="路径">
+                            <template #default="{ row }">
+                                <div class="route-search-summary" :class="{ 'is-active': row.index === selectedRouteIndex }">
+                                    {{ getRouteSummary(row) }}
+                                </div>
+                            </template>
+                        </el-table-column>
+                    </el-table>
                 </div>
             </aside>
         </div>
@@ -1944,8 +2168,99 @@ watch(
     width: 100%;
 }
 
+.route-search-panel {
+    flex: 0 0 380px;
+    width: 380px;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    background-color: #fff;
+    border-left: 1px solid var(--el-border-color-light);
+    box-shadow: -4px 0 12px rgba(0, 0, 0, 0.08);
+}
+
+.route-search-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 16px 12px;
+    border-bottom: 1px solid var(--el-border-color-lighter);
+}
+
+.route-search-panel-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #303133;
+    line-height: 1.3;
+}
+
+.route-search-panel-subtitle {
+    margin-top: 2px;
+    font-size: 12px;
+    color: #909399;
+}
+
+.route-search-panel-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 12px 16px;
+}
+
+.route-search-form {
+    display: grid;
+    gap: 8px;
+}
+
+.route-search-label {
+    font-size: 12px;
+    font-weight: 500;
+    color: #606266;
+}
+
+.route-search-input-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 64px;
+    gap: 8px;
+    align-items: center;
+}
+
+.route-search-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding-top: 4px;
+}
+
+.route-search-table {
+    flex: 1 1 auto;
+    min-height: 160px;
+}
+
+.route-search-summary {
+    color: #303133;
+    font-family: Consolas, "Microsoft YaHei", monospace;
+    font-size: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.route-search-summary.is-active {
+    color: #0891b2;
+    font-weight: 600;
+}
+
 @media (max-width: 960px) {
     .equipment-side-panel {
+        flex-basis: 320px;
+        width: 320px;
+    }
+
+    .route-search-panel {
         flex-basis: 320px;
         width: 320px;
     }
