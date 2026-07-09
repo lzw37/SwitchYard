@@ -10,7 +10,42 @@ CREATE TABLE IF NOT EXISTS "stationscheme" (
     "InstanceID" TEXT NULL,
     "ID" TEXT NULL,
     "Name" TEXT NULL,
-    "DisplayStyles" TEXT NULL
+    "DisplayStyles" TEXT NULL,
+    "GridSettings" TEXT NULL
+);
+
+CREATE TABLE IF NOT EXISTS "stationrouteend" (
+    "InstanceID" TEXT NULL,
+    "StationSchemeID" TEXT NULL,
+    "ID" TEXT NULL,
+    "BindingNodeID" TEXT NULL,
+    "Type" TEXT NULL,
+    "SegmentTag" TEXT NULL,
+    "SidingTag" TEXT NULL
+);
+
+CREATE TABLE IF NOT EXISTS "stationroute" (
+    "InstanceID" TEXT NULL,
+    "StationSchemeID" TEXT NULL,
+    "ID" TEXT NULL,
+    "Type" TEXT NULL,
+    "NodeList" TEXT NULL,
+    "LinkList" TEXT NULL,
+    "SwitchList" TEXT NULL,
+    "CellList" TEXT NULL,
+    "SignalList" TEXT NULL,
+    "AllowanceTags" TEXT NULL,
+    "ForbiddenTags" TEXT NULL,
+    "StartNodeID" TEXT NULL,
+    "EndNodeID" TEXT NULL
+);
+
+CREATE TABLE IF NOT EXISTS "cell" (
+    "InstanceID" TEXT NULL,
+    "StationSchemeID" TEXT NULL,
+    "ID" TEXT NULL,
+    "LinkIDList" TEXT NULL,
+    "Name" TEXT NULL
 );
 
 CREATE TABLE IF NOT EXISTS "annotation" (

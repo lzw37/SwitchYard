@@ -1079,6 +1079,7 @@
         },
         "tabs": {
             "stationLayout": "车站布置图",
+            "routeDesign": "进路设计",
             "layout3d": "3D",
             "calcParams": "计算参数",
             "operationPlan": "作业计划",
@@ -1198,6 +1199,143 @@
         "messages": {
             "empty": "当前实例没有可显示的布置图数据",
             "loadFailed": "加载 3D 布置图失败"
+        }
+    },
+    "routeDesign": {
+        "toolbar": {
+            "stationRoute": "进路生成",
+            "routeEnd": "进路起终点配置"
+        },
+        "stationRoute": {
+            "title": "进路生成",
+            "count": "共 {count} 条",
+            "empty": "暂无进路",
+            "fields": {
+                "instanceID": "InstanceID",
+                "stationSchemeID": "StationSchemeID",
+                "id": "ID",
+                "type": "Type",
+                "nodeList": "NodeList",
+                "linkList": "LinkList",
+                "switchList": "SwitchList",
+                "cellList": "CellList",
+                "signalList": "SignalList",
+                "allowanceTags": "AllowanceTags",
+                "forbiddenTags": "ForbiddenTags",
+                "startNodeID": "StartNodeID",
+                "endNodeID": "EndNodeID"
+            },
+            "actions": {
+                "add": "新增",
+                "refresh": "刷新",
+                "pickStart": "点选起点",
+                "pickEnd": "点选终点",
+                "save": "保存",
+                "cancel": "取消",
+                "delete": "删除"
+            },
+            "states": {
+                "new": "新增",
+                "picking": "点选中"
+            },
+            "form": {
+                "newTitle": "新建进路",
+                "editTitle": "当前进路",
+                "emptyTitle": "未选择进路"
+            },
+            "directions": {
+                "leftToRight": "左向右",
+                "rightToLeft": "右向左"
+            },
+            "placeholders": {
+                "autoId": "留空则自动生成"
+            },
+            "searchDialog": {
+                "title": "选择搜索到的进路",
+                "count": "共搜索到 {count} 条候选进路",
+                "empty": "暂无候选进路",
+                "direction": "方向",
+                "path": "路径",
+                "useRoute": "使用此进路",
+                "linkSummary": "{count} 条 Link"
+            },
+            "messages": {
+                "selectScheme": "请先选择车站方案",
+                "pickStart": "请在图中点选进路起点 Node",
+                "pickEnd": "请在图中点选进路终点 Node",
+                "startPicked": "已选择起点 Node {nodeId}",
+                "endPicked": "已选择终点 Node {nodeId}",
+                "nodeIdMustBeInteger": "Node ID 必须为整数",
+                "searchSuccess": "搜索完成，共 {count} 条候选进路",
+                "searchEmpty": "未搜索到可用进路",
+                "searchFailed": "进路搜索失败",
+                "selectCandidate": "请先选择一条候选进路",
+                "candidateApplied": "已带入候选进路，请补充进路字段后保存",
+                "startEndRequired": "StartNodeID 和 EndNodeID 不能为空",
+                "idRequired": "ID 不能为空",
+                "loadFailed": "加载进路失败",
+                "createSuccess": "进路已新增",
+                "createFailed": "新增进路失败",
+                "updateSuccess": "进路已更新",
+                "updateFailed": "更新进路失败",
+                "deleteTitle": "删除进路",
+                "deleteConfirm": "确定删除进路“{id}”吗？",
+                "deleteSuccess": "进路已删除",
+                "deleteFailed": "删除进路失败"
+            }
+        },
+        "routeEnd": {
+            "title": "进路起终点配置",
+            "count": "共 {count} 个",
+            "empty": "暂无进路起终点",
+            "fields": {
+                "instanceID": "InstanceID",
+                "stationSchemeID": "StationSchemeID",
+                "id": "ID",
+                "bindingNodeID": "BindingNodeID",
+                "type": "Type",
+                "segmentTag": "SegmentTag",
+                "sidingTag": "SidingTag"
+            },
+            "actions": {
+                "add": "新增",
+                "refresh": "刷新",
+                "pickNode": "点选 Node",
+                "save": "保存",
+                "cancel": "取消",
+                "delete": "删除"
+            },
+            "states": {
+                "new": "新增",
+                "picking": "点选中"
+            },
+            "form": {
+                "newTitle": "新建进路起终点",
+                "editTitle": "当前进路起终点",
+                "emptyTitle": "未选择进路起终点"
+            },
+            "placeholders": {
+                "autoId": "留空则自动生成"
+            },
+            "messages": {
+                "selectScheme": "请先选择车站方案",
+                "pickNode": "请在图中点选一个 Node",
+                "nodePicked": "已选择 Node {nodeId}",
+                "bindingNodeRequired": "BindingNodeID 不能为空",
+                "idRequired": "ID 不能为空",
+                "loadFailed": "加载进路起终点失败",
+                "createSuccess": "进路起终点已新增",
+                "createFailed": "新增进路起终点失败",
+                "updateSuccess": "进路起终点已更新",
+                "updateFailed": "更新进路起终点失败",
+                "deleteTitle": "删除进路起终点",
+                "deleteConfirm": "确定删除进路起终点“{id}”吗？",
+                "deleteSuccess": "进路起终点已删除",
+                "deleteFailed": "删除进路起终点失败"
+            }
+        },
+        "messages": {
+            "loadFailed": "加载进路设计布置图失败"
         }
     }
 }

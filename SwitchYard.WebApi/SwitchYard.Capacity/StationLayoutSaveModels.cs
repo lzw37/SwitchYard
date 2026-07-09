@@ -99,6 +99,9 @@ namespace SwitchYard.Capacity
         [JsonPropertyName("switchBranchVectorCount")]
         public int SwitchBranchVectorCount { get; set; }
 
+        [JsonPropertyName("cellCount")]
+        public int CellCount { get; set; }
+
         [JsonPropertyName("annotationCount")]
         public int AnnotationCount { get; set; }
     }

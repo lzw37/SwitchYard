@@ -22,9 +22,13 @@ namespace SwitchYard.Service.Controllers
         private const long MaxDwgFileSize = 20L * 1024 * 1024; // 20 MB
         private const string DefaultStationSchemeID = "station_layout_scheme";
         private const string DefaultStationSchemeName = "车站布置图";
+        private const string DefaultStationSchemeGridSettingsJson = "{\"showGrid\":true,\"spacing\":20,\"originX\":0,\"originY\":0}";
         private static readonly string[] NamedDeviceTables = new[] { "signal", "switch", "cell", "route", "platform" };
         private static readonly string[] StationLayoutDataTables = new[]
         {
+            "cell",
+            "stationroute",
+            "stationrouteend",
             "switchbranchvector",
             "switch",
             "bufferstop",
@@ -185,6 +189,7 @@ namespace SwitchYard.Service.Controllers
 
                 EnsureStationSchemeSchema(dbConnector);
                 EnsureLinkSchema(dbConnector);
+                EnsureCellSchema(dbConnector);
                 var normalizedStationSchemeID = ResolveStationSchemeID(
                     dbConnector,
                     normalizedInstanceID,
@@ -196,6 +201,9 @@ namespace SwitchYard.Service.Controllers
 
                 var nodeTable = QuoteIdentifier("node");
                 var linkTable = QuoteIdentifier("link");
+                var switchTable = QuoteIdentifier("switch");
+                var signalTable = QuoteIdentifier("signal");
+                var cellTable = QuoteIdentifier("cell");
                 var nodes = dbConnector.Query<StationNodeRow>(
                     $@"SELECT *
                        FROM {nodeTable}
@@ -208,6 +216,24 @@ namespace SwitchYard.Service.Controllers
                        WHERE InstanceID = @normalizedInstanceID AND StationSchemeID = @normalizedStationSchemeID
                        ORDER BY ID",
                     new { normalizedInstanceID, normalizedStationSchemeID }) ?? new List<StationLinkRow>();
+                var switches = dbConnector.Query<StationSwitchRow>(
+                    $@"SELECT ID, Name, {QuoteIdentifier("Type")} AS {QuoteIdentifier("Type")}, BindingNodeID
+                       FROM {switchTable}
+                       WHERE InstanceID = @normalizedInstanceID AND StationSchemeID = @normalizedStationSchemeID
+                       ORDER BY ID",
+                    new { normalizedInstanceID, normalizedStationSchemeID }) ?? new List<StationSwitchRow>();
+                var signals = dbConnector.Query<StationSignalRow>(
+                    $@"SELECT ID, Name, {QuoteIdentifier("Type")} AS {QuoteIdentifier("Type")}, Direction, BindingNodeID
+                       FROM {signalTable}
+                       WHERE InstanceID = @normalizedInstanceID AND StationSchemeID = @normalizedStationSchemeID
+                       ORDER BY ID",
+                    new { normalizedInstanceID, normalizedStationSchemeID }) ?? new List<StationSignalRow>();
+                var cells = dbConnector.Query<StationCellRow>(
+                    $@"SELECT InstanceID, StationSchemeID, ID, LinkIDList, Name
+                       FROM {cellTable}
+                       WHERE InstanceID = @normalizedInstanceID AND StationSchemeID = @normalizedStationSchemeID
+                       ORDER BY ID",
+                    new { normalizedInstanceID, normalizedStationSchemeID }) ?? new List<StationCellRow>();
 
                 var startNode = nodes.FirstOrDefault(node => node.ID == request.StartNodeId);
                 if (startNode == null)
@@ -229,13 +255,64 @@ namespace SwitchYard.Service.Controllers
                     StationSchemeID = normalizedStationSchemeID,
                     StartNodeId = request.StartNodeId,
                     EndNodeId = request.EndNodeId,
-                    Routes = routes.Select(route => new StationRouteSearchResult
+                    Routes = routes.Select(route =>
                     {
-                        Direction = route.Direction.ToString(),
-                        NodeIds = route.Nodes.Select(node => node.ID).ToList(),
-                        LinkIds = route.Links.Select(link => link.ID).ToList(),
-                        Nodes = route.Nodes,
-                        Links = route.Links
+                        var routeNodeIndexByID = route.Nodes
+                            .Select((node, index) => new { NodeID = ToInvariantString(node.ID), index })
+                            .ToDictionary(item => item.NodeID, item => item.index, StringComparer.OrdinalIgnoreCase);
+                        var routeNodeIDSet = routeNodeIndexByID.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
+                        var routeLinkIndexByID = route.Links
+                            .Select((link, index) => new { LinkID = ToInvariantString(link.ID), index })
+                            .GroupBy(item => item.LinkID, StringComparer.OrdinalIgnoreCase)
+                            .ToDictionary(group => group.Key, group => group.Min(item => item.index), StringComparer.OrdinalIgnoreCase);
+                        var routeSwitches = switches
+                            .Where(sw => !string.IsNullOrWhiteSpace(sw.BindingNodeID) && routeNodeIDSet.Contains(sw.BindingNodeID.Trim()))
+                            .OrderBy(sw => routeNodeIndexByID.TryGetValue(sw.BindingNodeID!.Trim(), out var index) ? index : int.MaxValue)
+                            .ThenBy(sw => sw.ID ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+                            .ToList();
+                        var routeSignals = signals
+                            .Where(signal => !string.IsNullOrWhiteSpace(signal.BindingNodeID) && routeNodeIDSet.Contains(signal.BindingNodeID.Trim()))
+                            .OrderBy(signal => routeNodeIndexByID.TryGetValue(signal.BindingNodeID!.Trim(), out var index) ? index : int.MaxValue)
+                            .ThenBy(signal => signal.ID ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+                            .ToList();
+                        var routeCells = cells
+                            .Select(cell => new
+                            {
+                                Cell = cell,
+                                FirstLinkIndex = GetFirstMatchingRouteLinkIndex(cell, routeLinkIndexByID)
+                            })
+                            .Where(item => item.FirstLinkIndex < int.MaxValue)
+                            .OrderBy(item => item.FirstLinkIndex)
+                            .ThenBy(item => item.Cell.ID ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+                            .Select(item => item.Cell)
+                            .ToList();
+
+                        return new StationRouteSearchResult
+                        {
+                            Direction = route.Direction.ToString(),
+                            NodeIds = route.Nodes.Select(node => node.ID).ToList(),
+                            LinkIds = route.Links.Select(link => link.ID).ToList(),
+                            SwitchIds = routeSwitches
+                                .Select(sw => sw.ID?.Trim())
+                                .Where(id => !string.IsNullOrWhiteSpace(id))
+                                .Select(id => id!)
+                                .ToList(),
+                            CellIds = routeCells
+                                .Select(cell => cell.ID?.Trim())
+                                .Where(id => !string.IsNullOrWhiteSpace(id))
+                                .Select(id => id!)
+                                .ToList(),
+                            SignalIds = routeSignals
+                                .Select(signal => signal.ID?.Trim())
+                                .Where(id => !string.IsNullOrWhiteSpace(id))
+                                .Select(id => id!)
+                                .ToList(),
+                            Nodes = route.Nodes,
+                            Links = route.Links,
+                            Switches = routeSwitches,
+                            Cells = routeCells,
+                            Signals = routeSignals
+                        };
                     }).ToList()
                 };
 
@@ -255,6 +332,480 @@ namespace SwitchYard.Service.Controllers
             {
                 _logger.LogError(ex, "Failed to search station routes.");
                 return StatusCode(500, "Failed to search station routes.");
+            }
+        }
+
+        [HttpGet(Name = "GetStationRoutes")]
+        public IActionResult GetStationRoutes(
+            [FromQuery] string? instanceID = null,
+            [FromQuery] string? stationSchemeID = null)
+        {
+            try
+            {
+                var normalizedInstanceID = instanceID?.Trim();
+                if (string.IsNullOrWhiteSpace(normalizedInstanceID))
+                {
+                    return BadRequest("instanceID is required when loading station routes.");
+                }
+
+                var dbConnector = GetCapacityDbConnector();
+                var authResult = ValidateCapacityInstanceOwnershipOrFail(dbConnector, normalizedInstanceID);
+                if (authResult != null)
+                {
+                    return authResult;
+                }
+
+                EnsureStationSchemeSchema(dbConnector);
+                EnsureStationRouteSchema(dbConnector);
+                var normalizedStationSchemeID = ResolveStationSchemeID(dbConnector, normalizedInstanceID, stationSchemeID);
+                if (string.IsNullOrWhiteSpace(normalizedStationSchemeID))
+                {
+                    return Ok(new List<StationRouteRow>());
+                }
+
+                return Ok(LoadStationRoutes(dbConnector, normalizedInstanceID, normalizedStationSchemeID));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to load station routes.");
+                return StatusCode(500, "Failed to load station routes.");
+            }
+        }
+
+        [HttpPost(Name = "CreateStationRoute")]
+        public IActionResult CreateStationRoute([FromBody] StationRouteRequest? request)
+        {
+            try
+            {
+                var dbConnector = GetCapacityDbConnector();
+                var normalized = NormalizeStationRouteRequest(
+                    request,
+                    allowMissingID: true);
+                if (normalized.ErrorResult != null)
+                {
+                    return normalized.ErrorResult;
+                }
+
+                var route = normalized.Route!;
+                var authResult = ValidateCapacityInstanceOwnershipOrFail(dbConnector, route.InstanceID!);
+                if (authResult != null)
+                {
+                    return authResult;
+                }
+
+                EnsureStationRouteSchema(dbConnector);
+                if (!StationSchemeIDExists(dbConnector, route.InstanceID!, route.StationSchemeID!))
+                {
+                    return NotFound("Station scheme not found.");
+                }
+
+                if (string.IsNullOrWhiteSpace(route.ID))
+                {
+                    route.ID = GenerateStationRouteID(dbConnector, route.InstanceID!, route.StationSchemeID!);
+                }
+
+                if (!StationNodeIDExists(dbConnector, route.InstanceID!, route.StationSchemeID!, route.StartNodeID!) ||
+                    !StationNodeIDExists(dbConnector, route.InstanceID!, route.StationSchemeID!, route.EndNodeID!))
+                {
+                    return BadRequest("StartNodeID and EndNodeID must reference existing nodes in the selected station scheme.");
+                }
+
+                if (StationRouteIDExists(dbConnector, route.InstanceID!, route.StationSchemeID!, route.ID!))
+                {
+                    return BadRequest("Station route ID already exists in the selected station scheme.");
+                }
+
+                var tableName = QuoteIdentifier("stationroute");
+                var result = dbConnector.ExecuteNonQuery(
+                    $@"INSERT INTO {tableName} (
+                           InstanceID, StationSchemeID, ID, {QuoteIdentifier("Type")},
+                           NodeList, LinkList, SwitchList, CellList, SignalList,
+                           AllowanceTags, ForbiddenTags, StartNodeID, EndNodeID)
+                       VALUES (
+                           @InstanceID, @StationSchemeID, @ID, @Type,
+                           @NodeList, @LinkList, @SwitchList, @CellList, @SignalList,
+                           @AllowanceTags, @ForbiddenTags, @StartNodeID, @EndNodeID)",
+                    route);
+                if (result <= 0)
+                {
+                    return StatusCode(500, "Failed to create station route.");
+                }
+
+                return Ok(route);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to create station route.");
+                return StatusCode(500, "Failed to create station route.");
+            }
+        }
+
+        [HttpPut(Name = "EditStationRoute")]
+        public IActionResult EditStationRoute([FromBody] StationRouteRequest? request)
+        {
+            try
+            {
+                var dbConnector = GetCapacityDbConnector();
+                var normalized = NormalizeStationRouteRequest(
+                    request,
+                    allowMissingID: false);
+                if (normalized.ErrorResult != null)
+                {
+                    return normalized.ErrorResult;
+                }
+
+                var route = normalized.Route!;
+                var originalID = request?.OriginalID?.Trim();
+                if (string.IsNullOrWhiteSpace(originalID))
+                {
+                    originalID = route.ID;
+                }
+
+                var authResult = ValidateCapacityInstanceOwnershipOrFail(dbConnector, route.InstanceID!);
+                if (authResult != null)
+                {
+                    return authResult;
+                }
+
+                EnsureStationRouteSchema(dbConnector);
+                if (!StationRouteIDExists(dbConnector, route.InstanceID!, route.StationSchemeID!, originalID!))
+                {
+                    return NotFound("Station route not found.");
+                }
+
+                if (!StationNodeIDExists(dbConnector, route.InstanceID!, route.StationSchemeID!, route.StartNodeID!) ||
+                    !StationNodeIDExists(dbConnector, route.InstanceID!, route.StationSchemeID!, route.EndNodeID!))
+                {
+                    return BadRequest("StartNodeID and EndNodeID must reference existing nodes in the selected station scheme.");
+                }
+
+                if (!string.Equals(originalID, route.ID, StringComparison.OrdinalIgnoreCase) &&
+                    StationRouteIDExists(dbConnector, route.InstanceID!, route.StationSchemeID!, route.ID!))
+                {
+                    return BadRequest("Station route ID already exists in the selected station scheme.");
+                }
+
+                var tableName = QuoteIdentifier("stationroute");
+                dbConnector.ExecuteNonQuery(
+                    $@"UPDATE {tableName}
+                       SET ID = @ID,
+                           {QuoteIdentifier("Type")} = @Type,
+                           NodeList = @NodeList,
+                           LinkList = @LinkList,
+                           SwitchList = @SwitchList,
+                           CellList = @CellList,
+                           SignalList = @SignalList,
+                           AllowanceTags = @AllowanceTags,
+                           ForbiddenTags = @ForbiddenTags,
+                           StartNodeID = @StartNodeID,
+                           EndNodeID = @EndNodeID
+                       WHERE InstanceID = @InstanceID
+                         AND StationSchemeID = @StationSchemeID
+                         AND ID = @OriginalID",
+                    new
+                    {
+                        route.InstanceID,
+                        route.StationSchemeID,
+                        route.ID,
+                        route.Type,
+                        route.NodeList,
+                        route.LinkList,
+                        route.SwitchList,
+                        route.CellList,
+                        route.SignalList,
+                        route.AllowanceTags,
+                        route.ForbiddenTags,
+                        route.StartNodeID,
+                        route.EndNodeID,
+                        OriginalID = originalID
+                    });
+
+                return Ok(route);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to update station route.");
+                return StatusCode(500, "Failed to update station route.");
+            }
+        }
+
+        [HttpDelete(Name = "DeleteStationRoute")]
+        public IActionResult DeleteStationRoute(
+            [FromQuery] string? instanceID = null,
+            [FromQuery] string? stationSchemeID = null,
+            [FromQuery] string? id = null)
+        {
+            try
+            {
+                var normalizedInstanceID = instanceID?.Trim();
+                var normalizedStationSchemeID = stationSchemeID?.Trim();
+                var normalizedID = id?.Trim();
+                if (string.IsNullOrWhiteSpace(normalizedInstanceID) ||
+                    string.IsNullOrWhiteSpace(normalizedStationSchemeID) ||
+                    string.IsNullOrWhiteSpace(normalizedID))
+                {
+                    return BadRequest("instanceID, stationSchemeID and id are required when deleting a station route.");
+                }
+
+                var dbConnector = GetCapacityDbConnector();
+                var authResult = ValidateCapacityInstanceOwnershipOrFail(dbConnector, normalizedInstanceID);
+                if (authResult != null)
+                {
+                    return authResult;
+                }
+
+                EnsureStationRouteSchema(dbConnector);
+                if (!StationRouteIDExists(dbConnector, normalizedInstanceID, normalizedStationSchemeID, normalizedID))
+                {
+                    return NotFound("Station route not found.");
+                }
+
+                var tableName = QuoteIdentifier("stationroute");
+                dbConnector.ExecuteNonQuery(
+                    $@"DELETE FROM {tableName}
+                       WHERE InstanceID = @normalizedInstanceID
+                         AND StationSchemeID = @normalizedStationSchemeID
+                         AND ID = @normalizedID",
+                    new { normalizedInstanceID, normalizedStationSchemeID, normalizedID });
+
+                return Ok("Station route deleted successfully.");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to delete station route.");
+                return StatusCode(500, "Failed to delete station route.");
+            }
+        }
+
+        [HttpGet(Name = "GetStationRouteEnds")]
+        public IActionResult GetStationRouteEnds(
+            [FromQuery] string? instanceID = null,
+            [FromQuery] string? stationSchemeID = null)
+        {
+            try
+            {
+                var normalizedInstanceID = instanceID?.Trim();
+                if (string.IsNullOrWhiteSpace(normalizedInstanceID))
+                {
+                    return BadRequest("instanceID is required when loading station route ends.");
+                }
+
+                var dbConnector = GetCapacityDbConnector();
+                var authResult = ValidateCapacityInstanceOwnershipOrFail(dbConnector, normalizedInstanceID);
+                if (authResult != null)
+                {
+                    return authResult;
+                }
+
+                EnsureStationSchemeSchema(dbConnector);
+                EnsureStationRouteEndSchema(dbConnector);
+                var normalizedStationSchemeID = ResolveStationSchemeID(dbConnector, normalizedInstanceID, stationSchemeID);
+                if (string.IsNullOrWhiteSpace(normalizedStationSchemeID))
+                {
+                    return Ok(new List<StationRouteEndRow>());
+                }
+
+                return Ok(LoadStationRouteEnds(dbConnector, normalizedInstanceID, normalizedStationSchemeID));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to load station route ends.");
+                return StatusCode(500, "Failed to load station route ends.");
+            }
+        }
+
+        [HttpPost(Name = "CreateStationRouteEnd")]
+        public IActionResult CreateStationRouteEnd([FromBody] StationRouteEndRequest? request)
+        {
+            try
+            {
+                var dbConnector = GetCapacityDbConnector();
+                var normalized = NormalizeStationRouteEndRequest(
+                    request,
+                    allowMissingID: true);
+                if (normalized.ErrorResult != null)
+                {
+                    return normalized.ErrorResult;
+                }
+
+                var routeEnd = normalized.RouteEnd!;
+                var authResult = ValidateCapacityInstanceOwnershipOrFail(dbConnector, routeEnd.InstanceID!);
+                if (authResult != null)
+                {
+                    return authResult;
+                }
+
+                EnsureStationRouteEndSchema(dbConnector);
+                if (!StationSchemeIDExists(dbConnector, routeEnd.InstanceID!, routeEnd.StationSchemeID!))
+                {
+                    return NotFound("Station scheme not found.");
+                }
+
+                if (string.IsNullOrWhiteSpace(routeEnd.ID))
+                {
+                    routeEnd.ID = GenerateStationRouteEndID(dbConnector, routeEnd.InstanceID!, routeEnd.StationSchemeID!);
+                }
+
+                if (!StationRouteEndBindingNodeExists(
+                    dbConnector,
+                    routeEnd.InstanceID!,
+                    routeEnd.StationSchemeID!,
+                    routeEnd.BindingNodeID!))
+                {
+                    return BadRequest("BindingNodeID must reference an existing node in the selected station scheme.");
+                }
+
+                if (StationRouteEndIDExists(dbConnector, routeEnd.InstanceID!, routeEnd.StationSchemeID!, routeEnd.ID!))
+                {
+                    return BadRequest("Station route end ID already exists in the selected station scheme.");
+                }
+
+                var tableName = QuoteIdentifier("stationrouteend");
+                var result = dbConnector.ExecuteNonQuery(
+                    $@"INSERT INTO {tableName} (
+                           InstanceID, StationSchemeID, ID, BindingNodeID, {QuoteIdentifier("Type")}, SegmentTag, SidingTag)
+                       VALUES (
+                           @InstanceID, @StationSchemeID, @ID, @BindingNodeID, @Type, @SegmentTag, @SidingTag)",
+                    routeEnd);
+                if (result <= 0)
+                {
+                    return StatusCode(500, "Failed to create station route end.");
+                }
+
+                return Ok(routeEnd);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to create station route end.");
+                return StatusCode(500, "Failed to create station route end.");
+            }
+        }
+
+        [HttpPut(Name = "EditStationRouteEnd")]
+        public IActionResult EditStationRouteEnd([FromBody] StationRouteEndRequest? request)
+        {
+            try
+            {
+                var dbConnector = GetCapacityDbConnector();
+                var normalized = NormalizeStationRouteEndRequest(
+                    request,
+                    allowMissingID: false);
+                if (normalized.ErrorResult != null)
+                {
+                    return normalized.ErrorResult;
+                }
+
+                var routeEnd = normalized.RouteEnd!;
+                var originalID = request?.OriginalID?.Trim();
+                if (string.IsNullOrWhiteSpace(originalID))
+                {
+                    originalID = routeEnd.ID;
+                }
+
+                var authResult = ValidateCapacityInstanceOwnershipOrFail(dbConnector, routeEnd.InstanceID!);
+                if (authResult != null)
+                {
+                    return authResult;
+                }
+
+                EnsureStationRouteEndSchema(dbConnector);
+                if (!StationRouteEndIDExists(dbConnector, routeEnd.InstanceID!, routeEnd.StationSchemeID!, originalID!))
+                {
+                    return NotFound("Station route end not found.");
+                }
+
+                if (!StationRouteEndBindingNodeExists(
+                    dbConnector,
+                    routeEnd.InstanceID!,
+                    routeEnd.StationSchemeID!,
+                    routeEnd.BindingNodeID!))
+                {
+                    return BadRequest("BindingNodeID must reference an existing node in the selected station scheme.");
+                }
+
+                if (!string.Equals(originalID, routeEnd.ID, StringComparison.OrdinalIgnoreCase) &&
+                    StationRouteEndIDExists(dbConnector, routeEnd.InstanceID!, routeEnd.StationSchemeID!, routeEnd.ID!))
+                {
+                    return BadRequest("Station route end ID already exists in the selected station scheme.");
+                }
+
+                var tableName = QuoteIdentifier("stationrouteend");
+                dbConnector.ExecuteNonQuery(
+                    $@"UPDATE {tableName}
+                       SET ID = @ID,
+                           BindingNodeID = @BindingNodeID,
+                           {QuoteIdentifier("Type")} = @Type,
+                           SegmentTag = @SegmentTag,
+                           SidingTag = @SidingTag
+                       WHERE InstanceID = @InstanceID
+                         AND StationSchemeID = @StationSchemeID
+                         AND ID = @OriginalID",
+                    new
+                    {
+                        routeEnd.InstanceID,
+                        routeEnd.StationSchemeID,
+                        routeEnd.ID,
+                        routeEnd.BindingNodeID,
+                        routeEnd.Type,
+                        routeEnd.SegmentTag,
+                        routeEnd.SidingTag,
+                        OriginalID = originalID
+                    });
+
+                return Ok(routeEnd);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to update station route end.");
+                return StatusCode(500, "Failed to update station route end.");
+            }
+        }
+
+        [HttpDelete(Name = "DeleteStationRouteEnd")]
+        public IActionResult DeleteStationRouteEnd(
+            [FromQuery] string? instanceID = null,
+            [FromQuery] string? stationSchemeID = null,
+            [FromQuery] string? id = null)
+        {
+            try
+            {
+                var normalizedInstanceID = instanceID?.Trim();
+                var normalizedStationSchemeID = stationSchemeID?.Trim();
+                var normalizedID = id?.Trim();
+                if (string.IsNullOrWhiteSpace(normalizedInstanceID) ||
+                    string.IsNullOrWhiteSpace(normalizedStationSchemeID) ||
+                    string.IsNullOrWhiteSpace(normalizedID))
+                {
+                    return BadRequest("instanceID, stationSchemeID and id are required when deleting a station route end.");
+                }
+
+                var dbConnector = GetCapacityDbConnector();
+                var authResult = ValidateCapacityInstanceOwnershipOrFail(dbConnector, normalizedInstanceID);
+                if (authResult != null)
+                {
+                    return authResult;
+                }
+
+                EnsureStationRouteEndSchema(dbConnector);
+                if (!StationRouteEndIDExists(dbConnector, normalizedInstanceID, normalizedStationSchemeID, normalizedID))
+                {
+                    return NotFound("Station route end not found.");
+                }
+
+                var tableName = QuoteIdentifier("stationrouteend");
+                dbConnector.ExecuteNonQuery(
+                    $@"DELETE FROM {tableName}
+                       WHERE InstanceID = @normalizedInstanceID
+                         AND StationSchemeID = @normalizedStationSchemeID
+                         AND ID = @normalizedID",
+                    new { normalizedInstanceID, normalizedStationSchemeID, normalizedID });
+
+                return Ok("Station route end deleted successfully.");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to delete station route end.");
+                return StatusCode(500, "Failed to delete station route end.");
             }
         }
 
@@ -310,13 +861,14 @@ namespace SwitchYard.Service.Controllers
 
                 var stationSchemeTable = QuoteIdentifier("stationscheme");
                 var result = dbConnector.ExecuteNonQuery(
-                    $@"INSERT INTO {stationSchemeTable} (InstanceID, ID, Name)
-                       VALUES (@InstanceID, @ID, @Name)",
+                    $@"INSERT INTO {stationSchemeTable} (InstanceID, ID, Name, {QuoteIdentifier("GridSettings")})
+                       VALUES (@InstanceID, @ID, @Name, @GridSettings)",
                     new
                     {
                         InstanceID = normalizedInstanceID,
                         ID = normalizedID,
-                        Name = normalizedName
+                        Name = normalizedName,
+                        GridSettings = DefaultStationSchemeGridSettingsJson
                     });
                 if (result <= 0)
                 {
@@ -501,7 +1053,11 @@ namespace SwitchYard.Service.Controllers
         {
             return JsonSerializer.Serialize(new
             {
-                metadata = new { latestElementID = 0 },
+                metadata = new
+                {
+                    latestElementID = 0,
+                    gridSettings = new { showGrid = true, spacing = 20, originX = 0, originY = 0 }
+                },
                 tracks = Array.Empty<object>(),
                 curves = Array.Empty<object>(),
                 nodes = Array.Empty<object>(),
@@ -510,6 +1066,7 @@ namespace SwitchYard.Service.Controllers
                 bufferStops = Array.Empty<object>(),
                 platforms = Array.Empty<object>(),
                 switches = Array.Empty<object>(),
+                cells = Array.Empty<object>(),
                 annotations = Array.Empty<object>()
             });
         }
@@ -599,9 +1156,13 @@ namespace SwitchYard.Service.Controllers
                 "curve",
                 "signal",
                 "insulationjoint",
+                "bufferstop",
                 "platform",
                 "switch",
                 "switchbranchvector",
+                "stationroute",
+                "stationrouteend",
+                "cell",
                 "annotation"
             })
             {
@@ -757,13 +1318,14 @@ namespace SwitchYard.Service.Controllers
             }
 
             dbConnector.ExecuteNonQuery(
-                $@"INSERT INTO {stationSchemeTable} (InstanceID, ID, Name)
-                   VALUES (@InstanceID, @ID, @Name)",
+                $@"INSERT INTO {stationSchemeTable} (InstanceID, ID, Name, {QuoteIdentifier("GridSettings")})
+                   VALUES (@InstanceID, @ID, @Name, @GridSettings)",
                 new
                 {
                     InstanceID = instanceID,
                     ID = stationSchemeID,
-                    Name = name
+                    Name = name,
+                    GridSettings = DefaultStationSchemeGridSettingsJson
                 });
         }
 
@@ -828,6 +1390,67 @@ namespace SwitchYard.Service.Controllers
                 });
         }
 
+        private static string? LoadStationSchemeGridSettings(
+            DBConnector dbConnector,
+            string instanceID,
+            string stationSchemeID)
+        {
+            EnsureStationSchemeSchema(dbConnector);
+            var stationSchemeTable = QuoteIdentifier("stationscheme");
+            return (dbConnector.Query<StationSchemeLookupRow>(
+                $@"SELECT {QuoteIdentifier("GridSettings")} AS GridSettings
+                   FROM {stationSchemeTable}
+                   WHERE InstanceID = @instanceID AND ID = @stationSchemeID
+                   LIMIT 1",
+                new { instanceID, stationSchemeID }) ?? new List<StationSchemeLookupRow>())
+                .FirstOrDefault()
+                ?.GridSettings;
+        }
+
+        private static JsonElement? ParseStationSchemeGridSettings(string? gridSettings)
+        {
+            if (string.IsNullOrWhiteSpace(gridSettings))
+            {
+                return null;
+            }
+
+            try
+            {
+                using var document = JsonDocument.Parse(gridSettings);
+                return document.RootElement.Clone();
+            }
+            catch (JsonException)
+            {
+                return null;
+            }
+        }
+
+        private static void PersistStationSchemeGridSettings(
+            DBConnector dbConnector,
+            string instanceID,
+            string stationSchemeID,
+            JsonElement? gridSettings)
+        {
+            if (!gridSettings.HasValue ||
+                gridSettings.Value.ValueKind == JsonValueKind.Null ||
+                gridSettings.Value.ValueKind == JsonValueKind.Undefined)
+            {
+                return;
+            }
+
+            var stationSchemeTable = QuoteIdentifier("stationscheme");
+            dbConnector.ExecuteNonQuery(
+                $@"UPDATE {stationSchemeTable}
+                   SET {QuoteIdentifier("GridSettings")} = @gridSettings
+                   WHERE InstanceID = @instanceID AND ID = @stationSchemeID",
+                new
+                {
+                    instanceID,
+                    stationSchemeID,
+                    gridSettings = gridSettings.Value.GetRawText()
+                });
+        }
+
         private static void DeleteStationSchemeMetadata(
             DBConnector dbConnector,
             string instanceID,
@@ -877,13 +1500,14 @@ namespace SwitchYard.Service.Controllers
             }
 
             var result = dbConnector.ExecuteNonQuery(
-                $@"INSERT INTO {stationSchemeTable} (InstanceID, ID, Name)
-                   VALUES (@InstanceID, @ID, @Name)",
+                $@"INSERT INTO {stationSchemeTable} (InstanceID, ID, Name, {QuoteIdentifier("GridSettings")})
+                   VALUES (@InstanceID, @ID, @Name, @GridSettings)",
                 new
                 {
                     InstanceID = instanceID,
                     ID = stationSchemeID,
-                    Name = stationSchemeID == DefaultStationSchemeID ? DefaultStationSchemeName : stationSchemeID
+                    Name = stationSchemeID == DefaultStationSchemeID ? DefaultStationSchemeName : stationSchemeID,
+                    GridSettings = DefaultStationSchemeGridSettingsJson
                 });
             if (result <= 0)
             {
@@ -901,6 +1525,7 @@ namespace SwitchYard.Service.Controllers
             var bufferStopTable = QuoteIdentifier("bufferstop");
             var platformTable = QuoteIdentifier("platform");
             var switchTable = QuoteIdentifier("switch");
+            var cellTable = QuoteIdentifier("cell");
             var switchBranchVectorTable = QuoteIdentifier("switchbranchvector");
             var annotationTable = QuoteIdentifier("annotation");
 
@@ -908,6 +1533,7 @@ namespace SwitchYard.Service.Controllers
             EnsureCurveSchema(dbConnector);
             EnsureBufferStopSchema(dbConnector);
             EnsureNamedDeviceSchemas(dbConnector);
+            EnsureCellSchema(dbConnector);
 
             var nodes = dbConnector.Query<StationNodeRow>(
                 $@"SELECT *
@@ -971,6 +1597,13 @@ namespace SwitchYard.Service.Controllers
                    WHERE InstanceID = @instanceID AND StationSchemeID = @stationSchemeID
                    ORDER BY SwitchID, Sequence",
                 new { instanceID, stationSchemeID }) ?? new List<SwitchBranchVectorRow>();
+
+            var cells = dbConnector.Query<StationCellRow>(
+                $@"SELECT InstanceID, StationSchemeID, ID, LinkIDList, Name
+                   FROM {cellTable}
+                   WHERE InstanceID = @instanceID AND StationSchemeID = @stationSchemeID
+                   ORDER BY ID",
+                new { instanceID, stationSchemeID }) ?? new List<StationCellRow>();
 
             var annotations = dbConnector.Query<StationAnnotationRow>(
                 $@"SELECT *
@@ -1167,6 +1800,17 @@ namespace SwitchYard.Service.Controllers
                 .Where(sw => sw != null)
                 .ToArray();
 
+            var cellViews = cells
+                .Select(cell => new
+                {
+                    instanceID = cell.InstanceID ?? instanceID,
+                    stationSchemeID = cell.StationSchemeID ?? stationSchemeID,
+                    id = cell.ID ?? string.Empty,
+                    linkIDList = cell.LinkIDList ?? string.Empty,
+                    name = NormalizeEquipmentName(cell.Name, cell.ID ?? string.Empty)
+                })
+                .ToArray();
+
             var annotationViews = annotations
                 .Select(annotation =>
                 {
@@ -1188,6 +1832,8 @@ namespace SwitchYard.Service.Controllers
 
             var displayStyles = ParseStationSchemeDisplayStyles(
                 LoadStationSchemeDisplayStyles(dbConnector, instanceID, stationSchemeID));
+            var gridSettings = ParseStationSchemeGridSettings(
+                LoadStationSchemeGridSettings(dbConnector, instanceID, stationSchemeID));
             var latestElementID = CalculateLatestElementID(
                 nodes.Select(node => ToInvariantString(node.ID))
                     .Concat(links.Select(link => ToInvariantString(link.ID)))
@@ -1197,6 +1843,7 @@ namespace SwitchYard.Service.Controllers
                     .Concat(bufferStops.Select(bufferStop => bufferStop.ID ?? string.Empty))
                     .Concat(platforms.Select(platform => platform.ID ?? string.Empty))
                     .Concat(switches.Select(sw => sw.ID ?? string.Empty))
+                    .Concat(cells.Select(cell => cell.ID ?? string.Empty))
                     .Concat(annotations.Select(annotation => annotation.ID ?? string.Empty)));
 
             return JsonSerializer.Serialize(new
@@ -1207,7 +1854,8 @@ namespace SwitchYard.Service.Controllers
                     instanceID,
                     stationSchemeID,
                     coordinateTransform = nodeTransform.ToMetadata(),
-                    displayStyles
+                    displayStyles,
+                    gridSettings
                 },
                 tracks = trackViews,
                 curves = curveViews,
@@ -1217,6 +1865,7 @@ namespace SwitchYard.Service.Controllers
                 bufferStops = bufferStopViews,
                 platforms = platformViews,
                 switches = switchViews,
+                cells = cellViews,
                 annotations = annotationViews
             });
         }
@@ -1235,6 +1884,7 @@ namespace SwitchYard.Service.Controllers
             var bufferStopTable = QuoteIdentifier("bufferstop");
             var platformTable = QuoteIdentifier("platform");
             var switchTable = QuoteIdentifier("switch");
+            var cellTable = QuoteIdentifier("cell");
             var switchBranchVectorTable = QuoteIdentifier("switchbranchvector");
             var annotationTable = QuoteIdentifier("annotation");
 
@@ -1242,8 +1892,9 @@ namespace SwitchYard.Service.Controllers
             EnsureCurveSchema(dbConnector);
             EnsureBufferStopSchema(dbConnector);
             EnsureNamedDeviceSchemas(dbConnector);
+            EnsureCellSchema(dbConnector);
 
-            var transform = StationLayoutPersistenceTransform.FromMetadata(layout.Metadata?.CoordinateTransform);
+            var transform = StationLayoutPersistenceTransform.Identity;
             var nodeSaveContext = BuildNodeSaveContext(layout, transform);
             var linkSaveContext = BuildLinkSaveContext(layout, nodeSaveContext);
 
@@ -1256,6 +1907,11 @@ namespace SwitchYard.Service.Controllers
                     instanceID,
                     stationSchemeID,
                     layout.Metadata?.DisplayStyles);
+                PersistStationSchemeGridSettings(
+                    dbConnector,
+                    instanceID,
+                    stationSchemeID,
+                    layout.Metadata?.GridSettings);
 
                 DeleteStationLayoutTableRows(dbConnector, switchBranchVectorTable, instanceID, stationSchemeID);
                 DeleteStationLayoutTableRows(dbConnector, switchTable, instanceID, stationSchemeID);
@@ -1263,6 +1919,7 @@ namespace SwitchYard.Service.Controllers
                 DeleteStationLayoutTableRows(dbConnector, insulationJointTable, instanceID, stationSchemeID);
                 DeleteStationLayoutTableRows(dbConnector, signalTable, instanceID, stationSchemeID);
                 DeleteStationLayoutTableRows(dbConnector, platformTable, instanceID, stationSchemeID);
+                DeleteStationLayoutTableRows(dbConnector, cellTable, instanceID, stationSchemeID);
                 DeleteStationLayoutTableRows(dbConnector, annotationTable, instanceID, stationSchemeID);
                 DeleteStationLayoutTableRows(dbConnector, curveTable, instanceID, stationSchemeID);
                 DeleteStationLayoutTableRows(dbConnector, linkTable, instanceID, stationSchemeID);
@@ -1311,6 +1968,7 @@ namespace SwitchYard.Service.Controllers
                 var signalCount = SaveSignals(dbConnector, signalTable, instanceID, stationSchemeID, layout, nodeSaveContext);
                 var insulationJointCount = SaveInsulationJoints(dbConnector, insulationJointTable, instanceID, stationSchemeID, layout, nodeSaveContext);
                 var bufferStopCount = SaveBufferStops(dbConnector, bufferStopTable, instanceID, stationSchemeID, layout, nodeSaveContext);
+                var cellCount = SaveCells(dbConnector, cellTable, instanceID, stationSchemeID, layout, linkSaveContext);
                 var switchSaveResult = SaveSwitches(
                     dbConnector,
                     switchTable,
@@ -1337,6 +1995,7 @@ namespace SwitchYard.Service.Controllers
                     PlatformCount = platformCount,
                     SwitchCount = switchSaveResult.SwitchCount,
                     SwitchBranchVectorCount = switchSaveResult.SwitchBranchVectorCount,
+                    CellCount = cellCount,
                     AnnotationCount = annotationCount
                 };
             }
@@ -1353,6 +2012,262 @@ namespace SwitchYard.Service.Controllers
                 $@"DELETE FROM {tableName}
                    WHERE InstanceID = @instanceID AND StationSchemeID = @stationSchemeID",
                 new { instanceID, stationSchemeID });
+        }
+
+        private (StationRouteRow? Route, IActionResult? ErrorResult) NormalizeStationRouteRequest(
+            StationRouteRequest? request,
+            bool allowMissingID)
+        {
+            if (request == null)
+            {
+                return (null, BadRequest("Request body is required."));
+            }
+
+            var instanceID = request.InstanceID?.Trim();
+            if (string.IsNullOrWhiteSpace(instanceID))
+            {
+                return (null, BadRequest("instanceID is required when saving a station route."));
+            }
+
+            var stationSchemeID = request.StationSchemeID?.Trim();
+            if (string.IsNullOrWhiteSpace(stationSchemeID))
+            {
+                return (null, BadRequest("stationSchemeID is required when saving a station route."));
+            }
+
+            var startNodeID = request.StartNodeID?.Trim();
+            var endNodeID = request.EndNodeID?.Trim();
+            if (string.IsNullOrWhiteSpace(startNodeID) || string.IsNullOrWhiteSpace(endNodeID))
+            {
+                return (null, BadRequest("StartNodeID and EndNodeID are required when saving a station route."));
+            }
+
+            var id = request.ID?.Trim();
+            if (string.IsNullOrWhiteSpace(id))
+            {
+                if (!allowMissingID)
+                {
+                    return (null, BadRequest("ID is required when updating a station route."));
+                }
+            }
+
+            return (new StationRouteRow
+            {
+                InstanceID = instanceID,
+                StationSchemeID = stationSchemeID,
+                ID = id,
+                Type = NormalizeNullableRouteEndField(request.Type),
+                NodeList = NormalizeNullableRouteEndField(request.NodeList),
+                LinkList = NormalizeNullableRouteEndField(request.LinkList),
+                SwitchList = NormalizeNullableRouteEndField(request.SwitchList),
+                CellList = NormalizeNullableRouteEndField(request.CellList),
+                SignalList = NormalizeNullableRouteEndField(request.SignalList),
+                AllowanceTags = NormalizeNullableRouteEndField(request.AllowanceTags),
+                ForbiddenTags = NormalizeNullableRouteEndField(request.ForbiddenTags),
+                StartNodeID = startNodeID,
+                EndNodeID = endNodeID
+            }, null);
+        }
+
+        private string GenerateStationRouteID(DBConnector dbConnector, string instanceID, string stationSchemeID)
+        {
+            for (var attempt = 0; attempt < 10; attempt++)
+            {
+                var candidate = _snowflakeIdGenerator.NextIdString();
+                if (!StationRouteIDExists(dbConnector, instanceID, stationSchemeID, candidate))
+                {
+                    return candidate;
+                }
+            }
+
+            throw new InvalidOperationException("Failed to generate a unique station route ID.");
+        }
+
+        private static List<StationRouteRow> LoadStationRoutes(
+            DBConnector dbConnector,
+            string instanceID,
+            string stationSchemeID)
+        {
+            var tableName = QuoteIdentifier("stationroute");
+            return dbConnector.Query<StationRouteRow>(
+                $@"SELECT InstanceID, StationSchemeID, ID, {QuoteIdentifier("Type")} AS {QuoteIdentifier("Type")},
+                          NodeList, LinkList, SwitchList, CellList, SignalList,
+                          AllowanceTags, ForbiddenTags, StartNodeID, EndNodeID
+                   FROM {tableName}
+                   WHERE InstanceID = @instanceID AND StationSchemeID = @stationSchemeID
+                   ORDER BY ID",
+                new { instanceID, stationSchemeID }) ?? new List<StationRouteRow>();
+        }
+
+        private static bool StationRouteIDExists(
+            DBConnector dbConnector,
+            string instanceID,
+            string stationSchemeID,
+            string id)
+        {
+            if (string.IsNullOrWhiteSpace(id))
+            {
+                return false;
+            }
+
+            EnsureStationRouteSchema(dbConnector);
+            var tableName = QuoteIdentifier("stationroute");
+            return (dbConnector.Query<StationRouteRow>(
+                $@"SELECT ID
+                   FROM {tableName}
+                   WHERE InstanceID = @instanceID
+                     AND StationSchemeID = @stationSchemeID
+                     AND ID = @id
+                   LIMIT 1",
+                new { instanceID, stationSchemeID, id }) ?? new List<StationRouteRow>()).Any();
+        }
+
+        private static bool StationNodeIDExists(
+            DBConnector dbConnector,
+            string instanceID,
+            string stationSchemeID,
+            string nodeID)
+        {
+            if (string.IsNullOrWhiteSpace(nodeID))
+            {
+                return false;
+            }
+
+            var nodeTable = QuoteIdentifier("node");
+            return (dbConnector.Query<StationNodeRow>(
+                $@"SELECT ID
+                   FROM {nodeTable}
+                   WHERE InstanceID = @instanceID
+                     AND StationSchemeID = @stationSchemeID
+                     AND ID = @nodeID
+                   LIMIT 1",
+                new { instanceID, stationSchemeID, nodeID }) ?? new List<StationNodeRow>()).Any();
+        }
+
+        private (StationRouteEndRow? RouteEnd, IActionResult? ErrorResult) NormalizeStationRouteEndRequest(
+            StationRouteEndRequest? request,
+            bool allowMissingID)
+        {
+            if (request == null)
+            {
+                return (null, BadRequest("Request body is required."));
+            }
+
+            var instanceID = request.InstanceID?.Trim();
+            if (string.IsNullOrWhiteSpace(instanceID))
+            {
+                return (null, BadRequest("instanceID is required when saving a station route end."));
+            }
+
+            var stationSchemeID = request.StationSchemeID?.Trim();
+            if (string.IsNullOrWhiteSpace(stationSchemeID))
+            {
+                return (null, BadRequest("stationSchemeID is required when saving a station route end."));
+            }
+
+            var bindingNodeID = request.BindingNodeID?.Trim();
+            if (string.IsNullOrWhiteSpace(bindingNodeID))
+            {
+                return (null, BadRequest("BindingNodeID is required when saving a station route end."));
+            }
+
+            var id = request.ID?.Trim();
+            if (string.IsNullOrWhiteSpace(id))
+            {
+                if (!allowMissingID)
+                {
+                    return (null, BadRequest("ID is required when updating a station route end."));
+                }
+            }
+
+            return (new StationRouteEndRow
+            {
+                InstanceID = instanceID,
+                StationSchemeID = stationSchemeID,
+                ID = id,
+                BindingNodeID = bindingNodeID,
+                Type = NormalizeNullableRouteEndField(request.Type),
+                SegmentTag = NormalizeNullableRouteEndField(request.SegmentTag),
+                SidingTag = NormalizeNullableRouteEndField(request.SidingTag)
+            }, null);
+        }
+
+        private string GenerateStationRouteEndID(DBConnector dbConnector, string instanceID, string stationSchemeID)
+        {
+            for (var attempt = 0; attempt < 10; attempt++)
+            {
+                var candidate = _snowflakeIdGenerator.NextIdString();
+                if (!StationRouteEndIDExists(dbConnector, instanceID, stationSchemeID, candidate))
+                {
+                    return candidate;
+                }
+            }
+
+            throw new InvalidOperationException("Failed to generate a unique station route end ID.");
+        }
+
+        private static string? NormalizeNullableRouteEndField(string? value)
+        {
+            return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+        }
+
+        private static List<StationRouteEndRow> LoadStationRouteEnds(
+            DBConnector dbConnector,
+            string instanceID,
+            string stationSchemeID)
+        {
+            var tableName = QuoteIdentifier("stationrouteend");
+            return dbConnector.Query<StationRouteEndRow>(
+                $@"SELECT InstanceID, StationSchemeID, ID, BindingNodeID, {QuoteIdentifier("Type")} AS {QuoteIdentifier("Type")}, SegmentTag, SidingTag
+                   FROM {tableName}
+                   WHERE InstanceID = @instanceID AND StationSchemeID = @stationSchemeID
+                   ORDER BY ID",
+                new { instanceID, stationSchemeID }) ?? new List<StationRouteEndRow>();
+        }
+
+        private static bool StationRouteEndIDExists(
+            DBConnector dbConnector,
+            string instanceID,
+            string stationSchemeID,
+            string id)
+        {
+            if (string.IsNullOrWhiteSpace(id))
+            {
+                return false;
+            }
+
+            EnsureStationRouteEndSchema(dbConnector);
+            var tableName = QuoteIdentifier("stationrouteend");
+            return (dbConnector.Query<StationRouteEndRow>(
+                $@"SELECT ID
+                   FROM {tableName}
+                   WHERE InstanceID = @instanceID
+                     AND StationSchemeID = @stationSchemeID
+                     AND ID = @id
+                   LIMIT 1",
+                new { instanceID, stationSchemeID, id }) ?? new List<StationRouteEndRow>()).Any();
+        }
+
+        private static bool StationRouteEndBindingNodeExists(
+            DBConnector dbConnector,
+            string instanceID,
+            string stationSchemeID,
+            string bindingNodeID)
+        {
+            if (string.IsNullOrWhiteSpace(bindingNodeID))
+            {
+                return false;
+            }
+
+            var nodeTable = QuoteIdentifier("node");
+            return (dbConnector.Query<StationNodeRow>(
+                $@"SELECT ID
+                   FROM {nodeTable}
+                   WHERE InstanceID = @instanceID
+                     AND StationSchemeID = @stationSchemeID
+                     AND ID = @bindingNodeID
+                   LIMIT 1",
+                new { instanceID, stationSchemeID, bindingNodeID }) ?? new List<StationNodeRow>()).Any();
         }
 
         private StationLayoutNodeSaveContext BuildNodeSaveContext(
@@ -1515,6 +2430,137 @@ namespace SwitchYard.Service.Controllers
             }
 
             return count;
+        }
+
+        private int SaveCells(
+            DBConnector dbConnector,
+            string cellTable,
+            string instanceID,
+            string stationSchemeID,
+            StationLayoutJson layout,
+            StationLayoutLinkSaveContext linkContext)
+        {
+            var count = 0;
+            var usedCellIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var cell in layout.Cells ?? new List<StationLayoutCellJson>())
+            {
+                var cellID = string.IsNullOrWhiteSpace(cell.ID)
+                    ? GenerateStationCellID(dbConnector, instanceID, stationSchemeID, usedCellIds)
+                    : cell.ID.Trim();
+                if (usedCellIds.Contains(cellID))
+                {
+                    cellID = GenerateStationCellID(dbConnector, instanceID, stationSchemeID, usedCellIds);
+                }
+
+                usedCellIds.Add(cellID);
+                var linkIDList = NormalizeCellLinkIDList(cell.LinkIDList, linkContext);
+                var cellName = NormalizeEquipmentName(cell.Name, cellID);
+                cell.ID = cellID;
+                cell.LinkIDList = linkIDList;
+                cell.Name = cellName;
+                EnsureInserted(
+                    dbConnector.ExecuteNonQuery(
+                        $@"INSERT INTO {cellTable} (InstanceID, StationSchemeID, ID, LinkIDList, Name)
+                           VALUES (@InstanceID, @StationSchemeID, @ID, @LinkIDList, @Name)",
+                        new
+                        {
+                            InstanceID = instanceID,
+                            StationSchemeID = stationSchemeID,
+                            ID = cellID,
+                            LinkIDList = linkIDList,
+                            Name = cellName
+                        }),
+                    "cell");
+                count++;
+            }
+
+            return count;
+        }
+
+        private string GenerateStationCellID(
+            DBConnector dbConnector,
+            string instanceID,
+            string stationSchemeID,
+            ISet<string> reservedIds)
+        {
+            for (var attempt = 0; attempt < 10; attempt++)
+            {
+                var candidate = _snowflakeIdGenerator.NextIdString();
+                if (!reservedIds.Contains(candidate) && !StationCellIDExists(dbConnector, instanceID, stationSchemeID, candidate))
+                {
+                    return candidate;
+                }
+            }
+
+            throw new InvalidOperationException("Failed to generate a unique station cell ID.");
+        }
+
+        private static bool StationCellIDExists(
+            DBConnector dbConnector,
+            string instanceID,
+            string stationSchemeID,
+            string id)
+        {
+            if (string.IsNullOrWhiteSpace(id))
+            {
+                return false;
+            }
+
+            EnsureCellSchema(dbConnector);
+            var tableName = QuoteIdentifier("cell");
+            return (dbConnector.Query<StationCellRow>(
+                $@"SELECT ID
+                   FROM {tableName}
+                   WHERE InstanceID = @instanceID
+                     AND StationSchemeID = @stationSchemeID
+                     AND ID = @id
+                   LIMIT 1",
+                new { instanceID, stationSchemeID, id }) ?? new List<StationCellRow>()).Any();
+        }
+
+        private static string NormalizeCellLinkIDList(string? linkIDList, StationLayoutLinkSaveContext linkContext)
+        {
+            if (string.IsNullOrWhiteSpace(linkIDList))
+            {
+                return string.Empty;
+            }
+
+            var normalizedLinkIDs = ParseDelimitedIDList(linkIDList)
+                .Select(id => ResolveBindingLinkID(linkContext, id))
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            return string.Join(",", normalizedLinkIDs);
+        }
+
+        private static int GetFirstMatchingRouteLinkIndex(
+            StationCellRow cell,
+            IReadOnlyDictionary<string, int> routeLinkIndexByID)
+        {
+            var firstIndex = int.MaxValue;
+            foreach (var linkID in ParseDelimitedIDList(cell.LinkIDList))
+            {
+                if (routeLinkIndexByID.TryGetValue(linkID, out var linkIndex))
+                {
+                    firstIndex = Math.Min(firstIndex, linkIndex);
+                }
+            }
+
+            return firstIndex;
+        }
+
+        private static List<string> ParseDelimitedIDList(string? idList)
+        {
+            if (string.IsNullOrWhiteSpace(idList))
+            {
+                return new List<string>();
+            }
+
+            return Regex.Split(idList.Trim(), @"[\s,，;；]+")
+                .Select(id => id.Trim())
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
         }
 
         private int SaveAnnotations(
@@ -1921,35 +2967,8 @@ namespace SwitchYard.Service.Controllers
 
         private static StationLayoutCoordinateTransform BuildCoordinateTransform(IReadOnlyCollection<StationNodeRow> nodes)
         {
-            const double canvasWidth = 1920;
-            const double canvasHeight = 1080;
-            const double padding = 80;
-
-            if (nodes.Count == 0)
-            {
-                return StationLayoutCoordinateTransform.Identity;
-            }
-
-            var minX = nodes.Min(node => node.X);
-            var maxX = nodes.Max(node => node.X);
-            var minY = nodes.Min(node => node.Y);
-            var maxY = nodes.Max(node => node.Y);
-            var sourceWidth = Math.Max(maxX - minX, 1);
-            var sourceHeight = Math.Max(maxY - minY, 1);
-            var scale = Math.Min((canvasWidth - padding * 2) / sourceWidth, (canvasHeight - padding * 2) / sourceHeight);
-
-            var alreadyCanvasCoordinates =
-                minX >= 0 &&
-                minY >= 0 &&
-                maxX <= canvasWidth &&
-                maxY <= canvasHeight &&
-                scale <= 1.25;
-            if (alreadyCanvasCoordinates)
-            {
-                return StationLayoutCoordinateTransform.Identity;
-            }
-
-            return new StationLayoutCoordinateTransform(minX, minY, scale, padding, true);
+            // Station layouts are stored in editor coordinates; auto-fitting on load changes the user's saved scale.
+            return StationLayoutCoordinateTransform.Identity;
         }
 
         private static string QuoteIdentifier(string identifier)
@@ -1975,7 +2994,8 @@ namespace SwitchYard.Service.Controllers
                             {QuoteIdentifier("InstanceID")} VARCHAR(50) NULL,
                             {QuoteIdentifier("ID")} VARCHAR(50) NULL,
                             {QuoteIdentifier("Name")} VARCHAR(100) NULL,
-                            {QuoteIdentifier("DisplayStyles")} TEXT NULL
+                            {QuoteIdentifier("DisplayStyles")} TEXT NULL,
+                            {QuoteIdentifier("GridSettings")} TEXT NULL
                         )");
                 }
                 else
@@ -1985,7 +3005,8 @@ namespace SwitchYard.Service.Controllers
                             {QuoteIdentifier("InstanceID")} TEXT NULL,
                             {QuoteIdentifier("ID")} TEXT NULL,
                             {QuoteIdentifier("Name")} TEXT NULL,
-                            {QuoteIdentifier("DisplayStyles")} TEXT NULL
+                            {QuoteIdentifier("DisplayStyles")} TEXT NULL,
+                            {QuoteIdentifier("GridSettings")} TEXT NULL
                         )");
                 }
 
@@ -1999,14 +3020,16 @@ namespace SwitchYard.Service.Controllers
                     ["InstanceID"] = "VARCHAR(50) NULL",
                     ["ID"] = "VARCHAR(50) NULL",
                     ["Name"] = "VARCHAR(100) NULL",
-                    ["DisplayStyles"] = "TEXT NULL"
+                    ["DisplayStyles"] = "TEXT NULL",
+                    ["GridSettings"] = "TEXT NULL"
                 }
                 : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
                 {
                     ["InstanceID"] = "TEXT NULL",
                     ["ID"] = "TEXT NULL",
                     ["Name"] = "TEXT NULL",
-                    ["DisplayStyles"] = "TEXT NULL"
+                    ["DisplayStyles"] = "TEXT NULL",
+                    ["GridSettings"] = "TEXT NULL"
                 };
 
             foreach (var column in requiredColumns)
@@ -2026,6 +3049,68 @@ namespace SwitchYard.Service.Controllers
             foreach (var tableName in NamedDeviceTables)
             {
                 EnsureNamedDeviceSchema(dbConnector, tableName);
+            }
+        }
+
+        private static void EnsureCellSchema(DBConnector dbConnector)
+        {
+            var tableName = QuoteIdentifier("cell");
+            if (!TableExists(dbConnector, "cell"))
+            {
+                if (DBConnector.IsMySql(DBConnector.CapacityDatabaseSectionName))
+                {
+                    dbConnector.ExecuteNonQuery(
+                        $@"CREATE TABLE IF NOT EXISTS {tableName} (
+                            {QuoteIdentifier("InstanceID")} VARCHAR(50) NULL,
+                            {QuoteIdentifier("StationSchemeID")} VARCHAR(50) NULL,
+                            {QuoteIdentifier("ID")} VARCHAR(50) NULL,
+                            {QuoteIdentifier("LinkIDList")} VARCHAR(255) NULL,
+                            {QuoteIdentifier("Name")} VARCHAR(100) NULL
+                        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+                }
+                else
+                {
+                    dbConnector.ExecuteNonQuery(
+                        $@"CREATE TABLE IF NOT EXISTS {tableName} (
+                            {QuoteIdentifier("InstanceID")} TEXT NULL,
+                            {QuoteIdentifier("StationSchemeID")} TEXT NULL,
+                            {QuoteIdentifier("ID")} TEXT NULL,
+                            {QuoteIdentifier("LinkIDList")} TEXT NULL,
+                            {QuoteIdentifier("Name")} TEXT NULL
+                        )");
+                }
+
+                return;
+            }
+
+            var existingColumns = GetColumnNames(dbConnector, "cell");
+            var requiredColumns = DBConnector.IsMySql(DBConnector.CapacityDatabaseSectionName)
+                ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["InstanceID"] = "VARCHAR(50) NULL",
+                    ["StationSchemeID"] = "VARCHAR(50) NULL",
+                    ["ID"] = "VARCHAR(50) NULL",
+                    ["LinkIDList"] = "VARCHAR(255) NULL",
+                    ["Name"] = "VARCHAR(100) NULL"
+                }
+                : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["InstanceID"] = "TEXT NULL",
+                    ["StationSchemeID"] = "TEXT NULL",
+                    ["ID"] = "TEXT NULL",
+                    ["LinkIDList"] = "TEXT NULL",
+                    ["Name"] = "TEXT NULL"
+                };
+
+            foreach (var column in requiredColumns)
+            {
+                if (existingColumns.Any(existing => string.Equals(existing, column.Key, StringComparison.OrdinalIgnoreCase)))
+                {
+                    continue;
+                }
+
+                dbConnector.ExecuteNonQuery(
+                    $@"ALTER TABLE {tableName} ADD COLUMN {QuoteIdentifier(column.Key)} {column.Value}");
             }
         }
 
@@ -2197,6 +3282,145 @@ namespace SwitchYard.Service.Controllers
                 ["Type"] = directionType,
                 ["Direction"] = directionType,
                 ["BindingNodeID"] = textType
+            };
+
+            foreach (var column in requiredColumns)
+            {
+                if (existingColumns.Any(existing => string.Equals(existing, column.Key, StringComparison.OrdinalIgnoreCase)))
+                {
+                    continue;
+                }
+
+                dbConnector.ExecuteNonQuery(
+                    $@"ALTER TABLE {tableName} ADD COLUMN {QuoteIdentifier(column.Key)} {column.Value}");
+            }
+        }
+
+        private static void EnsureStationRouteSchema(DBConnector dbConnector)
+        {
+            var tableName = QuoteIdentifier("stationroute");
+            if (!TableExists(dbConnector, "stationroute"))
+            {
+                if (DBConnector.IsMySql(DBConnector.CapacityDatabaseSectionName))
+                {
+                    dbConnector.ExecuteNonQuery(
+                        $@"CREATE TABLE IF NOT EXISTS {tableName} (
+                            {QuoteIdentifier("InstanceID")} VARCHAR(50) NULL,
+                            {QuoteIdentifier("StationSchemeID")} VARCHAR(50) NULL,
+                            {QuoteIdentifier("ID")} VARCHAR(50) NULL,
+                            {QuoteIdentifier("Type")} VARCHAR(50) NULL,
+                            {QuoteIdentifier("NodeList")} LONGTEXT NULL,
+                            {QuoteIdentifier("LinkList")} LONGTEXT NULL,
+                            {QuoteIdentifier("SwitchList")} LONGTEXT NULL,
+                            {QuoteIdentifier("CellList")} LONGTEXT NULL,
+                            {QuoteIdentifier("SignalList")} LONGTEXT NULL,
+                            {QuoteIdentifier("AllowanceTags")} LONGTEXT NULL,
+                            {QuoteIdentifier("ForbiddenTags")} LONGTEXT NULL,
+                            {QuoteIdentifier("StartNodeID")} VARCHAR(50) NULL,
+                            {QuoteIdentifier("EndNodeID")} VARCHAR(50) NULL
+                        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+                }
+                else
+                {
+                    dbConnector.ExecuteNonQuery(
+                        $@"CREATE TABLE IF NOT EXISTS {tableName} (
+                            {QuoteIdentifier("InstanceID")} TEXT NULL,
+                            {QuoteIdentifier("StationSchemeID")} TEXT NULL,
+                            {QuoteIdentifier("ID")} TEXT NULL,
+                            {QuoteIdentifier("Type")} TEXT NULL,
+                            {QuoteIdentifier("NodeList")} TEXT NULL,
+                            {QuoteIdentifier("LinkList")} TEXT NULL,
+                            {QuoteIdentifier("SwitchList")} TEXT NULL,
+                            {QuoteIdentifier("CellList")} TEXT NULL,
+                            {QuoteIdentifier("SignalList")} TEXT NULL,
+                            {QuoteIdentifier("AllowanceTags")} TEXT NULL,
+                            {QuoteIdentifier("ForbiddenTags")} TEXT NULL,
+                            {QuoteIdentifier("StartNodeID")} TEXT NULL,
+                            {QuoteIdentifier("EndNodeID")} TEXT NULL
+                        )");
+                }
+
+                return;
+            }
+
+            var existingColumns = GetColumnNames(dbConnector, "stationroute");
+            var shortTextType = DBConnector.IsMySql(DBConnector.CapacityDatabaseSectionName) ? "VARCHAR(50) NULL" : "TEXT NULL";
+            var longTextType = DBConnector.IsMySql(DBConnector.CapacityDatabaseSectionName) ? "LONGTEXT NULL" : "TEXT NULL";
+            var requiredColumns = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["InstanceID"] = shortTextType,
+                ["StationSchemeID"] = shortTextType,
+                ["ID"] = shortTextType,
+                ["Type"] = shortTextType,
+                ["NodeList"] = longTextType,
+                ["LinkList"] = longTextType,
+                ["SwitchList"] = longTextType,
+                ["CellList"] = longTextType,
+                ["SignalList"] = longTextType,
+                ["AllowanceTags"] = longTextType,
+                ["ForbiddenTags"] = longTextType,
+                ["StartNodeID"] = shortTextType,
+                ["EndNodeID"] = shortTextType
+            };
+
+            foreach (var column in requiredColumns)
+            {
+                if (existingColumns.Any(existing => string.Equals(existing, column.Key, StringComparison.OrdinalIgnoreCase)))
+                {
+                    continue;
+                }
+
+                dbConnector.ExecuteNonQuery(
+                    $@"ALTER TABLE {tableName} ADD COLUMN {QuoteIdentifier(column.Key)} {column.Value}");
+            }
+        }
+
+        private static void EnsureStationRouteEndSchema(DBConnector dbConnector)
+        {
+            var tableName = QuoteIdentifier("stationrouteend");
+            if (!TableExists(dbConnector, "stationrouteend"))
+            {
+                if (DBConnector.IsMySql(DBConnector.CapacityDatabaseSectionName))
+                {
+                    dbConnector.ExecuteNonQuery(
+                        $@"CREATE TABLE IF NOT EXISTS {tableName} (
+                            {QuoteIdentifier("InstanceID")} VARCHAR(50) NULL,
+                            {QuoteIdentifier("StationSchemeID")} VARCHAR(50) NULL,
+                            {QuoteIdentifier("ID")} VARCHAR(50) NULL,
+                            {QuoteIdentifier("BindingNodeID")} VARCHAR(50) NULL,
+                            {QuoteIdentifier("Type")} VARCHAR(50) NULL,
+                            {QuoteIdentifier("SegmentTag")} VARCHAR(50) NULL,
+                            {QuoteIdentifier("SidingTag")} VARCHAR(50) NULL
+                        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+                }
+                else
+                {
+                    dbConnector.ExecuteNonQuery(
+                        $@"CREATE TABLE IF NOT EXISTS {tableName} (
+                            {QuoteIdentifier("InstanceID")} TEXT NULL,
+                            {QuoteIdentifier("StationSchemeID")} TEXT NULL,
+                            {QuoteIdentifier("ID")} TEXT NULL,
+                            {QuoteIdentifier("BindingNodeID")} TEXT NULL,
+                            {QuoteIdentifier("Type")} TEXT NULL,
+                            {QuoteIdentifier("SegmentTag")} TEXT NULL,
+                            {QuoteIdentifier("SidingTag")} TEXT NULL
+                        )");
+                }
+
+                return;
+            }
+
+            var existingColumns = GetColumnNames(dbConnector, "stationrouteend");
+            var textType = DBConnector.IsMySql(DBConnector.CapacityDatabaseSectionName) ? "VARCHAR(50) NULL" : "TEXT NULL";
+            var requiredColumns = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["InstanceID"] = textType,
+                ["StationSchemeID"] = textType,
+                ["ID"] = textType,
+                ["BindingNodeID"] = textType,
+                ["Type"] = textType,
+                ["SegmentTag"] = textType,
+                ["SidingTag"] = textType
             };
 
             foreach (var column in requiredColumns)
@@ -2534,7 +3758,11 @@ namespace SwitchYard.Service.Controllers
 
             return JsonSerializer.Serialize(new
             {
-                metadata = new { latestElementID = segments.Count },
+                metadata = new
+                {
+                    latestElementID = segments.Count,
+                    gridSettings = new { showGrid = true, spacing = 20, originX = 0, originY = 0 }
+                },
                 tracks,
                 curves = Array.Empty<object>(),
                 nodes = Array.Empty<object>(),
@@ -2543,6 +3771,7 @@ namespace SwitchYard.Service.Controllers
                 bufferStops = Array.Empty<object>(),
                 platforms = Array.Empty<object>(),
                 switches = Array.Empty<object>(),
+                cells = Array.Empty<object>(),
                 annotations = Array.Empty<object>()
             }, new JsonSerializerOptions
             {

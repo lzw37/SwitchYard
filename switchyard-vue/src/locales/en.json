@@ -1091,6 +1091,7 @@
         },
         "tabs": {
             "stationLayout": "Station Layout",
+            "routeDesign": "Route Design",
             "layout3d": "3D",
             "calcParams": "Calc Params",
             "operationPlan": "Operation Plan",
@@ -1210,6 +1211,143 @@
         "messages": {
             "empty": "The selected instance has no layout data to render",
             "loadFailed": "Failed to load 3D station layout"
+        }
+    },
+    "routeDesign": {
+        "toolbar": {
+            "stationRoute": "Route Generation",
+            "routeEnd": "Route End Config"
+        },
+        "stationRoute": {
+            "title": "Route Generation",
+            "count": "{count} total",
+            "empty": "No routes",
+            "fields": {
+                "instanceID": "InstanceID",
+                "stationSchemeID": "StationSchemeID",
+                "id": "ID",
+                "type": "Type",
+                "nodeList": "NodeList",
+                "linkList": "LinkList",
+                "switchList": "SwitchList",
+                "cellList": "CellList",
+                "signalList": "SignalList",
+                "allowanceTags": "AllowanceTags",
+                "forbiddenTags": "ForbiddenTags",
+                "startNodeID": "StartNodeID",
+                "endNodeID": "EndNodeID"
+            },
+            "actions": {
+                "add": "Add",
+                "refresh": "Refresh",
+                "pickStart": "Pick Start",
+                "pickEnd": "Pick End",
+                "save": "Save",
+                "cancel": "Cancel",
+                "delete": "Delete"
+            },
+            "states": {
+                "new": "New",
+                "picking": "Picking"
+            },
+            "form": {
+                "newTitle": "New Route",
+                "editTitle": "Selected Route",
+                "emptyTitle": "No Route Selected"
+            },
+            "directions": {
+                "leftToRight": "Left to Right",
+                "rightToLeft": "Right to Left"
+            },
+            "placeholders": {
+                "autoId": "Auto-generated when empty"
+            },
+            "searchDialog": {
+                "title": "Select a Searched Route",
+                "count": "{count} candidate routes found",
+                "empty": "No candidate routes",
+                "direction": "Direction",
+                "path": "Path",
+                "useRoute": "Use This Route",
+                "linkSummary": "{count} Links"
+            },
+            "messages": {
+                "selectScheme": "Select a station scheme first",
+                "pickStart": "Pick the route start Node in the layout",
+                "pickEnd": "Pick the route end Node in the layout",
+                "startPicked": "Start Node {nodeId} selected",
+                "endPicked": "End Node {nodeId} selected",
+                "nodeIdMustBeInteger": "Node ID must be an integer",
+                "searchSuccess": "Search complete: {count} candidate routes",
+                "searchEmpty": "No available route found",
+                "searchFailed": "Failed to search routes",
+                "selectCandidate": "Select a candidate route first",
+                "candidateApplied": "Candidate route applied. Complete the route fields and save.",
+                "startEndRequired": "StartNodeID and EndNodeID are required",
+                "idRequired": "ID is required",
+                "loadFailed": "Failed to load routes",
+                "createSuccess": "Route created",
+                "createFailed": "Failed to create route",
+                "updateSuccess": "Route updated",
+                "updateFailed": "Failed to update route",
+                "deleteTitle": "Delete Route",
+                "deleteConfirm": "Delete route \"{id}\"?",
+                "deleteSuccess": "Route deleted",
+                "deleteFailed": "Failed to delete route"
+            }
+        },
+        "routeEnd": {
+            "title": "Route End Configuration",
+            "count": "{count} total",
+            "empty": "No route ends",
+            "fields": {
+                "instanceID": "InstanceID",
+                "stationSchemeID": "StationSchemeID",
+                "id": "ID",
+                "bindingNodeID": "BindingNodeID",
+                "type": "Type",
+                "segmentTag": "SegmentTag",
+                "sidingTag": "SidingTag"
+            },
+            "actions": {
+                "add": "Add",
+                "refresh": "Refresh",
+                "pickNode": "Pick Node",
+                "save": "Save",
+                "cancel": "Cancel",
+                "delete": "Delete"
+            },
+            "states": {
+                "new": "New",
+                "picking": "Picking"
+            },
+            "form": {
+                "newTitle": "New Route End",
+                "editTitle": "Selected Route End",
+                "emptyTitle": "No Route End Selected"
+            },
+            "placeholders": {
+                "autoId": "Auto-generated when empty"
+            },
+            "messages": {
+                "selectScheme": "Select a station scheme first",
+                "pickNode": "Pick a Node in the layout",
+                "nodePicked": "Node {nodeId} selected",
+                "bindingNodeRequired": "BindingNodeID is required",
+                "idRequired": "ID is required",
+                "loadFailed": "Failed to load route ends",
+                "createSuccess": "Route end created",
+                "createFailed": "Failed to create route end",
+                "updateSuccess": "Route end updated",
+                "updateFailed": "Failed to update route end",
+                "deleteTitle": "Delete Route End",
+                "deleteConfirm": "Delete route end \"{id}\"?",
+                "deleteSuccess": "Route end deleted",
+                "deleteFailed": "Failed to delete route end"
+            }
+        },
+        "messages": {
+            "loadFailed": "Failed to load route design layout"
         }
     }
 }

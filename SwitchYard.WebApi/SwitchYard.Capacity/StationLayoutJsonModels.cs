@@ -32,6 +32,9 @@ namespace SwitchYard.Capacity
         [JsonPropertyName("switches")]
         public List<StationLayoutSwitchJson> Switches { get; set; } = new();
 
+        [JsonPropertyName("cells")]
+        public List<StationLayoutCellJson> Cells { get; set; } = new();
+
         [JsonPropertyName("annotations")]
         public List<StationLayoutAnnotationJson> Annotations { get; set; } = new();
     }
@@ -52,6 +55,9 @@ namespace SwitchYard.Capacity
 
         [JsonPropertyName("displayStyles")]
         public JsonElement? DisplayStyles { get; set; }
+
+        [JsonPropertyName("gridSettings")]
+        public JsonElement? GridSettings { get; set; }
     }
 
     public sealed class StationLayoutJsonCoordinateTransform
@@ -271,6 +277,24 @@ namespace SwitchYard.Capacity
 
         [JsonPropertyName("lineID")]
         public string? LineID { get; set; }
+    }
+
+    public sealed class StationLayoutCellJson
+    {
+        [JsonPropertyName("instanceID")]
+        public string? InstanceID { get; set; }
+
+        [JsonPropertyName("stationSchemeID")]
+        public string? StationSchemeID { get; set; }
+
+        [JsonPropertyName("id")]
+        public string? ID { get; set; }
+
+        [JsonPropertyName("linkIDList")]
+        public string? LinkIDList { get; set; }
+
+        [JsonPropertyName("name")]
+        public string? Name { get; set; }
     }
 
     public sealed class StationLayoutAnnotationJson

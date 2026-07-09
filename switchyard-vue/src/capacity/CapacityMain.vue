@@ -53,6 +53,12 @@
                     </div>
                     <el-empty v-else :description="t('capacityMain.placeholders.selectInstance')" />
                 </el-tab-pane>
+                <el-tab-pane :label="t('capacityMain.tabs.routeDesign')" name="routeDesign" lazy>
+                    <div v-if="hasSelectedInstance" class="route-design-pane">
+                        <RouteDesign :selected-instance-id="selectedInstance || ''" />
+                    </div>
+                    <el-empty v-else :description="t('capacityMain.placeholders.selectInstance')" />
+                </el-tab-pane>
                 <el-tab-pane :label="t('capacityMain.tabs.layout3d')" name="layout3d" lazy>
                     <div v-if="hasSelectedInstance" class="station-layout-3d-pane">
                         <StationLayout3D
@@ -108,6 +114,7 @@ import axios from '@/utils/axios'
 import { ElMessage } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import StationLayout from './StationLayout.vue'
+import RouteDesign from './RouteDesign.vue'
 import StationLayout3D from './StationLayout3D.vue'
 import CapacityInstanceManager from './CapacityInstanceManager.vue'
 import UserManagement from '@/views/UserManagement.vue'
@@ -331,6 +338,14 @@ watch(selectedInstance, () => {
     min-height: 400px;
 }
 
+.route-design-pane {
+    width: 100%;
+    max-width: 100%;
+    height: calc(100dvh - 118px);
+    min-height: 420px;
+    overflow: hidden;
+}
+
 .station-layout-3d-pane {
     width: 100%;
     max-width: 100%;
@@ -362,6 +377,11 @@ watch(selectedInstance, () => {
     }
 
     .station-layout-3d-pane {
+        height: calc(100dvh - 188px);
+        min-height: 420px;
+    }
+
+    .route-design-pane {
         height: calc(100dvh - 188px);
         min-height: 420px;
     }

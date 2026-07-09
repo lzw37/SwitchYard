@@ -10,8 +10,43 @@ CREATE TABLE IF NOT EXISTS `stationscheme` (
     `InstanceID` VARCHAR(50) NULL,
     `ID` VARCHAR(50) NULL,
     `Name` VARCHAR(100) NULL,
-    `DisplayStyles` TEXT NULL
+    `DisplayStyles` TEXT NULL,
+    `GridSettings` TEXT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS `stationrouteend` (
+    `InstanceID` VARCHAR(50) NULL,
+    `StationSchemeID` VARCHAR(50) NULL,
+    `ID` VARCHAR(50) NULL,
+    `BindingNodeID` VARCHAR(50) NULL,
+    `Type` VARCHAR(50) NULL,
+    `SegmentTag` VARCHAR(50) NULL,
+    `SidingTag` VARCHAR(50) NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `stationroute` (
+    `InstanceID` VARCHAR(50) NULL,
+    `StationSchemeID` VARCHAR(50) NULL,
+    `ID` VARCHAR(50) NULL,
+    `Type` VARCHAR(50) NULL,
+    `NodeList` LONGTEXT NULL,
+    `LinkList` LONGTEXT NULL,
+    `SwitchList` LONGTEXT NULL,
+    `CellList` LONGTEXT NULL,
+    `SignalList` LONGTEXT NULL,
+    `AllowanceTags` LONGTEXT NULL,
+    `ForbiddenTags` LONGTEXT NULL,
+    `StartNodeID` VARCHAR(50) NULL,
+    `EndNodeID` VARCHAR(50) NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `cell` (
+    `InstanceID` VARCHAR(50) NULL,
+    `StationSchemeID` VARCHAR(50) NULL,
+    `ID` VARCHAR(50) NULL,
+    `LinkIDList` VARCHAR(255) NULL,
+    `Name` VARCHAR(100) NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `annotation` (
     `InstanceID` VARCHAR(50) NULL,

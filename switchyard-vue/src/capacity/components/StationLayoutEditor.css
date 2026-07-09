@@ -151,6 +151,29 @@
     opacity: 0.95;
 }
 
+.cell-name-layer {
+    pointer-events: none;
+}
+
+.cell-name {
+    fill: #ffd600;
+    stroke: rgba(17, 24, 39, 0.95);
+    stroke-width: 4px;
+    paint-order: stroke fill;
+    font-family: Arial, "Microsoft YaHei", sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    text-anchor: middle;
+    dominant-baseline: middle;
+    cursor: pointer;
+    pointer-events: auto;
+    user-select: none;
+}
+
+.cell-name:hover {
+    fill: #ffffff;
+}
+
 .trackname {
     fill: #ffffff;
     stroke: #31363f;
@@ -301,8 +324,12 @@
     stroke: yellow;
 }
 
-.switchname{
-    fill:white;
+.switchname {
+    fill: white;
+    stroke: #31363f;
+    stroke-width: 3px;
+    stroke-linejoin: round;
+    paint-order: stroke fill;
     font-size: 8px;
 }
 

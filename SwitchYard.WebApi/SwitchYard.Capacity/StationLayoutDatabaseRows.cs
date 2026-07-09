@@ -7,6 +7,8 @@ namespace SwitchYard.Capacity
         public string? Name { get; set; }
 
         public string? DisplayStyles { get; set; }
+
+        public string? GridSettings { get; set; }
     }
 
     public sealed class StationNodeRow
@@ -129,6 +131,65 @@ namespace SwitchYard.Capacity
         public string? Type { get; set; }
 
         public string? BindingNodeID { get; set; }
+    }
+
+    public sealed class StationCellRow
+    {
+        public string? InstanceID { get; set; }
+
+        public string? StationSchemeID { get; set; }
+
+        public string? ID { get; set; }
+
+        public string? LinkIDList { get; set; }
+
+        public string? Name { get; set; }
+    }
+
+    public sealed class StationRouteEndRow
+    {
+        public string? InstanceID { get; set; }
+
+        public string? StationSchemeID { get; set; }
+
+        public string? ID { get; set; }
+
+        public string? BindingNodeID { get; set; }
+
+        public string? Type { get; set; }
+
+        public string? SegmentTag { get; set; }
+
+        public string? SidingTag { get; set; }
+    }
+
+    public sealed class StationRouteRow
+    {
+        public string? InstanceID { get; set; }
+
+        public string? StationSchemeID { get; set; }
+
+        public string? ID { get; set; }
+
+        public string? Type { get; set; }
+
+        public string? NodeList { get; set; }
+
+        public string? LinkList { get; set; }
+
+        public string? SwitchList { get; set; }
+
+        public string? CellList { get; set; }
+
+        public string? SignalList { get; set; }
+
+        public string? AllowanceTags { get; set; }
+
+        public string? ForbiddenTags { get; set; }
+
+        public string? StartNodeID { get; set; }
+
+        public string? EndNodeID { get; set; }
     }
 
     public sealed class DatabaseNameLookupRow

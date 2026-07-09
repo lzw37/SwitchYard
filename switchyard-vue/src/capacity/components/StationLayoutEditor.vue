@@ -20,11 +20,16 @@ const props = defineProps({
     gridSpacing: { type: Number, default: 20 },
     objectSnapDistance: { type: Number, default: 10 },
     displayStyles: { type: Object, default: () => ({}) },
+    editorState: { type: String, default: "" },
+    cellLinkMembershipCounts: { type: Object, default: () => ({}) },
+    cells: { type: Array, default: () => [] },
+    showCellNames: { type: Boolean, default: false },
     routePickTarget: { type: String, default: "" },
     highlightedRouteLinkIds: { type: Array, default: () => [] },
     highlightedRouteNodeIds: { type: Array, default: () => [] },
+    readonly: { type: Boolean, default: false },
 });
-const emit = defineEmits(["selected-annotation-change", "selected-equipment-change", "route-node-pick"]);
+const emit = defineEmits(["selected-annotation-change", "selected-equipment-change", "route-node-pick", "cell-name-click"]);
 
 const svgRef = ref(null);
 const defaultEditorDisplayStyles = {
@@ -93,6 +98,7 @@ const svgStyle = computed(() => ({
     height: `${svgScreenHeight.value}px`,
 }));
 const editorDisplayStyles = computed(() => normalizeDisplayStyles(props.displayStyles));
+const isCellEditingState = computed(() => props.editorState === "cell_editing");
 const highlightedRouteLinkIdSet = computed(() => new Set(
     (Array.isArray(props.highlightedRouteLinkIds) ? props.highlightedRouteLinkIds : [])
         .map((id) => String(id))
@@ -167,6 +173,7 @@ const selectedBufferStopIds = ref(new Set());
 const selectedSwitchIds = ref(new Set());
 const selectedPlatformIds = ref(new Set());
 const selectedAnnotationIds = ref(new Set());
+const lastSelectedEquipmentRef = ref(null);
 
 const crossPoints = ref([]);
 const perpendicularPoint = ref(null);
@@ -347,6 +354,25 @@ function resetGridOrigin() {
     grid.originY = 0;
 }
 
+function buildGridSettingsMetadata() {
+    return {
+        showGrid: props.showGrid !== false,
+        spacing: canvasStepX(),
+        originX: roundLayoutNumber(canvasOriginX()),
+        originY: roundLayoutNumber(canvasOriginY()),
+    };
+}
+
+function applyGridSettingsMetadata(gridSettings) {
+    if (!gridSettings || typeof gridSettings !== "object" || Array.isArray(gridSettings)) return false;
+
+    const originX = Number(gridSettings.originX ?? gridSettings.OriginX ?? 0);
+    const originY = Number(gridSettings.originY ?? gridSettings.OriginY ?? 0);
+    grid.originX = Number.isFinite(originX) ? roundLayoutNumber(originX) : 0;
+    grid.originY = Number.isFinite(originY) ? roundLayoutNumber(originY) : 0;
+    return true;
+}
+
 function getCanvasScrollContainer() {
     return svgRef.value?.parentElement || null;
 }
@@ -495,6 +521,26 @@ function getEquipmentSelectedSet(kind) {
     return new Set();
 }
 
+function setEquipmentSelectedSet(kind, ids) {
+    const nextIds = ids instanceof Set ? ids : new Set(ids);
+    if (kind === "link") selectedLineIds.value = nextIds;
+    if (kind === "signal") selectedSignalIds.value = nextIds;
+    if (kind === "insulationJoint") selectedInsulationJointIds.value = nextIds;
+    if (kind === "bufferStop") selectedBufferStopIds.value = nextIds;
+    if (kind === "switch") selectedSwitchIds.value = nextIds;
+    if (kind === "platform") selectedPlatformIds.value = nextIds;
+}
+
+function replaceSelectedEquipmentId(kind, previousId, nextId) {
+    const nextIds = new Set(getEquipmentSelectedSet(kind));
+    nextIds.delete(previousId);
+    nextIds.add(nextId);
+    setEquipmentSelectedSet(kind, nextIds);
+    if (lastSelectedEquipmentRef.value?.kind === kind && lastSelectedEquipmentRef.value?.id === previousId) {
+        lastSelectedEquipmentRef.value = { kind, id: nextId };
+    }
+}
+
 function cloneEquipment(kind, equipment) {
     if (!equipment) return null;
     return {
@@ -504,7 +550,33 @@ function cloneEquipment(kind, equipment) {
     };
 }
 
+function getEquipmentById(kind, id) {
+    return getEquipmentCollection(kind).find((item) => item.id === id) || null;
+}
+
+function getLastSelectedEquipment() {
+    const lastSelectedEquipment = lastSelectedEquipmentRef.value;
+    if (!lastSelectedEquipment) return null;
+    if (!getEquipmentSelectedSet(lastSelectedEquipment.kind).has(lastSelectedEquipment.id)) return null;
+
+    return cloneEquipment(lastSelectedEquipment.kind, getEquipmentById(lastSelectedEquipment.kind, lastSelectedEquipment.id));
+}
+
+function setLastSelectedEquipment(kind, id) {
+    lastSelectedEquipmentRef.value = { kind, id };
+}
+
+function clearLastSelectedEquipment(predicate) {
+    if (!lastSelectedEquipmentRef.value) return;
+    if (!predicate || predicate(lastSelectedEquipmentRef.value)) {
+        lastSelectedEquipmentRef.value = null;
+    }
+}
+
 function getSelectedEquipment() {
+    const lastSelectedEquipment = getLastSelectedEquipment();
+    if (lastSelectedEquipment) return lastSelectedEquipment;
+
     const selected = [];
     for (const kind of ["link", "signal", "insulationJoint", "bufferStop", "switch", "platform"]) {
         const selectedIds = [...getEquipmentSelectedSet(kind)];
@@ -538,6 +610,8 @@ function setSelectedAnnotationIds(ids) {
 }
 
 function updateSelectedAnnotation(patch) {
+    if (props.readonly) return;
+
     const selected = getSelectedAnnotation();
     if (!selected) return;
 
@@ -585,6 +659,8 @@ function isSelectionBoxLarge(box) {
 }
 
 const anchorRects = computed(() => {
+    if (props.readonly) return [];
+
     const list = [];
     for (const line of tracks.value) {
         if (!selectedLineIds.value.has(line.id)) continue;
@@ -860,6 +936,88 @@ const lineNameViews = computed(() => {
         .filter((lineNameView) => lineNameView != null);
 });
 
+function parseCellLinkIdList(value) {
+    return String(value ?? "")
+        .split(/[\s,，;；]+/)
+        .map((id) => id.trim())
+        .filter((id) => id !== "");
+}
+
+function getCellId(cell) {
+    return String(cell?.id ?? cell?.ID ?? "").trim();
+}
+
+function getCellName(cell) {
+    return String(cell?.name ?? cell?.Name ?? getCellId(cell)).trim();
+}
+
+function getCellLinkIdList(cell) {
+    return parseCellLinkIdList(cell?.linkIDList ?? cell?.LinkIDList);
+}
+
+function segmentLength(segment) {
+    return Math.hypot(
+        toFiniteNumber(segment.x2) - toFiniteNumber(segment.x1),
+        toFiniteNumber(segment.y2) - toFiniteNumber(segment.y1)
+    );
+}
+
+function createCellNameView(cell, index, segmentsByLineId) {
+    const name = getCellName(cell);
+    if (!name) return null;
+
+    let weightedX = 0;
+    let weightedY = 0;
+    let totalLength = 0;
+    for (const linkId of new Set(getCellLinkIdList(cell))) {
+        const segments = segmentsByLineId.get(linkId) || [];
+        for (const segment of segments) {
+            const length = segmentLength(segment);
+            if (!Number.isFinite(length) || length <= 0) continue;
+
+            weightedX += ((toFiniteNumber(segment.x1) + toFiniteNumber(segment.x2)) / 2) * length;
+            weightedY += ((toFiniteNumber(segment.y1) + toFiniteNumber(segment.y2)) / 2) * length;
+            totalLength += length;
+        }
+    }
+
+    if (totalLength <= 0) return null;
+
+    const id = getCellId(cell) || String(index);
+    return {
+        id,
+        key: `${id || "cell"}-${index}`,
+        name,
+        x: weightedX / totalLength,
+        y: weightedY / totalLength,
+    };
+}
+
+const cellNameViews = computed(() => {
+    if (!props.showCellNames || !Array.isArray(props.cells) || props.cells.length === 0) return [];
+
+    const segmentsByLineId = new Map();
+    for (const segment of renderedTrackSegments.value) {
+        const lineId = String(segment.line?.id ?? "").trim();
+        if (!lineId) continue;
+        if (!segmentsByLineId.has(lineId)) {
+            segmentsByLineId.set(lineId, []);
+        }
+        segmentsByLineId.get(lineId).push(segment);
+    }
+
+    return props.cells
+        .map((cell, index) => createCellNameView(cell, index, segmentsByLineId))
+        .filter((cellNameView) => cellNameView != null);
+});
+
+function emitCellNameClick(cellName) {
+    emit("cell-name-click", {
+        id: cellName.id,
+        name: cellName.name,
+    });
+}
+
 function cloneState() {
     return JSON.parse(
         JSON.stringify({
@@ -881,6 +1039,7 @@ function cloneState() {
             selectedSwitchIds: [...selectedSwitchIds.value],
             selectedPlatformIds: [...selectedPlatformIds.value],
             selectedAnnotationIds: [...selectedAnnotationIds.value],
+            lastSelectedEquipment: lastSelectedEquipmentRef.value,
         })
     );
 }
@@ -905,12 +1064,15 @@ function applyState(state) {
     selectedSwitchIds.value = new Set(state.selectedSwitchIds || []);
     selectedPlatformIds.value = new Set(state.selectedPlatformIds || []);
     selectedAnnotationIds.value = new Set(state.selectedAnnotationIds || []);
+    lastSelectedEquipmentRef.value = state.lastSelectedEquipment || null;
     ensureCanvasForAllElements();
     emitSelectedAnnotationChange();
     emitSelectedEquipmentChange();
 }
 
-function executeMutation(mutator) {
+function executeMutation(mutator, options = {}) {
+    if (props.readonly && options?.allowReadonly !== true) return;
+
     finishedCmdList.value.push(cloneState());
     if (finishedCmdList.value.length > 30) {
         finishedCmdList.value.shift();
@@ -921,6 +1083,8 @@ function executeMutation(mutator) {
 }
 
 function revoke() {
+    if (props.readonly) return;
+
     if (finishedCmdList.value.length === 0) return;
     revokedCmdList.value.push(cloneState());
     const prev = finishedCmdList.value.pop();
@@ -928,6 +1092,8 @@ function revoke() {
 }
 
 function redo() {
+    if (props.readonly) return;
+
     if (revokedCmdList.value.length === 0) return;
     finishedCmdList.value.push(cloneState());
     const next = revokedCmdList.value.pop();
@@ -982,6 +1148,7 @@ function getEquipmentDisplayName(equipment, placeholder) {
 
 function clearSelectedLines() {
     selectedLineIds.value = new Set();
+    clearLastSelectedEquipment((selection) => selection.kind === "link");
     finishAnchorInteraction();
     emitSelectedEquipmentChange();
 }
@@ -993,6 +1160,7 @@ function clearSelectedNodes() {
 
 function clearSelectedEquipment() {
     clearSelectedDeviceIds();
+    clearLastSelectedEquipment((selection) => selection.kind !== "link");
     selectedAnnotationIds.value = new Set();
     finishAnnotationInteraction();
     emitSelectedAnnotationChange();
@@ -1000,7 +1168,7 @@ function clearSelectedEquipment() {
 }
 
 function setEditMode(code) {
-    editModeCode.value = Number(code);
+    editModeCode.value = props.readonly ? 0 : Number(code);
 }
 
 function setDrawingSignalType(type) {
@@ -1016,6 +1184,8 @@ function setDrawingBufferStopType(type) {
 }
 
 function setDrawingObject(obj) {
+    if (props.readonly) return;
+
     drawingObject.value = obj;
     if (obj === "s") {
         startDrawingSignal();
@@ -1146,13 +1316,22 @@ function resolveObjectSnapPoint(point) {
 
 function resolveCursorSnapPoint(point) {
     const sourcePoint = normalizePosition(point);
+
+    if (mouseGridSnapModeCode.value === 1) {
+        const gridPoint = snapPointToGrid(sourcePoint);
+        return {
+            ...gridPoint,
+            kind: "grid",
+        };
+    }
+
     const objectSnapPoint = resolveObjectSnapPoint(sourcePoint);
     if (objectSnapPoint) return objectSnapPoint;
 
-    const gridPoint = applyGridSnapWhenEnabled(sourcePoint);
+    const gridPoint = normalizePosition(sourcePoint);
     return {
         ...gridPoint,
-        kind: mouseGridSnapModeCode.value === 1 ? "grid" : "free",
+        kind: "free",
     };
 }
 
@@ -1257,14 +1436,14 @@ function doRectsIntersect(a, b) {
 
 function selectElementsInBox(box) {
     const rect = normalizeSelectionBox(box);
-    const nextLineIds = box.additive ? new Set(selectedLineIds.value) : new Set();
-    const nextNodeIds = box.additive ? new Set(selectedNodeIds.value) : new Set();
-    const nextSignalIds = box.additive ? new Set(selectedSignalIds.value) : new Set();
-    const nextInsulationJointIds = box.additive ? new Set(selectedInsulationJointIds.value) : new Set();
-    const nextBufferStopIds = box.additive ? new Set(selectedBufferStopIds.value) : new Set();
-    const nextSwitchIds = box.additive ? new Set(selectedSwitchIds.value) : new Set();
-    const nextPlatformIds = box.additive ? new Set(selectedPlatformIds.value) : new Set();
-    const nextAnnotationIds = box.additive ? new Set(selectedAnnotationIds.value) : new Set();
+    const nextLineIds = new Set(selectedLineIds.value);
+    const nextNodeIds = new Set(selectedNodeIds.value);
+    const nextSignalIds = new Set(selectedSignalIds.value);
+    const nextInsulationJointIds = new Set(selectedInsulationJointIds.value);
+    const nextBufferStopIds = new Set(selectedBufferStopIds.value);
+    const nextSwitchIds = new Set(selectedSwitchIds.value);
+    const nextPlatformIds = new Set(selectedPlatformIds.value);
+    const nextAnnotationIds = new Set(selectedAnnotationIds.value);
 
     for (const line of tracks.value) {
         if (doesLineIntersectRect(line, rect)) nextLineIds.add(line.id);
@@ -1326,7 +1505,6 @@ function startSelectionBox(event) {
         startY: dataPoint.y,
         endX: dataPoint.x,
         endY: dataPoint.y,
-        additive: event.shiftKey,
     };
     addSelectionBoxWindowListeners();
 }
@@ -1392,23 +1570,27 @@ function endDrawLine() {
 }
 
 function selectLine(lineId) {
-    clearSelectedDeviceIds();
-    selectedNodeIds.value = new Set();
-    selectedLineIds.value = new Set([lineId]);
+    selectedLineIds.value = new Set([...selectedLineIds.value, lineId]);
+    setLastSelectedEquipment("link", lineId);
     emitSelectedEquipmentChange();
 }
 
 function deleteLine() {
+    if (props.readonly) return;
+
     if (selectedLineIds.value.size === 0) return;
     executeMutation(() => {
         tracks.value = tracks.value.filter((line) => !selectedLineIds.value.has(line.id));
         selectedLineIds.value = new Set();
+        clearLastSelectedEquipment((selection) => selection.kind === "link");
         finishAnchorInteraction();
     });
     emitSelectedEquipmentChange();
 }
 
 function deleteNode() {
+    if (props.readonly) return;
+
     if (selectedNodeIds.value.size === 0) return;
     executeMutation(() => {
         nodes.value = nodes.value.filter((n) => !selectedNodeIds.value.has(n.id));
@@ -1417,6 +1599,8 @@ function deleteNode() {
 }
 
 function deleteEquipment() {
+    if (props.readonly) return;
+
     executeMutation(() => {
         signals.value = signals.value.filter((s) => !selectedSignalIds.value.has(s.id));
         insulationJoints.value = insulationJoints.value.filter((i) => !selectedInsulationJointIds.value.has(i.id));
@@ -1759,6 +1943,7 @@ function autoMergeNode() {
 
         selectedNodeIds.value = new Set([...selectedNodeIds.value].map((nodeID) => resolveNodeID(nodeID)).filter((nodeID) => nodeByID.has(nodeID)));
         selectedLineIds.value = new Set([...selectedLineIds.value].filter((lineID) => !removedLineIDs.has(lineID)));
+        clearLastSelectedEquipment((selection) => selection.kind === "link" && removedLineIDs.has(selection.id));
         finishAnchorInteraction();
         for (const curve of curves.value) {
             curve.nodeID = resolveNodeID(curve.nodeID);
@@ -2180,6 +2365,7 @@ function findMatchedSwitchForNode(node, candidate) {
 function trimSelectedSwitchesToExisting() {
     const switchIdSet = new Set(switches.value.map((sw) => sw.id));
     selectedSwitchIds.value = new Set([...selectedSwitchIds.value].filter((id) => switchIdSet.has(id)));
+    clearLastSelectedEquipment((selection) => selection.kind === "switch" && !switchIdSet.has(selection.id));
 }
 
 function generateSwitchAtNode(node) {
@@ -2410,7 +2596,7 @@ function drawingAnnotationMouseDown(x, y) {
     executeMutation(() => {
         const annotation = buildDefaultAnnotation(x, y);
         annotations.value.push(annotation);
-        setSelectedAnnotationIds([annotation.id]);
+        setSelectedAnnotationIds([...selectedAnnotationIds.value, annotation.id]);
     });
 }
 
@@ -2432,7 +2618,11 @@ const tempPlatformView = computed(() => {
 
 function buildJsonData() {
     return JSON.stringify({
-        metadata: { ...layoutMetadata.value, latestElementID: latestElementID.value },
+        metadata: {
+            ...layoutMetadata.value,
+            latestElementID: latestElementID.value,
+            gridSettings: buildGridSettingsMetadata(),
+        },
         tracks: tracks.value,
         curves: curves.value,
         nodes: nodes.value,
@@ -2478,15 +2668,17 @@ function loadDataFromJson(jsonObj) {
         switches.value = (jsonObj?.switches || []).map((sw) => normalizeNamedEquipment(sw));
         annotations.value = (jsonObj?.annotations || []).map((annotation) => normalizeAnnotation(annotation));
         syncSignalsToBindingNodes();
-        alignGridOriginToCurrentContent();
+        if (!applyGridSettingsMetadata(jsonObj?.metadata?.gridSettings)) {
+            alignGridOriginToCurrentContent();
+        }
         resetCanvasBounds();
-    });
+        ensureCanvasForAllElements();
+    }, { allowReadonly: true });
     emitSelectedAnnotationChange();
 }
 
 function handleLineClick(lineId) {
     if (editModeCode.value !== 0) return;
-    setSelectedAnnotationIds([]);
     selectLine(lineId);
 }
 
@@ -2516,11 +2708,8 @@ function handleNodeClick(event, nodeId) {
     event.preventDefault();
     cancelSelectionBox();
     finishAnnotationInteraction();
-    clearSelectedDeviceIds();
-    setSelectedAnnotationIds([]);
-    emitSelectedEquipmentChange();
     selectedNodeIds.value = new Set([...selectedNodeIds.value, nodeId]);
-    beginNodeMove(event, nodeId);
+    if (!props.readonly) beginNodeMove(event, nodeId);
 }
 
 function emitRouteNodePick(nodeId) {
@@ -2545,65 +2734,47 @@ function handleRouteEquipmentPick(event, equipment) {
     return emitRouteNodePick(bindingNodeID);
 }
 
-function selectEquipment(kind, id, additive = false) {
-    if (!additive) {
-        clearSelectedDeviceIds();
-    }
-
-    const targetSet = new Set(additive ? [...getEquipmentSelectedSet(kind)] : []);
+function selectEquipment(kind, id) {
+    const targetSet = new Set(getEquipmentSelectedSet(kind));
     targetSet.add(id);
-    if (kind === "signal") selectedSignalIds.value = targetSet;
-    if (kind === "insulationJoint") selectedInsulationJointIds.value = targetSet;
-    if (kind === "bufferStop") selectedBufferStopIds.value = targetSet;
-    if (kind === "switch") selectedSwitchIds.value = targetSet;
-    if (kind === "platform") selectedPlatformIds.value = targetSet;
+    setEquipmentSelectedSet(kind, targetSet);
+    setLastSelectedEquipment(kind, id);
     emitSelectedEquipmentChange();
 }
 
 function handleSignalClick(event, signalId) {
     if (handleRouteEquipmentPick(event, signals.value.find((signal) => signal.id === signalId))) return;
     if (!shouldHandleElementMouseDown(event)) return;
-    setSelectedAnnotationIds([]);
-    selectEquipment("signal", signalId, event.shiftKey);
+    selectEquipment("signal", signalId);
 }
 
 function handleInsulationJointClick(event, id) {
     if (handleRouteEquipmentPick(event, insulationJoints.value.find((ij) => ij.id === id))) return;
     if (!shouldHandleElementMouseDown(event)) return;
-    setSelectedAnnotationIds([]);
-    selectEquipment("insulationJoint", id, event.shiftKey);
+    selectEquipment("insulationJoint", id);
 }
 
 function handleBufferStopClick(event, id) {
     if (handleRouteEquipmentPick(event, bufferStops.value.find((bufferStop) => bufferStop.id === id))) return;
     if (!shouldHandleElementMouseDown(event)) return;
-    setSelectedAnnotationIds([]);
-    selectEquipment("bufferStop", id, event.shiftKey);
+    selectEquipment("bufferStop", id);
 }
 
 function handleSwitchClick(event, id) {
     if (handleRouteEquipmentPick(event, switches.value.find((sw) => sw.id === id))) return;
     if (!shouldHandleElementMouseDown(event)) return;
-    setSelectedAnnotationIds([]);
-    selectEquipment("switch", id, event.shiftKey);
+    selectEquipment("switch", id);
 }
 
 function handlePlatformClick(event, id) {
     if (handleRouteEquipmentPick(event, platforms.value.find((platform) => platform.id === id))) return;
     if (!shouldHandleElementMouseDown(event)) return;
-    setSelectedAnnotationIds([]);
-    selectEquipment("platform", id, event.shiftKey);
+    selectEquipment("platform", id);
 }
 
 function handleAnnotationClick(event, id) {
     if (!shouldHandleElementMouseDown(event)) return;
-    clearSelectedDeviceIds();
-    emitSelectedEquipmentChange();
-    if (event.shiftKey) {
-        setSelectedAnnotationIds([...selectedAnnotationIds.value, id]);
-        return;
-    }
-    setSelectedAnnotationIds([id]);
+    setSelectedAnnotationIds([...selectedAnnotationIds.value, id]);
 }
 
 function getAnnotationById(id) {
@@ -2611,6 +2782,8 @@ function getAnnotationById(id) {
 }
 
 function updateSelectedEquipment(kind, id, patch) {
+    if (props.readonly) return;
+
     const collection = getEquipmentCollection(kind);
     const target = collection.find((item) => item.id === id);
     if (!target) return;
@@ -2649,9 +2822,9 @@ function updateSelectedEquipment(kind, id, patch) {
 
         if (kind === "link" && patch.id != null && patch.id !== previousId) {
             updateLinkReferences(previousId, patch.id);
-            selectedLineIds.value = new Set([patch.id]);
+            replaceSelectedEquipmentId(kind, previousId, patch.id);
         } else if (patch.id != null && patch.id !== id) {
-            selectEquipment(kind, patch.id, false);
+            replaceSelectedEquipmentId(kind, id, patch.id);
         }
 
         if (kind === "link" && previousLinkState) {
@@ -2803,6 +2976,8 @@ function removeNodeInteractionWindowListeners() {
 }
 
 function beginNodeMove(event, nodeId) {
+    if (props.readonly) return;
+
     finishNodeInteraction();
 
     const node = getNodeById(nodeId);
@@ -2959,14 +3134,16 @@ function removeAnnotationInteractionWindowListeners() {
 }
 
 function beginAnnotationTextMove(event, annotationId) {
+    if (props.readonly) return;
+
     if (!shouldHandleElementMouseDown(event)) return;
     event.preventDefault();
     cancelSelectionBox();
 
     const annotation = getAnnotationById(annotationId);
     if (!annotation) return;
-    if (!isAnnotationSelected(annotationId) || selectedAnnotationIds.value.size !== 1) {
-        setSelectedAnnotationIds([annotationId]);
+    if (!isAnnotationSelected(annotationId)) {
+        setSelectedAnnotationIds([...selectedAnnotationIds.value, annotationId]);
     }
 
     const startState = getAnnotationInteractionStartState(annotation);
@@ -3061,6 +3238,8 @@ function removeAnchorInteractionWindowListeners() {
 }
 
 function handleAnchorDown(event, anchor) {
+    if (props.readonly) return;
+
     if (!shouldHandleElementMouseDown(event)) return;
     event.preventDefault();
     finishAnchorInteraction();
@@ -3492,12 +3671,50 @@ function textDisplayStyle(styleKey, selected = false) {
     };
 }
 
+function getCellLinkMembershipCount(lineId) {
+    const normalizedLineId = String(lineId ?? "").trim();
+    if (!normalizedLineId || !props.cellLinkMembershipCounts) return 0;
+
+    const rawCount = props.cellLinkMembershipCounts[normalizedLineId];
+    const count = Number(rawCount);
+    return Number.isFinite(count) && count > 0 ? count : 0;
+}
+
 function trackDisplayStyle(lineId) {
     const style = editorDisplayStyles.value.track;
     const selected = isLineSelected(lineId);
+    const baseStrokeWidth = selected
+        ? Math.max(style.strokeWidth + 2, style.strokeWidth * 2)
+        : style.strokeWidth;
+
+    if (isCellEditingState.value) {
+        const membershipCount = getCellLinkMembershipCount(lineId);
+        if (membershipCount > 1) {
+            return {
+                stroke: "#f56c6c",
+                strokeWidth: Math.max(baseStrokeWidth, style.strokeWidth + 2),
+                strokeDasharray: "none",
+            };
+        }
+
+        if (membershipCount === 1) {
+            return {
+                stroke: style.color,
+                strokeWidth: baseStrokeWidth,
+                strokeDasharray: "none",
+            };
+        }
+
+        return {
+            stroke: style.color,
+            strokeWidth: baseStrokeWidth,
+            strokeDasharray: "10 7",
+        };
+    }
+
     return {
         stroke: selected ? "yellow" : style.color,
-        strokeWidth: selected ? Math.max(style.strokeWidth + 2, style.strokeWidth * 2) : style.strokeWidth,
+        strokeWidth: baseStrokeWidth,
     };
 }
 
@@ -3950,6 +4167,14 @@ defineExpose({
             <circle v-for="node in highlightedRouteNodes" :key="`route-node-${node.id}`"
                 class="route-highlight-node" :cx="screenX(node.x)" :cy="screenY(node.y)"
                 :r="routeHighlightNodeRadius" />
+        </g>
+
+        <g v-if="props.showCellNames && cellNameViews.length > 0" id="cell-name-layer" class="cell-name-layer">
+            <text v-for="cellName in cellNameViews" :key="`cell-name-${cellName.key}`" class="cell-name"
+                :x="screenX(cellName.x)" :y="screenY(cellName.y)"
+                @mousedown.stop.prevent @click.stop.prevent="emitCellNameClick(cellName)">
+                {{ cellName.name }}
+            </text>
         </g>
 
         <g id="signalgroup">

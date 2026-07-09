@@ -14,6 +14,36 @@ namespace SwitchYard.Capacity
         public List<StationLinkRow> Links { get; set; } = new();
 
         public List<StationNodeRow> Nodes { get; set; } = new();
+
+        public StationRouteTypes Type {  get; set; }
+    }
+
+    public enum StationRouteTypes
+    {
+        None,
+        Arrival,
+        Departure,
+        Shunting,
+        Locomotive,
+    }
+
+    public enum RouteEndTypes
+    {
+        None,
+        StationGate,
+        DepartureSignal,
+        ShuntingSignal,
+    }
+
+    public class StationRouteEnd
+    {
+        public StationNodeRow BindingStationNode { get; set; }
+
+        public RouteEndTypes Type { get; set; }
+
+        public string? SegmentTag { get; set; }
+
+        public string? SidingTag { get; set; }
     }
 
     public class StationRouteSearcher
