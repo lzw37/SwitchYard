@@ -33,6 +33,7 @@ const props = defineProps({
     },
 });
 const stationLayoutEditorRef = ref(null);
+const stationLayoutEditorFrameRef = ref(null);
 const signalDropdownRef = ref(null);
 const extractDwgDialogVisible = ref(false);
 const dwgFileInputRef = ref(null);
@@ -60,6 +61,32 @@ const gridSpacing = ref(DEFAULT_GRID_SPACING);
 const layoutStyleDialogVisible = ref(false);
 const layoutScaleXDisplay = computed(() => layoutScaleX.value.toFixed(2));
 const layoutScaleYDisplay = computed(() => layoutScaleY.value.toFixed(2));
+
+function fitDataRectInLayout(rect, options = {}) {
+    if (!rect) return;
+    const screenMargin = Math.max(0, Number(options.screenMargin ?? 48));
+    const viewport = stationLayoutEditorFrameRef.value;
+    if (viewport) {
+        const width = Math.max(1, Number(rect.maxX) - Number(rect.minX));
+        const height = Math.max(1, Number(rect.maxY) - Number(rect.minY));
+        const scale = Math.max(0.25, Math.min(4, Math.min(
+            (viewport.clientWidth - screenMargin * 2) / width,
+            (viewport.clientHeight - screenMargin * 2) / height
+        )));
+        layoutScaleX.value = Number(scale.toFixed(2));
+        layoutScaleY.value = Number(scale.toFixed(2));
+    }
+    nextTick(() => stationLayoutEditorRef.value?.scrollDataRectIntoView?.(rect, {
+        screenMargin,
+        padding: options.padding ?? 160,
+    }));
+}
+
+function fitFullLayout() {
+    const rect = stationLayoutEditorRef.value?.getFullViewRect?.({ screenMargin: 80 });
+    fitDataRectInLayout(rect, { screenMargin: 48, padding: 160 });
+}
+
 const selectedAnnotation = ref(null);
 const selectedEquipment = ref(null);
 const equipmentDrawerVisible = ref(false);
@@ -2243,6 +2270,9 @@ watch(
                     <el-slider v-model="layoutScaleY" :min="0.25" :max="4" :step="0.05" size="small" />
                     <span class="scale-slider-value">{{ layoutScaleYDisplay }}</span>
                 </div>
+                <el-button :icon="Aim" size="small" @click="fitFullLayout">
+                    {{ t('stationLayout.tools.fitFullView') }}
+                </el-button>
             </div>
         </div>
         <div v-if="selectedAnnotation" class="annotation-editor-row">
@@ -2277,7 +2307,7 @@ watch(
                 @change="updateSelectedAnnotationPosition" />
         </div>
         <div class="station-layout-workspace">
-            <div class="station-layout-editor-frame">
+            <div ref="stationLayoutEditorFrameRef" class="station-layout-editor-frame">
                 <StationLayoutEditor ref="stationLayoutEditorRef" :display-scale-x="layoutScaleX"
                     :display-scale-y="layoutScaleY" :show-curve-arc="showCurveArc" :show-nodes="showNodes"
                     :show-grid="showGrid" :object-snap-distance="objectSnapDistance"

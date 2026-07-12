@@ -1182,7 +1182,8 @@
             "separateLine": "Separate",
             "generateNode": "Gen Node",
             "generateSwitch": "Gen Switch",
-            "generateCurve": "Gen Curve"
+            "generateCurve": "Gen Curve",
+            "fitFullView": "Fit All"
         },
         "curveDisplay": {
             "arc": "Arc",
@@ -1211,6 +1212,91 @@
         "messages": {
             "empty": "The selected instance has no layout data to render",
             "loadFailed": "Failed to load 3D station layout"
+        }
+    },
+    "calculationParameters": {
+        "batchSet": {
+            "button": "Batch Set",
+            "title": "Batch Set Occupancy Time",
+            "routeType": "Route Type",
+            "routeCount": "Routes",
+            "routes": "Routes",
+            "routeList": "Route List {selected}/{total}",
+            "routeListTitle": "{type} Route List",
+            "selectAll": "Select All",
+            "selectedCount": "Selected {selected}/{total}",
+            "confirmRoutes": "OK",
+            "apply": "Apply",
+            "cancel": "Cancel",
+            "empty": "No route types available",
+            "emptySelection": "Select at least one route",
+            "selectScheme": "Select a station scheme first",
+            "success": "{routeCount} routes and {rowCount} occupancy time records updated",
+            "failed": "Failed to batch set occupancy time"
+        },
+        "routes": {
+            "title": "Route List",
+            "occupancyConfigured": "Occupancy time configured",
+            "occupancyNotConfigured": "Occupancy time not configured"
+        },
+        "occupancy": {
+            "title": "Occupancy Time",
+            "placeholder": "Graphical occupancy time control placeholder",
+            "selectRoute": "Select a route",
+            "emptyCells": "The selected route has no track circuit sections",
+            "timeAxis": "Time",
+            "horizontalScale": "Horizontal Scale",
+            "autoFit": "Auto Fit",
+            "startHandle": "Adjust start shift",
+            "endHandle": "Adjust end shift"
+        },
+        "traction": {
+            "button": "Traction",
+            "title": "Traction Calculation",
+            "currentRoute": "Current Route",
+            "sampleTag": "Frontend Sample",
+            "velocityDistance": "Velocity-Distance Curve",
+            "timeDistance": "Time-Distance Curve",
+            "linkTimes": "Link Entry/Exit Times",
+            "cellOccupations": "Track Circuit Occupancy Times",
+            "noRoute": "Select a route before traction calculation",
+            "fields": {
+                "link": "Link",
+                "length": "Length",
+                "entryTime": "Entry Time",
+                "exitTime": "Exit Time",
+                "speed": "Entry/Exit Speed",
+                "startTime": "Start",
+                "endTime": "End",
+                "duration": "Duration"
+            }
+        },
+        "manager": {
+            "title": "Parameter Management",
+            "placeholder": "Parameter management placeholder",
+            "noRoute": "No route selected",
+            "createOccupancyTime": "Create Occupancy Time",
+            "saveOccupancyTime": "Save",
+            "emptyRouteTimes": "No occupancy time records",
+            "uniformShift": {
+                "title": "Uniform Shift",
+                "apply": "Apply",
+                "applied": "Uniform shift applied"
+            },
+            "fields": {
+                "cellID": "Track Circuit Section",
+                "startShift": "Start Shift",
+                "endShift": "End Shift"
+            },
+            "messages": {
+                "selectRoute": "Select a route first",
+                "loadFailed": "Failed to load occupancy time",
+                "createSuccess": "{count} occupancy time records created",
+                "createFailed": "Failed to create occupancy time",
+                "emptySave": "No occupancy time records to save",
+                "saveSuccess": "Occupancy time saved",
+                "saveFailed": "Failed to save occupancy time"
+            }
         }
     },
     "routeDesign": {

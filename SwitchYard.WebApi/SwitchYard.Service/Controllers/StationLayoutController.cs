@@ -28,6 +28,7 @@ namespace SwitchYard.Service.Controllers
         private static readonly string[] StationLayoutDataTables = new[]
         {
             "cell",
+            "stationroutetime",
             "stationroute",
             "stationrouteend",
             "switchbranchvector",
@@ -445,6 +446,289 @@ namespace SwitchYard.Service.Controllers
             {
                 _logger.LogError(ex, "Failed to create station route.");
                 return StatusCode(500, "Failed to create station route.");
+            }
+        }
+
+        [HttpGet(Name = "GetStationRouteTimes")]
+        public IActionResult GetStationRouteTimes(
+            [FromQuery] string? instanceID = null,
+            [FromQuery] string? stationSchemeID = null,
+            [FromQuery] string? routeID = null,
+            [FromQuery] string? trainTypeID = null)
+        {
+            try
+            {
+                var dbConnector = GetCapacityDbConnector();
+                var normalizedInstanceID = instanceID?.Trim();
+                var normalizedStationSchemeID = stationSchemeID?.Trim();
+                var normalizedRouteID = routeID?.Trim();
+                var normalizedTrainTypeID = trainTypeID?.Trim() ?? string.Empty;
+                if (string.IsNullOrWhiteSpace(normalizedInstanceID) ||
+                    string.IsNullOrWhiteSpace(normalizedStationSchemeID) ||
+                    string.IsNullOrWhiteSpace(normalizedRouteID))
+                {
+                    return BadRequest("instanceID, stationSchemeID and routeID are required.");
+                }
+
+                var authResult = ValidateCapacityInstanceOwnershipOrFail(dbConnector, normalizedInstanceID);
+                if (authResult != null)
+                {
+                    return authResult;
+                }
+
+                EnsureStationRouteTimeSchema(dbConnector);
+                var route = FindStationRouteByID(
+                    dbConnector,
+                    normalizedInstanceID,
+                    normalizedStationSchemeID,
+                    normalizedRouteID);
+                var routeTimes = LoadStationRouteTimes(
+                    dbConnector,
+                    normalizedInstanceID,
+                    normalizedStationSchemeID,
+                    normalizedRouteID,
+                    normalizedTrainTypeID);
+                return Ok(OrderStationRouteTimesByCellList(routeTimes, route?.CellList));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to load station route times.");
+                return StatusCode(500, "Failed to load station route times.");
+            }
+        }
+
+        [HttpPost(Name = "CreateStationRouteTimes")]
+        public IActionResult CreateStationRouteTimes([FromBody] StationRouteTimeCreateRequest? request)
+        {
+            try
+            {
+                var dbConnector = GetCapacityDbConnector();
+                var instanceID = request?.InstanceID?.Trim();
+                var stationSchemeID = request?.StationSchemeID?.Trim();
+                var routeID = request?.RouteID?.Trim();
+                var trainTypeID = request?.TrainTypeID?.Trim() ?? string.Empty;
+                if (string.IsNullOrWhiteSpace(instanceID) ||
+                    string.IsNullOrWhiteSpace(stationSchemeID) ||
+                    string.IsNullOrWhiteSpace(routeID))
+                {
+                    return BadRequest("instanceID, stationSchemeID and routeID are required.");
+                }
+
+                var authResult = ValidateCapacityInstanceOwnershipOrFail(dbConnector, instanceID);
+                if (authResult != null)
+                {
+                    return authResult;
+                }
+
+                EnsureStationRouteSchema(dbConnector);
+                EnsureStationRouteTimeSchema(dbConnector);
+                var route = FindStationRouteByID(dbConnector, instanceID, stationSchemeID, routeID);
+                if (route == null)
+                {
+                    return NotFound("Station route not found.");
+                }
+
+                var cellIDs = ParseStationRouteIdList(route.CellList);
+                if (cellIDs.Count == 0)
+                {
+                    return BadRequest("The selected route does not contain any cells.");
+                }
+
+                ReplaceStationRouteTimes(
+                    dbConnector,
+                    instanceID,
+                    stationSchemeID,
+                    routeID,
+                    trainTypeID,
+                    cellIDs.Select(cellID => new StationRouteTimeRow
+                    {
+                        CellID = cellID,
+                        StartOccupationShift = 0,
+                        EndOccupationShift = 0,
+                    }).ToList());
+
+                return Ok(OrderStationRouteTimesByCellList(
+                    LoadStationRouteTimes(dbConnector, instanceID, stationSchemeID, routeID, trainTypeID),
+                    route.CellList));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to create station route times.");
+                return StatusCode(500, "Failed to create station route times.");
+            }
+        }
+
+        [HttpPut(Name = "SaveStationRouteTimes")]
+        public IActionResult SaveStationRouteTimes([FromBody] StationRouteTimeSaveRequest? request)
+        {
+            try
+            {
+                var dbConnector = GetCapacityDbConnector();
+                var instanceID = request?.InstanceID?.Trim();
+                var stationSchemeID = request?.StationSchemeID?.Trim();
+                var routeID = request?.RouteID?.Trim();
+                var trainTypeID = request?.TrainTypeID?.Trim() ?? string.Empty;
+                if (string.IsNullOrWhiteSpace(instanceID) ||
+                    string.IsNullOrWhiteSpace(stationSchemeID) ||
+                    string.IsNullOrWhiteSpace(routeID))
+                {
+                    return BadRequest("instanceID, stationSchemeID and routeID are required.");
+                }
+
+                var authResult = ValidateCapacityInstanceOwnershipOrFail(dbConnector, instanceID);
+                if (authResult != null)
+                {
+                    return authResult;
+                }
+
+                EnsureStationRouteSchema(dbConnector);
+                EnsureStationRouteTimeSchema(dbConnector);
+                var route = FindStationRouteByID(dbConnector, instanceID, stationSchemeID, routeID);
+                if (route == null)
+                {
+                    return NotFound("Station route not found.");
+                }
+
+                var routeCellIDs = ParseStationRouteIdList(route.CellList);
+                if (routeCellIDs.Count == 0)
+                {
+                    return BadRequest("The selected route does not contain any cells.");
+                }
+
+                var routeCellIDSet = routeCellIDs.ToHashSet(StringComparer.Ordinal);
+                var rows = (request?.Times ?? new List<StationRouteTimeRow>())
+                    .Where(row => row != null)
+                    .Select(row => new StationRouteTimeRow
+                    {
+                        CellID = row.CellID?.Trim(),
+                        StartOccupationShift = row.StartOccupationShift,
+                        EndOccupationShift = row.EndOccupationShift,
+                    })
+                    .Where(row => !string.IsNullOrWhiteSpace(row.CellID))
+                    .ToList();
+                if (rows.Count == 0)
+                {
+                    return BadRequest("At least one station route time row is required.");
+                }
+
+                var invalidCellID = rows
+                    .Select(row => row.CellID ?? string.Empty)
+                    .FirstOrDefault(cellID => !routeCellIDSet.Contains(cellID));
+                if (!string.IsNullOrEmpty(invalidCellID))
+                {
+                    return BadRequest($"CellID '{invalidCellID}' is not part of the selected route.");
+                }
+
+                ReplaceStationRouteTimes(dbConnector, instanceID, stationSchemeID, routeID, trainTypeID, rows);
+
+                return Ok(OrderStationRouteTimesByCellList(
+                    LoadStationRouteTimes(dbConnector, instanceID, stationSchemeID, routeID, trainTypeID),
+                    route.CellList));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to save station route times.");
+                return StatusCode(500, "Failed to save station route times.");
+            }
+        }
+
+        [HttpPut(Name = "BatchSetStationRouteTimes")]
+        public IActionResult BatchSetStationRouteTimes([FromBody] StationRouteTimeBatchSetRequest? request)
+        {
+            try
+            {
+                var dbConnector = GetCapacityDbConnector();
+                var instanceID = request?.InstanceID?.Trim();
+                var stationSchemeID = request?.StationSchemeID?.Trim();
+                var trainTypeID = request?.TrainTypeID?.Trim() ?? string.Empty;
+                if (string.IsNullOrWhiteSpace(instanceID) ||
+                    string.IsNullOrWhiteSpace(stationSchemeID))
+                {
+                    return BadRequest("instanceID and stationSchemeID are required.");
+                }
+
+                var settingsByType = new Dictionary<string, StationRouteTimeBatchSetItem>(StringComparer.OrdinalIgnoreCase);
+                foreach (var setting in request?.Settings ?? new List<StationRouteTimeBatchSetItem>())
+                {
+                    var type = setting.Type?.Trim();
+                    if (string.IsNullOrWhiteSpace(type))
+                    {
+                        continue;
+                    }
+
+                    settingsByType[type] = new StationRouteTimeBatchSetItem
+                    {
+                        Type = type,
+                        RouteIDs = setting.RouteIDs?
+                            .Select(routeID => routeID?.Trim())
+                            .Where(routeID => !string.IsNullOrWhiteSpace(routeID))
+                            .Select(routeID => routeID!)
+                            .Distinct(StringComparer.OrdinalIgnoreCase)
+                            .ToList(),
+                        StartOccupationShift = setting.StartOccupationShift,
+                        EndOccupationShift = setting.EndOccupationShift,
+                    };
+                }
+                if (settingsByType.Count == 0)
+                {
+                    return BadRequest("At least one route type setting is required.");
+                }
+
+                var authResult = ValidateCapacityInstanceOwnershipOrFail(dbConnector, instanceID);
+                if (authResult != null)
+                {
+                    return authResult;
+                }
+
+                EnsureStationRouteSchema(dbConnector);
+                EnsureStationRouteTimeSchema(dbConnector);
+                var routes = LoadStationRoutes(dbConnector, instanceID, stationSchemeID);
+                var updatedRouteCount = 0;
+                var updatedRowCount = 0;
+                foreach (var route in routes)
+                {
+                    var routeID = route.ID?.Trim();
+                    var routeType = route.Type?.Trim() ?? string.Empty;
+                    if (string.IsNullOrWhiteSpace(routeID) ||
+                        string.IsNullOrWhiteSpace(routeType) ||
+                        !settingsByType.TryGetValue(routeType, out var setting))
+                    {
+                        continue;
+                    }
+                    if (setting.RouteIDs != null &&
+                        !setting.RouteIDs.Contains(routeID, StringComparer.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    var cellIDs = ParseStationRouteIdList(route.CellList);
+                    if (cellIDs.Count == 0)
+                    {
+                        continue;
+                    }
+
+                    ReplaceStationRouteTimes(
+                        dbConnector,
+                        instanceID,
+                        stationSchemeID,
+                        routeID,
+                        trainTypeID,
+                        cellIDs.Select(cellID => new StationRouteTimeRow
+                        {
+                            CellID = cellID,
+                            StartOccupationShift = setting.StartOccupationShift,
+                            EndOccupationShift = setting.EndOccupationShift,
+                        }).ToList());
+                    updatedRouteCount++;
+                    updatedRowCount += cellIDs.Count;
+                }
+
+                return Ok(new { routeCount = updatedRouteCount, rowCount = updatedRowCount });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to batch set station route times.");
+                return StatusCode(500, "Failed to batch set station route times.");
             }
         }
 
@@ -2151,11 +2435,20 @@ namespace SwitchYard.Service.Controllers
             string instanceID,
             string stationSchemeID)
         {
+            EnsureStationRouteTimeSchema(dbConnector);
             var tableName = QuoteIdentifier("stationroute");
+            var timeTableName = QuoteIdentifier("stationroutetime");
             return dbConnector.Query<StationRouteRow>(
                 $@"SELECT InstanceID, StationSchemeID, ID, {QuoteIdentifier("Type")} AS {QuoteIdentifier("Type")},
                           Description, NodeList, LinkList, SwitchList, CellList, SignalList,
-                          AllowanceTags, ForbiddenTags, StartNodeID, EndNodeID
+                          AllowanceTags, ForbiddenTags, StartNodeID, EndNodeID,
+                          CASE WHEN EXISTS (
+                              SELECT 1
+                              FROM {timeTableName}
+                              WHERE {timeTableName}.InstanceID = {tableName}.InstanceID
+                                AND {timeTableName}.StationSchemeID = {tableName}.StationSchemeID
+                                AND {timeTableName}.RouteID = {tableName}.ID
+                          ) THEN 1 ELSE 0 END AS OccupancyTimeConfigured
                    FROM {tableName}
                    WHERE InstanceID = @instanceID AND StationSchemeID = @stationSchemeID
                    ORDER BY ID",
@@ -2183,6 +2476,145 @@ namespace SwitchYard.Service.Controllers
                      AND ID = @id
                    LIMIT 1",
                 new { instanceID, stationSchemeID, id }) ?? new List<StationRouteRow>()).Any();
+        }
+
+        private static StationRouteRow? FindStationRouteByID(
+            DBConnector dbConnector,
+            string instanceID,
+            string stationSchemeID,
+            string id)
+        {
+            EnsureStationRouteSchema(dbConnector);
+            var tableName = QuoteIdentifier("stationroute");
+            return (dbConnector.Query<StationRouteRow>(
+                $@"SELECT InstanceID, StationSchemeID, ID, {QuoteIdentifier("Type")} AS {QuoteIdentifier("Type")},
+                          Description, NodeList, LinkList, SwitchList, CellList, SignalList,
+                          AllowanceTags, ForbiddenTags, StartNodeID, EndNodeID
+                   FROM {tableName}
+                   WHERE InstanceID = @instanceID
+                     AND StationSchemeID = @stationSchemeID
+                     AND ID = @id
+                   LIMIT 1",
+                new { instanceID, stationSchemeID, id }) ?? new List<StationRouteRow>()).FirstOrDefault();
+        }
+
+        private static List<string> ParseStationRouteIdList(string? value)
+        {
+            var text = value?.Trim();
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return new List<string>();
+            }
+
+            try
+            {
+                var parsed = JsonSerializer.Deserialize<List<string>>(text);
+                if (parsed != null)
+                {
+                    return parsed
+                        .Select(id => id?.Trim())
+                        .Where(id => !string.IsNullOrWhiteSpace(id))
+                        .Select(id => id!)
+                        .ToList();
+                }
+            }
+            catch (JsonException)
+            {
+            }
+
+            return Regex.Split(text, @"(?:\s*->\s*)|(?:\s*[,;\r\n]\s*)|\s+")
+                .Select(id => id.Trim())
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .ToList();
+        }
+
+        private static List<StationRouteTimeRow> OrderStationRouteTimesByCellList(
+            List<StationRouteTimeRow> rows,
+            string? cellList)
+        {
+            var cellIDs = ParseStationRouteIdList(cellList);
+            if (cellIDs.Count == 0 || rows.Count <= 1)
+            {
+                return rows;
+            }
+
+            var orderByCellID = cellIDs
+                .Select((cellID, index) => new { cellID, index })
+                .GroupBy(item => item.cellID, StringComparer.Ordinal)
+                .ToDictionary(group => group.Key, group => group.First().index, StringComparer.Ordinal);
+
+            return rows
+                .Select((row, index) => new { row, index })
+                .OrderBy(item => orderByCellID.TryGetValue(item.row.CellID ?? string.Empty, out var order) ? order : int.MaxValue)
+                .ThenBy(item => item.index)
+                .Select(item => item.row)
+                .ToList();
+        }
+
+        private static void ReplaceStationRouteTimes(
+            DBConnector dbConnector,
+            string instanceID,
+            string stationSchemeID,
+            string routeID,
+            string trainTypeID,
+            List<StationRouteTimeRow> rows)
+        {
+            EnsureStationRouteTimeSchema(dbConnector);
+            var tableName = QuoteIdentifier("stationroutetime");
+            dbConnector.ExecuteNonQuery(
+                $@"DELETE FROM {tableName}
+                   WHERE InstanceID = @instanceID
+                     AND StationSchemeID = @stationSchemeID
+                     AND RouteID = @routeID
+                     AND COALESCE(TrainTypeID, '') = @trainTypeID",
+                new { instanceID, stationSchemeID, routeID, trainTypeID });
+
+            foreach (var row in rows)
+            {
+                var cellID = row.CellID?.Trim();
+                if (string.IsNullOrWhiteSpace(cellID))
+                {
+                    continue;
+                }
+
+                dbConnector.ExecuteNonQuery(
+                    $@"INSERT INTO {tableName} (
+                           InstanceID, StationSchemeID, RouteID, TrainTypeID,
+                           CellID, StartOccupationShift, EndOccupationShift)
+                       VALUES (
+                           @InstanceID, @StationSchemeID, @RouteID, @TrainTypeID,
+                           @CellID, @StartOccupationShift, @EndOccupationShift)",
+                    new StationRouteTimeRow
+                    {
+                        InstanceID = instanceID,
+                        StationSchemeID = stationSchemeID,
+                        RouteID = routeID,
+                        TrainTypeID = trainTypeID,
+                        CellID = cellID,
+                        StartOccupationShift = row.StartOccupationShift,
+                        EndOccupationShift = row.EndOccupationShift,
+                    });
+            }
+        }
+
+        private static List<StationRouteTimeRow> LoadStationRouteTimes(
+            DBConnector dbConnector,
+            string instanceID,
+            string stationSchemeID,
+            string routeID,
+            string trainTypeID)
+        {
+            EnsureStationRouteTimeSchema(dbConnector);
+            var tableName = QuoteIdentifier("stationroutetime");
+            return dbConnector.Query<StationRouteTimeRow>(
+                $@"SELECT InstanceID, StationSchemeID, RouteID, TrainTypeID, CellID,
+                          StartOccupationShift, EndOccupationShift
+                   FROM {tableName}
+                   WHERE InstanceID = @instanceID
+                     AND StationSchemeID = @stationSchemeID
+                     AND RouteID = @routeID
+                     AND COALESCE(TrainTypeID, '') = @trainTypeID",
+                new { instanceID, stationSchemeID, routeID, trainTypeID }) ?? new List<StationRouteTimeRow>();
         }
 
         private static bool StationNodeIDExists(
@@ -3525,6 +3957,67 @@ namespace SwitchYard.Service.Controllers
                 ["ForbiddenTags"] = longTextType,
                 ["StartNodeID"] = shortTextType,
                 ["EndNodeID"] = shortTextType
+            };
+
+            foreach (var column in requiredColumns)
+            {
+                if (existingColumns.Any(existing => string.Equals(existing, column.Key, StringComparison.OrdinalIgnoreCase)))
+                {
+                    continue;
+                }
+
+                dbConnector.ExecuteNonQuery(
+                    $@"ALTER TABLE {tableName} ADD COLUMN {QuoteIdentifier(column.Key)} {column.Value}");
+            }
+        }
+
+        private static void EnsureStationRouteTimeSchema(DBConnector dbConnector)
+        {
+            var tableName = QuoteIdentifier("stationroutetime");
+            if (!TableExists(dbConnector, "stationroutetime"))
+            {
+                if (DBConnector.IsMySql(DBConnector.CapacityDatabaseSectionName))
+                {
+                    dbConnector.ExecuteNonQuery(
+                        $@"CREATE TABLE IF NOT EXISTS {tableName} (
+                            {QuoteIdentifier("InstanceID")} VARCHAR(50) NULL,
+                            {QuoteIdentifier("StationSchemeID")} VARCHAR(50) NULL,
+                            {QuoteIdentifier("RouteID")} VARCHAR(50) NULL,
+                            {QuoteIdentifier("TrainTypeID")} VARCHAR(50) NULL,
+                            {QuoteIdentifier("CellID")} VARCHAR(50) NULL,
+                            {QuoteIdentifier("StartOccupationShift")} INT NULL,
+                            {QuoteIdentifier("EndOccupationShift")} INT NULL
+                        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+                }
+                else
+                {
+                    dbConnector.ExecuteNonQuery(
+                        $@"CREATE TABLE IF NOT EXISTS {tableName} (
+                            {QuoteIdentifier("InstanceID")} TEXT NULL,
+                            {QuoteIdentifier("StationSchemeID")} TEXT NULL,
+                            {QuoteIdentifier("RouteID")} TEXT NULL,
+                            {QuoteIdentifier("TrainTypeID")} TEXT NULL,
+                            {QuoteIdentifier("CellID")} TEXT NULL,
+                            {QuoteIdentifier("StartOccupationShift")} INTEGER NULL,
+                            {QuoteIdentifier("EndOccupationShift")} INTEGER NULL
+                        )");
+                }
+
+                return;
+            }
+
+            var existingColumns = GetColumnNames(dbConnector, "stationroutetime");
+            var textType = DBConnector.IsMySql(DBConnector.CapacityDatabaseSectionName) ? "VARCHAR(50) NULL" : "TEXT NULL";
+            var intType = DBConnector.IsMySql(DBConnector.CapacityDatabaseSectionName) ? "INT NULL" : "INTEGER NULL";
+            var requiredColumns = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["InstanceID"] = textType,
+                ["StationSchemeID"] = textType,
+                ["RouteID"] = textType,
+                ["TrainTypeID"] = textType,
+                ["CellID"] = textType,
+                ["StartOccupationShift"] = intType,
+                ["EndOccupationShift"] = intType
             };
 
             foreach (var column in requiredColumns)

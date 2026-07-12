@@ -192,6 +192,25 @@ namespace SwitchYard.Capacity
         public string? StartNodeID { get; set; }
 
         public string? EndNodeID { get; set; }
+
+        public bool OccupancyTimeConfigured { get; set; }
+    }
+
+    public sealed class StationRouteTimeRow
+    {
+        public string? InstanceID { get; set; }
+
+        public string? StationSchemeID { get; set; }
+
+        public string? RouteID { get; set; }
+
+        public string? TrainTypeID { get; set; }
+
+        public string? CellID { get; set; }
+
+        public int? StartOccupationShift { get; set; }
+
+        public int? EndOccupationShift { get; set; }
     }
 
     public sealed class DatabaseNameLookupRow

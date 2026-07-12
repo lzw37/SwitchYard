@@ -446,6 +446,44 @@ function adjustCanvasScrollAfterExpansion(deltaLeft, deltaTop) {
     });
 }
 
+function scrollDataRectIntoView(rect, options = {}) {
+    if (!rect) return false;
+
+    const minX = Math.min(toFiniteNumber(rect.minX), toFiniteNumber(rect.maxX));
+    const minY = Math.min(toFiniteNumber(rect.minY), toFiniteNumber(rect.maxY));
+    const maxX = Math.max(toFiniteNumber(rect.minX), toFiniteNumber(rect.maxX));
+    const maxY = Math.max(toFiniteNumber(rect.minY), toFiniteNumber(rect.maxY));
+    if (![minX, minY, maxX, maxY].every(Number.isFinite)) return false;
+
+    expandCanvasToIncludeRect({ minX, minY, maxX, maxY }, {
+        padding: Math.max(0, toFiniteNumber(options.padding ?? canvasAutoExpandPadding)),
+    });
+
+    nextTick(() => {
+        const scrollContainer = getCanvasScrollContainer();
+        if (!scrollContainer) return;
+
+        const screenMargin = Math.max(0, toFiniteNumber(options.screenMargin ?? 48));
+        const left = screenX(minX) - screenMargin;
+        const right = screenX(maxX) + screenMargin;
+        const top = screenY(minY) - screenMargin;
+        const bottom = screenY(maxY) + screenMargin;
+        const targetLeft = (left + right - scrollContainer.clientWidth) / 2;
+        const targetTop = (top + bottom - scrollContainer.clientHeight) / 2;
+
+        scrollContainer.scrollLeft = Math.max(0, targetLeft);
+        scrollContainer.scrollTop = Math.max(0, targetTop);
+    });
+
+    return true;
+}
+
+function getFullViewRect(options = {}) {
+    const screenMargin = Math.max(0, toFiniteNumber(options.screenMargin ?? canvasElementScreenMargin));
+    const rect = buildCanvasContentRect(screenMargin);
+    return isCanvasContentRectEmpty(rect) ? null : { ...rect };
+}
+
 function expandCanvasToIncludeRect(rect, options = {}) {
     if (!rect) return false;
     const minX = Math.min(toFiniteNumber(rect.minX), toFiniteNumber(rect.maxX));
@@ -796,6 +834,17 @@ function buildCanvasContentRect(screenMargin = canvasElementScreenMargin) {
     for (const curve of curves.value) {
         includePointInCanvasContentRect(rect, curve.start, screenMargin);
         includePointInCanvasContentRect(rect, curve.end, screenMargin);
+        if (curve.center) {
+            const radius = Math.max(0, toFiniteNumber(curve.radius));
+            includeDataRectInCanvasContentRect(
+                rect,
+                toFiniteNumber(curve.center.x) - radius,
+                toFiniteNumber(curve.center.y) - radius,
+                toFiniteNumber(curve.center.x) + radius,
+                toFiniteNumber(curve.center.y) + radius,
+                screenMargin
+            );
+        }
     }
     for (const node of nodes.value) {
         includePointInCanvasContentRect(rect, node, screenMargin);
@@ -4160,6 +4209,8 @@ defineExpose({
     updateSelectedAnnotation,
     updateSelectedEquipment,
     clearElements,
+    getFullViewRect,
+    scrollDataRectIntoView,
 });
 </script>
 

@@ -68,10 +68,11 @@
                     </div>
                     <el-empty v-else :description="t('capacityMain.placeholders.selectInstance')" />
                 </el-tab-pane>
-                <el-tab-pane :label="t('capacityMain.tabs.calcParams')" name="calcParams">
-                    <div class="tab-placeholder">
-                        <el-empty :description="t('capacityMain.placeholders.calcParams')" />
+                <el-tab-pane :label="t('capacityMain.tabs.calcParams')" name="calcParams" lazy>
+                    <div v-if="hasSelectedInstance" class="calculation-parameters-pane">
+                        <CalculationParameters :selected-instance-id="selectedInstance || ''" />
                     </div>
+                    <el-empty v-else :description="t('capacityMain.placeholders.selectInstance')" />
                 </el-tab-pane>
                 <el-tab-pane :label="t('capacityMain.tabs.operationPlan')" name="operationPlan">
                     <div class="tab-placeholder">
@@ -116,6 +117,7 @@ import { useAuthStore } from '@/stores/auth'
 import StationLayout from './StationLayout.vue'
 import RouteDesign from './RouteDesign.vue'
 import StationLayout3D from './StationLayout3D.vue'
+import CalculationParameters from './CalculationParameters.vue'
 import CapacityInstanceManager from './CapacityInstanceManager.vue'
 import UserManagement from '@/views/UserManagement.vue'
 
@@ -354,6 +356,14 @@ watch(selectedInstance, () => {
     overflow: hidden;
 }
 
+.calculation-parameters-pane {
+    width: 100%;
+    max-width: 100%;
+    height: calc(100dvh - 118px);
+    min-height: 420px;
+    overflow: hidden;
+}
+
 @media (max-width: 768px) {
     .capacity-main {
         padding: 16px;
@@ -381,7 +391,8 @@ watch(selectedInstance, () => {
         min-height: 420px;
     }
 
-    .route-design-pane {
+    .route-design-pane,
+    .calculation-parameters-pane {
         height: calc(100dvh - 188px);
         min-height: 420px;
     }

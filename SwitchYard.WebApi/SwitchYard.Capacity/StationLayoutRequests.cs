@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+
 namespace SwitchYard.Capacity
 {
     public sealed class StationLayoutSaveRequest
@@ -75,6 +77,52 @@ namespace SwitchYard.Capacity
         public string? StartNodeID { get; set; }
 
         public string? EndNodeID { get; set; }
+    }
+
+    public sealed class StationRouteTimeCreateRequest
+    {
+        public string? InstanceID { get; set; }
+
+        public string? StationSchemeID { get; set; }
+
+        public string? RouteID { get; set; }
+
+        public string? TrainTypeID { get; set; }
+    }
+
+    public sealed class StationRouteTimeSaveRequest
+    {
+        public string? InstanceID { get; set; }
+
+        public string? StationSchemeID { get; set; }
+
+        public string? RouteID { get; set; }
+
+        public string? TrainTypeID { get; set; }
+
+        public List<StationRouteTimeRow> Times { get; set; } = new();
+    }
+
+    public sealed class StationRouteTimeBatchSetRequest
+    {
+        public string? InstanceID { get; set; }
+
+        public string? StationSchemeID { get; set; }
+
+        public string? TrainTypeID { get; set; }
+
+        public List<StationRouteTimeBatchSetItem> Settings { get; set; } = new();
+    }
+
+    public sealed class StationRouteTimeBatchSetItem
+    {
+        public string? Type { get; set; }
+
+        public List<string>? RouteIDs { get; set; }
+
+        public int? StartOccupationShift { get; set; }
+
+        public int? EndOccupationShift { get; set; }
     }
 
     public sealed class StationRouteSearchRequest

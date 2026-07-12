@@ -71,6 +71,9 @@
                         />
                         <span class="route-design-scale-value">{{ layoutScaleY.toFixed(2) }}</span>
                     </div>
+                    <el-button :icon="Aim" size="small" @click="fitFullLayout">
+                        {{ t('stationLayout.tools.fitFullView') }}
+                    </el-button>
                 </div>
                 <div class="route-design-switch-control">
                     <span class="route-design-control-label">{{ t('routeDesign.toolbar.stationRoute') }}</span>
@@ -89,7 +92,7 @@
             :class="{ 'is-resizing': isResizing }"
         >
             <div class="route-design-editor-pane" :style="leftPaneStyle">
-                <div class="route-design-editor-scroll">
+                <div ref="layoutViewportRef" class="route-design-editor-scroll">
                     <StationLayoutEditor
                         ref="stationLayoutEditorRef"
                         readonly
@@ -1068,6 +1071,7 @@ const { t } = useI18n()
 
 const stationLayoutEditorRef = ref<any>(null)
 const splitContainerRef = ref<HTMLElement | null>(null)
+const layoutViewportRef = ref<HTMLElement | null>(null)
 const stationRouteContentRef = ref<HTMLElement | null>(null)
 const routeEndContentRef = ref<HTMLElement | null>(null)
 const routeEndTableRef = ref<any>(null)
@@ -3442,6 +3446,28 @@ function clearLayout() {
     routeObjectOptions.value = createEmptyRouteObjectOptions()
     routeListFilterQueries.value = createEmptyRouteListFilterQueries()
     stationLayoutEditorRef.value?.clearElements()
+}
+
+function fitDataRectInLayout(rect: { minX: number; minY: number; maxX: number; maxY: number } | null, options: { screenMargin?: number; padding?: number } = {}) {
+    if (!rect) return
+    const screenMargin = Math.max(0, Number(options.screenMargin ?? 48))
+    const viewport = layoutViewportRef.value
+    if (viewport) {
+        const width = Math.max(1, rect.maxX - rect.minX)
+        const height = Math.max(1, rect.maxY - rect.minY)
+        const scale = Math.max(0.25, Math.min(4, Math.min((viewport.clientWidth - screenMargin * 2) / width, (viewport.clientHeight - screenMargin * 2) / height)))
+        layoutScaleX.value = Number(scale.toFixed(2))
+        layoutScaleY.value = Number(scale.toFixed(2))
+    }
+    nextTick(() => stationLayoutEditorRef.value?.scrollDataRectIntoView(rect, {
+        screenMargin,
+        padding: options.padding ?? 160,
+    }))
+}
+
+function fitFullLayout() {
+    const rect = stationLayoutEditorRef.value?.getFullViewRect?.({ screenMargin: 80 })
+    fitDataRectInLayout(rect, { screenMargin: 48, padding: 160 })
 }
 
 async function loadLayout() {

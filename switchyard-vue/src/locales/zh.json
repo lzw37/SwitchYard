@@ -1170,7 +1170,8 @@
             "separateLine": "线路分段",
             "generateNode": "节点生成",
             "generateSwitch": "道岔生成",
-            "generateCurve": "曲线生成"
+            "generateCurve": "曲线生成",
+            "fitFullView": "显示全图"
         },
         "curveDisplay": {
             "arc": "圆弧",
@@ -1199,6 +1200,91 @@
         "messages": {
             "empty": "当前实例没有可显示的布置图数据",
             "loadFailed": "加载 3D 布置图失败"
+        }
+    },
+    "calculationParameters": {
+        "batchSet": {
+            "button": "批量设置",
+            "title": "批量设置占用时间",
+            "routeType": "进路类型",
+            "routeCount": "进路数量",
+            "routes": "进路",
+            "routeList": "进路列表 {selected}/{total}",
+            "routeListTitle": "{type} 进路列表",
+            "selectAll": "全选",
+            "selectedCount": "已选 {selected}/{total}",
+            "confirmRoutes": "确定",
+            "apply": "应用设置",
+            "cancel": "取消",
+            "empty": "暂无可设置的进路类型",
+            "emptySelection": "请至少选择一条进路",
+            "selectScheme": "请先选择车站方案",
+            "success": "已批量设置 {routeCount} 条进路，{rowCount} 条占用时间记录",
+            "failed": "批量设置占用时间失败"
+        },
+        "routes": {
+            "title": "进路列表",
+            "occupancyConfigured": "已配置占用时间",
+            "occupancyNotConfigured": "未配置占用时间"
+        },
+        "occupancy": {
+            "title": "占用时间图",
+            "placeholder": "图形化占用时间控件预留",
+            "selectRoute": "请选择进路",
+            "emptyCells": "当前进路没有轨道电路区段",
+            "timeAxis": "时间",
+            "horizontalScale": "横向缩放",
+            "autoFit": "自适应",
+            "startHandle": "调整开始偏移",
+            "endHandle": "调整结束偏移"
+        },
+        "traction": {
+            "button": "牵引计算",
+            "title": "牵引计算",
+            "currentRoute": "当前进路",
+            "sampleTag": "前端样例",
+            "velocityDistance": "速度-距离曲线",
+            "timeDistance": "时间-距离曲线",
+            "linkTimes": "Link 入口/出口时刻",
+            "cellOccupations": "轨道电路区段占用时刻",
+            "noRoute": "请选择进路后进行牵引计算",
+            "fields": {
+                "link": "Link",
+                "length": "长度",
+                "entryTime": "入口时刻",
+                "exitTime": "出口时刻",
+                "speed": "入口/出口速度",
+                "startTime": "开始占用",
+                "endTime": "结束占用",
+                "duration": "时长"
+            }
+        },
+        "manager": {
+            "title": "参数管理",
+            "placeholder": "参数管理框预留",
+            "noRoute": "未选择进路",
+            "createOccupancyTime": "创建占用时间",
+            "saveOccupancyTime": "保存",
+            "emptyRouteTimes": "暂无占用时间记录",
+            "uniformShift": {
+                "title": "统一偏移",
+                "apply": "应用",
+                "applied": "统一偏移已应用"
+            },
+            "fields": {
+                "cellID": "轨道电路区段",
+                "startShift": "开始偏移",
+                "endShift": "结束偏移"
+            },
+            "messages": {
+                "selectRoute": "请先选择进路",
+                "loadFailed": "加载占用时间失败",
+                "createSuccess": "已创建 {count} 条占用时间记录",
+                "createFailed": "创建占用时间失败",
+                "emptySave": "没有可保存的占用时间记录",
+                "saveSuccess": "占用时间已保存",
+                "saveFailed": "保存占用时间失败"
+            }
         }
     },
     "routeDesign": {
