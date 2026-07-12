@@ -23,6 +23,7 @@ namespace SwitchYard.Service.Controllers
         private const string DefaultStationSchemeID = "station_layout_scheme";
         private const string DefaultStationSchemeName = "车站布置图";
         private const string DefaultStationSchemeGridSettingsJson = "{\"showGrid\":true,\"spacing\":20,\"originX\":0,\"originY\":0}";
+        private const string MissingStationRouteEndTagPlaceholder = "【】";
         private static readonly string[] NamedDeviceTables = new[] { "signal", "switch", "cell", "route", "platform" };
         private static readonly string[] StationLayoutDataTables = new[]
         {
@@ -313,7 +314,12 @@ namespace SwitchYard.Service.Controllers
                             Cells = routeCells,
                             Signals = routeSignals
                         };
-                    }).ToList()
+                    })
+                    .OrderBy(result => result.CellIds.Count)
+                    .ThenBy(result => result.LinkIds.Count)
+                    .ThenBy(result => result.Direction, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(result => string.Join(",", result.NodeIds))
+                    .ToList()
                 };
 
                 return Ok(response);
@@ -410,6 +416,8 @@ namespace SwitchYard.Service.Controllers
                     return BadRequest("StartNodeID and EndNodeID must reference existing nodes in the selected station scheme.");
                 }
 
+                EnsureStationRouteDescription(dbConnector, route);
+
                 if (StationRouteIDExists(dbConnector, route.InstanceID!, route.StationSchemeID!, route.ID!))
                 {
                     return BadRequest("Station route ID already exists in the selected station scheme.");
@@ -418,11 +426,11 @@ namespace SwitchYard.Service.Controllers
                 var tableName = QuoteIdentifier("stationroute");
                 var result = dbConnector.ExecuteNonQuery(
                     $@"INSERT INTO {tableName} (
-                           InstanceID, StationSchemeID, ID, {QuoteIdentifier("Type")},
+                           InstanceID, StationSchemeID, ID, {QuoteIdentifier("Type")}, Description,
                            NodeList, LinkList, SwitchList, CellList, SignalList,
                            AllowanceTags, ForbiddenTags, StartNodeID, EndNodeID)
                        VALUES (
-                           @InstanceID, @StationSchemeID, @ID, @Type,
+                           @InstanceID, @StationSchemeID, @ID, @Type, @Description,
                            @NodeList, @LinkList, @SwitchList, @CellList, @SignalList,
                            @AllowanceTags, @ForbiddenTags, @StartNodeID, @EndNodeID)",
                     route);
@@ -479,6 +487,8 @@ namespace SwitchYard.Service.Controllers
                     return BadRequest("StartNodeID and EndNodeID must reference existing nodes in the selected station scheme.");
                 }
 
+                EnsureStationRouteDescription(dbConnector, route);
+
                 if (!string.Equals(originalID, route.ID, StringComparison.OrdinalIgnoreCase) &&
                     StationRouteIDExists(dbConnector, route.InstanceID!, route.StationSchemeID!, route.ID!))
                 {
@@ -490,6 +500,7 @@ namespace SwitchYard.Service.Controllers
                     $@"UPDATE {tableName}
                        SET ID = @ID,
                            {QuoteIdentifier("Type")} = @Type,
+                           Description = @Description,
                            NodeList = @NodeList,
                            LinkList = @LinkList,
                            SwitchList = @SwitchList,
@@ -508,6 +519,7 @@ namespace SwitchYard.Service.Controllers
                         route.StationSchemeID,
                         route.ID,
                         route.Type,
+                        route.Description,
                         route.NodeList,
                         route.LinkList,
                         route.SwitchList,
@@ -526,6 +538,56 @@ namespace SwitchYard.Service.Controllers
             {
                 _logger.LogError(ex, "Failed to update station route.");
                 return StatusCode(500, "Failed to update station route.");
+            }
+        }
+
+        [HttpPost(Name = "GenerateStationRouteDescription")]
+        public IActionResult GenerateStationRouteDescription([FromBody] StationRouteRequest? request)
+        {
+            try
+            {
+                var dbConnector = GetCapacityDbConnector();
+                var normalized = NormalizeStationRouteRequest(
+                    request,
+                    allowMissingID: true);
+                if (normalized.ErrorResult != null)
+                {
+                    return normalized.ErrorResult;
+                }
+
+                var route = normalized.Route!;
+                if (string.IsNullOrWhiteSpace(route.Type))
+                {
+                    return BadRequest("Type is required when generating a station route description.");
+                }
+
+                var authResult = ValidateCapacityInstanceOwnershipOrFail(dbConnector, route.InstanceID!);
+                if (authResult != null)
+                {
+                    return authResult;
+                }
+
+                EnsureStationSchemeSchema(dbConnector);
+                if (!StationSchemeIDExists(dbConnector, route.InstanceID!, route.StationSchemeID!))
+                {
+                    return NotFound("Station scheme not found.");
+                }
+
+                return Ok(new
+                {
+                    description = BuildStationRouteDescription(
+                        dbConnector,
+                        route.InstanceID!,
+                        route.StationSchemeID!,
+                        route.StartNodeID!,
+                        route.EndNodeID!,
+                        route.Type!)
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to generate station route description.");
+                return StatusCode(500, "Failed to generate station route description.");
             }
         }
 
@@ -2057,6 +2119,7 @@ namespace SwitchYard.Service.Controllers
                 StationSchemeID = stationSchemeID,
                 ID = id,
                 Type = NormalizeNullableRouteEndField(request.Type),
+                Description = NormalizeNullableRouteEndField(request.Description),
                 NodeList = NormalizeNullableRouteEndField(request.NodeList),
                 LinkList = NormalizeNullableRouteEndField(request.LinkList),
                 SwitchList = NormalizeNullableRouteEndField(request.SwitchList),
@@ -2091,7 +2154,7 @@ namespace SwitchYard.Service.Controllers
             var tableName = QuoteIdentifier("stationroute");
             return dbConnector.Query<StationRouteRow>(
                 $@"SELECT InstanceID, StationSchemeID, ID, {QuoteIdentifier("Type")} AS {QuoteIdentifier("Type")},
-                          NodeList, LinkList, SwitchList, CellList, SignalList,
+                          Description, NodeList, LinkList, SwitchList, CellList, SignalList,
                           AllowanceTags, ForbiddenTags, StartNodeID, EndNodeID
                    FROM {tableName}
                    WHERE InstanceID = @instanceID AND StationSchemeID = @stationSchemeID
@@ -2268,6 +2331,104 @@ namespace SwitchYard.Service.Controllers
                      AND ID = @bindingNodeID
                    LIMIT 1",
                 new { instanceID, stationSchemeID, bindingNodeID }) ?? new List<StationNodeRow>()).Any();
+        }
+
+        private static StationRouteEndRow? FindStationRouteEndByBindingNodeID(
+            DBConnector dbConnector,
+            string instanceID,
+            string stationSchemeID,
+            string bindingNodeID)
+        {
+            if (string.IsNullOrWhiteSpace(bindingNodeID))
+            {
+                return null;
+            }
+
+            EnsureStationRouteEndSchema(dbConnector);
+            var tableName = QuoteIdentifier("stationrouteend");
+            return (dbConnector.Query<StationRouteEndRow>(
+                $@"SELECT InstanceID, StationSchemeID, ID, BindingNodeID, {QuoteIdentifier("Type")} AS {QuoteIdentifier("Type")}, SegmentTag, SidingTag
+                   FROM {tableName}
+                   WHERE InstanceID = @instanceID
+                     AND StationSchemeID = @stationSchemeID
+                     AND BindingNodeID = @bindingNodeID
+                   ORDER BY ID
+                   LIMIT 1",
+                new { instanceID, stationSchemeID, bindingNodeID }) ?? new List<StationRouteEndRow>()).FirstOrDefault();
+        }
+
+        private static void EnsureStationRouteDescription(DBConnector dbConnector, StationRouteRow route)
+        {
+            if (!string.IsNullOrWhiteSpace(route.Description) ||
+                string.IsNullOrWhiteSpace(route.InstanceID) ||
+                string.IsNullOrWhiteSpace(route.StationSchemeID) ||
+                string.IsNullOrWhiteSpace(route.StartNodeID) ||
+                string.IsNullOrWhiteSpace(route.EndNodeID) ||
+                string.IsNullOrWhiteSpace(route.Type))
+            {
+                return;
+            }
+
+            route.Description = BuildStationRouteDescription(
+                dbConnector,
+                route.InstanceID,
+                route.StationSchemeID,
+                route.StartNodeID,
+                route.EndNodeID,
+                route.Type);
+        }
+
+        private static string BuildStationRouteDescription(
+            DBConnector dbConnector,
+            string instanceID,
+            string stationSchemeID,
+            string startNodeID,
+            string endNodeID,
+            string routeType)
+        {
+            EnsureStationRouteEndSchema(dbConnector);
+            var startRouteEnd = FindStationRouteEndByBindingNodeID(
+                dbConnector,
+                instanceID,
+                stationSchemeID,
+                startNodeID);
+
+            var endRouteEnd = FindStationRouteEndByBindingNodeID(
+                dbConnector,
+                instanceID,
+                stationSchemeID,
+                endNodeID);
+
+            var startTag = BuildStationRouteEndTag(startRouteEnd);
+            var endTag = BuildStationRouteEndTag(endRouteEnd);
+            var routeTypeDescription = GetStationRouteTypeDescription(routeType);
+            return $"自{startTag}往{endTag}的{routeTypeDescription}进路";
+        }
+
+        private static string BuildStationRouteEndTag(StationRouteEndRow? routeEnd)
+        {
+            if (routeEnd == null)
+            {
+                return MissingStationRouteEndTagPlaceholder;
+            }
+
+            var tag = string.Concat(
+                routeEnd.SegmentTag?.Trim() ?? string.Empty,
+                routeEnd.SidingTag?.Trim() ?? string.Empty).Trim();
+            return string.IsNullOrWhiteSpace(tag) ? MissingStationRouteEndTagPlaceholder : tag;
+        }
+
+        private static string GetStationRouteTypeDescription(string routeType)
+        {
+            var normalizedRouteType = routeType.Trim();
+            return normalizedRouteType.ToUpperInvariant() switch
+            {
+                "ARRIVAL" => "接车",
+                "DEPARTURE" => "发车",
+                "SHUNTING" => "调车",
+                "LOCOMOTIVE" => "机车出入段",
+                _ => normalizedRouteType
+            };
         }
 
         private StationLayoutNodeSaveContext BuildNodeSaveContext(
@@ -3309,6 +3470,7 @@ namespace SwitchYard.Service.Controllers
                             {QuoteIdentifier("StationSchemeID")} VARCHAR(50) NULL,
                             {QuoteIdentifier("ID")} VARCHAR(50) NULL,
                             {QuoteIdentifier("Type")} VARCHAR(50) NULL,
+                            {QuoteIdentifier("Description")} LONGTEXT NULL,
                             {QuoteIdentifier("NodeList")} LONGTEXT NULL,
                             {QuoteIdentifier("LinkList")} LONGTEXT NULL,
                             {QuoteIdentifier("SwitchList")} LONGTEXT NULL,
@@ -3328,6 +3490,7 @@ namespace SwitchYard.Service.Controllers
                             {QuoteIdentifier("StationSchemeID")} TEXT NULL,
                             {QuoteIdentifier("ID")} TEXT NULL,
                             {QuoteIdentifier("Type")} TEXT NULL,
+                            {QuoteIdentifier("Description")} TEXT NULL,
                             {QuoteIdentifier("NodeList")} TEXT NULL,
                             {QuoteIdentifier("LinkList")} TEXT NULL,
                             {QuoteIdentifier("SwitchList")} TEXT NULL,
@@ -3352,6 +3515,7 @@ namespace SwitchYard.Service.Controllers
                 ["StationSchemeID"] = shortTextType,
                 ["ID"] = shortTextType,
                 ["Type"] = shortTextType,
+                ["Description"] = longTextType,
                 ["NodeList"] = longTextType,
                 ["LinkList"] = longTextType,
                 ["SwitchList"] = longTextType,

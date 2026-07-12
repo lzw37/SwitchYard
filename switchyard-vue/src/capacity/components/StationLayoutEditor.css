@@ -151,6 +151,12 @@
     opacity: 0.95;
 }
 
+.route-highlight-arrow {
+    stroke-width: 1.5px;
+    stroke-linejoin: round;
+    opacity: 0.98;
+}
+
 .cell-name-layer {
     pointer-events: none;
 }

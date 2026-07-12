@@ -27,6 +27,9 @@ const props = defineProps({
     routePickTarget: { type: String, default: "" },
     highlightedRouteLinkIds: { type: Array, default: () => [] },
     highlightedRouteNodeIds: { type: Array, default: () => [] },
+    highlightedRouteArrowNodeIds: { type: Array, default: () => [] },
+    highlightedRouteColor: { type: String, default: "#ffd600" },
+    highlightedRouteArrowVisible: { type: Boolean, default: true },
     readonly: { type: Boolean, default: false },
 });
 const emit = defineEmits(["selected-annotation-change", "selected-equipment-change", "route-node-pick", "cell-name-click"]);
@@ -132,25 +135,81 @@ const highlightedRouteCurves = computed(() => {
 const highlightedRouteNodes = computed(() => {
     if (highlightedRouteNodeIdSet.value.size === 0) return [];
 
-    const nodeByID = new Map(nodes.value.map((node) => [String(node.id ?? ""), node]));
-    return (Array.isArray(props.highlightedRouteNodeIds) ? props.highlightedRouteNodeIds : [])
-        .map((id) => nodeByID.get(String(id)))
-        .filter((node) => node != null);
+    return mapRouteNodesByIds(props.highlightedRouteNodeIds);
+});
+const highlightedRouteArrowNodes = computed(() => {
+    const arrowNodeIds = Array.isArray(props.highlightedRouteArrowNodeIds) ? props.highlightedRouteArrowNodeIds : [];
+    const sourceNodeIds = arrowNodeIds.length > 0 ? arrowNodeIds : props.highlightedRouteNodeIds;
+    return mapRouteNodesByIds(sourceNodeIds);
 });
 const highlightedRouteLayerVisible = computed(() =>
     highlightedRouteSegments.value.length > 0 ||
     highlightedRouteCurves.value.length > 0 ||
     highlightedRouteNodes.value.length > 0
 );
+const routeHighlightColor = computed(() => String(props.highlightedRouteColor || "#ffd600").trim() || "#ffd600");
+const routeHighlightStrokeWidth = computed(() => Math.max(
+    editorDisplayStyles.value.track.strokeWidth + 4,
+    editorDisplayStyles.value.curve.strokeWidth + 2,
+    7
+));
 const routeHighlightStyle = computed(() => ({
-    stroke: "#ffd600",
-    strokeWidth: Math.max(
-        editorDisplayStyles.value.track.strokeWidth + 4,
-        editorDisplayStyles.value.curve.strokeWidth + 2,
-        7
-    ),
+    stroke: routeHighlightColor.value,
+    strokeWidth: routeHighlightStrokeWidth.value,
+}));
+const routeHighlightNodeStyle = computed(() => ({
+    fill: routeHighlightColor.value,
+}));
+const routeHighlightArrowStyle = computed(() => ({
+    fill: routeHighlightColor.value,
+    stroke: "#111827",
 }));
 const routeHighlightNodeRadius = computed(() => Math.max(editorDisplayStyles.value.node.radius + 2, 6));
+const highlightedRouteArrowView = computed(() => {
+    if (!props.highlightedRouteArrowVisible) return null;
+
+    const routeNodes = highlightedRouteArrowNodes.value.filter((node) => node != null);
+    if (routeNodes.length < 2) return null;
+
+    const endNode = routeNodes[routeNodes.length - 1];
+    const tipX = screenX(endNode.x);
+    const tipY = screenY(endNode.y);
+    let previousNode = null;
+    let vectorLength = 0;
+
+    for (let index = routeNodes.length - 2; index >= 0; index--) {
+        const candidate = routeNodes[index];
+        const dx = tipX - screenX(candidate.x);
+        const dy = tipY - screenY(candidate.y);
+        const length = Math.hypot(dx, dy);
+        if (length <= 0.001) continue;
+
+        previousNode = candidate;
+        vectorLength = length;
+        break;
+    }
+
+    if (!previousNode || vectorLength <= 0.001) return null;
+
+    const previousX = screenX(previousNode.x);
+    const previousY = screenY(previousNode.y);
+    const unitX = (tipX - previousX) / vectorLength;
+    const unitY = (tipY - previousY) / vectorLength;
+    const arrowLength = Math.max(16, routeHighlightStrokeWidth.value * 2.4);
+    const arrowWidth = Math.max(13, routeHighlightStrokeWidth.value * 1.8);
+    const baseX = tipX - unitX * arrowLength;
+    const baseY = tipY - unitY * arrowLength;
+    const normalX = -unitY;
+    const normalY = unitX;
+    const leftX = baseX + normalX * arrowWidth / 2;
+    const leftY = baseY + normalY * arrowWidth / 2;
+    const rightX = baseX - normalX * arrowWidth / 2;
+    const rightY = baseY - normalY * arrowWidth / 2;
+
+    return {
+        points: `${tipX},${tipY} ${leftX},${leftY} ${rightX},${rightY}`,
+    };
+});
 
 const latestElementID = ref(0);
 const layoutMetadata = ref({});
@@ -3471,6 +3530,13 @@ function buildRouteTransitionKey(firstLinkID, secondLinkID) {
     return first < second ? `${first}|${second}` : `${second}|${first}`;
 }
 
+function mapRouteNodesByIds(nodeIds) {
+    const nodeByID = new Map(nodes.value.map((node) => [String(node.id ?? ""), node]));
+    return (Array.isArray(nodeIds) ? nodeIds : [])
+        .map((id) => nodeByID.get(String(id)))
+        .filter((node) => node != null);
+}
+
 function isRouteCurveHighlighted(curve) {
     const firstLinkID = String(curve?.tangentLinkID1 ?? "");
     const secondLinkID = String(curve?.tangentLinkID2 ?? "");
@@ -4166,7 +4232,9 @@ defineExpose({
                 class="route-highlight-curve" :d="curvePath(curve)" :style="routeHighlightStyle" />
             <circle v-for="node in highlightedRouteNodes" :key="`route-node-${node.id}`"
                 class="route-highlight-node" :cx="screenX(node.x)" :cy="screenY(node.y)"
-                :r="routeHighlightNodeRadius" />
+                :r="routeHighlightNodeRadius" :style="routeHighlightNodeStyle" />
+            <polygon v-if="highlightedRouteArrowView" class="route-highlight-arrow"
+                :points="highlightedRouteArrowView.points" :style="routeHighlightArrowStyle" />
         </g>
 
         <g v-if="props.showCellNames && cellNameViews.length > 0" id="cell-name-layer" class="cell-name-layer">

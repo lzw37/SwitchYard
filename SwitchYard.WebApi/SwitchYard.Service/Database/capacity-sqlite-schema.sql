@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS "stationroute" (
     "StationSchemeID" TEXT NULL,
     "ID" TEXT NULL,
     "Type" TEXT NULL,
+    "Description" TEXT NULL,
     "NodeList" TEXT NULL,
     "LinkList" TEXT NULL,
     "SwitchList" TEXT NULL,

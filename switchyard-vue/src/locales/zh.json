@@ -1204,7 +1204,13 @@
     "routeDesign": {
         "toolbar": {
             "stationRoute": "进路生成",
-            "routeEnd": "进路起终点配置"
+            "routeEnd": "进路起终点配置",
+            "layoutDisplay": "平面图显示",
+            "showGrid": "网格",
+            "showNodes": "节点",
+            "curveDisplay": "曲线",
+            "showCellNames": "轨道电路区段名",
+            "displayScale": "比例"
         },
         "stationRoute": {
             "title": "进路生成",
@@ -1214,16 +1220,17 @@
                 "instanceID": "InstanceID",
                 "stationSchemeID": "StationSchemeID",
                 "id": "ID",
-                "type": "Type",
-                "nodeList": "NodeList",
-                "linkList": "LinkList",
-                "switchList": "SwitchList",
-                "cellList": "CellList",
-                "signalList": "SignalList",
-                "allowanceTags": "AllowanceTags",
-                "forbiddenTags": "ForbiddenTags",
-                "startNodeID": "StartNodeID",
-                "endNodeID": "EndNodeID"
+                "type": "进路类别",
+                "description": "进路描述",
+                "nodeList": "途经节点",
+                "linkList": "途经边",
+                "switchList": "途经道岔",
+                "cellList": "途经轨道电路区段",
+                "signalList": "途经信号机",
+                "allowanceTags": "许可作业标签",
+                "forbiddenTags": "禁止作业标签",
+                "startNodeID": "起点ID",
+                "endNodeID": "终点ID"
             },
             "actions": {
                 "add": "新增",
@@ -1232,11 +1239,19 @@
                 "pickEnd": "点选终点",
                 "save": "保存",
                 "cancel": "取消",
-                "delete": "删除"
+                "delete": "删除",
+                "filter": "过滤",
+                "clearFilters": "清除过滤",
+                "generateDescription": "生成描述",
+                "autoGenerate": "自动生成进路",
+                "batchDelete": "批量删除"
             },
             "states": {
                 "new": "新增",
                 "picking": "点选中"
+            },
+            "selection": {
+                "count": "已选择 {selected}/{total} 条"
             },
             "form": {
                 "newTitle": "新建进路",
@@ -1248,16 +1263,34 @@
                 "rightToLeft": "右向左"
             },
             "placeholders": {
-                "autoId": "留空则自动生成"
+                "autoId": "留空则自动生成",
+                "selectRouteItems": "输入名称或 ID 筛选后选择",
+                "selectRouteTags": "选择或输入标签"
+            },
+            "filter": {
+                "type": "按进路类别过滤",
+                "startNode": "按起点ID过滤",
+                "endNode": "按终点ID过滤",
+                "node": "按途经节点过滤",
+                "link": "按途经边过滤",
+                "cell": "按途经轨道电路区段过滤",
+                "switch": "按途经道岔过滤",
+                "signal": "按途经信号机过滤",
+                "empty": "没有符合过滤条件的进路",
+                "count": "显示 {filtered}/{total} 条"
             },
             "searchDialog": {
                 "title": "选择搜索到的进路",
                 "count": "共搜索到 {count} 条候选进路",
                 "empty": "暂无候选进路",
                 "direction": "方向",
-                "path": "路径",
+                "cellCount": "轨道电路区段数量",
+                "linkCount": "边数量",
+                "signalCount": "信号机数量",
                 "useRoute": "使用此进路",
-                "linkSummary": "{count} 条 Link"
+                "cellSummary": "{count} 个轨道电路区段",
+                "linkSummary": "{count} 条边",
+                "signalSummary": "{count} 架信号机"
             },
             "messages": {
                 "selectScheme": "请先选择车站方案",
@@ -1272,6 +1305,9 @@
                 "selectCandidate": "请先选择一条候选进路",
                 "candidateApplied": "已带入候选进路，请补充进路字段后保存",
                 "startEndRequired": "StartNodeID 和 EndNodeID 不能为空",
+                "typeRequired": "进路类别不能为空",
+                "descriptionGenerated": "进路描述已生成",
+                "descriptionGenerateFailed": "生成进路描述失败",
                 "idRequired": "ID 不能为空",
                 "loadFailed": "加载进路失败",
                 "createSuccess": "进路已新增",
@@ -1281,7 +1317,49 @@
                 "deleteTitle": "删除进路",
                 "deleteConfirm": "确定删除进路“{id}”吗？",
                 "deleteSuccess": "进路已删除",
-                "deleteFailed": "删除进路失败"
+                "deleteFailed": "删除进路失败",
+                "batchDeleteRequired": "请先勾选要删除的进路",
+                "batchDeleteTitle": "批量删除进路",
+                "batchDeleteConfirm": "确定删除已勾选的 {count} 条进路吗？",
+                "batchDeleteSuccess": "已批量删除 {count} 条进路",
+                "batchDeletePartial": "批量删除完成：成功 {deleted} 条，失败 {failed} 条"
+            }
+        },
+        "autoRoute": {
+            "title": "进路自动生成",
+            "count": "{start} 个起点，{end} 个终点，共 {pairs} 组",
+            "fields": {
+                "startNodes": "起点框",
+                "endNodes": "终点框"
+            },
+            "actions": {
+                "pickStart": "点选起点 Node",
+                "pickEnd": "点选终点 Node",
+                "generate": "自动生成",
+                "clear": "清空"
+            },
+            "placeholders": {
+                "selectNodes": "通过点选图中对象添加 Node"
+            },
+            "typeDescriptions": {
+                "arrival": "接车",
+                "departure": "发车",
+                "shunting": "调车",
+                "locomotive": "机车出入段"
+            },
+            "generatedDescription": "自{start}往{end}的{type}进路",
+            "messages": {
+                "pickStart": "请在图中点选要加入起点框的 Node",
+                "pickEnd": "请在图中点选要加入终点框的 Node",
+                "startPicked": "已添加起点 Node {nodeId}",
+                "endPicked": "已添加终点 Node {nodeId}",
+                "duplicateNode": "Node {nodeId} 已在当前框内",
+                "startEndRequired": "起点框和终点框都至少需要一个 Node",
+                "noValidPairs": "没有可生成的起终点组合",
+                "generatingPair": "正在处理 {current}/{total}: {start} -> {end}",
+                "generateFinished": "自动生成完成：新增 {created} 条，未找到 {noRoute} 组，失败 {failed} 组，跳过 {skipped} 组",
+                "generateEmpty": "未生成进路：未找到 {noRoute} 组，失败 {failed} 组，跳过 {skipped} 组",
+                "missingRouteEndTag": "【】"
             }
         },
         "routeEnd": {
@@ -1303,7 +1381,11 @@
                 "pickNode": "点选 Node",
                 "save": "保存",
                 "cancel": "取消",
-                "delete": "删除"
+                "delete": "删除",
+                "autoConfigure": "自动配置",
+                "batchDelete": "批量删除",
+                "filter": "过滤",
+                "clearFilters": "清除过滤"
             },
             "states": {
                 "new": "新增",
@@ -1314,8 +1396,24 @@
                 "editTitle": "当前进路起终点",
                 "emptyTitle": "未选择进路起终点"
             },
+            "types": {
+                "stationEntrance": "车站入口",
+                "stationExit": "车站出口",
+                "stationEntranceAndExit": "车站出入口",
+                "departureSignal": "出站信号机",
+                "shuntingSignal": "调车信号机",
+                "locomotiveDepot": "机务段",
+                "locomotiveWaitingLine": "机待线",
+                "bufferStop": "车挡",
+                "others": "其他"
+            },
             "placeholders": {
                 "autoId": "留空则自动生成"
+            },
+            "filter": {
+                "type": "按 Type 过滤",
+                "empty": "没有符合过滤条件的进路起终点",
+                "count": "显示 {filtered}/{total} 个"
             },
             "messages": {
                 "selectScheme": "请先选择车站方案",
@@ -1331,7 +1429,18 @@
                 "deleteTitle": "删除进路起终点",
                 "deleteConfirm": "确定删除进路起终点“{id}”吗？",
                 "deleteSuccess": "进路起终点已删除",
-                "deleteFailed": "删除进路起终点失败"
+                "deleteFailed": "删除进路起终点失败",
+                "batchDeleteRequired": "请先勾选要删除的进路起终点",
+                "batchDeleteTitle": "批量删除进路起终点",
+                "batchDeleteConfirm": "确定删除已勾选的 {count} 个进路起终点吗？",
+                "batchDeleteSuccess": "已批量删除 {count} 个进路起终点",
+                "batchDeletePartial": "批量删除完成：成功 {deleted} 个，失败 {failed} 个",
+                "autoConfigureTitle": "自动配置进路起终点",
+                "autoConfigureConfirm": "将按进站/出站/调车信号机和车挡补齐 {count} 个进路起终点，跳过 {skipped} 个已配置或不可用位置。是否继续？",
+                "autoConfigureNoEquipment": "未找到可用于自动配置的进站、出站、调车信号机或车挡",
+                "autoConfigureNoCandidates": "没有需要新增的进路起终点，已跳过 {skipped} 个位置",
+                "autoConfigureSuccess": "自动配置完成：新增 {created} 个，跳过 {skipped} 个",
+                "autoConfigurePartial": "自动配置完成：新增 {created} 个，失败 {failed} 个，跳过 {skipped} 个"
             }
         },
         "messages": {

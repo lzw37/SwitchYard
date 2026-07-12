@@ -1216,7 +1216,13 @@
     "routeDesign": {
         "toolbar": {
             "stationRoute": "Route Generation",
-            "routeEnd": "Route End Config"
+            "routeEnd": "Route End Config",
+            "layoutDisplay": "Plan View",
+            "showGrid": "Grid",
+            "showNodes": "Nodes",
+            "curveDisplay": "Curves",
+            "showCellNames": "Track Circuit Names",
+            "displayScale": "Scale"
         },
         "stationRoute": {
             "title": "Route Generation",
@@ -1226,16 +1232,17 @@
                 "instanceID": "InstanceID",
                 "stationSchemeID": "StationSchemeID",
                 "id": "ID",
-                "type": "Type",
-                "nodeList": "NodeList",
-                "linkList": "LinkList",
-                "switchList": "SwitchList",
-                "cellList": "CellList",
-                "signalList": "SignalList",
-                "allowanceTags": "AllowanceTags",
-                "forbiddenTags": "ForbiddenTags",
-                "startNodeID": "StartNodeID",
-                "endNodeID": "EndNodeID"
+                "type": "Route Type",
+                "description": "Route Description",
+                "nodeList": "Via Nodes",
+                "linkList": "Via Links",
+                "switchList": "Via Switches",
+                "cellList": "Via Track Circuit Sections",
+                "signalList": "Via Signals",
+                "allowanceTags": "Allowed Operation Tags",
+                "forbiddenTags": "Prohibited Operation Tags",
+                "startNodeID": "Start Node ID",
+                "endNodeID": "End Node ID"
             },
             "actions": {
                 "add": "Add",
@@ -1244,11 +1251,19 @@
                 "pickEnd": "Pick End",
                 "save": "Save",
                 "cancel": "Cancel",
-                "delete": "Delete"
+                "delete": "Delete",
+                "filter": "Filter",
+                "clearFilters": "Clear Filters",
+                "generateDescription": "Generate Description",
+                "autoGenerate": "Auto-generate Routes",
+                "batchDelete": "Batch Delete"
             },
             "states": {
                 "new": "New",
                 "picking": "Picking"
+            },
+            "selection": {
+                "count": "{selected}/{total} selected"
             },
             "form": {
                 "newTitle": "New Route",
@@ -1260,16 +1275,34 @@
                 "rightToLeft": "Right to Left"
             },
             "placeholders": {
-                "autoId": "Auto-generated when empty"
+                "autoId": "Auto-generated when empty",
+                "selectRouteItems": "Type a name or ID to filter",
+                "selectRouteTags": "Select or enter tags"
+            },
+            "filter": {
+                "type": "Filter by Route Type",
+                "startNode": "Filter by Start Node ID",
+                "endNode": "Filter by End Node ID",
+                "node": "Filter by Via Nodes",
+                "link": "Filter by Via Links",
+                "cell": "Filter by Via Track Circuit Sections",
+                "switch": "Filter by Via Switches",
+                "signal": "Filter by Via Signals",
+                "empty": "No routes match the filters",
+                "count": "Showing {filtered}/{total}"
             },
             "searchDialog": {
                 "title": "Select a Searched Route",
                 "count": "{count} candidate routes found",
                 "empty": "No candidate routes",
                 "direction": "Direction",
-                "path": "Path",
+                "cellCount": "Cells",
+                "linkCount": "Links",
+                "signalCount": "Signals",
                 "useRoute": "Use This Route",
-                "linkSummary": "{count} Links"
+                "cellSummary": "{count} Cells",
+                "linkSummary": "{count} Links",
+                "signalSummary": "{count} Signals"
             },
             "messages": {
                 "selectScheme": "Select a station scheme first",
@@ -1284,6 +1317,9 @@
                 "selectCandidate": "Select a candidate route first",
                 "candidateApplied": "Candidate route applied. Complete the route fields and save.",
                 "startEndRequired": "StartNodeID and EndNodeID are required",
+                "typeRequired": "Route Type is required",
+                "descriptionGenerated": "Route description generated",
+                "descriptionGenerateFailed": "Failed to generate route description",
                 "idRequired": "ID is required",
                 "loadFailed": "Failed to load routes",
                 "createSuccess": "Route created",
@@ -1293,7 +1329,49 @@
                 "deleteTitle": "Delete Route",
                 "deleteConfirm": "Delete route \"{id}\"?",
                 "deleteSuccess": "Route deleted",
-                "deleteFailed": "Failed to delete route"
+                "deleteFailed": "Failed to delete route",
+                "batchDeleteRequired": "Select routes to delete first",
+                "batchDeleteTitle": "Batch Delete Routes",
+                "batchDeleteConfirm": "Delete the {count} selected routes?",
+                "batchDeleteSuccess": "{count} routes deleted",
+                "batchDeletePartial": "Batch delete complete: {deleted} deleted, {failed} failed"
+            }
+        },
+        "autoRoute": {
+            "title": "Route Auto-generation",
+            "count": "{start} starts, {end} ends, {pairs} pairs",
+            "fields": {
+                "startNodes": "Start Box",
+                "endNodes": "End Box"
+            },
+            "actions": {
+                "pickStart": "Pick Start Node",
+                "pickEnd": "Pick End Node",
+                "generate": "Auto-generate",
+                "clear": "Clear"
+            },
+            "placeholders": {
+                "selectNodes": "Pick objects in the layout to add Nodes"
+            },
+            "typeDescriptions": {
+                "arrival": "arrival",
+                "departure": "departure",
+                "shunting": "shunting",
+                "locomotive": "locomotive movement"
+            },
+            "generatedDescription": "Route from {start} to {end} for {type}",
+            "messages": {
+                "pickStart": "Pick Nodes in the layout to add to the start box",
+                "pickEnd": "Pick Nodes in the layout to add to the end box",
+                "startPicked": "Start Node {nodeId} added",
+                "endPicked": "End Node {nodeId} added",
+                "duplicateNode": "Node {nodeId} is already in this box",
+                "startEndRequired": "Add at least one Node to both the start and end boxes",
+                "noValidPairs": "No valid start/end pairs to generate",
+                "generatingPair": "Processing {current}/{total}: {start} -> {end}",
+                "generateFinished": "Auto-generation complete: {created} created, {noRoute} not found, {failed} failed, {skipped} skipped",
+                "generateEmpty": "No routes generated: {noRoute} not found, {failed} failed, {skipped} skipped",
+                "missingRouteEndTag": "[]"
             }
         },
         "routeEnd": {
@@ -1315,7 +1393,11 @@
                 "pickNode": "Pick Node",
                 "save": "Save",
                 "cancel": "Cancel",
-                "delete": "Delete"
+                "delete": "Delete",
+                "autoConfigure": "Auto Configure",
+                "batchDelete": "Batch Delete",
+                "filter": "Filter",
+                "clearFilters": "Clear Filters"
             },
             "states": {
                 "new": "New",
@@ -1326,8 +1408,24 @@
                 "editTitle": "Selected Route End",
                 "emptyTitle": "No Route End Selected"
             },
+            "types": {
+                "stationEntrance": "Station Entrance",
+                "stationExit": "Station Exit",
+                "stationEntranceAndExit": "Station Entrance/Exit",
+                "departureSignal": "Departure Signal",
+                "shuntingSignal": "Shunting Signal",
+                "locomotiveDepot": "Locomotive Depot",
+                "locomotiveWaitingLine": "Locomotive Waiting Line",
+                "bufferStop": "Buffer Stop",
+                "others": "Other"
+            },
             "placeholders": {
                 "autoId": "Auto-generated when empty"
+            },
+            "filter": {
+                "type": "Filter by Type",
+                "empty": "No route ends match the filters",
+                "count": "Showing {filtered}/{total}"
             },
             "messages": {
                 "selectScheme": "Select a station scheme first",
@@ -1343,7 +1441,18 @@
                 "deleteTitle": "Delete Route End",
                 "deleteConfirm": "Delete route end \"{id}\"?",
                 "deleteSuccess": "Route end deleted",
-                "deleteFailed": "Failed to delete route end"
+                "deleteFailed": "Failed to delete route end",
+                "batchDeleteRequired": "Select route ends to delete first",
+                "batchDeleteTitle": "Batch Delete Route Ends",
+                "batchDeleteConfirm": "Delete the {count} selected route ends?",
+                "batchDeleteSuccess": "{count} route ends deleted",
+                "batchDeletePartial": "Batch delete complete: {deleted} deleted, {failed} failed",
+                "autoConfigureTitle": "Auto Configure Route Ends",
+                "autoConfigureConfirm": "This will add {count} route ends from home/departure/shunting signals and buffer stops, skipping {skipped} configured or unavailable positions. Continue?",
+                "autoConfigureNoEquipment": "No home, departure, shunting signals, or buffer stops were found for auto configuration",
+                "autoConfigureNoCandidates": "No route ends need to be added; {skipped} positions were skipped",
+                "autoConfigureSuccess": "Auto configuration complete: {created} added, {skipped} skipped",
+                "autoConfigurePartial": "Auto configuration complete: {created} added, {failed} failed, {skipped} skipped"
             }
         },
         "messages": {

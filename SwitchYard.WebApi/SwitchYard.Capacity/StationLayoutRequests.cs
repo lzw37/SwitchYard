@@ -56,6 +56,8 @@ namespace SwitchYard.Capacity
 
         public string? Type { get; set; }
 
+        public string? Description { get; set; }
+
         public string? NodeList { get; set; }
 
         public string? LinkList { get; set; }
