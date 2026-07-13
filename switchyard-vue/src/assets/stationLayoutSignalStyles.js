@@ -41,6 +41,9 @@ const signalPoleTypes = {
 const placeholderSignalStyleAssets = {
     DepartureSignal: {
         className: "signal-departure",
+        width: 119,
+        height: 34,
+        bounds: { minX: 1, minY: 1, maxX: 119, maxY: 33 },
         elements: [
             { tag: "circle", attrs: { cx: 38, cy: 17, r: 16, fill: "#fff" } },
             { tag: "circle", attrs: { cx: 38, cy: 17, r: 8, fill: "#fff" } },
@@ -52,6 +55,9 @@ const placeholderSignalStyleAssets = {
     },
     HomeSignal: {
         className: "signal-home",
+        width: 104,
+        height: 42,
+        bounds: { minX: 1, minY: 1, maxX: 104, maxY: 41 },
         elements: [
             { tag: "line", attrs: { x1: 1, y1: 1, x2: 1, y2: 41, fill: "none" } },
             { tag: "line", attrs: { x1: 1, y1: 21, x2: 20, y2: 21, fill: "none" } },
@@ -63,6 +69,9 @@ const placeholderSignalStyleAssets = {
     },
     ShuntingSignal: {
         className: "signal-shunting",
+        width: 68,
+        height: 34,
+        bounds: { minX: 1, minY: 0, maxX: 68, maxY: 33 },
         elements: [
             { tag: "line", attrs: { x1: 1, y1: 12, x2: 20, y2: 12, fill: "none" } },
             { tag: "line", attrs: { x1: 1, y1: 1, x2: 1, y2: 33, fill: "none" } },
@@ -73,6 +82,9 @@ const placeholderSignalStyleAssets = {
     },
     HumpSignal: {
         className: "signal-hump",
+        width: 68,
+        height: 39,
+        bounds: { minX: 1, minY: 1, maxX: 68, maxY: 39 },
         elements: [
             { tag: "line", attrs: { x1: 1, y1: 1, x2: 1, y2: 39, fill: "none" } },
             { tag: "line", attrs: { x1: 1, y1: 20, x2: 20, y2: 20, fill: "none" } },

@@ -79,6 +79,11 @@ const signalDirectionKeyViews = [
     { key: "d", label: "d", x: 22, y: 22 },
 ];
 const signalNodeExtraGap = 4;
+const signalNameGap = 4;
+const hoverHighlightColor = "#9ec7e8";
+const selectedHighlightColor = "#e2bf6a";
+const hoverOutlineColor = "#6f9fc5";
+const selectedOutlineColor = "#b8924d";
 const anchorParam = { size: 10 };
 const safeDisplayScaleX = computed(() => normalizeDisplayScale(props.displayScaleX));
 const safeDisplayScaleY = computed(() => normalizeDisplayScale(props.displayScaleY));
@@ -233,6 +238,7 @@ const selectedSwitchIds = ref(new Set());
 const selectedPlatformIds = ref(new Set());
 const selectedAnnotationIds = ref(new Set());
 const lastSelectedEquipmentRef = ref(null);
+const hoveredElement = ref(null);
 
 const crossPoints = ref([]);
 const perpendicularPoint = ref(null);
@@ -661,6 +667,76 @@ function getLastSelectedEquipment() {
 
 function setLastSelectedEquipment(kind, id) {
     lastSelectedEquipmentRef.value = { kind, id };
+}
+
+function getEquipmentForHover(kind, id) {
+    if (kind === "node") return getNodeById(id);
+    if (kind === "annotation") return getAnnotationById(id);
+    if (kind === "cellName") return id == null ? null : { id };
+    return getEquipmentById(kind, id);
+}
+
+function canHoverElement(kind, id) {
+    const equipment = getEquipmentForHover(kind, id);
+    if (!equipment) return false;
+    if (kind === "cellName") return true;
+    if (kind === "node") {
+        return Boolean(props.routePickTarget) || editModeCode.value === 0 || (editModeCode.value === 1 && drawingObject.value === "w");
+    }
+    if (props.routePickTarget) {
+        return Boolean(equipment.bindingNodeID ?? equipment.BindingNodeID);
+    }
+    return editModeCode.value === 0;
+}
+
+function setHoveredElement(kind, id) {
+    if (!canHoverElement(kind, id)) return;
+    hoveredElement.value = { kind, id };
+}
+
+function clearHoveredElement(kind, id) {
+    if (!kind) {
+        hoveredElement.value = null;
+        return;
+    }
+
+    if (isElementHovered(kind, id)) {
+        hoveredElement.value = null;
+    }
+}
+
+function isElementHovered(kind, id) {
+    const hovered = hoveredElement.value;
+    return hovered?.kind === kind && String(hovered.id) === String(id);
+}
+
+function isElementSelected(kind, id) {
+    if (kind === "link") return isLineSelected(id);
+    if (kind === "node") return isNodeSelected(id);
+    if (kind === "signal") return isSignalSelected(id);
+    if (kind === "insulationJoint") return isInsulationJointSelected(id);
+    if (kind === "bufferStop") return isBufferStopSelected(id);
+    if (kind === "switch") return isSwitchSelected(id);
+    if (kind === "platform") return isPlatformSelected(id);
+    if (kind === "annotation") return isAnnotationSelected(id);
+    return false;
+}
+
+function elementHighlightColor(kind, id) {
+    if (isElementSelected(kind, id)) return selectedHighlightColor;
+    if (isElementHovered(kind, id)) return hoverHighlightColor;
+    return "";
+}
+
+function elementOutlineColor(kind, id) {
+    if (isElementSelected(kind, id)) return selectedOutlineColor;
+    if (isElementHovered(kind, id)) return hoverOutlineColor;
+    return "";
+}
+
+function elementHighlightStyle(kind, id) {
+    const highlightColor = elementHighlightColor(kind, id);
+    return highlightColor ? { "--equipment-highlight-color": highlightColor } : {};
 }
 
 function clearLastSelectedEquipment(predicate) {
@@ -1276,6 +1352,7 @@ function clearSelectedEquipment() {
 }
 
 function setEditMode(code) {
+    clearHoveredElement();
     editModeCode.value = props.readonly ? 0 : Number(code);
 }
 
@@ -3565,12 +3642,24 @@ function isSignalSelected(id) {
     return selectedSignalIds.value.has(id);
 }
 
+function isSignalHighlighted(id) {
+    return isSignalSelected(id) || isElementHovered("signal", id);
+}
+
 function isLineSelected(id) {
     return selectedLineIds.value.has(id);
 }
 
+function isLineHighlighted(id) {
+    return isLineSelected(id) || isElementHovered("link", id);
+}
+
 function isNodeSelected(id) {
     return selectedNodeIds.value.has(id);
+}
+
+function isNodeHighlighted(id) {
+    return isNodeSelected(id) || isElementHovered("node", id);
 }
 
 function buildRouteTransitionKey(firstLinkID, secondLinkID) {
@@ -3601,20 +3690,40 @@ function isInsulationJointSelected(id) {
     return selectedInsulationJointIds.value.has(id);
 }
 
+function isInsulationJointHighlighted(id) {
+    return isInsulationJointSelected(id) || isElementHovered("insulationJoint", id);
+}
+
 function isBufferStopSelected(id) {
     return selectedBufferStopIds.value.has(id);
+}
+
+function isBufferStopHighlighted(id) {
+    return isBufferStopSelected(id) || isElementHovered("bufferStop", id);
 }
 
 function isSwitchSelected(id) {
     return selectedSwitchIds.value.has(id);
 }
 
+function isSwitchHighlighted(id) {
+    return isSwitchSelected(id) || isElementHovered("switch", id);
+}
+
 function isPlatformSelected(id) {
     return selectedPlatformIds.value.has(id);
 }
 
+function isPlatformHighlighted(id) {
+    return isPlatformSelected(id) || isElementHovered("platform", id);
+}
+
 function isAnnotationSelected(id) {
     return selectedAnnotationIds.value.has(id);
+}
+
+function isAnnotationHighlighted(id) {
+    return isAnnotationSelected(id) || isElementHovered("annotation", id);
 }
 
 function getSignalDirectionView(signal) {
@@ -3708,20 +3817,50 @@ function signalStyleElements(signal) {
     return signalStyleAsset(signal).elements;
 }
 
-function signalNameX(signal) {
-    return screenX(signal.position.x) + signalHorizontalGap(getSignalDirectionView(signal));
-}
-
-function signalNameY(signal) {
+function signalScreenBounds(signal) {
     const d = getSignalDirectionView(signal);
     const scale = editorDisplayStyles.value.signal.scale;
     const asset = signalStyleAsset(signal);
+    const bounds = signalAssetBounds(asset);
     if (asset.placement === "quadrant") {
-        const height = signalAssetBounds(asset).height * scale;
-        return screenY(signal.position.y) + signalVerticalGap(d) + (d.verticalSide === "top" ? -height - 4 : height + 12);
+        const width = bounds.width * scale;
+        const height = bounds.height * scale;
+        const anchorX = screenX(signal.position.x) + signalHorizontalGap(d);
+        const anchorY = screenY(signal.position.y) + signalVerticalGap(d);
+        const left = d.horizontalSide === "right" ? anchorX : anchorX - width;
+        const right = d.horizontalSide === "right" ? anchorX + width : anchorX;
+        const top = d.verticalSide === "top" ? anchorY - height : anchorY;
+        const bottom = d.verticalSide === "top" ? anchorY : anchorY + height;
+        return { left, right, top, bottom };
     }
 
-    return screenY(signal.position.y) - 40 * scale * d.coefShiftY + 45 * scale + signalVerticalGap(d);
+    const x = screenX(signal.position.x) - scale * d.coefScaleX + signalHorizontalGap(d);
+    const y = screenY(signal.position.y) - 40 * scale * d.coefShiftY + signalVerticalGap(d);
+    const x1 = x + bounds.minX * scale * d.coefScaleX;
+    const x2 = x + bounds.maxX * scale * d.coefScaleX;
+    const y1 = y + bounds.minY * scale;
+    const y2 = y + bounds.maxY * scale;
+    return {
+        left: Math.min(x1, x2),
+        right: Math.max(x1, x2),
+        top: Math.min(y1, y2),
+        bottom: Math.max(y1, y2),
+    };
+}
+
+function signalNameX(signal) {
+    const d = getSignalDirectionView(signal);
+    const bounds = signalScreenBounds(signal);
+    return d.horizontalSide === "right" ? bounds.left - signalNameGap : bounds.right + signalNameGap;
+}
+
+function signalNameY(signal) {
+    const bounds = signalScreenBounds(signal);
+    return (bounds.top + bounds.bottom) / 2;
+}
+
+function signalNameTextAnchor(signal) {
+    return getSignalDirectionView(signal).horizontalSide === "right" ? "end" : "start";
 }
 
 function getBufferStopDirectionValue(bufferStop) {
@@ -3775,13 +3914,13 @@ function bufferStopTransform(bufferStop) {
     return `translate(${screenX(bufferStop.position.x)},${screenY(bufferStop.position.y)})scale(${coefScaleX},1)`;
 }
 
-function textDisplayStyle(styleKey, selected = false) {
+function textDisplayStyle(styleKey, highlighted = false, highlightColor = selectedHighlightColor) {
     const style = editorDisplayStyles.value[styleKey];
     return {
-        fill: selected ? "yellow" : style.color,
+        fill: highlighted ? highlightColor : style.color,
         fontFamily: style.fontFamily,
         fontSize: `${style.fontSize}px`,
-        fontWeight: selected ? "700" : style.fontWeight,
+        fontWeight: highlighted ? "700" : style.fontWeight,
         fontStyle: style.fontStyle,
     };
 }
@@ -3798,7 +3937,10 @@ function getCellLinkMembershipCount(lineId) {
 function trackDisplayStyle(lineId) {
     const style = editorDisplayStyles.value.track;
     const selected = isLineSelected(lineId);
-    const baseStrokeWidth = selected
+    const hovered = isElementHovered("link", lineId);
+    const highlighted = selected || hovered;
+    const highlightColor = elementHighlightColor("link", lineId);
+    const baseStrokeWidth = highlighted
         ? Math.max(style.strokeWidth + 2, style.strokeWidth * 2)
         : style.strokeWidth;
 
@@ -3814,21 +3956,21 @@ function trackDisplayStyle(lineId) {
 
         if (membershipCount === 1) {
             return {
-                stroke: style.color,
+                stroke: highlightColor || style.color,
                 strokeWidth: baseStrokeWidth,
                 strokeDasharray: "none",
             };
         }
 
         return {
-            stroke: style.color,
+            stroke: highlightColor || style.color,
             strokeWidth: baseStrokeWidth,
             strokeDasharray: "10 7",
         };
     }
 
     return {
-        stroke: selected ? "yellow" : style.color,
+        stroke: highlightColor || style.color,
         strokeWidth: baseStrokeWidth,
     };
 }
@@ -3842,10 +3984,10 @@ function curveDisplayStyle() {
 }
 
 function nodeDisplayStyle(nodeId) {
-    if (nodeId != null && isNodeSelected(nodeId)) {
+    if (nodeId != null && isNodeHighlighted(nodeId)) {
         return {
-            fill: "yellow",
-            stroke: "red",
+            fill: elementHighlightColor("node", nodeId),
+            stroke: elementOutlineColor("node", nodeId),
             strokeWidth: 2,
         };
     }
@@ -3856,18 +3998,21 @@ function nodeDisplayStyle(nodeId) {
 
 function platformLineDisplayStyle(platformId) {
     const style = editorDisplayStyles.value.platform;
-    const selected = isPlatformSelected(platformId);
+    const selected = platformId != null && isPlatformSelected(platformId);
+    const hovered = platformId != null && isElementHovered("platform", platformId);
+    const highlightColor = platformId != null ? elementHighlightColor("platform", platformId) : "";
     return {
-        stroke: style.color,
-        strokeWidth: selected ? style.strokeWidth + 2 : style.strokeWidth,
+        stroke: highlightColor || style.color,
+        strokeWidth: selected || hovered ? style.strokeWidth + 2 : style.strokeWidth,
     };
 }
 
 function switchBranchDisplayStyle(switchId) {
     const style = editorDisplayStyles.value.switch;
-    if (isSwitchSelected(switchId)) {
+    const highlightColor = elementHighlightColor("switch", switchId);
+    if (highlightColor) {
         return {
-            stroke: "yellow",
+            stroke: highlightColor,
             strokeWidth: style.strokeWidth,
         };
     }
@@ -4217,7 +4362,7 @@ defineExpose({
 <template>
     <svg id="layout-editor-svg" ref="svgRef" tabindex="0" :width="svgScreenWidth" :height="svgScreenHeight"
         :style="svgStyle" @mousemove="onMouseMove" @mousedown="onMouseDown" @mouseup="onMouseUp"
-        @keydown="onKeydown" @selectstart.prevent @dragstart.prevent>
+        @mouseleave="clearHoveredElement()" @keydown="onKeydown" @selectstart.prevent @dragstart.prevent>
         <g id="grid">
             <circle v-for="(dot, idx) in gridDots" :key="`g-${idx}`" class="griddot" :cx="screenX(dot.x)"
                 :cy="screenY(dot.y)" r="0.5" />
@@ -4225,14 +4370,18 @@ defineExpose({
 
         <g id="linegroup">
             <line v-for="segment in renderedTrackSegments" :id="segment.id" :key="`line-${segment.id}`" class="track"
-                :class="{ 'track-selected': isLineSelected(segment.line.id) }" :x1="screenX(segment.x1)"
+                :class="{ 'track-selected': isLineHighlighted(segment.line.id) }" :x1="screenX(segment.x1)"
                 :y1="screenY(segment.y1)" :x2="screenX(segment.x2)" :y2="screenY(segment.y2)"
                 :style="trackDisplayStyle(segment.line.id)"
+                @mouseenter="setHoveredElement('link', segment.line.id)"
+                @mouseleave="clearHoveredElement('link', segment.line.id)"
                 @mousedown.stop @click.stop="handleLineClick(segment.line.id)" />
             <text v-for="lineName in lineNameViews" v-show="getLineName(lineName.line)" :key="`line-name-${lineName.id}`"
-                class="trackname" :class="{ 'name-selected': isLineSelected(lineName.line.id) }"
-                :style="textDisplayStyle('lineName', isLineSelected(lineName.line.id))" :x="screenX(lineName.x)"
-                :y="screenY(lineName.y)" @mousedown.stop @click.stop="handleLineClick(lineName.line.id)">
+                class="trackname" :class="{ 'name-selected': isLineHighlighted(lineName.line.id) }"
+                :style="textDisplayStyle('lineName', isLineHighlighted(lineName.line.id), elementHighlightColor('link', lineName.line.id))" :x="screenX(lineName.x)"
+                :y="screenY(lineName.y)" @mouseenter="setHoveredElement('link', lineName.line.id)"
+                @mouseleave="clearHoveredElement('link', lineName.line.id)"
+                @mousedown.stop @click.stop="handleLineClick(lineName.line.id)">
                 {{ getLineName(lineName.line) }}
             </text>
 
@@ -4240,7 +4389,8 @@ defineExpose({
                 :d="curvePath(curve)" :style="curveDisplayStyle()" />
 
             <g v-for="arrow in linkArrowViews" :key="arrow.id" class="link-arrow"
-                :class="{ 'link-arrow-selected': isLineSelected(arrow.lineId) }">
+                :class="{ 'link-arrow-selected': isLineHighlighted(arrow.lineId) }"
+                :style="elementHighlightStyle('link', arrow.lineId)">
                 <path :d="arrow.path" />
                 <line v-for="(tailLine, tailLineIndex) in arrow.tailLines" :key="`tail-line-${tailLineIndex}`"
                     class="link-arrow-tail-line" :x1="tailLine.x1" :y1="tailLine.y1" :x2="tailLine.x2"
@@ -4267,8 +4417,10 @@ defineExpose({
 
         <g v-if="props.showNodes" id="nodegroup">
             <circle v-for="node in nodes" :id="node.id" :key="`node-${node.id}`" class="node snapobj"
-                :class="{ 'node-selected': isNodeSelected(node.id) }" :cx="screenX(node.x)" :cy="screenY(node.y)"
+                :class="{ 'node-selected': isNodeHighlighted(node.id) }" :cx="screenX(node.x)" :cy="screenY(node.y)"
                 :r="editorDisplayStyles.node.radius" :style="nodeDisplayStyle(node.id)"
+                @mouseenter="setHoveredElement('node', node.id)"
+                @mouseleave="clearHoveredElement('node', node.id)"
                 @mousedown="handleNodeClick($event, node.id)" />
 
             <circle v-if="tempNode.visible" class="node node-temp" :cx="screenX(tempNode.x)" :cy="screenY(tempNode.y)"
@@ -4290,7 +4442,10 @@ defineExpose({
 
         <g v-if="props.showCellNames && cellNameViews.length > 0" id="cell-name-layer" class="cell-name-layer">
             <text v-for="cellName in cellNameViews" :key="`cell-name-${cellName.key}`" class="cell-name"
+                :class="{ 'cell-name-hovered': isElementHovered('cellName', cellName.key) }"
                 :x="screenX(cellName.x)" :y="screenY(cellName.y)"
+                @mouseenter="setHoveredElement('cellName', cellName.key)"
+                @mouseleave="clearHoveredElement('cellName', cellName.key)"
                 @mousedown.stop.prevent @click.stop.prevent="emitCellNameClick(cellName)">
                 {{ cellName.name }}
             </text>
@@ -4298,16 +4453,22 @@ defineExpose({
 
         <g id="signalgroup">
             <g v-for="signal in signals" :id="String(signal.id)" :key="`signal-${signal.id}`"
-                :class="['signal', signalStyleClass(signal), { 'signal-selected': isSignalSelected(signal.id) }]"
-                :transform="signalTransform(signal)" @mousedown="handleSignalClick($event, signal.id)">
+                :class="['signal', signalStyleClass(signal), { 'signal-selected': isSignalHighlighted(signal.id) }]"
+                :transform="signalTransform(signal)" :style="elementHighlightStyle('signal', signal.id)"
+                @mouseenter="setHoveredElement('signal', signal.id)"
+                @mouseleave="clearHoveredElement('signal', signal.id)"
+                @mousedown="handleSignalClick($event, signal.id)">
                 <component :is="element.tag" v-for="(element, index) in signalStyleElements(signal)"
                     :key="`signal-element-${signal.id}-${index}`" v-bind="element.attrs" />
             </g>
             <text v-for="signal in signals" v-show="getEquipmentDisplayName(signal, 'SIGNAL')"
                 :key="`signal-name-${signal.id}`" class="signalname"
-                :class="{ 'name-selected': isSignalSelected(signal.id) }"
-                :style="textDisplayStyle('signalName', isSignalSelected(signal.id))"
-                :x="signalNameX(signal)" :y="signalNameY(signal)"
+                :class="{ 'name-selected': isSignalHighlighted(signal.id) }"
+                :style="textDisplayStyle('signalName', isSignalHighlighted(signal.id), elementHighlightColor('signal', signal.id))"
+                :x="signalNameX(signal)" :y="signalNameY(signal)" :text-anchor="signalNameTextAnchor(signal)"
+                dominant-baseline="middle"
+                @mouseenter="setHoveredElement('signal', signal.id)"
+                @mouseleave="clearHoveredElement('signal', signal.id)"
                 @mousedown="handleSignalClick($event, signal.id)">
                 {{ getEquipmentDisplayName(signal, "SIGNAL") }}
             </text>
@@ -4323,8 +4484,11 @@ defineExpose({
         <g id="insulationjointgroup">
             <g v-for="ij in insulationJoints" :id="String(ij.id)" :key="`ij-${ij.id}`"
                 class="insulationjoint insulationjoint-normal"
-                :class="{ 'insulationjoint-selected': isInsulationJointSelected(ij.id) }"
+                :class="{ 'insulationjoint-selected': isInsulationJointHighlighted(ij.id) }"
                 :transform="`translate(${screenX(ij.position.x)},${screenY(ij.position.y)})`"
+                :style="elementHighlightStyle('insulationJoint', ij.id)"
+                @mouseenter="setHoveredElement('insulationJoint', ij.id)"
+                @mouseleave="clearHoveredElement('insulationJoint', ij.id)"
                 @mousedown="handleInsulationJointClick($event, ij.id)">
                 <line x1="0" y1="-5" x2="0" y2="5" />
             </g>
@@ -4337,16 +4501,20 @@ defineExpose({
 
         <g id="bufferstopgroup">
             <g v-for="bufferStop in bufferStops" :id="String(bufferStop.id)" :key="`buffer-stop-${bufferStop.id}`"
-                :class="['bufferstop', bufferStopStyleClass(bufferStop), { 'bufferstop-selected': isBufferStopSelected(bufferStop.id) }]"
-                :transform="bufferStopTransform(bufferStop)" @mousedown="handleBufferStopClick($event, bufferStop.id)">
+                :class="['bufferstop', bufferStopStyleClass(bufferStop), { 'bufferstop-selected': isBufferStopHighlighted(bufferStop.id) }]"
+                :transform="bufferStopTransform(bufferStop)"
+                @mouseenter="setHoveredElement('bufferStop', bufferStop.id)"
+                @mouseleave="clearHoveredElement('bufferStop', bufferStop.id)"
+                @mousedown="handleBufferStopClick($event, bufferStop.id)">
                 <g class="bufferstop-shape" :style="bufferStopLineStyle()"
                     :transform="bufferStopShapeTransform(bufferStop)">
                     <component :is="element.tag" v-for="(element, index) in bufferStopStyleElements(bufferStop)"
                         :key="`buffer-stop-element-${bufferStop.id}-${index}`" v-bind="element.attrs" />
                 </g>
-                <rect v-if="isBufferStopSelected(bufferStop.id)" class="bufferstop-selection" x="0"
+                <rect v-if="isBufferStopHighlighted(bufferStop.id)" class="bufferstop-selection" x="0"
                     :y="bufferStopAssetY(bufferStop)" :width="bufferStopAssetWidth(bufferStop)"
-                    :height="bufferStopAssetHeight(bufferStop)" />
+                    :height="bufferStopAssetHeight(bufferStop)"
+                    :style="elementHighlightStyle('bufferStop', bufferStop.id)" />
             </g>
 
             <g v-if="tempBufferStop.visible" id="tempbufferstop"
@@ -4362,14 +4530,16 @@ defineExpose({
 
         <g id="switchgroup">
             <g v-for="sw in switches" :id="String(sw.id)" :key="`sw-${sw.id}`" class="switch"
-                :class="{ 'switch-selected': isSwitchSelected(sw.id) }" :transform="switchTransform(sw)"
+                :class="{ 'switch-selected': isSwitchHighlighted(sw.id) }" :transform="switchTransform(sw)"
+                @mouseenter="setHoveredElement('switch', sw.id)"
+                @mouseleave="clearHoveredElement('switch', sw.id)"
                 @mousedown="handleSwitchClick($event, sw.id)">
                 <line v-for="(lineVec, idx) in sw.branchVectorList" :key="`sw-line-${sw.id}-${idx}`"
                     class="switchbranch" :x1="switchBranch(sw, lineVec).x1" :y1="switchBranch(sw, lineVec).y1"
                     :x2="switchBranch(sw, lineVec).x2" :y2="switchBranch(sw, lineVec).y2"
                     :style="switchBranchDisplayStyle(sw.id)" />
-                <text class="switchname" :class="{ 'name-selected': isSwitchSelected(sw.id) }"
-                    :style="textDisplayStyle('switchName', isSwitchSelected(sw.id))" x="4" y="-4">
+                <text class="switchname" :class="{ 'name-selected': isSwitchHighlighted(sw.id) }"
+                    :style="textDisplayStyle('switchName', isSwitchHighlighted(sw.id), elementHighlightColor('switch', sw.id))" x="4" y="-4">
                     {{ getEquipmentDisplayName(sw, "SWITCH") }}
                 </text>
             </g>
@@ -4377,14 +4547,16 @@ defineExpose({
 
         <g id="platformgroup">
             <g v-for="platform in platforms" :id="String(platform.id)" :key="`platform-${platform.id}`" class="platform"
-                :class="{ 'platform-selected': isPlatformSelected(platform.id) }"
+                :class="{ 'platform-selected': isPlatformHighlighted(platform.id) }"
+                @mouseenter="setHoveredElement('platform', platform.id)"
+                @mouseleave="clearHoveredElement('platform', platform.id)"
                 @mousedown="handlePlatformClick($event, platform.id)">
                 <rect :x="screenX(platform.x)" :y="screenY(platform.y)" :width="screenDeltaX(platform.width)"
                     :height="screenDeltaY(platform.height)" :style="platformLineDisplayStyle(platform.id)" />
                 <text class="platformname" :x="screenCenterX(platform.x, platform.width)"
                     :y="screenCenterY(platform.y, platform.height)"
-                    :class="{ 'name-selected': isPlatformSelected(platform.id) }"
-                    :style="textDisplayStyle('platformName', isPlatformSelected(platform.id))">
+                    :class="{ 'name-selected': isPlatformHighlighted(platform.id) }"
+                    :style="textDisplayStyle('platformName', isPlatformHighlighted(platform.id), elementHighlightColor('platform', platform.id))">
                     {{ getEquipmentDisplayName(platform, "PLATFORM") }}
                 </text>
             </g>
@@ -4396,12 +4568,15 @@ defineExpose({
 
         <g id="annotationgroup">
             <g v-for="annotation in annotations" :id="String(annotation.id)" :key="`annotation-${annotation.id}`"
-                class="annotation" :class="{ 'annotation-selected': isAnnotationSelected(annotation.id) }"
-                :transform="annotationTransform(annotation)" @mousedown="handleAnnotationClick($event, annotation.id)">
+                class="annotation" :class="{ 'annotation-selected': isAnnotationHighlighted(annotation.id) }"
+                :transform="annotationTransform(annotation)"
+                @mouseenter="setHoveredElement('annotation', annotation.id)"
+                @mouseleave="clearHoveredElement('annotation', annotation.id)"
+                @mousedown="handleAnnotationClick($event, annotation.id)">
                 <text class="annotation-text" x="0" y="0" :font-family="annotation.fontFamily"
                     :font-size="annotation.fontSize" :font-weight="annotation.fontWeight" :font-style="annotation.fontStyle"
-                    :class="{ 'name-selected': isAnnotationSelected(annotation.id) }"
-                    :fill="isAnnotationSelected(annotation.id) ? 'yellow' : annotation.textColor">
+                    :class="{ 'name-selected': isAnnotationHighlighted(annotation.id) }"
+                    :fill="elementHighlightColor('annotation', annotation.id) || annotation.textColor">
                     {{ annotation.text }}
                 </text>
                 <circle v-if="shouldShowAnnotationControls(annotation)" class="annotation-text-anchor" cx="0" cy="0"

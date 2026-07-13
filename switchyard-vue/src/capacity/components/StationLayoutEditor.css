@@ -127,8 +127,8 @@
 }
 
 .link-arrow-selected {
-    color: yellow;
-    fill: yellow;
+    color: var(--equipment-highlight-color, #e2bf6a);
+    fill: var(--equipment-highlight-color, #e2bf6a);
 }
 
 .route-highlight-layer {
@@ -176,8 +176,9 @@
     user-select: none;
 }
 
-.cell-name:hover {
-    fill: #ffffff;
+.cell-name:hover,
+.cell-name-hovered {
+    fill: #9ec7e8;
 }
 
 .trackname {
@@ -252,7 +253,7 @@
 .signal-selected polygon,
 .signal-selected polyline {
     stroke-width: 4px;
-    stroke: yellow;
+    stroke: var(--equipment-highlight-color, #e2bf6a);
 }
 
 .signalname {
@@ -268,7 +269,7 @@
 }
 
 .insulationjoint-selected line {
-    stroke: yellow;
+    stroke: var(--equipment-highlight-color, #e2bf6a);
     stroke-width: 6px;
 }
 
@@ -287,9 +288,10 @@
 
 .bufferstop-selection {
     fill: none;
-    stroke: yellow;
+    stroke: var(--equipment-highlight-color, #e2bf6a);
     stroke-width: 2px;
     vector-effect: non-scaling-stroke;
+    pointer-events: none;
 }
 
 .bufferstop-temp {
@@ -312,9 +314,9 @@
 }
 
 .node-selected {
-    fill: yellow;
+    fill: #e2bf6a;
     stroke-width: 2px;
-    stroke: red;
+    stroke: #b8924d;
 }
 
 .perpendicular {
@@ -327,7 +329,7 @@
 }
 
 .switch-selected .switchbranch {
-    stroke: yellow;
+    stroke: var(--equipment-highlight-color, #e2bf6a);
 }
 
 .switchname {
