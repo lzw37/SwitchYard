@@ -83,3 +83,56 @@ CREATE TABLE IF NOT EXISTS `curve` (
     `LargeArcFlag` TINYINT NULL,
     `SweepFlag` TINYINT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS `traintemplate` (
+    `InstanceID` VARCHAR(50) NULL,
+    `StationSchemeID` VARCHAR(50) NULL,
+    `TrainTemplateID` VARCHAR(50) NULL,
+    `Name` VARCHAR(50) NULL,
+    `Type` VARCHAR(50) NULL,
+    `Number` INT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `movementtemplate` (
+    `InstanceID` VARCHAR(50) NULL,
+    `StationSchemeID` VARCHAR(50) NULL,
+    `TrainTemplateID` VARCHAR(50) NULL,
+    `MovementID` VARCHAR(50) NULL,
+    `Name` VARCHAR(50) NULL,
+    `RouteIDList` LONGTEXT NULL,
+    `MinDuration` INT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `train` (
+    `InstanceID` VARCHAR(50) NULL,
+    `StationSchemeID` VARCHAR(50) NULL,
+    `ID` VARCHAR(50) NULL,
+    `TrainTemplateID` VARCHAR(50) NULL,
+    `TrainNumber` VARCHAR(50) NULL,
+    `Name` VARCHAR(50) NULL,
+    `TrainType` VARCHAR(20) NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `movement` (
+    `InstanceID` VARCHAR(50) NULL,
+    `StationSchemeID` VARCHAR(50) NULL,
+    `TrainID` VARCHAR(50) NULL,
+    `TrainTemplateID` VARCHAR(50) NULL,
+    `MovementID` VARCHAR(50) NULL,
+    `Name` VARCHAR(50) NULL,
+    `RouteIDList` LONGTEXT NULL,
+    `MinDuration` INT NULL,
+    `EarliestStartTime` VARCHAR(50) NULL,
+    `LatestEndTime` VARCHAR(50) NULL,
+    `Route` VARCHAR(50) NULL,
+    `Tag` VARCHAR(50) NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `operationbottlenecksummarycategory` (
+    `InstanceID` VARCHAR(50) NULL,
+    `StationSchemeID` VARCHAR(50) NULL,
+    `CategoryID` VARCHAR(50) NULL,
+    `Name` VARCHAR(100) NULL,
+    `RouteIDList` LONGTEXT NULL,
+    `SortOrder` INT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

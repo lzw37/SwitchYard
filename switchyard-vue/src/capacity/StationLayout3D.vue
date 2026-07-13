@@ -79,6 +79,7 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { CSS2DObject, CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js'
 import axios from '@/utils/axios'
+import { getSignalStyleAsset } from '@/assets/stationLayoutSignalStyles'
 
 interface Props {
     selectedInstanceId?: string | null
@@ -88,6 +89,17 @@ interface Props {
 interface Position2D {
     x: number
     y: number
+}
+
+interface Vector2D {
+    x: number
+    y: number
+}
+
+interface TrackVectorCandidate {
+    vector: Vector2D
+    length: number
+    lineID: string
 }
 
 interface Track {
@@ -138,6 +150,35 @@ interface Signal {
     bindingNodeID: string
 }
 
+interface SignalStyleElement {
+    tag: string
+    attrs?: Record<string, unknown>
+}
+
+interface SignalStyleAsset {
+    elements?: SignalStyleElement[]
+}
+
+interface SignalLightSource {
+    x: number
+    y: number
+    radius: number
+    color: number
+}
+
+interface SignalLightSpec {
+    x: number
+    y: number
+    color: number
+}
+
+interface SignalLightLayout {
+    width: number
+    height: number
+    radius: number
+    lights: SignalLightSpec[]
+}
+
 interface Platform {
     id: string
     name: string
@@ -147,12 +188,26 @@ interface Platform {
     height: number
 }
 
+interface SwitchBranchVector {
+    x: number
+    y: number
+    lineID: string
+}
+
+interface SwitchRenderBranch {
+    direction: THREE.Vector3
+    sourceLength: number
+    renderLength: number
+    lineID: string
+}
+
 interface SwitchDevice {
     id: string
     name: string
     type: string
     position: Position2D
     bindingNodeID: string
+    branchVectorList: SwitchBranchVector[]
 }
 
 interface StationLayoutData {
@@ -195,10 +250,10 @@ interface SceneMaterials {
     platformLine: THREE.MeshStandardMaterial
     signalPost: THREE.MeshStandardMaterial
     signalHead: THREE.MeshStandardMaterial
-    signalRed: THREE.MeshStandardMaterial
-    signalGreen: THREE.MeshStandardMaterial
-    signalWhite: THREE.MeshStandardMaterial
     switchMarker: THREE.MeshStandardMaterial
+    switchPoint: THREE.MeshStandardMaterial
+    switchGuard: THREE.MeshStandardMaterial
+    switchTie: THREE.MeshStandardMaterial
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -223,6 +278,18 @@ const SLEEPER_LENGTH = 1.65
 const SLEEPER_SPACING = 1.25
 const MAX_SLEEPERS_PER_SEGMENT = 72
 const PLATFORM_MIN_SIZE = 1.2
+const SIGNAL_SIDE_OFFSET = 1.45
+const SIGNAL_LABEL_Y = 1.92
+const SIGNAL_HEAD_DEPTH = 0.11
+const SIGNAL_LIGHT_RADIUS = 0.07
+const SIGNAL_LIGHT_ROW_SPACING = 0.17
+const SIGNAL_LIGHT_COLUMN_SPACING = 0.18
+const SIGNAL_LIGHT_PADDING = 0.16
+const SWITCH_BRANCH_LENGTH = 4.8
+const SWITCH_MIN_BRANCH_LENGTH = 2.6
+const SWITCH_POINT_BLADE_LENGTH = 2.15
+const SWITCH_FROG_DISTANCE = 3.15
+const SWITCH_BRANCH_DUPLICATE_DOT = 0.996
 
 const canvasWrapperRef = ref<HTMLElement | null>(null)
 const canvasRef = ref<HTMLCanvasElement | null>(null)
@@ -476,18 +543,39 @@ function normalizePlatform(item: any, index: number): Platform | null {
     }
 }
 
+function normalizeSwitchBranchVector(item: any): SwitchBranchVector | null {
+    const x = toFiniteNumberOrNull(item?.x ?? item?.X)
+    const y = toFiniteNumberOrNull(item?.y ?? item?.Y)
+    if (x === null || y === null) return null
+
+    return {
+        x,
+        y,
+        lineID: readString(item, 'lineID', 'LineID', 'bindingLinkID', 'BindingLinkID'),
+    }
+}
+
 function normalizeSwitch(item: any, index: number): SwitchDevice | null {
     const position = normalizePosition(item?.position ?? item?.Position) || normalizePosition(item)
     if (!position) return null
 
     const id = readString(item, 'id', 'ID') || `switch-${index + 1}`
     const name = normalizeNamedValue(id, readString(item, 'name', 'Name'))
+    const branchVectorRaw = Array.isArray(item?.branchVectorList)
+        ? item.branchVectorList
+        : Array.isArray(item?.BranchVectorList)
+            ? item.BranchVectorList
+            : []
+
     return {
         id,
         name,
         type: readString(item, 'type', 'Type'),
         position,
         bindingNodeID: readString(item, 'bindingNodeID', 'BindingNodeID'),
+        branchVectorList: branchVectorRaw
+            .map((vector: any) => normalizeSwitchBranchVector(vector))
+            .filter((vector: SwitchBranchVector | null): vector is SwitchBranchVector => vector !== null),
     }
 }
 
@@ -690,6 +778,140 @@ function buildVisibleTrackSegments(layout: StationLayoutData): TrackSegment[] {
     return segments
 }
 
+function getVectorLength2D(vector: Vector2D): number {
+    return Math.hypot(vector.x, vector.y)
+}
+
+function normalizeVector2D(vector: Vector2D): Vector2D | null {
+    const length = getVectorLength2D(vector)
+    if (!Number.isFinite(length) || length <= 0.000001) return null
+    return { x: vector.x / length, y: vector.y / length }
+}
+
+function dotVector2D(a: Vector2D, b: Vector2D): number {
+    return a.x * b.x + a.y * b.y
+}
+
+function canonicalizeTrackTangent(vector: Vector2D): Vector2D {
+    const unit = normalizeVector2D(vector) || { x: 1, y: 0 }
+    if (unit.x < -0.000001 || (Math.abs(unit.x) <= 0.000001 && unit.y < 0)) {
+        return { x: -unit.x, y: -unit.y }
+    }
+    return unit
+}
+
+function getTrackLeftNormal(tangent: Vector2D): Vector2D {
+    return { x: tangent.y, y: -tangent.x }
+}
+
+function mapDirectionVectorToWorld(vector: Vector2D): THREE.Vector3 {
+    const world = new THREE.Vector3(vector.x, 0, vector.y)
+    if (world.lengthSq() <= 0.000001) return new THREE.Vector3(1, 0, 0)
+    return world.normalize()
+}
+
+function getTrackVectorCandidateFromLine(line: Track, nodeID: string): TrackVectorCandidate | null {
+    if (String(line.fromNodeID) === nodeID) {
+        const vector = { x: line.x2 - line.x1, y: line.y2 - line.y1 }
+        const length = getVectorLength2D(vector)
+        return length > 0.000001 ? { vector, length, lineID: line.id } : null
+    }
+
+    if (String(line.toNodeID) === nodeID) {
+        const vector = { x: line.x1 - line.x2, y: line.y1 - line.y2 }
+        const length = getVectorLength2D(vector)
+        return length > 0.000001 ? { vector, length, lineID: line.id } : null
+    }
+
+    return null
+}
+
+function getAdjacentTrackVectorCandidates(layout: StationLayoutData, bindingNodeID: string): TrackVectorCandidate[] {
+    const nodeID = String(bindingNodeID || '').trim()
+    if (!nodeID) return []
+
+    return layout.tracks
+        .map((line) => getTrackVectorCandidateFromLine(line, nodeID))
+        .filter((candidate: TrackVectorCandidate | null): candidate is TrackVectorCandidate => candidate !== null)
+}
+
+function getNearestTrackVectorCandidate(layout: StationLayoutData, point: Position2D): TrackVectorCandidate | null {
+    let best: TrackVectorCandidate | null = null
+    let bestDistanceSquared = Infinity
+
+    for (const line of layout.tracks) {
+        const rate = getPointRateOnLine(line, point)
+        if (rate === null) continue
+
+        const projection = getLinePointAtRate(line, rate)
+        const distanceSquared = (projection.x - point.x) ** 2 + (projection.y - point.y) ** 2
+        const vector = { x: line.x2 - line.x1, y: line.y2 - line.y1 }
+        const length = getVectorLength2D(vector)
+        if (length <= 0.000001 || distanceSquared >= bestDistanceSquared) continue
+
+        bestDistanceSquared = distanceSquared
+        best = { vector, length, lineID: line.id }
+    }
+
+    return best
+}
+
+function selectCanonicalTrackTangent(candidates: TrackVectorCandidate[]): Vector2D {
+    const normalized = candidates
+        .map((candidate) => ({
+            ...candidate,
+            unit: normalizeVector2D(candidate.vector),
+        }))
+        .filter((candidate): candidate is TrackVectorCandidate & { unit: Vector2D } => candidate.unit !== null)
+
+    if (normalized.length === 0) return { x: 1, y: 0 }
+    const firstCandidate = normalized[0]
+    if (!firstCandidate) return { x: 1, y: 0 }
+    if (normalized.length === 1) return canonicalizeTrackTangent(firstCandidate.unit)
+
+    let best = firstCandidate
+    let bestScore = -Infinity
+    for (let i = 0; i < normalized.length; i++) {
+        for (let j = i + 1; j < normalized.length; j++) {
+            const first = normalized[i]
+            const second = normalized[j]
+            if (!first || !second) continue
+
+            const alignmentScore = Math.abs(dotVector2D(first.unit, second.unit)) * 10000
+            const lengthScore = Math.max(first.length, second.length)
+            const score = alignmentScore + lengthScore
+            if (score > bestScore) {
+                bestScore = score
+                best = first.length >= second.length ? first : second
+            }
+        }
+    }
+
+    return canonicalizeTrackTangent(best.unit)
+}
+
+function getSignalTrackTangent(layout: StationLayoutData, signal: Signal): Vector2D {
+    const adjacentCandidates = getAdjacentTrackVectorCandidates(layout, signal.bindingNodeID)
+    if (adjacentCandidates.length > 0) return selectCanonicalTrackTangent(adjacentCandidates)
+
+    const nearestCandidate = getNearestTrackVectorCandidate(layout, signal.position)
+    return selectCanonicalTrackTangent(nearestCandidate ? [nearestCandidate] : [])
+}
+
+function getSignalDirectionProfile(direction: string) {
+    const normalized = direction.trim().toLowerCase()
+    return {
+        sideSign: normalized === 's' || normalized === 'd' ? -1 : 1,
+        faceSign: normalized === 'w' || normalized === 's' ? -1 : 1,
+    }
+}
+
+function setObjectBasis(object: THREE.Object3D, xAxis: THREE.Vector3, zAxis: THREE.Vector3) {
+    const yAxis = new THREE.Vector3(0, 1, 0)
+    const matrix = new THREE.Matrix4().makeBasis(xAxis, yAxis, zAxis)
+    object.quaternion.setFromRotationMatrix(matrix)
+}
+
 function buildCurveSamplePoints(curve: CurveTrack, preferredSegments = 24): Position2D[] {
     const startAngle = Math.atan2(curve.start.y - curve.center.y, curve.start.x - curve.center.x)
     const endAngle = Math.atan2(curve.end.y - curve.center.y, curve.end.x - curve.center.x)
@@ -731,10 +953,10 @@ function createMaterials(): SceneMaterials {
         platformLine: new THREE.MeshStandardMaterial({ color: 0xf4d35e, roughness: 0.8, metalness: 0 }),
         signalPost: new THREE.MeshStandardMaterial({ color: 0x2e343b, roughness: 0.65, metalness: 0.45 }),
         signalHead: new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.7, metalness: 0.2 }),
-        signalRed: new THREE.MeshStandardMaterial({ color: 0xe11d48, emissive: 0x7f0018, emissiveIntensity: 0.45 }),
-        signalGreen: new THREE.MeshStandardMaterial({ color: 0x22c55e, emissive: 0x0a5c2b, emissiveIntensity: 0.35 }),
-        signalWhite: new THREE.MeshStandardMaterial({ color: 0xf8fafc, emissive: 0x64748b, emissiveIntensity: 0.18 }),
         switchMarker: new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.55, metalness: 0.15 }),
+        switchPoint: new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.42, metalness: 0.35 }),
+        switchGuard: new THREE.MeshStandardMaterial({ color: 0x232b34, roughness: 0.38, metalness: 0.7 }),
+        switchTie: new THREE.MeshStandardMaterial({ color: 0x513a27, roughness: 0.88, metalness: 0.05 }),
     }
 }
 
@@ -942,13 +1164,170 @@ function addCurveTracks(layout: StationLayoutData, mapper: LayoutMapper, materia
     }
 }
 
-function addSignal(signal: Signal, mapper: LayoutMapper, materials: SceneMaterials) {
+function readSignalElementNumber(attrs: Record<string, unknown> | undefined, key: string): number | null {
+    if (!attrs) return null
+    return toFiniteNumberOrNull(attrs[key])
+}
+
+function parseSignalLightColor(value: unknown): number | null {
+    const raw = String(value ?? '').trim()
+    if (!raw || raw.toLowerCase() === 'none' || raw.toLowerCase() === 'transparent') return null
+
+    try {
+        return new THREE.Color().setStyle(raw).getHex()
+    } catch {
+        return null
+    }
+}
+
+function isWhiteSignalColor(color: number): boolean {
+    const threeColor = new THREE.Color(color)
+    return threeColor.r >= 0.82 && threeColor.g >= 0.82 && threeColor.b >= 0.82
+}
+
+function createSignalLightMaterial(color: number): THREE.MeshStandardMaterial {
+    const baseColor = new THREE.Color(color)
+    const emissive = baseColor.clone()
+    const isWhite = isWhiteSignalColor(color)
+
+    if (isWhite) {
+        emissive.set(0x94a3b8)
+    } else {
+        emissive.multiplyScalar(0.55)
+    }
+
+    return new THREE.MeshStandardMaterial({
+        color,
+        emissive,
+        emissiveIntensity: isWhite ? 0.2 : 0.48,
+        roughness: 0.38,
+        metalness: 0.02,
+    })
+}
+
+function getSignalLightSources(signal: Signal): SignalLightSource[] {
+    const asset = getSignalStyleAsset(signal.type) as SignalStyleAsset
+    const elements = Array.isArray(asset?.elements) ? asset.elements : []
+
+    return elements
+        .filter((element) => String(element?.tag || '').toLowerCase() === 'circle')
+        .map((element) => {
+            const attrs = element.attrs
+            const x = readSignalElementNumber(attrs, 'cx')
+            const y = readSignalElementNumber(attrs, 'cy')
+            const radius = readSignalElementNumber(attrs, 'r')
+            const color = parseSignalLightColor(attrs?.fill)
+            if (x === null || y === null || radius === null || color === null || radius <= 0) return null
+
+            return { x, y, radius, color }
+        })
+        .filter((source: SignalLightSource | null): source is SignalLightSource => source !== null)
+}
+
+function chooseSignalLightGroupColor(sources: SignalLightSource[]): number {
+    const sortedByRadius = [...sources].sort((a, b) => a.radius - b.radius)
+    const innerColoredSource = sortedByRadius.find((source) => !isWhiteSignalColor(source.color))
+    return innerColoredSource?.color || sortedByRadius[sortedByRadius.length - 1]?.color || 0xf8fafc
+}
+
+function groupSignalLightSources(sources: SignalLightSource[]): SignalLightSpec[] {
+    const groups: SignalLightSource[][] = []
+    for (const source of sources) {
+        const matchingGroup = groups.find((group) => {
+            const first = group[0]
+            return first ? Math.hypot(first.x - source.x, first.y - source.y) < 1 : false
+        })
+
+        if (matchingGroup) {
+            matchingGroup.push(source)
+        } else {
+            groups.push([source])
+        }
+    }
+
+    return groups
+        .map((group) => {
+            const largestSource = [...group].sort((a, b) => b.radius - a.radius)[0]
+            if (!largestSource) return null
+
+            return {
+                x: largestSource.x,
+                y: largestSource.y,
+                color: chooseSignalLightGroupColor(group),
+            }
+        })
+        .filter((spec: SignalLightSpec | null): spec is SignalLightSpec => spec !== null)
+        .sort((a, b) => a.y - b.y || a.x - b.x)
+}
+
+function countDistinctSignalAxisValues(lights: SignalLightSpec[], axis: 'x' | 'y'): number {
+    const sortedValues = lights
+        .map((light) => light[axis])
+        .sort((a, b) => a - b)
+    const groups: number[] = []
+    for (const value of sortedValues) {
+        const previous = groups[groups.length - 1]
+        if (previous === undefined || Math.abs(value - previous) >= 1) {
+            groups.push(value)
+        }
+    }
+
+    return Math.max(1, groups.length)
+}
+
+function buildSignalLightLayout(signal: Signal): SignalLightLayout {
+    const lights = groupSignalLightSources(getSignalLightSources(signal))
+    const fallbackLights = lights.length > 0
+        ? lights
+        : [
+            { x: 0, y: 0, color: 0xf8fafc },
+            { x: 0, y: 1, color: 0x22c55e },
+            { x: 0, y: 2, color: 0xe11d48 },
+        ]
+
+    const minX = Math.min(...fallbackLights.map((light) => light.x))
+    const maxX = Math.max(...fallbackLights.map((light) => light.x))
+    const minY = Math.min(...fallbackLights.map((light) => light.y))
+    const maxY = Math.max(...fallbackLights.map((light) => light.y))
+    const sourceWidth = Math.max(0.001, maxX - minX)
+    const sourceHeight = Math.max(0.001, maxY - minY)
+    const columnCount = countDistinctSignalAxisValues(fallbackLights, 'x')
+    const rowCount = countDistinctSignalAxisValues(fallbackLights, 'y')
+    const width = Math.max(0.22, columnCount * SIGNAL_LIGHT_COLUMN_SPACING + SIGNAL_LIGHT_PADDING)
+    const height = Math.max(0.38, rowCount * SIGNAL_LIGHT_ROW_SPACING + SIGNAL_LIGHT_PADDING)
+    const usableWidth = Math.max(0.001, width - SIGNAL_LIGHT_RADIUS * 2.15)
+    const usableHeight = Math.max(0.001, height - SIGNAL_LIGHT_RADIUS * 2.15)
+
+    return {
+        width,
+        height,
+        radius: SIGNAL_LIGHT_RADIUS,
+        lights: fallbackLights.map((light) => ({
+            color: light.color,
+            x: sourceWidth <= 0.001 ? 0 : ((light.x - minX) / sourceWidth - 0.5) * usableWidth,
+            y: sourceHeight <= 0.001 ? 0 : (0.5 - (light.y - minY) / sourceHeight) * usableHeight,
+        })),
+    }
+}
+
+function addSignal(signal: Signal, layout: StationLayoutData, mapper: LayoutMapper, materials: SceneMaterials) {
     if (!layoutGroup) return
 
-    const position = mapper.mapPoint(signal.position)
+    const trackPosition = mapper.mapPoint(signal.position)
+    const trackTangent = getSignalTrackTangent(layout, signal)
+    const directionProfile = getSignalDirectionProfile(signal.direction)
+    const sideNormal = getTrackLeftNormal(trackTangent)
+    const sideVector = mapDirectionVectorToWorld(sideNormal).multiplyScalar(directionProfile.sideSign)
+    const faceVector = mapDirectionVectorToWorld(trackTangent).multiplyScalar(directionProfile.faceSign)
+    const position = trackPosition.clone().addScaledVector(sideVector, SIGNAL_SIDE_OFFSET)
+
     const group = new THREE.Group()
     group.position.set(position.x, 0, position.z)
-    group.rotation.y = getSignalDirectionAngle(signal.direction)
+
+    const localZAxis = faceVector.clone().multiplyScalar(-1).normalize()
+    const localXAxis = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), localZAxis).normalize()
+    const armSign = localXAxis.dot(sideVector.clone().multiplyScalar(-1)) >= 0 ? 1 : -1
+    setObjectBasis(group, localXAxis, localZAxis)
 
     const base = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.22, 0.12, 18), materials.signalPost)
     base.position.y = 0.06
@@ -960,39 +1339,39 @@ function addSignal(signal: Signal, mapper: LayoutMapper, materials: SceneMateria
     setShadow(post, true, true)
     group.add(post)
 
+    const lightLayout = buildSignalLightLayout(signal)
+    const headCenterY = 1.08 + lightLayout.height / 2
+    const headCenterX = 0.52 * armSign
+
     const arm = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.045, 0.045), materials.signalPost)
-    arm.position.set(0.24, 1.3, 0)
+    arm.position.set(0.24 * armSign, 1.3, 0)
     setShadow(arm, true, true)
     group.add(arm)
 
-    const head = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.62, 0.11), materials.signalHead)
-    head.position.set(0.52, 1.38, 0)
+    const head = new THREE.Mesh(
+        new THREE.BoxGeometry(lightLayout.width, lightLayout.height, SIGNAL_HEAD_DEPTH),
+        materials.signalHead,
+    )
+    head.position.set(headCenterX, headCenterY, 0)
     setShadow(head, true, true)
     group.add(head)
 
-    const lightGeometry = new THREE.SphereGeometry(0.07, 18, 12)
-    const lights = [
-        { y: 1.55, material: materials.signalWhite },
-        { y: 1.38, material: materials.signalGreen },
-        { y: 1.21, material: materials.signalRed },
-    ]
-    lights.forEach((light) => {
-        const mesh = new THREE.Mesh(lightGeometry, light.material)
-        mesh.position.set(0.52, light.y, -0.065)
+    lightLayout.lights.forEach((light) => {
+        const mesh = new THREE.Mesh(
+            new THREE.SphereGeometry(lightLayout.radius, 18, 12),
+            createSignalLightMaterial(light.color),
+        )
+        mesh.position.set(headCenterX + light.x, headCenterY + light.y, SIGNAL_HEAD_DEPTH / 2 + 0.012)
         setShadow(mesh, true, false)
         group.add(mesh)
     })
 
     layoutGroup.add(group)
-    addLabel(signal.name || signal.id, new THREE.Vector3(position.x, 1.92, position.z), 'layout3d-label-signal')
-}
-
-function getSignalDirectionAngle(direction: string): number {
-    const normalized = direction.toLowerCase()
-    if (normalized === 'w') return Math.PI
-    if (normalized === 's') return Math.PI / 2
-    if (normalized === 'd') return -Math.PI / 2
-    return 0
+    addLabel(
+        signal.name || signal.id,
+        new THREE.Vector3(position.x, Math.max(SIGNAL_LABEL_Y, headCenterY + lightLayout.height / 2 + 0.2), position.z),
+        'layout3d-label-signal',
+    )
 }
 
 function addPlatform(platform: Platform, mapper: LayoutMapper, materials: SceneMaterials) {
@@ -1030,15 +1409,192 @@ function addPlatform(platform: Platform, mapper: LayoutMapper, materials: SceneM
     addLabel(platform.name || platform.id, new THREE.Vector3(center.x, 0.84, center.z), 'layout3d-label-platform')
 }
 
-function addSwitchMarker(sw: SwitchDevice, mapper: LayoutMapper, materials: SceneMaterials) {
+function getSwitchBranchVectors(sw: SwitchDevice, layout: StationLayoutData): SwitchBranchVector[] {
+    if (sw.branchVectorList.length > 0) return sw.branchVectorList
+
+    return getAdjacentTrackVectorCandidates(layout, sw.bindingNodeID).map((candidate) => ({
+        x: candidate.vector.x,
+        y: candidate.vector.y,
+        lineID: candidate.lineID,
+    }))
+}
+
+function buildSwitchRenderBranches(sw: SwitchDevice, layout: StationLayoutData, mapper: LayoutMapper): SwitchRenderBranch[] {
+    const branches: SwitchRenderBranch[] = []
+    for (const branchVector of getSwitchBranchVectors(sw, layout)) {
+        const unit = normalizeVector2D(branchVector)
+        if (!unit) continue
+
+        const direction = mapDirectionVectorToWorld(unit)
+        if (branches.some((branch) => branch.direction.dot(direction) > SWITCH_BRANCH_DUPLICATE_DOT)) continue
+
+        const sourceLength = getVectorLength2D(branchVector)
+        const renderLength = Math.max(
+            SWITCH_MIN_BRANCH_LENGTH,
+            Math.min(SWITCH_BRANCH_LENGTH, mapper.mapLength(sourceLength) * 0.22),
+        )
+        branches.push({
+            direction,
+            sourceLength,
+            renderLength,
+            lineID: branchVector.lineID,
+        })
+    }
+
+    return branches
+}
+
+function addBeamBetweenWorld(
+    group: THREE.Group,
+    start: THREE.Vector3,
+    end: THREE.Vector3,
+    width: number,
+    height: number,
+    material: THREE.Material,
+    centerY: number,
+) {
+    const dx = end.x - start.x
+    const dz = end.z - start.z
+    const length = Math.hypot(dx, dz)
+    if (length <= 0.000001) return null
+
+    const beam = new THREE.Mesh(new THREE.BoxGeometry(length, height, width), material)
+    beam.position.set((start.x + end.x) / 2, centerY, (start.z + end.z) / 2)
+    beam.rotation.y = -Math.atan2(dz, dx)
+    setShadow(beam, true, true)
+    group.add(beam)
+    return beam
+}
+
+function getWorldLeftNormal(direction: THREE.Vector3): THREE.Vector3 {
+    return new THREE.Vector3(direction.z, 0, -direction.x).normalize()
+}
+
+function addSwitchRouteRails(group: THREE.Group, origin: THREE.Vector3, branch: SwitchRenderBranch, materials: SceneMaterials) {
+    const normal = getWorldLeftNormal(branch.direction)
+    const routeStartDistance = 0.08
+    const routeEndDistance = branch.renderLength
+    for (const railOffset of [-TRACK_GAUGE / 2, TRACK_GAUGE / 2]) {
+        const start = origin
+            .clone()
+            .addScaledVector(branch.direction, routeStartDistance)
+            .addScaledVector(normal, railOffset)
+        const end = origin
+            .clone()
+            .addScaledVector(branch.direction, routeEndDistance)
+            .addScaledVector(normal, railOffset)
+        addBeamBetweenWorld(group, start, end, RAIL_WIDTH * 1.2, RAIL_HEIGHT * 1.18, materials.switchGuard, RAIL_Y + 0.045)
+    }
+}
+
+function addSwitchTieFan(group: THREE.Group, origin: THREE.Vector3, branches: SwitchRenderBranch[], materials: SceneMaterials) {
+    for (const branch of branches) {
+        const maxDistance = Math.min(branch.renderLength - 0.25, 3.35)
+        for (let distance = 0.72; distance <= maxDistance; distance += 0.72) {
+            const center = origin.clone().addScaledVector(branch.direction, distance)
+            const normal = getWorldLeftNormal(branch.direction)
+            const start = center.clone().addScaledVector(normal, -SLEEPER_LENGTH * 0.58)
+            const end = center.clone().addScaledVector(normal, SLEEPER_LENGTH * 0.58)
+            addBeamBetweenWorld(group, start, end, SLEEPER_WIDTH * 0.92, SLEEPER_HEIGHT * 0.9, materials.switchTie, SLEEPER_Y + 0.02)
+        }
+    }
+}
+
+function findSwitchRoutePair(branches: SwitchRenderBranch[]) {
+    if (branches.length < 3) return null
+
+    let routeA = branches[0]
+    let routeB = branches[1]
+    let bestDot = -Infinity
+    for (let i = 0; i < branches.length; i++) {
+        for (let j = i + 1; j < branches.length; j++) {
+            const first = branches[i]
+            const second = branches[j]
+            if (!first || !second) continue
+
+            const dot = first.direction.dot(second.direction)
+            if (dot > bestDot) {
+                bestDot = dot
+                routeA = first
+                routeB = second
+            }
+        }
+    }
+
+    if (!routeA || !routeB) return null
+
+    const routeAverage = routeA.direction.clone().add(routeB.direction)
+    if (routeAverage.lengthSq() <= 0.000001) return null
+    routeAverage.normalize()
+
+    let stem: SwitchRenderBranch | null = null
+    let stemScore = Infinity
+    for (const branch of branches) {
+        if (branch === routeA || branch === routeB) continue
+        const score = branch.direction.dot(routeAverage)
+        if (score < stemScore) {
+            stemScore = score
+            stem = branch
+        }
+    }
+
+    return { routeA, routeB, routeAverage, stem }
+}
+
+function addSwitchPointWork(group: THREE.Group, origin: THREE.Vector3, branches: SwitchRenderBranch[], materials: SceneMaterials) {
+    const routePair = findSwitchRoutePair(branches)
+    if (!routePair) {
+        const plate = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.07, 0.42), materials.switchPoint)
+        plate.position.set(origin.x, RAIL_Y + 0.1, origin.z)
+        setShadow(plate, true, true)
+        group.add(plate)
+        return
+    }
+
+    const stemDirection = routePair.stem?.direction || routePair.routeAverage.clone().multiplyScalar(-1)
+    const toe = origin.clone().addScaledVector(stemDirection, 0.34)
+    const routeTipA = origin.clone().addScaledVector(routePair.routeA.direction, SWITCH_POINT_BLADE_LENGTH)
+    const routeTipB = origin.clone().addScaledVector(routePair.routeB.direction, SWITCH_POINT_BLADE_LENGTH)
+    addBeamBetweenWorld(group, toe, routeTipA, 0.06, 0.055, materials.switchPoint, RAIL_Y + 0.115)
+    addBeamBetweenWorld(group, toe, routeTipB, 0.06, 0.055, materials.switchPoint, RAIL_Y + 0.115)
+
+    const throwA = origin.clone().addScaledVector(routePair.routeA.direction, 0.82)
+    const throwB = origin.clone().addScaledVector(routePair.routeB.direction, 0.82)
+    if (throwA.distanceTo(throwB) > 0.18) {
+        addBeamBetweenWorld(group, throwA, throwB, 0.06, 0.045, materials.switchPoint, RAIL_Y + 0.16)
+    }
+
+    const frogNose = origin.clone().addScaledVector(routePair.routeAverage, SWITCH_FROG_DISTANCE)
+    const frogA = origin.clone().addScaledVector(routePair.routeA.direction, SWITCH_FROG_DISTANCE + 0.75)
+    const frogB = origin.clone().addScaledVector(routePair.routeB.direction, SWITCH_FROG_DISTANCE + 0.75)
+    addBeamBetweenWorld(group, frogNose, frogA, 0.052, 0.052, materials.switchPoint, RAIL_Y + 0.13)
+    addBeamBetweenWorld(group, frogNose, frogB, 0.052, 0.052, materials.switchPoint, RAIL_Y + 0.13)
+}
+
+function addFallbackSwitchMarker(position: THREE.Vector3, materials: SceneMaterials) {
     if (!layoutGroup) return
-    const position = mapper.mapPoint(sw.position)
-    const marker = new THREE.Mesh(new THREE.ConeGeometry(0.24, 0.54, 4), materials.switchMarker)
+    const marker = new THREE.Mesh(new THREE.OctahedronGeometry(0.3, 0), materials.switchMarker)
     marker.position.set(position.x, 0.42, position.z)
-    marker.rotation.y = Math.PI / 4
     setShadow(marker, true, true)
     layoutGroup.add(marker)
-    addLabel(sw.name || sw.id, new THREE.Vector3(position.x, 0.98, position.z), 'layout3d-label-switch')
+}
+
+function addSwitchDevice(sw: SwitchDevice, layout: StationLayoutData, mapper: LayoutMapper, materials: SceneMaterials) {
+    if (!layoutGroup) return
+    const position = mapper.mapPoint(sw.position)
+    const branches = buildSwitchRenderBranches(sw, layout, mapper)
+    if (branches.length < 2) {
+        addFallbackSwitchMarker(position, materials)
+        addLabel(sw.name || sw.id, new THREE.Vector3(position.x, 0.98, position.z), 'layout3d-label-switch')
+        return
+    }
+
+    const group = new THREE.Group()
+    branches.forEach((branch) => addSwitchRouteRails(group, position, branch, materials))
+    addSwitchTieFan(group, position, branches, materials)
+    addSwitchPointWork(group, position, branches, materials)
+    layoutGroup.add(group)
+    addLabel(sw.name || sw.id, new THREE.Vector3(position.x, 1.05, position.z), 'layout3d-label-switch')
 }
 
 function addLabel(text: string, position: THREE.Vector3, className: string) {
@@ -1073,8 +1629,8 @@ function rebuildScene() {
 
     addCurveTracks(layoutData.value, mapper, materials)
     for (const platform of layoutData.value.platforms) addPlatform(platform, mapper, materials)
-    for (const signal of layoutData.value.signals) addSignal(signal, mapper, materials)
-    for (const sw of layoutData.value.switches) addSwitchMarker(sw, mapper, materials)
+    for (const signal of layoutData.value.signals) addSignal(signal, layoutData.value, mapper, materials)
+    for (const sw of layoutData.value.switches) addSwitchDevice(sw, layoutData.value, mapper, materials)
     addTrackLabels(layoutData.value, mapper)
 
     fitCameraToLayout()

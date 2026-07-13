@@ -1105,6 +1105,261 @@
             "loadInstancesError": "Failed to load instance list"
         }
     },
+    "operationPlan": {
+        "actions": {
+            "refresh": "Refresh",
+            "add": "Add",
+            "save": "Save",
+            "cancel": "Cancel",
+            "delete": "Delete",
+            "expand": "Expand",
+            "collapse": "Collapse",
+            "confirm": "OK"
+        },
+        "fields": {
+            "operation": "Operation"
+        },
+        "tabs": {
+            "trainTemplate": "Train Templates",
+            "trainOperationPlan": "Train Operation Plan",
+            "trainOperationChart": "Operation Plan Chart",
+            "operationOccupationTimeTable": "Operation Occupation Time Table",
+            "operationBottleneckAnalysis": "Operation Bottleneck Analysis"
+        },
+        "states": {
+            "new": "New",
+            "editing": "Editing"
+        },
+        "placeholders": {
+            "autoId": "Leave blank to generate automatically"
+        },
+        "empty": {
+            "selectScheme": "Select a station scheme first",
+            "expandTrain": "Expand a train template first"
+        },
+        "train": {
+            "title": "Train Templates",
+            "count": "{count} train templates",
+            "empty": "No train templates",
+            "fields": {
+                "trainTemplateID": "Template ID",
+                "name": "Name",
+                "type": "Type",
+                "number": "Number"
+            },
+            "dialogs": {
+                "createTitle": "Add Train Template",
+                "editTitle": "Edit Train Template",
+                "deleteTitle": "Delete Train Template"
+            },
+            "placeholders": {
+                "name": "Enter a train template name",
+                "type": "Enter a train type"
+            },
+            "messages": {
+                "loadFailed": "Failed to load train templates",
+                "nameRequired": "Train template name is required",
+                "createSuccess": "Train template created",
+                "createFailed": "Failed to create train template",
+                "updateSuccess": "Train template updated",
+                "updateFailed": "Failed to update train template",
+                "deleteConfirm": "Delete train template {name}? Its movement templates will also be deleted.",
+                "deleteSuccess": "Train template deleted",
+                "deleteFailed": "Failed to delete train template"
+            }
+        },
+        "movement": {
+            "title": "Movement Templates",
+            "count": "{count} movement templates under {train}",
+            "empty": "No movement templates",
+            "fields": {
+                "movementID": "Movement ID",
+                "name": "Name",
+                "routeIDList": "Route List",
+                "minDuration": "Min Duration"
+            },
+            "dialogs": {
+                "createTitle": "Add Movement Template",
+                "editTitle": "Edit Movement Template",
+                "deleteTitle": "Delete Movement Template"
+            },
+            "placeholders": {
+                "name": "Enter a movement template name",
+                "routeIDList": "Select routes"
+            },
+            "routePicker": {
+                "title": "Select Routes",
+                "openButton": "Select Routes",
+                "count": "{count} routes",
+                "filterCount": "{filtered}/{total} routes after filtering",
+                "selectionCount": "{selected}/{total} routes selected",
+                "empty": "No routes",
+                "filterEmpty": "No routes match the filters",
+                "previewTitle": "Layout Preview",
+                "previewEmpty": "No station layout"
+            },
+            "messages": {
+                "loadFailed": "Failed to load movement templates",
+                "nameRequired": "Movement template name is required",
+                "createSuccess": "Movement template created",
+                "createFailed": "Failed to create movement template",
+                "updateSuccess": "Movement template updated",
+                "updateFailed": "Failed to update movement template",
+                "deleteConfirm": "Delete movement template {name}?",
+                "deleteSuccess": "Movement template deleted",
+                "deleteFailed": "Failed to delete movement template"
+            }
+        },
+        "trainOperationPlan": {
+            "empty": "No train operation plan",
+            "timeRange": "Total time range",
+            "startTime": "Start time",
+            "endTime": "End time",
+            "to": "to",
+            "actions": {
+                "autoGenerate": "Auto Generate Train Operation Plan"
+            },
+            "train": {
+                "title": "Trains",
+                "count": "{count} trains",
+                "fields": {
+                    "id": "Train ID",
+                    "trainNumber": "Train No.",
+                    "trainType": "Train Type"
+                },
+                "dialogs": {
+                    "deleteTitle": "Delete Train"
+                },
+                "messages": {
+                    "createSuccess": "Train created",
+                    "createFailed": "Failed to create train",
+                    "updateSuccess": "Train updated",
+                    "updateFailed": "Failed to update train",
+                    "deleteConfirm": "Delete train {id}? Its movements will also be deleted.",
+                    "deleteSuccess": "Train deleted",
+                    "deleteFailed": "Failed to delete train"
+                }
+            },
+            "movement": {
+                "title": "Movements",
+                "count": "{count} movements",
+                "expandTrain": "Expand a train first",
+                "fields": {
+                    "trainID": "Train ID",
+                    "earliestStartTime": "Earliest Start Time",
+                    "latestEndTime": "Latest End Time",
+                    "route": "Route",
+                    "tag": "Tag"
+                },
+                "placeholders": {
+                    "route": "Select a route"
+                },
+                "dialogs": {
+                    "deleteTitle": "Delete Movement"
+                },
+                "messages": {
+                    "trainRequired": "Add or select a train first",
+                    "createSuccess": "Movement created",
+                    "createFailed": "Failed to create movement",
+                    "updateSuccess": "Movement updated",
+                    "updateFailed": "Failed to update movement",
+                    "deleteConfirm": "Delete movement {id}?",
+                    "deleteSuccess": "Movement deleted",
+                    "deleteFailed": "Failed to delete movement"
+                }
+            },
+            "messages": {
+                "loadFailed": "Failed to load train operation plan",
+                "generateSuccess": "Train operation plan generated",
+                "generateFailed": "Failed to generate train operation plan"
+            }
+        },
+        "trainOperationChart": {
+            "title": "Operation Plan Chart",
+            "count": "{cellCount} track circuit sections, {barCount} occupations",
+            "cellAxis": "Track Circuit Section",
+            "timeAxis": "Time",
+            "emptyPlan": "No train operation plan",
+            "emptyCells": "No track circuit sections",
+            "emptyOccupations": "No occupation records",
+            "messages": {
+                "loadFailed": "Failed to load operation plan chart"
+            }
+        },
+        "operationOccupationTimeTable": {
+            "title": "Operation Occupation Time Table",
+            "count": "{routeCount} routes, {operationCount} operations",
+            "empty": "No operation occupation time statistics",
+            "emptyPlan": "No train operation plan",
+            "totalTime": "Total Time (sec)",
+            "totalTimePlaceholder": "Enter value",
+            "seconds": "{value} sec",
+            "fields": {
+                "sequence": "No.",
+                "routeID": "Route ID",
+                "routeDescription": "Route Description",
+                "operationCount": "Operation Count"
+            },
+            "summary": {
+                "totalOccupationTime": "Total Occupation Time",
+                "utilizationK": "Utilization K"
+            }
+        },
+        "operationBottleneckAnalysis": {
+            "title": "Operation Bottleneck Analysis",
+            "count": "{count} routes",
+            "empty": "No operation bottleneck analysis results",
+            "emptyPlan": "No train operation plan",
+            "fields": {
+                "routeID": "Route ID",
+                "routeDescription": "Route Description",
+                "operationCount": "Route Usage Count",
+                "bottleneckCellName": "Route Bottleneck Track Circuit Section",
+                "bottleneckUtilization": "Bottleneck Section Utilization",
+                "throughputCapacity": "Throughput Capacity"
+            },
+            "summary": {
+                "title": "Throughput Capacity Summary",
+                "count": "{count} groups",
+                "empty": "No throughput capacity summary results",
+                "emptyCategories": "Add a category first",
+                "defaultCategoryName": "Category {index}",
+                "selectedRoutes": "{count} routes selected",
+                "unboundRouteEnd": "Unbound Route End",
+                "groupFields": {
+                    "startRouteEnd": "Start Route End",
+                    "endRouteEnd": "End Route End"
+                },
+                "actions": {
+                    "calculate": "Calculate",
+                    "addCategory": "Add Category"
+                },
+                "messages": {
+                    "calculateSuccess": "Throughput capacity summary calculated and saved",
+                    "calculateFailed": "Failed to calculate throughput capacity summary"
+                },
+                "fields": {
+                    "groupText": "Group",
+                    "selectedRoutes": "Select Routes",
+                    "routeCount": "Routes",
+                    "operationCount": "Route Usage Count",
+                    "capacityTotal": "Capacity Total",
+                    "capacityAverage": "Average Capacity"
+                },
+                "routePicker": {
+                    "title": "Select Summary Routes",
+                    "count": "{selected} selected, {filtered}/{total} after filtering",
+                    "empty": "No routes available",
+                    "filterEmpty": "No routes match the filters",
+                    "filters": {
+                        "keyword": "Search route ID or description",
+                        "startRouteEnd": "Filter by start route end",
+                        "endRouteEnd": "Filter by end route end"
+                    }
+                }
+            }
+        }
+    },
     "stationLayout": {
         "menu": {
             "stationScheme": "Station Scheme",

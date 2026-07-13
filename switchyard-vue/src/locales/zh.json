@@ -1093,6 +1093,261 @@
             "loadInstancesError": "加载实例列表失败"
         }
     },
+    "operationPlan": {
+        "actions": {
+            "refresh": "刷新",
+            "add": "新增",
+            "save": "保存",
+            "cancel": "取消",
+            "delete": "删除",
+            "expand": "展开",
+            "collapse": "收起",
+            "confirm": "确定"
+        },
+        "fields": {
+            "operation": "操作"
+        },
+        "tabs": {
+            "trainTemplate": "列车模板",
+            "trainOperationPlan": "列车作业计划",
+            "trainOperationChart": "作业计划图",
+            "operationOccupationTimeTable": "作业占用时间表",
+            "operationBottleneckAnalysis": "作业瓶颈分析"
+        },
+        "states": {
+            "new": "新建",
+            "editing": "编辑中"
+        },
+        "placeholders": {
+            "autoId": "留空则自动生成"
+        },
+        "empty": {
+            "selectScheme": "请先选择车站方案",
+            "expandTrain": "请先展开一个列车模板"
+        },
+        "train": {
+            "title": "列车模板",
+            "count": "{count} 个列车模板",
+            "empty": "暂无列车模板",
+            "fields": {
+                "trainTemplateID": "模板 ID",
+                "name": "名称",
+                "type": "类型",
+                "number": "数量"
+            },
+            "dialogs": {
+                "createTitle": "新增列车模板",
+                "editTitle": "编辑列车模板",
+                "deleteTitle": "删除列车模板"
+            },
+            "placeholders": {
+                "name": "请输入列车模板名称",
+                "type": "请输入列车类型"
+            },
+            "messages": {
+                "loadFailed": "加载列车模板失败",
+                "nameRequired": "列车模板名称不能为空",
+                "createSuccess": "列车模板已创建",
+                "createFailed": "创建列车模板失败",
+                "updateSuccess": "列车模板已更新",
+                "updateFailed": "更新列车模板失败",
+                "deleteConfirm": "确定删除列车模板 {name} 吗？其下属移动模板也会被删除。",
+                "deleteSuccess": "列车模板已删除",
+                "deleteFailed": "删除列车模板失败"
+            }
+        },
+        "movement": {
+            "title": "移动模板",
+            "count": "{train} 下共有 {count} 个移动模板",
+            "empty": "暂无移动模板",
+            "fields": {
+                "movementID": "移动 ID",
+                "name": "名称",
+                "routeIDList": "进路列表",
+                "minDuration": "最小时长"
+            },
+            "dialogs": {
+                "createTitle": "新增移动模板",
+                "editTitle": "编辑移动模板",
+                "deleteTitle": "删除移动模板"
+            },
+            "placeholders": {
+                "name": "请输入移动模板名称",
+                "routeIDList": "请选择进路"
+            },
+            "routePicker": {
+                "title": "选择进路",
+                "openButton": "选择进路",
+                "count": "共有 {count} 条进路",
+                "filterCount": "筛选出 {filtered}/{total} 条进路",
+                "selectionCount": "已选择 {selected}/{total} 条进路",
+                "empty": "暂无进路",
+                "filterEmpty": "没有符合筛选条件的进路",
+                "previewTitle": "站场预览",
+                "previewEmpty": "暂无站场布置图"
+            },
+            "messages": {
+                "loadFailed": "加载移动模板失败",
+                "nameRequired": "移动模板名称不能为空",
+                "createSuccess": "移动模板已创建",
+                "createFailed": "创建移动模板失败",
+                "updateSuccess": "移动模板已更新",
+                "updateFailed": "更新移动模板失败",
+                "deleteConfirm": "确定删除移动模板 {name} 吗？",
+                "deleteSuccess": "移动模板已删除",
+                "deleteFailed": "删除移动模板失败"
+            }
+        },
+        "trainOperationPlan": {
+            "empty": "暂无列车作业计划",
+            "timeRange": "总时间范围",
+            "startTime": "开始时间",
+            "endTime": "结束时间",
+            "to": "至",
+            "actions": {
+                "autoGenerate": "自动生成列车作业计划"
+            },
+            "train": {
+                "title": "列车",
+                "count": "{count} 列车",
+                "fields": {
+                    "id": "列车 ID",
+                    "trainNumber": "车次",
+                    "trainType": "列车类型"
+                },
+                "dialogs": {
+                    "deleteTitle": "删除列车"
+                },
+                "messages": {
+                    "createSuccess": "列车已创建",
+                    "createFailed": "创建列车失败",
+                    "updateSuccess": "列车已更新",
+                    "updateFailed": "更新列车失败",
+                    "deleteConfirm": "确定删除列车 {id} 吗？该列车的移动也会被删除。",
+                    "deleteSuccess": "列车已删除",
+                    "deleteFailed": "删除列车失败"
+                }
+            },
+            "movement": {
+                "title": "移动",
+                "count": "{count} 个移动",
+                "expandTrain": "请先展开一列车",
+                "fields": {
+                    "trainID": "列车 ID",
+                    "earliestStartTime": "最早开始时间",
+                    "latestEndTime": "最晚结束时间",
+                    "route": "进路",
+                    "tag": "标签"
+                },
+                "placeholders": {
+                    "route": "请选择进路"
+                },
+                "dialogs": {
+                    "deleteTitle": "删除移动"
+                },
+                "messages": {
+                    "trainRequired": "请先新增或选择一列车",
+                    "createSuccess": "移动已创建",
+                    "createFailed": "创建移动失败",
+                    "updateSuccess": "移动已更新",
+                    "updateFailed": "更新移动失败",
+                    "deleteConfirm": "确定删除移动 {id} 吗？",
+                    "deleteSuccess": "移动已删除",
+                    "deleteFailed": "删除移动失败"
+                }
+            },
+            "messages": {
+                "loadFailed": "加载列车作业计划失败",
+                "generateSuccess": "列车作业计划已生成",
+                "generateFailed": "生成列车作业计划失败"
+            }
+        },
+        "trainOperationChart": {
+            "title": "作业计划图",
+            "count": "{cellCount} 个轨道电路区段，{barCount} 条占用",
+            "cellAxis": "轨道电路区段",
+            "timeAxis": "时间",
+            "emptyPlan": "暂无列车作业计划",
+            "emptyCells": "暂无轨道电路区段",
+            "emptyOccupations": "暂无占用记录",
+            "messages": {
+                "loadFailed": "加载作业计划图失败"
+            }
+        },
+        "operationOccupationTimeTable": {
+            "title": "作业占用时间表",
+            "count": "{routeCount} 条进路，{operationCount} 次作业",
+            "empty": "暂无作业占用时间统计",
+            "emptyPlan": "暂无列车作业计划",
+            "totalTime": "总时间(秒)",
+            "totalTimePlaceholder": "请输入",
+            "seconds": "{value} 秒",
+            "fields": {
+                "sequence": "序号",
+                "routeID": "进路ID",
+                "routeDescription": "进路描述",
+                "operationCount": "作业次数"
+            },
+            "summary": {
+                "totalOccupationTime": "总占用时间",
+                "utilizationK": "利用率K"
+            }
+        },
+        "operationBottleneckAnalysis": {
+            "title": "作业瓶颈分析",
+            "count": "{count} 条进路",
+            "empty": "暂无作业瓶颈分析结果",
+            "emptyPlan": "暂无列车作业计划",
+            "fields": {
+                "routeID": "进路ID",
+                "routeDescription": "进路描述",
+                "operationCount": "进路使用次数",
+                "bottleneckCellName": "进路瓶颈轨道电路区段名称",
+                "bottleneckUtilization": "瓶颈轨道区段利用率",
+                "throughputCapacity": "通过能力"
+            },
+            "summary": {
+                "title": "通过能力分类汇总",
+                "count": "{count} 个分类",
+                "empty": "暂无通过能力汇总结果",
+                "emptyCategories": "请先新增一个分类",
+                "defaultCategoryName": "分类{index}",
+                "selectedRoutes": "已选 {count} 条进路",
+                "unboundRouteEnd": "未绑定进路起终点",
+                "groupFields": {
+                    "startRouteEnd": "起点进路起终点",
+                    "endRouteEnd": "终点进路起终点"
+                },
+                "actions": {
+                    "calculate": "计算",
+                    "addCategory": "新增分类"
+                },
+                "messages": {
+                    "calculateSuccess": "通过能力分类汇总已计算并保存",
+                    "calculateFailed": "计算通过能力分类汇总失败"
+                },
+                "fields": {
+                    "groupText": "分类",
+                    "selectedRoutes": "选择进路",
+                    "routeCount": "进路数",
+                    "operationCount": "进路使用次数",
+                    "capacityTotal": "通过能力合计",
+                    "capacityAverage": "平均通过能力"
+                },
+                "routePicker": {
+                    "title": "选择汇总进路",
+                    "count": "已选择 {selected} 条，当前筛选 {filtered}/{total} 条",
+                    "empty": "暂无可选进路",
+                    "filterEmpty": "没有符合筛选条件的进路",
+                    "filters": {
+                        "keyword": "搜索进路ID或描述",
+                        "startRouteEnd": "按起点进路起终点筛选",
+                        "endRouteEnd": "按终点进路起终点筛选"
+                    }
+                }
+            }
+        }
+    },
     "stationLayout": {
         "menu": {
             "stationScheme": "车站方案",

@@ -83,3 +83,56 @@ CREATE TABLE IF NOT EXISTS "curve" (
     "LargeArcFlag" INTEGER NULL,
     "SweepFlag" INTEGER NULL
 );
+
+CREATE TABLE IF NOT EXISTS "traintemplate" (
+    "InstanceID" TEXT NULL,
+    "StationSchemeID" TEXT NULL,
+    "TrainTemplateID" TEXT NULL,
+    "Name" TEXT NULL,
+    "Type" TEXT NULL,
+    "Number" INTEGER NULL
+);
+
+CREATE TABLE IF NOT EXISTS "movementtemplate" (
+    "InstanceID" TEXT NULL,
+    "StationSchemeID" TEXT NULL,
+    "TrainTemplateID" TEXT NULL,
+    "MovementID" TEXT NULL,
+    "Name" TEXT NULL,
+    "RouteIDList" TEXT NULL,
+    "MinDuration" INTEGER NULL
+);
+
+CREATE TABLE IF NOT EXISTS "train" (
+    "InstanceID" TEXT NULL,
+    "StationSchemeID" TEXT NULL,
+    "ID" TEXT NULL,
+    "TrainTemplateID" TEXT NULL,
+    "TrainNumber" TEXT NULL,
+    "Name" TEXT NULL,
+    "TrainType" TEXT NULL
+);
+
+CREATE TABLE IF NOT EXISTS "movement" (
+    "InstanceID" TEXT NULL,
+    "StationSchemeID" TEXT NULL,
+    "TrainID" TEXT NULL,
+    "TrainTemplateID" TEXT NULL,
+    "MovementID" TEXT NULL,
+    "Name" TEXT NULL,
+    "RouteIDList" TEXT NULL,
+    "MinDuration" INTEGER NULL,
+    "EarliestStartTime" TEXT NULL,
+    "LatestEndTime" TEXT NULL,
+    "Route" TEXT NULL,
+    "Tag" TEXT NULL
+);
+
+CREATE TABLE IF NOT EXISTS "operationbottlenecksummarycategory" (
+    "InstanceID" TEXT NULL,
+    "StationSchemeID" TEXT NULL,
+    "CategoryID" TEXT NULL,
+    "Name" TEXT NULL,
+    "RouteIDList" TEXT NULL,
+    "SortOrder" INTEGER NULL
+);
