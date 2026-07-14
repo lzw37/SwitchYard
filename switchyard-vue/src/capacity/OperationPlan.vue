@@ -1147,10 +1147,11 @@
         <el-dialog
             v-model="routePickerVisible"
             :title="t('operationPlan.movement.routePicker.title')"
-            width="1080px"
-            top="4vh"
+            fullscreen
             class="operation-plan-route-picker-dialog"
             :close-on-click-modal="false"
+            @opened="handleRoutePickerOpened"
+            @closed="handleRoutePickerClosed"
         >
             <div class="operation-plan-route-picker">
                 <div class="operation-plan-route-picker-toolbar">
@@ -1229,73 +1230,119 @@
                     </el-popover>
                 </div>
 
-                <el-table
-                    :data="filteredRoutePickerRoutes"
-                    size="small"
-                    height="340"
-                    row-key="id"
-                    highlight-current-row
-                    :current-row-key="routePickerPreviewRouteId"
-                    class="operation-plan-route-picker-table"
-                    :empty-text="routePickerEmptyText"
-                    @row-click="selectRoutePickerPreviewRoute"
-                >
-                    <el-table-column width="44" align="center">
-                        <template #header>
-                            <el-checkbox
-                                v-if="!routePickerSingleSelect"
-                                :model-value="routePickerFilteredAllSelected"
-                                :indeterminate="routePickerFilteredPartlySelected"
-                                :disabled="filteredRoutePickerRoutes.length === 0"
-                                @change="toggleRoutePickerFilteredSelection"
-                            />
-                        </template>
-                        <template #default="{ row }">
-                            <el-checkbox
-                                :model-value="isRoutePickerRouteSelected(row.id)"
-                                @change="toggleRoutePickerRoute(row.id, $event)"
-                                @click.stop
-                            />
-                        </template>
-                    </el-table-column>
-                    <el-table-column prop="id" :label="t('routeDesign.stationRoute.fields.id')" min-width="112" show-overflow-tooltip />
-                    <el-table-column prop="type" :label="t('routeDesign.stationRoute.fields.type')" min-width="92" show-overflow-tooltip />
-                    <el-table-column prop="name" :label="t('routeDesign.stationRoute.fields.description')" min-width="220" show-overflow-tooltip />
-                    <el-table-column prop="startNodeID" :label="t('routeDesign.stationRoute.fields.startNodeID')" width="92" show-overflow-tooltip />
-                    <el-table-column prop="endNodeID" :label="t('routeDesign.stationRoute.fields.endNodeID')" width="92" show-overflow-tooltip />
-                </el-table>
-
-                <div class="operation-plan-route-picker-layout">
-                    <div class="operation-plan-route-picker-layout-header">
-                        <span>{{ t('operationPlan.movement.routePicker.previewTitle') }}</span>
-                        <strong v-if="selectedRoutePickerPreviewRoute">{{ selectedRoutePickerPreviewRoute.name }}</strong>
-                    </div>
+                <div ref="routePickerSplitRef" class="operation-plan-route-picker-split">
                     <div
-                        ref="routePickerLayoutViewportRef"
-                        class="operation-plan-route-picker-layout-view"
-                        v-loading="loadingRoutePickerLayout"
+                        class="operation-plan-route-picker-table-pane"
+                        :style="{ height: `${routePickerTableHeight}px` }"
                     >
-                        <StationLayoutEditor
-                            v-if="routePickerLayoutData"
-                            ref="routePickerLayoutEditorRef"
-                            readonly
-                            :display-scale-x="routePickerLayoutScaleX"
-                            :display-scale-y="routePickerLayoutScaleY"
-                            :display-styles="routePickerLayoutDisplayStyles"
-                            :show-grid="false"
-                            :show-nodes="true"
-                            :show-curve-arc="true"
-                            :grid-spacing="routePickerLayoutGridSpacing"
-                            :cells="routePickerLayoutCells"
-                            :show-cell-names="false"
-                            :highlighted-route-node-ids="routePickerHighlightedRouteNodeIds"
-                            :highlighted-route-link-ids="routePickerHighlightedRouteLinkIds"
-                            :highlighted-route-arrow-node-ids="routePickerHighlightedRouteArrowNodeIds"
-                            :highlighted-route-color="routePickerHighlightedRouteColor"
-                            :highlighted-route-arrow-visible="routePickerHighlightedRouteArrowVisible"
-                        />
-                        <div v-else class="operation-plan-route-picker-layout-empty">
-                            {{ t('operationPlan.movement.routePicker.previewEmpty') }}
+                        <el-table
+                            :data="filteredRoutePickerRoutes"
+                            size="small"
+                            height="100%"
+                            row-key="id"
+                            highlight-current-row
+                            :current-row-key="routePickerPreviewRouteId"
+                            class="operation-plan-route-picker-table"
+                            :empty-text="routePickerEmptyText"
+                            @row-click="selectRoutePickerPreviewRoute"
+                        >
+                            <el-table-column width="44" align="center">
+                                <template #header>
+                                    <el-checkbox
+                                        v-if="!routePickerSingleSelect"
+                                        :model-value="routePickerFilteredAllSelected"
+                                        :indeterminate="routePickerFilteredPartlySelected"
+                                        :disabled="filteredRoutePickerRoutes.length === 0"
+                                        @change="toggleRoutePickerFilteredSelection"
+                                    />
+                                </template>
+                                <template #default="{ row }">
+                                    <el-checkbox
+                                        :model-value="isRoutePickerRouteSelected(row.id)"
+                                        @change="toggleRoutePickerRoute(row.id, $event)"
+                                        @click.stop
+                                    />
+                                </template>
+                            </el-table-column>
+                            <el-table-column prop="id" :label="t('routeDesign.stationRoute.fields.id')" min-width="112" show-overflow-tooltip />
+                            <el-table-column prop="type" :label="t('routeDesign.stationRoute.fields.type')" min-width="92" show-overflow-tooltip />
+                            <el-table-column prop="name" :label="t('routeDesign.stationRoute.fields.description')" min-width="220" show-overflow-tooltip />
+                            <el-table-column prop="startNodeID" :label="t('routeDesign.stationRoute.fields.startNodeID')" width="92" show-overflow-tooltip />
+                            <el-table-column prop="endNodeID" :label="t('routeDesign.stationRoute.fields.endNodeID')" width="92" show-overflow-tooltip />
+                        </el-table>
+                    </div>
+
+                    <div
+                        class="operation-plan-route-picker-splitter"
+                        role="separator"
+                        tabindex="0"
+                        aria-orientation="horizontal"
+                        :aria-valuenow="routePickerTableHeight"
+                        @pointerdown="startRoutePickerTableResize"
+                        @keydown="handleRoutePickerTableResizeKeydown"
+                    >
+                        <span />
+                    </div>
+
+                    <div class="operation-plan-route-picker-layout">
+                        <div class="operation-plan-route-picker-layout-header">
+                            <div class="operation-plan-route-picker-layout-title">
+                                <span>{{ t('operationPlan.movement.routePicker.previewTitle') }}</span>
+                                <strong v-if="selectedRoutePickerPreviewRoute">{{ selectedRoutePickerPreviewRoute.name }}</strong>
+                            </div>
+                            <div class="operation-plan-route-picker-node-filter">
+                                <el-tag
+                                    size="small"
+                                    :type="routePickerNodeFilterStage === 'start' ? 'warning' : 'info'"
+                                >
+                                    {{ routePickerStartNodeFilterText }}
+                                </el-tag>
+                                <el-tag
+                                    size="small"
+                                    :type="routePickerNodeFilterStage === 'end' ? 'warning' : 'info'"
+                                >
+                                    {{ routePickerEndNodeFilterText }}
+                                </el-tag>
+                                <el-button
+                                    v-if="routePickerNodeFiltersActive"
+                                    :icon="Close"
+                                    circle
+                                    text
+                                    size="small"
+                                    :title="t('routeDesign.stationRoute.actions.clearFilters')"
+                                    @click="clearRoutePickerNodeFilters"
+                                />
+                            </div>
+                        </div>
+                        <div
+                            ref="routePickerLayoutViewportRef"
+                            class="operation-plan-route-picker-layout-view"
+                            v-loading="loadingRoutePickerLayout"
+                        >
+                            <StationLayoutEditor
+                                v-if="routePickerLayoutData"
+                                ref="routePickerLayoutEditorRef"
+                                readonly
+                                :display-scale-x="routePickerLayoutScaleX"
+                                :display-scale-y="routePickerLayoutScaleY"
+                                :display-styles="routePickerLayoutDisplayStyles"
+                                :show-grid="false"
+                                :show-nodes="true"
+                                :show-curve-arc="true"
+                                :grid-spacing="routePickerLayoutGridSpacing"
+                                :cells="routePickerLayoutCells"
+                                :show-cell-names="false"
+                                :route-pick-target="routePickerNodePickTarget"
+                                :highlighted-route-node-ids="routePickerHighlightedRouteNodeIds"
+                                :highlighted-route-link-ids="routePickerHighlightedRouteLinkIds"
+                                :highlighted-route-arrow-node-ids="routePickerHighlightedRouteArrowNodeIds"
+                                :highlighted-route-color="routePickerHighlightedRouteColor"
+                                :highlighted-route-arrow-visible="routePickerHighlightedRouteArrowVisible"
+                                @route-node-pick="handleRoutePickerNodePick"
+                            />
+                            <div v-else class="operation-plan-route-picker-layout-empty">
+                                {{ t('operationPlan.movement.routePicker.previewEmpty') }}
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1418,7 +1465,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown, ArrowRight, Check, Close, Delete, Edit, Filter, MagicStick, Plus, Refresh } from '@element-plus/icons-vue'
@@ -1508,6 +1555,18 @@ type RoutePickerTarget = 'movementTemplate' | 'trainOperationPlanMovement' | 'tr
 type RoutePickerFilterField = 'types' | 'startNodeIds' | 'endNodeIds' | 'nodeIds' | 'linkIds' | 'cellIds' | 'switchIds' | 'signalIds'
 type RoutePickerObjectFilterField = Exclude<RoutePickerFilterField, 'types'>
 type RoutePickerFilters = Record<RoutePickerFilterField, string[]>
+type RoutePickerNodeFilterStage = 'start' | 'end'
+
+interface RouteNodePickPayload {
+    target?: string
+    nodeId?: string
+    nodeID?: string
+}
+
+interface RoutePickerResizeState {
+    startY: number
+    startTableHeight: number
+}
 
 interface RouteListSelectOption {
     id: string
@@ -1621,6 +1680,11 @@ const routePickerFilterFieldControls: RoutePickerFilterControl[] = [
     { field: 'switchIds', placeholderKey: 'routeDesign.stationRoute.filter.switch' },
     { field: 'signalIds', placeholderKey: 'routeDesign.stationRoute.filter.signal' },
 ]
+const routePickerNodePickTarget = 'operation-plan-route-picker'
+const routePickerDefaultTableHeight = 360
+const routePickerMinTableHeight = 160
+const routePickerMinLayoutHeight = 220
+const routePickerSplitterHeight = 10
 const props = defineProps<{
     selectedInstanceId: string
 }>()
@@ -1696,6 +1760,7 @@ const routePickerFilters = ref<RoutePickerFilters>(createEmptyRoutePickerFilters
 const routePickerPreviewRouteId = ref('')
 const routePickerLayoutEditorRef = ref<any | null>(null)
 const routePickerLayoutViewportRef = ref<HTMLElement | null>(null)
+const routePickerSplitRef = ref<HTMLElement | null>(null)
 const routePickerLayoutData = ref<any | null>(null)
 const routePickerLayoutKey = ref('')
 const routePickerLayoutDisplayStyles = ref<Record<string, unknown>>({})
@@ -1703,6 +1768,8 @@ const routePickerLayoutCells = ref<Array<{ id: string; name: string; linkIDList:
 const routePickerLayoutGridSpacing = ref(20)
 const routePickerLayoutScaleX = ref(1)
 const routePickerLayoutScaleY = ref(1)
+const routePickerTableHeight = ref(routePickerDefaultTableHeight)
+const routePickerNodeFilterStage = ref<RoutePickerNodeFilterStage>('start')
 const loadingRoutePickerLayout = ref(false)
 
 let stationSchemeLoadVersion = 0
@@ -1713,6 +1780,7 @@ let movementTemplateLoadVersion = 0
 let trainOperationPlanLoadVersion = 0
 let operationPlanChartLoadVersion = 0
 let routePickerLayoutLoadVersion = 0
+let routePickerResizeState: RoutePickerResizeState | null = null
 
 const hasScope = computed(() => Boolean(props.selectedInstanceId && currentStationSchemeId.value.trim()))
 const selectedTrainTemplate = computed(() => {
@@ -2215,9 +2283,6 @@ const routePickerFiltersActive = computed(() => (
 const filteredRoutePickerRoutes = computed(() => (
     routePickerRoutes.value.filter((route) => routeMatchesRoutePickerFilters(route))
 ))
-const selectedRoutePickerPreviewRoute = computed(() => (
-    routePickerRoutes.value.find((route) => route.id === routePickerPreviewRouteId.value) || null
-))
 const routePickerFilteredAllSelected = computed(() => (
     filteredRoutePickerRoutes.value.length > 0 &&
     filteredRoutePickerRoutes.value.every((route) => routePickerSelectedIdSet.value.has(route.id))
@@ -2252,6 +2317,28 @@ const routePickerEmptyText = computed(() => (
         ? t('operationPlan.movement.routePicker.filterEmpty')
         : t('operationPlan.movement.routePicker.empty')
 ))
+const routePickerNodeFiltersActive = computed(() => (
+    routePickerFilters.value.startNodeIds.length > 0 ||
+    routePickerFilters.value.endNodeIds.length > 0
+))
+const routePickerEndpointFiltersReady = computed(() => (
+    routePickerFilters.value.startNodeIds.length > 0 &&
+    routePickerFilters.value.endNodeIds.length > 0
+))
+const routePickerEndpointFilterKey = computed(() => JSON.stringify([
+    routePickerFilters.value.startNodeIds,
+    routePickerFilters.value.endNodeIds,
+]))
+const routePickerStartNodeFilterText = computed(() => (
+    `${t('routeDesign.stationRoute.fields.startNodeID')}: ${routePickerFilters.value.startNodeIds[0] || '-'}`
+))
+const routePickerEndNodeFilterText = computed(() => (
+    `${t('routeDesign.stationRoute.fields.endNodeID')}: ${routePickerFilters.value.endNodeIds[0] || '-'}`
+))
+const selectedRoutePickerPreviewRoute = computed(() => {
+    if (!routePickerEndpointFiltersReady.value || !routePickerPreviewRouteId.value) return null
+    return filteredRoutePickerRoutes.value.find((route) => route.id === routePickerPreviewRouteId.value) || null
+})
 const routePickerHighlightedRoutePathNodeIds = computed(() => {
     const route = selectedRoutePickerPreviewRoute.value
     if (!route) return []
@@ -2264,6 +2351,8 @@ const routePickerHighlightedRouteNodeIds = computed(() => (
         ...routePickerHighlightedRoutePathNodeIds.value,
         selectedRoutePickerPreviewRoute.value?.startNodeID || '',
         selectedRoutePickerPreviewRoute.value?.endNodeID || '',
+        ...routePickerFilters.value.startNodeIds,
+        ...routePickerFilters.value.endNodeIds,
     ])
 ))
 const routePickerHighlightedRouteLinkIds = computed(() => (
@@ -2946,6 +3035,58 @@ function getRoutePickerFilterSelectOptions(control: RoutePickerFilterControl) {
 
 function clearRoutePickerFilters() {
     routePickerFilters.value = createEmptyRoutePickerFilters()
+    routePickerNodeFilterStage.value = 'start'
+    syncRoutePickerPreviewWithFilteredRoutes()
+}
+
+function clearRoutePickerNodeFilters() {
+    routePickerFilters.value = {
+        ...routePickerFilters.value,
+        startNodeIds: [],
+        endNodeIds: [],
+    }
+    routePickerNodeFilterStage.value = 'start'
+    syncRoutePickerPreviewWithFilteredRoutes()
+}
+
+function syncRoutePickerPreviewWithFilteredRoutes() {
+    if (!routePickerEndpointFiltersReady.value) {
+        routePickerPreviewRouteId.value = ''
+        return
+    }
+    if (!routePickerPreviewRouteId.value) return
+    if (filteredRoutePickerRoutes.value.some((route) => route.id === routePickerPreviewRouteId.value)) return
+    routePickerPreviewRouteId.value = ''
+}
+
+function handleRoutePickerNodePick(payload: RouteNodePickPayload) {
+    if (payload?.target !== routePickerNodePickTarget) return
+
+    const nodeId = readString(payload, 'nodeId', 'nodeID').trim()
+    if (!nodeId) return
+
+    if (routePickerNodeFilterStage.value === 'start') {
+        routePickerFilters.value = {
+            ...routePickerFilters.value,
+            startNodeIds: [nodeId],
+            endNodeIds: [],
+        }
+        routePickerPreviewRouteId.value = ''
+        routePickerNodeFilterStage.value = 'end'
+        syncRoutePickerPreviewWithFilteredRoutes()
+        ElMessage.success(t('routeDesign.stationRoute.messages.startPicked', { nodeId }))
+        ElMessage.info(t('routeDesign.stationRoute.messages.pickEnd'))
+        return
+    }
+
+    routePickerFilters.value = {
+        ...routePickerFilters.value,
+        endNodeIds: [nodeId],
+    }
+    routePickerPreviewRouteId.value = ''
+    routePickerNodeFilterStage.value = 'start'
+    syncRoutePickerPreviewWithFilteredRoutes()
+    ElMessage.success(t('routeDesign.stationRoute.messages.endPicked', { nodeId }))
 }
 
 function routeMatchesScalarFilter(selectedIds: string[], value: string) {
@@ -2984,14 +3125,15 @@ function isRoutePickerRouteSelected(routeID: string) {
 function toggleRoutePickerRoute(routeID: string, checked: unknown) {
     if (routePickerSingleSelect.value) {
         routePickerSelectedIds.value = checked ? [routeID] : []
-        routePickerPreviewRouteId.value = checked ? routeID : getRoutePickerPreviewDefaultRouteId()
+        routePickerPreviewRouteId.value = checked && routePickerEndpointFiltersReady.value ? routeID : ''
+        syncRoutePickerPreviewWithFilteredRoutes()
         return
     }
 
     const selected = new Set(routePickerSelectedIds.value)
     if (checked) {
         selected.add(routeID)
-        routePickerPreviewRouteId.value = routeID
+        routePickerPreviewRouteId.value = routePickerEndpointFiltersReady.value ? routeID : ''
     } else {
         selected.delete(routeID)
     }
@@ -3012,17 +3154,112 @@ function toggleRoutePickerFilteredSelection(checked: unknown) {
     routePickerSelectedIds.value = normalizeRoutePickerValues(Array.from(selected))
 }
 
+function clampRoutePickerTableHeight(height: number) {
+    const splitHeight = routePickerSplitRef.value?.clientHeight || 0
+    const availableHeight = splitHeight > 0
+        ? splitHeight
+        : Math.max(0, window.innerHeight - 160)
+    const maxHeight = Math.max(
+        routePickerMinTableHeight,
+        availableHeight - routePickerMinLayoutHeight - routePickerSplitterHeight,
+    )
+    const normalizedHeight = Number.isFinite(height) ? height : routePickerDefaultTableHeight
+    return Math.round(Math.min(Math.max(normalizedHeight, routePickerMinTableHeight), maxHeight))
+}
+
+function setRoutePickerTableHeight(height: number) {
+    routePickerTableHeight.value = clampRoutePickerTableHeight(height)
+}
+
+function resetRoutePickerTableHeight() {
+    const splitHeight = routePickerSplitRef.value?.clientHeight || 0
+    if (!splitHeight) {
+        setRoutePickerTableHeight(routePickerDefaultTableHeight)
+        return
+    }
+
+    setRoutePickerTableHeight(Math.round(splitHeight * 0.42))
+}
+
+function startRoutePickerTableResize(event: PointerEvent) {
+    if (event.button !== 0) return
+
+    event.preventDefault()
+    routePickerResizeState = {
+        startY: event.clientY,
+        startTableHeight: routePickerTableHeight.value,
+    }
+    window.addEventListener('pointermove', handleRoutePickerTableResize, { passive: false })
+    window.addEventListener('pointerup', stopRoutePickerTableResize, { once: true })
+    window.addEventListener('pointercancel', stopRoutePickerTableResize, { once: true })
+}
+
+function handleRoutePickerTableResize(event: PointerEvent) {
+    if (!routePickerResizeState) return
+
+    event.preventDefault()
+    setRoutePickerTableHeight(routePickerResizeState.startTableHeight + event.clientY - routePickerResizeState.startY)
+}
+
+function stopRoutePickerTableResize() {
+    if (!routePickerResizeState) return
+
+    routePickerResizeState = null
+    window.removeEventListener('pointermove', handleRoutePickerTableResize)
+    window.removeEventListener('pointerup', stopRoutePickerTableResize)
+    window.removeEventListener('pointercancel', stopRoutePickerTableResize)
+    void nextTick(() => fitRoutePickerLayoutToFullView())
+}
+
+function handleRoutePickerTableResizeKeydown(event: KeyboardEvent) {
+    const smallStep = event.shiftKey ? 40 : 20
+    const largeStep = event.shiftKey ? 120 : 80
+    if (event.key === 'ArrowUp') {
+        event.preventDefault()
+        setRoutePickerTableHeight(routePickerTableHeight.value - smallStep)
+    } else if (event.key === 'ArrowDown') {
+        event.preventDefault()
+        setRoutePickerTableHeight(routePickerTableHeight.value + smallStep)
+    } else if (event.key === 'PageUp') {
+        event.preventDefault()
+        setRoutePickerTableHeight(routePickerTableHeight.value - largeStep)
+    } else if (event.key === 'PageDown') {
+        event.preventDefault()
+        setRoutePickerTableHeight(routePickerTableHeight.value + largeStep)
+    } else if (event.key === 'Home') {
+        event.preventDefault()
+        setRoutePickerTableHeight(routePickerMinTableHeight)
+    } else if (event.key === 'End') {
+        event.preventDefault()
+        setRoutePickerTableHeight(Number.MAX_SAFE_INTEGER)
+    } else {
+        return
+    }
+    void nextTick(() => fitRoutePickerLayoutToFullView())
+}
+
 async function openRoutePicker(target: RoutePickerTarget = 'movementTemplate') {
     routePickerTarget.value = target
     routePickerSelectedIds.value = normalizeRoutePickerValues(getActiveRoutePickerSourceIds())
-    routePickerPreviewRouteId.value = getRoutePickerPreviewDefaultRouteId()
+    routePickerPreviewRouteId.value = ''
     routePickerVisible.value = true
     await nextTick()
+    resetRoutePickerTableHeight()
     await loadRoutePickerLayoutPreview()
 }
 
 function closeRoutePicker() {
     routePickerVisible.value = false
+}
+
+async function handleRoutePickerOpened() {
+    await nextTick()
+    setRoutePickerTableHeight(routePickerTableHeight.value)
+    fitRoutePickerLayoutToFullView()
+}
+
+function handleRoutePickerClosed() {
+    stopRoutePickerTableResize()
 }
 
 function confirmRoutePicker() {
@@ -3051,12 +3288,6 @@ function clearRoutePickerLayoutPreview() {
     routePickerLayoutScaleY.value = 1
     loadingRoutePickerLayout.value = false
     routePickerLayoutEditorRef.value?.clearElements?.()
-}
-
-function getRoutePickerPreviewDefaultRouteId() {
-    const selectedId = routePickerSelectedIds.value.find((id) => routePickerRoutes.value.some((route) => route.id === id))
-    if (selectedId) return selectedId
-    return filteredRoutePickerRoutes.value[0]?.id || routePickerRoutes.value[0]?.id || ''
 }
 
 function fitRoutePickerLayoutDataRect(
@@ -3135,6 +3366,10 @@ async function loadRoutePickerLayoutPreview() {
 }
 
 function selectRoutePickerPreviewRoute(row: StationRouteOption) {
+    if (!routePickerEndpointFiltersReady.value) {
+        routePickerPreviewRouteId.value = ''
+        return
+    }
     routePickerPreviewRouteId.value = row.id
 }
 
@@ -4268,6 +4503,14 @@ async function deleteMovementTemplate(row: MovementTemplate) {
     }
 }
 
+watch(filteredRoutePickerRoutes, () => {
+    if (routePickerVisible.value) syncRoutePickerPreviewWithFilteredRoutes()
+})
+
+watch(routePickerEndpointFilterKey, () => {
+    if (routePickerVisible.value) routePickerPreviewRouteId.value = ''
+})
+
 watch(activeOperationPlanTab, (tab) => {
     if (isOperationPlanChartDataTab(tab)) {
         void loadOperationPlanChartData()
@@ -4285,6 +4528,10 @@ watch(
     },
     { immediate: true },
 )
+
+onBeforeUnmount(() => {
+    stopRoutePickerTableResize()
+})
 </script>
 
 <style scoped lang="css">
@@ -4533,21 +4780,46 @@ watch(
     font-size: 12px;
 }
 
-.operation-plan-route-picker-dialog :deep(.el-dialog__body) {
-    max-height: calc(100vh - 168px);
-    overflow: auto;
-    padding-top: 4px;
+:deep(.operation-plan-route-picker-dialog.el-dialog.is-fullscreen) {
+    display: flex;
+    flex-direction: column;
+    width: 100vw;
+    max-width: none;
+    height: 100vh;
+    margin: 0;
+    overflow: hidden;
 }
 
-.operation-plan-route-picker-dialog :deep(.el-dialog) {
-    max-width: calc(100vw - 48px);
+:deep(.operation-plan-route-picker-dialog.el-dialog.is-fullscreen .el-dialog__header) {
+    flex: 0 0 auto;
+    margin-right: 0;
+    padding: 14px 18px 10px;
+    border-bottom: 1px solid #e4edf6;
+}
+
+:deep(.operation-plan-route-picker-dialog.el-dialog.is-fullscreen .el-dialog__body) {
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 10px 16px 12px;
+    overflow: hidden;
+}
+
+:deep(.operation-plan-route-picker-dialog.el-dialog.is-fullscreen .el-dialog__footer) {
+    flex: 0 0 auto;
+    padding: 10px 16px 14px;
+    border-top: 1px solid #e4edf6;
 }
 
 .operation-plan-route-picker {
     display: flex;
+    flex: 1;
     flex-direction: column;
+    width: 100%;
+    height: 100%;
     gap: 10px;
     min-height: 0;
+    overflow: hidden;
 }
 
 .operation-plan-route-picker-toolbar {
@@ -4578,16 +4850,62 @@ watch(
     grid-column: 1 / -1;
 }
 
+.operation-plan-route-picker-split {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.operation-plan-route-picker-table-pane {
+    flex: 0 0 auto;
+    min-height: 160px;
+    overflow: hidden;
+}
+
 .operation-plan-route-picker-table {
+    height: 100%;
     border: 1px solid #e4edf6;
     border-radius: 6px;
 }
 
+.operation-plan-route-picker-splitter {
+    position: relative;
+    display: flex;
+    flex: 0 0 10px;
+    align-items: center;
+    justify-content: center;
+    height: 10px;
+    cursor: row-resize;
+    outline: none;
+}
+
+.operation-plan-route-picker-splitter::before {
+    position: absolute;
+    inset: 0;
+    content: "";
+}
+
+.operation-plan-route-picker-splitter span {
+    width: 72px;
+    height: 3px;
+    border-radius: 999px;
+    background: #9fb2c8;
+}
+
+.operation-plan-route-picker-splitter:focus-visible span,
+.operation-plan-route-picker-splitter:hover span {
+    background: #3b82f6;
+}
+
 .operation-plan-route-picker-layout {
     display: flex;
+    flex: 1 1 auto;
     flex-direction: column;
     gap: 6px;
-    min-height: 0;
+    min-height: 220px;
+    overflow: hidden;
 }
 
 .operation-plan-route-picker-layout-header {
@@ -4598,13 +4916,21 @@ watch(
     min-height: 22px;
 }
 
-.operation-plan-route-picker-layout-header span {
+.operation-plan-route-picker-layout-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+}
+
+.operation-plan-route-picker-layout-title span {
+    flex: 0 0 auto;
     color: #4b5f77;
     font-size: 13px;
     font-weight: 600;
 }
 
-.operation-plan-route-picker-layout-header strong {
+.operation-plan-route-picker-layout-title strong {
     min-width: 0;
     overflow: hidden;
     color: #21354f;
@@ -4614,9 +4940,19 @@ watch(
     white-space: nowrap;
 }
 
+.operation-plan-route-picker-node-filter {
+    display: flex;
+    flex: 0 1 auto;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    min-width: 0;
+}
+
 .operation-plan-route-picker-layout-view {
     position: relative;
-    height: 260px;
+    flex: 1 1 auto;
     min-height: 0;
     overflow: auto;
     border: 1px solid #d8e3ef;
