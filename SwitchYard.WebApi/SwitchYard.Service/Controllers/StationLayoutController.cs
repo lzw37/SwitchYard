@@ -379,6 +379,81 @@ namespace SwitchYard.Service.Controllers
             }
         }
 
+        [HttpPost(Name = "GenerateStationRouteInterruptCells")]
+        public IActionResult GenerateStationRouteInterruptCells([FromBody] StationRouteInterruptCellGenerateRequest? request)
+        {
+            try
+            {
+                var normalizedInstanceID = request?.InstanceID?.Trim();
+                if (string.IsNullOrWhiteSpace(normalizedInstanceID))
+                {
+                    return BadRequest("instanceID is required when generating station route interrupt cells.");
+                }
+
+                var dbConnector = GetCapacityDbConnector();
+                var authResult = ValidateCapacityInstanceOwnershipOrFail(dbConnector, normalizedInstanceID);
+                if (authResult != null)
+                {
+                    return authResult;
+                }
+
+                EnsureStationSchemeSchema(dbConnector);
+                EnsureCellSchema(dbConnector);
+                EnsureStationRouteSchema(dbConnector);
+                var normalizedStationSchemeID = ResolveStationSchemeID(
+                    dbConnector,
+                    normalizedInstanceID,
+                    request?.StationSchemeID);
+                if (string.IsNullOrWhiteSpace(normalizedStationSchemeID))
+                {
+                    return BadRequest("stationSchemeID is required when generating station route interrupt cells.");
+                }
+
+                if (!StationSchemeIDExists(dbConnector, normalizedInstanceID, normalizedStationSchemeID))
+                {
+                    return NotFound("Station scheme not found.");
+                }
+
+                var routes = LoadStationRoutes(dbConnector, normalizedInstanceID, normalizedStationSchemeID);
+                var universeCellIDs = BuildStationRouteInterruptCellUniverse(routes);
+
+                dbConnector.BeginTransaction();
+                try
+                {
+                    foreach (var route in routes)
+                    {
+                        route.InterruptCellList = BuildStationRouteInterruptCellList(route, routes, universeCellIDs);
+                        UpdateStationRouteInterruptCellList(
+                            dbConnector,
+                            normalizedInstanceID,
+                            normalizedStationSchemeID,
+                            route.ID,
+                            route.InterruptCellList);
+                    }
+
+                    dbConnector.Commit();
+                }
+                catch
+                {
+                    dbConnector.Rollback();
+                    throw;
+                }
+
+                return Ok(new
+                {
+                    instanceID = normalizedInstanceID,
+                    stationSchemeID = normalizedStationSchemeID,
+                    updated = routes.Count,
+                    routes
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to generate station route interrupt cells.");
+                return StatusCode(500, "Failed to generate station route interrupt cells.");
+            }
+        }
+
         [HttpPost(Name = "CreateStationRoute")]
         public IActionResult CreateStationRoute([FromBody] StationRouteRequest? request)
         {
@@ -428,11 +503,11 @@ namespace SwitchYard.Service.Controllers
                 var result = dbConnector.ExecuteNonQuery(
                     $@"INSERT INTO {tableName} (
                            InstanceID, StationSchemeID, ID, {QuoteIdentifier("Type")}, Description,
-                           NodeList, LinkList, SwitchList, CellList, SignalList,
+                           NodeList, LinkList, SwitchList, CellList, InterruptCellList, SignalList,
                            AllowanceTags, ForbiddenTags, StartNodeID, EndNodeID)
                        VALUES (
                            @InstanceID, @StationSchemeID, @ID, @Type, @Description,
-                           @NodeList, @LinkList, @SwitchList, @CellList, @SignalList,
+                           @NodeList, @LinkList, @SwitchList, @CellList, @InterruptCellList, @SignalList,
                            @AllowanceTags, @ForbiddenTags, @StartNodeID, @EndNodeID)",
                     route);
                 if (result <= 0)
@@ -488,7 +563,11 @@ namespace SwitchYard.Service.Controllers
                     normalizedStationSchemeID,
                     normalizedRouteID,
                     normalizedTrainTypeID);
-                return Ok(OrderStationRouteTimesByCellList(routeTimes, route?.CellList));
+                return Ok(OrderStationRouteTimesByCellList(
+                    routeTimes,
+                    route?.CellList,
+                    route?.InterruptCellList,
+                    routeTimes.Count > 0));
             }
             catch (Exception ex)
             {
@@ -528,7 +607,7 @@ namespace SwitchYard.Service.Controllers
                     return NotFound("Station route not found.");
                 }
 
-                var cellIDs = ParseStationRouteIdList(route.CellList);
+                var cellIDs = BuildStationRouteTimeCellIDs(route);
                 if (cellIDs.Count == 0)
                 {
                     return BadRequest("The selected route does not contain any cells.");
@@ -549,7 +628,9 @@ namespace SwitchYard.Service.Controllers
 
                 return Ok(OrderStationRouteTimesByCellList(
                     LoadStationRouteTimes(dbConnector, instanceID, stationSchemeID, routeID, trainTypeID),
-                    route.CellList));
+                    route.CellList,
+                    route.InterruptCellList,
+                    true));
             }
             catch (Exception ex)
             {
@@ -589,7 +670,8 @@ namespace SwitchYard.Service.Controllers
                     return NotFound("Station route not found.");
                 }
 
-                var routeCellIDs = ParseStationRouteIdList(route.CellList);
+                var routeTimePlan = BuildStationRouteTimeCellPlan(route.CellList, route.InterruptCellList);
+                var routeCellIDs = routeTimePlan.CellIDs;
                 if (routeCellIDs.Count == 0)
                 {
                     return BadRequest("The selected route does not contain any cells.");
@@ -616,14 +698,17 @@ namespace SwitchYard.Service.Controllers
                     .FirstOrDefault(cellID => !routeCellIDSet.Contains(cellID));
                 if (!string.IsNullOrEmpty(invalidCellID))
                 {
-                    return BadRequest($"CellID '{invalidCellID}' is not part of the selected route.");
+                    return BadRequest($"CellID '{invalidCellID}' is not part of the selected route occupancy cell list.");
                 }
 
+                ApplyStationRouteInterruptCellTimeDefaults(rows, routeTimePlan.InterruptCellIDSet);
                 ReplaceStationRouteTimes(dbConnector, instanceID, stationSchemeID, routeID, trainTypeID, rows);
 
                 return Ok(OrderStationRouteTimesByCellList(
                     LoadStationRouteTimes(dbConnector, instanceID, stationSchemeID, routeID, trainTypeID),
-                    route.CellList));
+                    route.CellList,
+                    route.InterruptCellList,
+                    true));
             }
             catch (Exception ex)
             {
@@ -701,7 +786,7 @@ namespace SwitchYard.Service.Controllers
                         continue;
                     }
 
-                    var cellIDs = ParseStationRouteIdList(route.CellList);
+                    var cellIDs = BuildStationRouteTimeCellIDs(route);
                     if (cellIDs.Count == 0)
                     {
                         continue;
@@ -789,6 +874,7 @@ namespace SwitchYard.Service.Controllers
                            LinkList = @LinkList,
                            SwitchList = @SwitchList,
                            CellList = @CellList,
+                           InterruptCellList = @InterruptCellList,
                            SignalList = @SignalList,
                            AllowanceTags = @AllowanceTags,
                            ForbiddenTags = @ForbiddenTags,
@@ -808,6 +894,7 @@ namespace SwitchYard.Service.Controllers
                         route.LinkList,
                         route.SwitchList,
                         route.CellList,
+                        route.InterruptCellList,
                         route.SignalList,
                         route.AllowanceTags,
                         route.ForbiddenTags,
@@ -2408,6 +2495,7 @@ namespace SwitchYard.Service.Controllers
                 LinkList = NormalizeNullableRouteEndField(request.LinkList),
                 SwitchList = NormalizeNullableRouteEndField(request.SwitchList),
                 CellList = NormalizeNullableRouteEndField(request.CellList),
+                InterruptCellList = NormalizeNullableRouteEndField(request.InterruptCellList),
                 SignalList = NormalizeNullableRouteEndField(request.SignalList),
                 AllowanceTags = NormalizeNullableRouteEndField(request.AllowanceTags),
                 ForbiddenTags = NormalizeNullableRouteEndField(request.ForbiddenTags),
@@ -2440,7 +2528,7 @@ namespace SwitchYard.Service.Controllers
             var timeTableName = QuoteIdentifier("stationroutetime");
             return dbConnector.Query<StationRouteRow>(
                 $@"SELECT InstanceID, StationSchemeID, ID, {QuoteIdentifier("Type")} AS {QuoteIdentifier("Type")},
-                          Description, NodeList, LinkList, SwitchList, CellList, SignalList,
+                          Description, NodeList, LinkList, SwitchList, CellList, InterruptCellList, SignalList,
                           AllowanceTags, ForbiddenTags, StartNodeID, EndNodeID,
                           CASE WHEN EXISTS (
                               SELECT 1
@@ -2488,7 +2576,7 @@ namespace SwitchYard.Service.Controllers
             var tableName = QuoteIdentifier("stationroute");
             return (dbConnector.Query<StationRouteRow>(
                 $@"SELECT InstanceID, StationSchemeID, ID, {QuoteIdentifier("Type")} AS {QuoteIdentifier("Type")},
-                          Description, NodeList, LinkList, SwitchList, CellList, SignalList,
+                          Description, NodeList, LinkList, SwitchList, CellList, InterruptCellList, SignalList,
                           AllowanceTags, ForbiddenTags, StartNodeID, EndNodeID
                    FROM {tableName}
                    WHERE InstanceID = @instanceID
@@ -2528,27 +2616,251 @@ namespace SwitchYard.Service.Controllers
                 .ToList();
         }
 
-        private static List<StationRouteTimeRow> OrderStationRouteTimesByCellList(
-            List<StationRouteTimeRow> rows,
-            string? cellList)
+        private static string SerializeStationRouteIdList(IEnumerable<string> ids)
         {
-            var cellIDs = ParseStationRouteIdList(cellList);
-            if (cellIDs.Count == 0 || rows.Count <= 1)
+            return JsonSerializer.Serialize(NormalizeStationRouteIdList(ids));
+        }
+
+        private static List<string> NormalizeStationRouteIdList(IEnumerable<string> ids)
+        {
+            var normalized = new List<string>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var id in ids)
             {
-                return rows;
+                var trimmed = id?.Trim();
+                if (string.IsNullOrWhiteSpace(trimmed) || !seen.Add(trimmed))
+                {
+                    continue;
+                }
+
+                normalized.Add(trimmed);
             }
 
-            var orderByCellID = cellIDs
+            return normalized;
+        }
+
+        private static List<string> BuildStationRouteInterruptCellUniverse(
+            IEnumerable<StationRouteRow> routes)
+        {
+            return NormalizeStationRouteIdList(routes.SelectMany(route => ParseStationRouteIdList(route.CellList)));
+        }
+
+        private static string BuildStationRouteInterruptCellList(
+            StationRouteRow route,
+            IEnumerable<StationRouteRow> routes,
+            IReadOnlyCollection<string> universeCellIDs)
+        {
+            var routeCellSet = new HashSet<string>(
+                ParseStationRouteIdList(route.CellList),
+                StringComparer.OrdinalIgnoreCase);
+            var parallelCellSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var otherRoute in routes)
+            {
+                if (ReferenceEquals(route, otherRoute) ||
+                    string.Equals(route.ID, otherRoute.ID, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                var otherCellIDs = ParseStationRouteIdList(otherRoute.CellList);
+                if (otherCellIDs.Any(cellID => routeCellSet.Contains(cellID)))
+                {
+                    continue;
+                }
+
+                foreach (var cellID in otherCellIDs)
+                {
+                    parallelCellSet.Add(cellID);
+                }
+            }
+
+            return SerializeStationRouteIdList(
+                universeCellIDs.Where(cellID => !routeCellSet.Contains(cellID) && !parallelCellSet.Contains(cellID)));
+        }
+
+        private static List<string> BuildStationRouteTimeCellIDs(StationRouteRow route)
+        {
+            return BuildStationRouteTimeCellPlan(route.CellList, route.InterruptCellList).CellIDs;
+        }
+
+        private static (List<string> CellIDs, HashSet<string> InterruptCellIDSet) BuildStationRouteTimeCellPlan(
+            string? cellList,
+            string? interruptCellList)
+        {
+            var routeCellIDs = NormalizeStationRouteIdList(ParseStationRouteIdList(cellList));
+            var routeCellIDSet = new HashSet<string>(routeCellIDs, StringComparer.OrdinalIgnoreCase);
+            var interruptCellIDs = NormalizeStationRouteIdList(ParseStationRouteIdList(interruptCellList))
+                .Where(cellID => !routeCellIDSet.Contains(cellID))
+                .ToList();
+            var interruptCellIDSet = new HashSet<string>(interruptCellIDs, StringComparer.OrdinalIgnoreCase);
+            return (NormalizeStationRouteIdList(routeCellIDs.Concat(interruptCellIDs)), interruptCellIDSet);
+        }
+
+        private static (int StartOccupationShift, int EndOccupationShift) GetStationRouteTimeDefaultWindow(
+            IEnumerable<StationRouteTimeRow> rows,
+            IReadOnlySet<string> interruptCellIDSet)
+        {
+            var routeRows = rows
+                .Where(row =>
+                {
+                    var cellID = row.CellID?.Trim();
+                    return !string.IsNullOrWhiteSpace(cellID) && !interruptCellIDSet.Contains(cellID);
+                })
+                .ToList();
+            var startValues = routeRows
+                .Select(row => row.StartOccupationShift)
+                .Where(value => value.HasValue)
+                .Select(value => value!.Value)
+                .ToList();
+            var endValues = routeRows
+                .Select(row => row.EndOccupationShift)
+                .Where(value => value.HasValue)
+                .Select(value => value!.Value)
+                .ToList();
+            return (
+                startValues.Count > 0 ? startValues.Min() : 0,
+                endValues.Count > 0 ? endValues.Max() : 0);
+        }
+
+        private static void ApplyStationRouteInterruptCellTimeDefaults(
+            IEnumerable<StationRouteTimeRow> rows,
+            IReadOnlySet<string> interruptCellIDSet)
+        {
+            var routeTimeRows = rows.ToList();
+            if (interruptCellIDSet.Count == 0 || routeTimeRows.Count == 0)
+            {
+                return;
+            }
+
+            var defaultWindow = GetStationRouteTimeDefaultWindow(routeTimeRows, interruptCellIDSet);
+            foreach (var row in routeTimeRows)
+            {
+                var cellID = row.CellID?.Trim();
+                if (string.IsNullOrWhiteSpace(cellID) || !interruptCellIDSet.Contains(cellID))
+                {
+                    continue;
+                }
+
+                row.IsInterruptCell = true;
+                var hasDefaultZeroShift =
+                    (row.StartOccupationShift ?? 0) == 0 &&
+                    (row.EndOccupationShift ?? 0) == 0 &&
+                    (defaultWindow.StartOccupationShift != 0 || defaultWindow.EndOccupationShift != 0);
+                if (hasDefaultZeroShift)
+                {
+                    row.StartOccupationShift = defaultWindow.StartOccupationShift;
+                    row.EndOccupationShift = defaultWindow.EndOccupationShift;
+                    continue;
+                }
+
+                row.StartOccupationShift ??= defaultWindow.StartOccupationShift;
+                row.EndOccupationShift ??= defaultWindow.EndOccupationShift;
+            }
+        }
+
+        private static void UpdateStationRouteInterruptCellList(
+            DBConnector dbConnector,
+            string instanceID,
+            string stationSchemeID,
+            string? routeID,
+            string? interruptCellList)
+        {
+            var normalizedRouteID = routeID?.Trim();
+            if (string.IsNullOrWhiteSpace(normalizedRouteID))
+            {
+                return;
+            }
+
+            var tableName = QuoteIdentifier("stationroute");
+            dbConnector.ExecuteNonQuery(
+                $@"UPDATE {tableName}
+                   SET InterruptCellList = @interruptCellList
+                   WHERE InstanceID = @instanceID
+                     AND StationSchemeID = @stationSchemeID
+                     AND ID = @routeID",
+                new
+                {
+                    instanceID,
+                    stationSchemeID,
+                    routeID = normalizedRouteID,
+                    interruptCellList
+                });
+        }
+
+        private static List<StationRouteTimeRow> OrderStationRouteTimesByCellList(
+            List<StationRouteTimeRow> rows,
+            string? cellList,
+            string? interruptCellList,
+            bool includeMissingCells = false)
+        {
+            var plan = BuildStationRouteTimeCellPlan(cellList, interruptCellList);
+            var orderedRows = new List<StationRouteTimeRow>();
+            var usedIndexes = new HashSet<int>();
+            var defaultWindow = GetStationRouteTimeDefaultWindow(rows, plan.InterruptCellIDSet);
+
+            var orderByCellID = plan.CellIDs
                 .Select((cellID, index) => new { cellID, index })
                 .GroupBy(item => item.cellID, StringComparer.Ordinal)
                 .ToDictionary(group => group.Key, group => group.First().index, StringComparer.Ordinal);
 
-            return rows
-                .Select((row, index) => new { row, index })
-                .OrderBy(item => orderByCellID.TryGetValue(item.row.CellID ?? string.Empty, out var order) ? order : int.MaxValue)
-                .ThenBy(item => item.index)
-                .Select(item => item.row)
-                .ToList();
+            foreach (var cellID in plan.CellIDs)
+            {
+                var match = rows
+                    .Select((row, index) => new { row, index })
+                    .FirstOrDefault(item =>
+                        !usedIndexes.Contains(item.index) &&
+                        string.Equals(item.row.CellID?.Trim(), cellID, StringComparison.OrdinalIgnoreCase));
+                if (match == null)
+                {
+                    if (includeMissingCells)
+                    {
+                        orderedRows.Add(new StationRouteTimeRow
+                        {
+                            CellID = cellID,
+                            StartOccupationShift = plan.InterruptCellIDSet.Contains(cellID) ? defaultWindow.StartOccupationShift : 0,
+                            EndOccupationShift = plan.InterruptCellIDSet.Contains(cellID) ? defaultWindow.EndOccupationShift : 0,
+                            IsInterruptCell = plan.InterruptCellIDSet.Contains(cellID)
+                        });
+                    }
+
+                    continue;
+                }
+
+                usedIndexes.Add(match.index);
+                var matchedCellID = match.row.CellID?.Trim();
+                if (!string.IsNullOrWhiteSpace(matchedCellID))
+                {
+                    match.row.CellID = matchedCellID;
+                }
+
+                match.row.IsInterruptCell = plan.InterruptCellIDSet.Contains(cellID);
+                orderedRows.Add(match.row);
+            }
+
+            if (plan.CellIDs.Count == 0)
+            {
+                orderedRows.AddRange(rows
+                    .Select((row, index) => new { row, index })
+                    .Where(item => !usedIndexes.Contains(item.index))
+                    .OrderBy(item => orderByCellID.TryGetValue(item.row.CellID ?? string.Empty, out var order) ? order : int.MaxValue)
+                    .ThenBy(item => item.index)
+                    .Select(item =>
+                    {
+                        var cellID = item.row.CellID?.Trim();
+                        if (!string.IsNullOrWhiteSpace(cellID))
+                        {
+                            item.row.CellID = cellID;
+                        }
+
+                        item.row.IsInterruptCell = !string.IsNullOrWhiteSpace(cellID) &&
+                            plan.InterruptCellIDSet.Contains(cellID);
+                        return item.row;
+                    }));
+            }
+
+            ApplyStationRouteInterruptCellTimeDefaults(orderedRows, plan.InterruptCellIDSet);
+            return orderedRows;
         }
 
         private static void ReplaceStationRouteTimes(
@@ -3907,6 +4219,7 @@ namespace SwitchYard.Service.Controllers
                             {QuoteIdentifier("LinkList")} LONGTEXT NULL,
                             {QuoteIdentifier("SwitchList")} LONGTEXT NULL,
                             {QuoteIdentifier("CellList")} LONGTEXT NULL,
+                            {QuoteIdentifier("InterruptCellList")} LONGTEXT NULL,
                             {QuoteIdentifier("SignalList")} LONGTEXT NULL,
                             {QuoteIdentifier("AllowanceTags")} LONGTEXT NULL,
                             {QuoteIdentifier("ForbiddenTags")} LONGTEXT NULL,
@@ -3927,6 +4240,7 @@ namespace SwitchYard.Service.Controllers
                             {QuoteIdentifier("LinkList")} TEXT NULL,
                             {QuoteIdentifier("SwitchList")} TEXT NULL,
                             {QuoteIdentifier("CellList")} TEXT NULL,
+                            {QuoteIdentifier("InterruptCellList")} TEXT NULL,
                             {QuoteIdentifier("SignalList")} TEXT NULL,
                             {QuoteIdentifier("AllowanceTags")} TEXT NULL,
                             {QuoteIdentifier("ForbiddenTags")} TEXT NULL,
@@ -3952,6 +4266,7 @@ namespace SwitchYard.Service.Controllers
                 ["LinkList"] = longTextType,
                 ["SwitchList"] = longTextType,
                 ["CellList"] = longTextType,
+                ["InterruptCellList"] = longTextType,
                 ["SignalList"] = longTextType,
                 ["AllowanceTags"] = longTextType,
                 ["ForbiddenTags"] = longTextType,

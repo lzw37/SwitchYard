@@ -22,6 +22,15 @@
                         />
                     </el-select>
                 </div>
+                <el-button
+                    :icon="MagicStick"
+                    size="small"
+                    :loading="generatingInterruptCells"
+                    :disabled="!canGenerateInterruptCells"
+                    @click="generateStationRouteInterruptCells"
+                >
+                    {{ t('routeDesign.toolbar.generateInterruptCells') }}
+                </el-button>
             </div>
             <div class="route-design-toolbar-right">
                 <div class="route-design-display-toolbar">
@@ -215,7 +224,7 @@
                 <section
                     v-if="showStationRouteCard"
                     class="station-route-card"
-                    v-loading="loadingRoutes || savingRoute || routeSearchLoading"
+                    v-loading="loadingRoutes || savingRoute || routeSearchLoading || generatingInterruptCells"
                 >
                     <header class="station-route-card-header">
                         <div class="station-route-title-group">
@@ -372,10 +381,22 @@
                                 >
                                     <el-table-column type="selection" width="42" />
                                     <el-table-column prop="id" :label="t('routeDesign.stationRoute.fields.id')" min-width="116" show-overflow-tooltip />
-                                    <el-table-column prop="type" :label="t('routeDesign.stationRoute.fields.type')" min-width="88" show-overflow-tooltip />
+                                    <el-table-column prop="type" :label="t('routeDesign.stationRoute.fields.type')" min-width="104" show-overflow-tooltip>
+                                        <template #default="{ row }">
+                                            {{ getStationRouteTypeLabel(row.type) }}
+                                        </template>
+                                    </el-table-column>
                                     <el-table-column prop="description" :label="t('routeDesign.stationRoute.fields.description')" min-width="130" show-overflow-tooltip />
-                                    <el-table-column prop="startNodeID" :label="t('routeDesign.stationRoute.fields.startNodeID')" width="86" show-overflow-tooltip />
-                                    <el-table-column prop="endNodeID" :label="t('routeDesign.stationRoute.fields.endNodeID')" width="86" show-overflow-tooltip />
+                                    <el-table-column prop="startNodeID" :label="t('routeDesign.stationRoute.tableFields.startRouteEnd')" width="104" show-overflow-tooltip>
+                                        <template #default="{ row }">
+                                            {{ getRouteEndpointDisplay(row.startNodeID) }}
+                                        </template>
+                                    </el-table-column>
+                                    <el-table-column prop="endNodeID" :label="t('routeDesign.stationRoute.tableFields.endRouteEnd')" width="104" show-overflow-tooltip>
+                                        <template #default="{ row }">
+                                            {{ getRouteEndpointDisplay(row.endNodeID) }}
+                                        </template>
+                                    </el-table-column>
                                 </el-table>
                             </div>
                         </div>
@@ -420,7 +441,7 @@
                                         <el-option
                                             v-for="option in routeTypeOptions"
                                             :key="option"
-                                            :label="option"
+                                            :label="getStationRouteTypeLabel(option)"
                                             :value="option"
                                         />
                                     </el-select>
@@ -968,6 +989,7 @@ interface StationRoute {
     linkList: string
     switchList: string
     cellList: string
+    interruptCellList: string
     signalList: string
     allowanceTags: string
     forbiddenTags: string
@@ -975,7 +997,7 @@ interface StationRoute {
     endNodeID: string
 }
 
-type StationRouteObjectListField = 'nodeList' | 'linkList' | 'switchList' | 'cellList' | 'signalList'
+type StationRouteObjectListField = 'nodeList' | 'linkList' | 'switchList' | 'cellList' | 'interruptCellList' | 'signalList'
 type StationRouteTagListField = 'allowanceTags' | 'forbiddenTags'
 type StationRouteListField = StationRouteObjectListField | StationRouteTagListField
 type StationRouteFilterField = 'types' | 'startNodeIds' | 'endNodeIds' | 'nodeIds' | 'linkIds' | 'cellIds' | 'switchIds' | 'signalIds'
@@ -1083,6 +1105,7 @@ const savingRouteEnd = ref(false)
 const loadingRoutes = ref(false)
 const savingRoute = ref(false)
 const generatingRouteDescription = ref(false)
+const generatingInterruptCells = ref(false)
 const routeSearchLoading = ref(false)
 const stationSchemeOptions = ref<StationSchemeOption[]>([])
 const layoutDisplayStyles = ref<Record<string, unknown>>({})
@@ -1131,6 +1154,7 @@ const routeForm = ref<StationRoute>({
     linkList: '',
     switchList: '',
     cellList: '',
+    interruptCellList: '',
     signalList: '',
     allowanceTags: '',
     forbiddenTags: '',
@@ -1177,6 +1201,21 @@ const routeHighlightColors = {
     locomotive: '#16a34a',
     shunting: '#facc15',
 }
+const stationRouteTypeLabelKeys: Record<string, string> = {
+    arrival: 'routeDesign.stationRoute.types.arrival',
+    '接车': 'routeDesign.stationRoute.types.arrival',
+    '接车进路': 'routeDesign.stationRoute.types.arrival',
+    departure: 'routeDesign.stationRoute.types.departure',
+    '发车': 'routeDesign.stationRoute.types.departure',
+    '发车进路': 'routeDesign.stationRoute.types.departure',
+    locomotive: 'routeDesign.stationRoute.types.locomotive',
+    '机车出入段': 'routeDesign.stationRoute.types.locomotive',
+    '机车出入段进路': 'routeDesign.stationRoute.types.locomotive',
+    '机车走行': 'routeDesign.stationRoute.types.locomotive',
+    shunting: 'routeDesign.stationRoute.types.shunting',
+    '调车': 'routeDesign.stationRoute.types.shunting',
+    '调车进路': 'routeDesign.stationRoute.types.shunting',
+}
 const routeListFieldControls: RouteListFieldControl[] = [
     {
         field: 'nodeList',
@@ -1199,6 +1238,12 @@ const routeListFieldControls: RouteListFieldControl[] = [
     {
         field: 'cellList',
         labelKey: 'routeDesign.stationRoute.fields.cellList',
+        placeholderKey: 'routeDesign.stationRoute.placeholders.selectRouteItems',
+        allowCreate: false,
+    },
+    {
+        field: 'interruptCellList',
+        labelKey: 'routeDesign.stationRoute.fields.interruptCellList',
         placeholderKey: 'routeDesign.stationRoute.placeholders.selectRouteItems',
         allowCreate: false,
     },
@@ -1277,18 +1322,21 @@ const routeEndContentStyle = computed((): Record<string, string> => {
 })
 const canLoadRoutes = computed(() => Boolean(selectedInstanceId.value && currentStationSchemeId.value.trim()))
 const canEditRoutes = computed(() => canLoadRoutes.value && !loadingData.value)
+const canGenerateInterruptCells = computed(() => canEditRoutes.value && !loadingRoutes.value && !savingRoute.value && !generatingInterruptCells.value)
 const canLoadRouteEnds = computed(() => Boolean(selectedInstanceId.value && currentStationSchemeId.value.trim()))
 const canEditRouteEnds = computed(() => canLoadRouteEnds.value && !loadingData.value)
 const autoRoutePairCount = computed(() => autoRouteStartNodeIds.value.length * autoRouteEndNodeIds.value.length)
 const canAutoGenerateRoutes = computed(() => (
     canEditRoutes.value &&
     !autoRouteGenerationLoading.value &&
+    !generatingInterruptCells.value &&
     autoRouteStartNodeIds.value.length > 0 &&
     autoRouteEndNodeIds.value.length > 0
 ))
 const canBatchDeleteRoutes = computed(() => (
     canEditRoutes.value &&
     !savingRoute.value &&
+    !generatingInterruptCells.value &&
     selectedRouteSelectionIds.value.length > 0
 ))
 const canBatchDeleteRouteEnds = computed(() => (
@@ -1304,7 +1352,7 @@ const routeFilterTypeOptions = computed<RouteListSelectOption[]>(() => (
         ...routeTypeOptions,
         ...stationRoutes.value.map((route) => route.type),
         routeForm.value.type,
-    ]).map((id) => ({ id, name: id }))
+    ]).map((id) => ({ id, name: getStationRouteTypeLabel(id) }))
 ))
 const autoRouteNodeOptions = computed<RouteListSelectOption[]>(() => {
     const optionsById = new Map<string, RouteListSelectOption>()
@@ -1467,6 +1515,7 @@ const canSaveRoute = computed(() => (
     canEditRoutes.value &&
     !savingRoute.value &&
     !generatingRouteDescription.value &&
+    !generatingInterruptCells.value &&
     Boolean(routeForm.value.startNodeID.trim()) &&
     Boolean(routeForm.value.endNodeID.trim()) &&
     (routeEditMode.value === 'create' || Boolean(routeForm.value.id.trim()))
@@ -1541,6 +1590,14 @@ function normalizeStationRouteType(type: string): string {
     return String(type || '').trim().replace(/\s+/g, '').toLowerCase()
 }
 
+function getStationRouteTypeLabel(type: string): string {
+    const routeType = String(type || '').trim()
+    if (!routeType) return ''
+
+    const labelKey = stationRouteTypeLabelKeys[normalizeStationRouteType(routeType)]
+    return labelKey ? t(labelKey) : routeType
+}
+
 function getStationRouteHighlightColor(type: string): string {
     const normalizedType = normalizeStationRouteType(type)
     if (normalizedType === 'arrival' || normalizedType === '接车' || normalizedType === '接车进路') {
@@ -1570,6 +1627,7 @@ function createEmptyRouteObjectOptions(): RouteObjectOptionMap {
         linkList: [],
         switchList: [],
         cellList: [],
+        interruptCellList: [],
         signalList: [],
     }
 }
@@ -1580,6 +1638,7 @@ function createEmptyRouteListFilterQueries(): RouteListFilterQueryMap {
         linkList: '',
         switchList: '',
         cellList: '',
+        interruptCellList: '',
         signalList: '',
         allowanceTags: '',
         forbiddenTags: '',
@@ -1619,6 +1678,21 @@ function getRouteEndTypeLabel(type: string) {
     return option ? t(option.labelKey) : normalizedType
 }
 
+function getRouteEndDisplayTag(routeEnd: StationRouteEnd | null): string {
+    if (!routeEnd) return ''
+
+    return [routeEnd.segmentTag, routeEnd.sidingTag]
+        .map((tag) => String(tag || '').trim())
+        .filter(Boolean)
+        .join(' / ')
+}
+
+function getRouteEndpointDisplay(nodeID: string): string {
+    const normalizedNodeID = String(nodeID || '').trim()
+    const tag = getRouteEndDisplayTag(getRouteEndForNode(normalizedNodeID))
+    return tag || normalizedNodeID || '-'
+}
+
 function sortRouteListOptions(options: RouteListSelectOption[]): RouteListSelectOption[] {
     return [...options].sort((left, right) => (
         left.name.localeCompare(right.name, undefined, { numeric: true, sensitivity: 'base' }) ||
@@ -1648,6 +1722,7 @@ function buildRouteObjectOptions(layoutData: any): RouteObjectOptionMap {
         linkList: buildRouteListOptions(layoutData?.tracks, layoutData?.links),
         switchList: buildRouteListOptions(layoutData?.switches),
         cellList: buildRouteListOptions(layoutData?.cells),
+        interruptCellList: buildRouteListOptions(layoutData?.cells),
         signalList: buildRouteListOptions(layoutData?.signals),
     }
 }
@@ -2105,6 +2180,7 @@ function createEmptyStationRouteForm(): StationRoute {
         linkList: '',
         switchList: '',
         cellList: '',
+        interruptCellList: '',
         signalList: '',
         allowanceTags: '',
         forbiddenTags: '',
@@ -2127,6 +2203,7 @@ function normalizeStationRoute(item: any): StationRoute | null {
         linkList: readString(item, 'linkList', 'LinkList').trim(),
         switchList: readString(item, 'switchList', 'SwitchList').trim(),
         cellList: readString(item, 'cellList', 'CellList').trim(),
+        interruptCellList: readString(item, 'interruptCellList', 'InterruptCellList').trim(),
         signalList: readString(item, 'signalList', 'SignalList').trim(),
         allowanceTags: readString(item, 'allowanceTags', 'AllowanceTags').trim(),
         forbiddenTags: readString(item, 'forbiddenTags', 'ForbiddenTags').trim(),
@@ -2722,6 +2799,7 @@ function buildStationRoutePayloadFromRoute(route: StationRoute, originalID = '')
         linkList: route.linkList.trim(),
         switchList: route.switchList.trim(),
         cellList: route.cellList.trim(),
+        interruptCellList: route.interruptCellList.trim(),
         signalList: route.signalList.trim(),
         allowanceTags: route.allowanceTags.trim(),
         forbiddenTags: route.forbiddenTags.trim(),
@@ -2958,6 +3036,29 @@ async function autoGenerateStationRoutes() {
         }
     } finally {
         autoRouteGenerationLoading.value = false
+    }
+}
+
+async function generateStationRouteInterruptCells() {
+    if (!canEditRoutes.value) {
+        ElMessage.warning(t('routeDesign.stationRoute.messages.selectScheme'))
+        return
+    }
+
+    generatingInterruptCells.value = true
+    try {
+        const response = await axios.post('/StationLayout/GenerateStationRouteInterruptCells', {
+            instanceID: selectedInstanceId.value.trim(),
+            stationSchemeID: currentStationSchemeId.value.trim(),
+        })
+        const updated = Number(response.data?.updated ?? 0)
+        await loadStationRoutes()
+        ElMessage.success(t('routeDesign.stationRoute.messages.interruptCellsGenerated', { count: updated }))
+    } catch (error) {
+        console.error('Failed to generate station route interrupt cells:', error)
+        ElMessage.error(t('routeDesign.stationRoute.messages.interruptCellsGenerateFailed'))
+    } finally {
+        generatingInterruptCells.value = false
     }
 }
 

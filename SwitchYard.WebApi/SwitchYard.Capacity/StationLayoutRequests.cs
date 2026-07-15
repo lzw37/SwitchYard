@@ -68,6 +68,8 @@ namespace SwitchYard.Capacity
 
         public string? CellList { get; set; }
 
+        public string? InterruptCellList { get; set; }
+
         public string? SignalList { get; set; }
 
         public string? AllowanceTags { get; set; }
@@ -88,6 +90,13 @@ namespace SwitchYard.Capacity
         public string? RouteID { get; set; }
 
         public string? TrainTypeID { get; set; }
+    }
+
+    public sealed class StationRouteInterruptCellGenerateRequest
+    {
+        public string? InstanceID { get; set; }
+
+        public string? StationSchemeID { get; set; }
     }
 
     public sealed class StationRouteTimeSaveRequest

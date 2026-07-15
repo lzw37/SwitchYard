@@ -3,7 +3,6 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
-using MySqlX.XDevAPI;
 using SwitchYard.Hump;
 using SwitchYard.Service.Models;
 using SwitchYard.Service.Services;

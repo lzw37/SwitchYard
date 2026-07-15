@@ -1112,6 +1112,10 @@
             "save": "Save",
             "cancel": "Cancel",
             "delete": "Delete",
+            "edit": "Edit",
+            "copy": "Copy",
+            "moveUp": "Move Up",
+            "moveDown": "Move Down",
             "expand": "Expand",
             "collapse": "Collapse",
             "confirm": "OK"
@@ -1124,7 +1128,8 @@
             "trainOperationPlan": "Train Operation Plan",
             "trainOperationChart": "Operation Plan Chart",
             "operationOccupationTimeTable": "Operation Occupation Time Table",
-            "operationBottleneckAnalysis": "Operation Bottleneck Analysis"
+            "operationBottleneckAnalysis": "Operation Bottleneck Analysis",
+            "operationThroughputSummary": "Capacity Category Summary"
         },
         "states": {
             "new": "New",
@@ -1137,6 +1142,43 @@
             "selectScheme": "Select a station scheme first",
             "expandTrain": "Expand a train template first"
         },
+        "planObject": {
+            "label": "Operation Plan",
+            "empty": "No operation plans",
+            "actions": {
+                "manage": "Manage"
+            },
+            "fields": {
+                "operationPlanID": "Operation Plan ID",
+                "name": "Name",
+                "description": "Description",
+                "sortOrder": "Sort"
+            },
+            "dialogs": {
+                "deleteTitle": "Delete Operation Plan"
+            },
+            "manager": {
+                "title": "Manage Station Operation Plans"
+            },
+            "placeholders": {
+                "select": "Select an operation plan",
+                "name": "Enter an operation plan name",
+                "description": "Enter a description"
+            },
+            "messages": {
+                "loadFailed": "Failed to load operation plans",
+                "nameRequired": "Operation plan name is required",
+                "createSuccess": "Operation plan created",
+                "createFailed": "Failed to create operation plan",
+                "updateSuccess": "Operation plan updated",
+                "updateFailed": "Failed to update operation plan",
+                "copySuccess": "Operation plan copied",
+                "copyFailed": "Failed to copy operation plan",
+                "deleteConfirm": "Delete operation plan {name}? Templates, train operations, and analysis results under it will also be deleted.",
+                "deleteSuccess": "Operation plan deleted",
+                "deleteFailed": "Failed to delete operation plan"
+            }
+        },
         "train": {
             "title": "Train Templates",
             "count": "{count} train templates",
@@ -1145,7 +1187,12 @@
                 "trainTemplateID": "Template ID",
                 "name": "Name",
                 "type": "Type",
-                "number": "Number"
+                "number": "Number",
+                "isFixedOperation": "Fixed Operation"
+            },
+            "fixedOperation": {
+                "yes": "Yes",
+                "no": "No"
             },
             "dialogs": {
                 "createTitle": "Add Train Template",
@@ -1225,7 +1272,8 @@
                 "fields": {
                     "id": "Train ID",
                     "trainNumber": "Train No.",
-                    "trainType": "Train Type"
+                    "trainType": "Train Type",
+                    "isFixedOperation": "Fixed Operation"
                 },
                 "dialogs": {
                     "deleteTitle": "Delete Train"
@@ -1293,14 +1341,40 @@
             "emptyPlan": "No train operation plan",
             "totalTime": "Total Time (sec)",
             "totalTimePlaceholder": "Enter value",
+            "emptyWasteFactor": "Empty Waste Factor",
+            "emptyWasteFactorPlaceholder": "Enter value",
+            "unitLabel": "Display Unit",
+            "unitSeconds": "Sec",
+            "unitMinutes": "Min",
             "seconds": "{value} sec",
+            "minutes": "{value} min",
+            "subTables": {
+                "label": "Table {index}",
+                "add": "Add Table",
+                "edit": "Edit Table",
+                "createTitle": "Create Operation Occupation Time Table",
+                "editTitle": "Edit Operation Occupation Time Table",
+                "name": "Table Name",
+                "namePlaceholder": "Enter table name",
+                "nameRequired": "Please enter a table name",
+                "cells": "Included Cells",
+                "cellPlaceholder": "Select Cells",
+                "selectedCount": "{selected}/{total} Cells selected",
+                "selectAll": "Select All Cells",
+                "clear": "Clear"
+            },
             "fields": {
                 "sequence": "No.",
                 "routeID": "Route ID",
                 "routeDescription": "Route Description",
                 "operationCount": "Operation Count"
             },
+            "groups": {
+                "fixedOperation": "Fixed Operations",
+                "nonFixedOperation": "Non-fixed Operations"
+            },
             "summary": {
+                "fixedOccupationTime": "Fixed Occupation Time Subtotal",
                 "totalOccupationTime": "Total Occupation Time",
                 "utilizationK": "Utilization K"
             }
@@ -1492,7 +1566,14 @@
         "routes": {
             "title": "Route List",
             "occupancyConfigured": "Occupancy time configured",
-            "occupancyNotConfigured": "Occupancy time not configured"
+            "occupancyNotConfigured": "Occupancy time not configured",
+            "quickFilters": {
+                "type": "Type",
+                "allTypes": "All",
+                "routeEnd": "Route End",
+                "startRouteEnd": "Start RouteEnd",
+                "endRouteEnd": "End RouteEnd"
+            }
         },
         "occupancy": {
             "title": "Occupancy Time",
@@ -1533,6 +1614,7 @@
             "createOccupancyTime": "Create Occupancy Time",
             "saveOccupancyTime": "Save",
             "emptyRouteTimes": "No occupancy time records",
+            "directInterrupt": "Direct Interrupt",
             "uniformShift": {
                 "title": "Uniform Shift",
                 "apply": "Apply",
@@ -1563,7 +1645,8 @@
             "showNodes": "Nodes",
             "curveDisplay": "Curves",
             "showCellNames": "Track Circuit Names",
-            "displayScale": "Scale"
+            "displayScale": "Scale",
+            "generateInterruptCells": "Generate Direct Interrupt Cells"
         },
         "stationRoute": {
             "title": "Route Generation",
@@ -1579,11 +1662,22 @@
                 "linkList": "Via Links",
                 "switchList": "Via Switches",
                 "cellList": "Via Track Circuit Sections",
+                "interruptCellList": "Direct Interrupt Track Circuit Sections",
                 "signalList": "Via Signals",
                 "allowanceTags": "Allowed Operation Tags",
                 "forbiddenTags": "Prohibited Operation Tags",
                 "startNodeID": "Start Node ID",
                 "endNodeID": "End Node ID"
+            },
+            "tableFields": {
+                "startRouteEnd": "Start Tag",
+                "endRouteEnd": "End Tag"
+            },
+            "types": {
+                "arrival": "Arrival Route",
+                "departure": "Departure Route",
+                "locomotive": "Locomotive Depot Route",
+                "shunting": "Shunting Route"
             },
             "actions": {
                 "add": "Add",
@@ -1675,7 +1769,9 @@
                 "batchDeleteTitle": "Batch Delete Routes",
                 "batchDeleteConfirm": "Delete the {count} selected routes?",
                 "batchDeleteSuccess": "{count} routes deleted",
-                "batchDeletePartial": "Batch delete complete: {deleted} deleted, {failed} failed"
+                "batchDeletePartial": "Batch delete complete: {deleted} deleted, {failed} failed",
+                "interruptCellsGenerated": "Direct interrupt cells generated for {count} routes",
+                "interruptCellsGenerateFailed": "Failed to generate direct interrupt cells"
             }
         },
         "autoRoute": {

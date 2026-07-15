@@ -234,14 +234,23 @@ watch(selectedInstance, () => {
 
 <style scoped lang="css">
 .capacity-main {
-    width: 100dvw;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
     height: 100dvh;
     padding: 24px;
+    overflow: hidden;
     background-color: white;
 }
 
 .capacity-tabs-wrapper {
     position: relative;
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+    width: 100%;
+    min-width: 0;
 }
 
 .left-controls {
@@ -312,9 +321,14 @@ watch(selectedInstance, () => {
 }
 
 .capacity-tabs {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
     margin: 0 auto;
     width: 100%;
     min-width: 0;
+    min-height: 0;
+    overflow: hidden;
 }
 
 .capacity-tabs :deep(.el-tabs__header) {
@@ -326,6 +340,16 @@ watch(selectedInstance, () => {
 .capacity-tabs :deep(.el-tab-pane) {
     width: 100%;
     min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.capacity-tabs :deep(.el-tabs__content) {
+    flex: 1 1 auto;
+}
+
+.capacity-tabs :deep(.el-tab-pane) {
+    height: 100%;
 }
 
 .tab-placeholder {
@@ -339,7 +363,11 @@ watch(selectedInstance, () => {
 }
 
 .station-layout-pane {
-    min-height: 400px;
+    width: 100%;
+    max-width: 100%;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
 }
 
 .route-design-pane {

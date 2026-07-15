@@ -183,6 +183,8 @@ namespace SwitchYard.Capacity
 
         public string? CellList { get; set; }
 
+        public string? InterruptCellList { get; set; }
+
         public string? SignalList { get; set; }
 
         public string? AllowanceTags { get; set; }
@@ -211,6 +213,8 @@ namespace SwitchYard.Capacity
         public int? StartOccupationShift { get; set; }
 
         public int? EndOccupationShift { get; set; }
+
+        public bool IsInterruptCell { get; set; }
     }
 
     public sealed class DatabaseNameLookupRow

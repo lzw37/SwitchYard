@@ -1840,7 +1840,7 @@ watch(
 </script>
 
 <template>
-    <div v-loading="loadingData || savingData" style="max-width: 100%; overflow: hidden;">
+    <div v-loading="loadingData || savingData" class="station-layout-page">
         <el-menu mode="horizontal" class="station-toolbar" :ellipsis="false">
             <el-menu-item index="station-scheme" class="station-scheme-menu-item" @click.stop>
                 <div class="station-scheme-selector" @click.stop>
@@ -2635,7 +2635,23 @@ watch(
 </template>
 
 <style scoped>
+.station-layout-page {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+}
+
 .station-toolbar {
+    flex: 0 0 auto;
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
     border-bottom: 1px solid var(--el-border-color-light);
     background-color: #fff;
     height: 32px;
@@ -2780,11 +2796,14 @@ watch(
 }
 
 .toolbar-row {
+    flex: 0 0 auto;
     display: flex;
     align-items: center;
     flex-wrap: wrap;
     gap: 8px;
+    max-width: 100%;
     padding: 6px 12px;
+    overflow-x: hidden;
     background-color: #fafafa;
     border-bottom: 1px solid var(--el-border-color-light);
 }
@@ -2792,7 +2811,16 @@ watch(
 .toolbar-group {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 6px;
+    min-width: 0;
+}
+
+.toolbar-group :deep(.el-button-group) {
+    display: inline-flex;
+    flex-wrap: wrap;
+    max-width: 100%;
+    row-gap: 4px;
 }
 
 .toolbar-group :deep(.el-button-group .el-dropdown) {
@@ -2909,6 +2937,7 @@ watch(
 }
 
 .annotation-editor-row {
+    flex: 0 0 auto;
     display: flex;
     align-items: center;
     flex-wrap: wrap;
@@ -2942,10 +2971,11 @@ watch(
 
 .station-layout-workspace {
     display: flex;
+    flex: 1 1 auto;
     align-items: stretch;
     width: 100%;
-    height: calc(100vh - 160px);
-    min-height: 420px;
+    min-width: 0;
+    min-height: 0;
     overflow: hidden;
     background-color: #31363f;
 }
@@ -2953,6 +2983,7 @@ watch(
 .station-layout-editor-frame {
     flex: 1 1 auto;
     min-width: 0;
+    min-height: 0;
     height: 100%;
     overflow: auto;
     background-color: #31363f;
@@ -2962,6 +2993,7 @@ watch(
     flex: 0 0 360px;
     width: 360px;
     height: 100%;
+    min-height: 0;
     display: flex;
     flex-direction: column;
     background-color: #fff;
@@ -3024,6 +3056,7 @@ watch(
     flex: 0 0 460px;
     width: 460px;
     height: 100%;
+    min-height: 0;
     display: flex;
     flex-direction: column;
     background-color: #fff;
@@ -3166,6 +3199,7 @@ watch(
     flex: 0 0 380px;
     width: 380px;
     height: 100%;
+    min-height: 0;
     display: flex;
     flex-direction: column;
     background-color: #fff;

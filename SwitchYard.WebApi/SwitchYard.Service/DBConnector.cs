@@ -68,26 +68,26 @@ namespace SwitchYard.Service
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine(ex.Message);
-                    return null;
+                    throw CreateDatabaseOperationException("query", querySqlString, ex);
                 }
             }
             else
             {
-                var conn = GetConnection();
+                DbConnection? conn = null;
                 try
                 {
+                    conn = GetConnection()
+                        ?? throw new InvalidOperationException("GetConnection returned null.");
                     var list = conn.Query<T>(querySqlString, parameters).AsList();
                     return list;
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine(ex.Message);
-                    return null;
+                    throw CreateDatabaseOperationException("query", querySqlString, ex);
                 }
                 finally
                 {
-                    conn.Close();
+                    CloseAndDisposeConnection(conn);
                 }
             }
         }
@@ -103,26 +103,26 @@ namespace SwitchYard.Service
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine(ex.Message);
-                    return 0;
+                    throw CreateDatabaseOperationException("execute", sqlString, ex);
                 }
             }
             else
             {
-                var conn = GetConnection();
+                DbConnection? conn = null;
                 try
                 {
+                    conn = GetConnection()
+                        ?? throw new InvalidOperationException("GetConnection returned null.");
                     var impactRowCount = conn.Execute(sqlString, parameters);
                     return impactRowCount;
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine(ex.Message);
-                    return 0;
+                    throw CreateDatabaseOperationException("execute", sqlString, ex);
                 }
                 finally
                 {
-                    conn.Close();
+                    CloseAndDisposeConnection(conn);
                 }
             }
         }
@@ -151,12 +151,19 @@ namespace SwitchYard.Service
             if (_transaction != null)
                 throw new InvalidOperationException("A transaction is already in progress.");
 
-            _transactionConnection = GetConnection();
-            if (_transactionConnection == null)
-                throw new InvalidOperationException("GetConnection returned null.");
-
-            _transactionConnection.Open();
-            _transaction = _transactionConnection.BeginTransaction();
+            _transactionConnection = GetConnection()
+                ?? throw new InvalidOperationException("GetConnection returned null.");
+            try
+            {
+                _transactionConnection.Open();
+                _transaction = _transactionConnection.BeginTransaction();
+            }
+            catch
+            {
+                CloseAndDisposeConnection(_transactionConnection);
+                _transactionConnection = null;
+                throw;
+            }
         }
 
         public virtual void Commit()
@@ -172,8 +179,7 @@ namespace SwitchYard.Service
             {
                 _transaction.Dispose();
                 _transaction = null;
-                _transactionConnection.Close();
-                _transactionConnection.Dispose();
+                CloseAndDisposeConnection(_transactionConnection);
                 _transactionConnection = null;
             }
         }
@@ -191,9 +197,55 @@ namespace SwitchYard.Service
             {
                 _transaction.Dispose();
                 _transaction = null;
-                _transactionConnection.Close();
-                _transactionConnection.Dispose();
+                CloseAndDisposeConnection(_transactionConnection);
                 _transactionConnection = null;
+            }
+        }
+
+        private static InvalidOperationException CreateDatabaseOperationException(
+            string operation,
+            string sql,
+            Exception innerException)
+        {
+            return new InvalidOperationException(
+                $"Database {operation} failed. SQL: {NormalizeSqlForException(sql)}",
+                innerException);
+        }
+
+        private static string NormalizeSqlForException(string sql)
+        {
+            var normalized = string.Join(
+                " ",
+                (sql ?? string.Empty)
+                    .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+            return normalized.Length <= 500
+                ? normalized
+                : $"{normalized[..500]}...";
+        }
+
+        private static void CloseAndDisposeConnection(DbConnection? connection)
+        {
+            if (connection == null)
+            {
+                return;
+            }
+
+            try
+            {
+                connection.Close();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex);
+            }
+
+            try
+            {
+                connection.Dispose();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex);
             }
         }
 

@@ -83,7 +83,7 @@
                     </div>
                     <div class="calc-header-actions">
                         <el-tooltip :content="t('routeDesign.stationRoute.actions.refresh')" placement="top">
-                            <el-button :icon="Refresh" circle size="small" :disabled="!canLoadRoutes" @click="loadStationRoutes" />
+                            <el-button :icon="Refresh" circle size="small" :disabled="!canLoadRoutes" @click="refreshRouteList" />
                         </el-tooltip>
                         <el-popover placement="bottom-start" trigger="click" width="360" popper-class="station-route-filter-popover">
                             <template #reference>
@@ -114,10 +114,60 @@
                     </div>
                 </header>
 
+                <div class="calc-route-quick-filters">
+                    <div class="calc-route-filter-row">
+                        <span class="calc-route-filter-label">{{ t('calculationParameters.routes.quickFilters.type') }}</span>
+                        <div class="calc-route-type-toggle-wrap">
+                            <el-radio-group v-model="routeQuickTypeFilter" class="calc-route-type-toggle" size="small">
+                                <el-radio-button value="">
+                                    {{ t('calculationParameters.routes.quickFilters.allTypes') }}
+                                </el-radio-button>
+                                <el-radio-button v-for="option in routeQuickTypeOptions" :key="option.id" :value="option.id">
+                                    {{ option.name }}
+                                </el-radio-button>
+                            </el-radio-group>
+                        </div>
+                    </div>
+                    <div class="calc-route-filter-row calc-route-end-row">
+                        <span class="calc-route-filter-label">{{ t('calculationParameters.routes.quickFilters.routeEnd') }}</span>
+                        <div class="calc-route-end-selects">
+                            <el-select
+                                v-model="routeQuickStartRouteEndIds"
+                                multiple
+                                filterable
+                                clearable
+                                collapse-tags
+                                collapse-tags-tooltip
+                                size="small"
+                                class="calc-route-end-filter"
+                                :loading="loadingRouteEnds"
+                                :placeholder="t('calculationParameters.routes.quickFilters.startRouteEnd')"
+                            >
+                                <el-option v-for="option in routeEndFilterOptions" :key="`start-${option.id}`" :label="option.name" :value="option.id" />
+                            </el-select>
+                            <el-select
+                                v-model="routeQuickEndRouteEndIds"
+                                multiple
+                                filterable
+                                clearable
+                                collapse-tags
+                                collapse-tags-tooltip
+                                size="small"
+                                class="calc-route-end-filter"
+                                :loading="loadingRouteEnds"
+                                :placeholder="t('calculationParameters.routes.quickFilters.endRouteEnd')"
+                            >
+                                <el-option v-for="option in routeEndFilterOptions" :key="`end-${option.id}`" :label="option.name" :value="option.id" />
+                            </el-select>
+                        </div>
+                    </div>
+                </div>
+
                 <el-table
                     :data="filteredStationRoutes"
                     size="small"
                     height="100%"
+                    class="calc-route-table"
                     row-key="id"
                     highlight-current-row
                     :current-row-key="selectedRouteId"
@@ -135,7 +185,11 @@
                         </template>
                     </el-table-column>
                     <el-table-column prop="id" :label="t('routeDesign.stationRoute.fields.id')" width="106" show-overflow-tooltip />
-                    <el-table-column prop="type" :label="t('routeDesign.stationRoute.fields.type')" width="86" show-overflow-tooltip />
+                    <el-table-column prop="type" :label="t('routeDesign.stationRoute.fields.type')" width="96" show-overflow-tooltip>
+                        <template #default="{ row }">
+                            {{ getStationRouteTypeLabel(row.type) }}
+                        </template>
+                    </el-table-column>
                     <el-table-column prop="description" :label="t('routeDesign.stationRoute.fields.description')" min-width="150" show-overflow-tooltip />
                 </el-table>
             </aside>
@@ -294,7 +348,16 @@
                 >
                     <el-table-column :label="t('calculationParameters.manager.fields.cellID')" min-width="120" show-overflow-tooltip>
                         <template #default="{ row }">
-                            {{ getCellDisplayName(row.cellID) }}
+                            <span class="calc-route-time-cell-name">{{ getCellDisplayName(row.cellID) }}</span>
+                            <el-tag
+                                v-if="row.isInterruptCell"
+                                class="calc-route-time-cell-tag"
+                                size="small"
+                                type="warning"
+                                effect="plain"
+                            >
+                                {{ t('calculationParameters.manager.directInterrupt') }}
+                            </el-tag>
                         </template>
                     </el-table-column>
                     <el-table-column :label="t('calculationParameters.manager.fields.startShift')" width="118">
@@ -575,12 +638,22 @@ interface StationRoute {
     linkList: string
     switchList: string
     cellList: string
+    interruptCellList: string
     signalList: string
     allowanceTags: string
     forbiddenTags: string
     startNodeID: string
     endNodeID: string
     occupancyTimeConfigured: boolean
+}
+interface StationRouteEndOption {
+    instanceID: string
+    stationSchemeID: string
+    id: string
+    bindingNodeID: string
+    type: string
+    segmentTag: string
+    sidingTag: string
 }
 type StationRouteObjectListField = 'nodeList' | 'linkList' | 'switchList' | 'cellList' | 'signalList'
 type StationRouteFilterField = 'types' | 'startNodeIds' | 'endNodeIds' | 'nodeIds' | 'linkIds' | 'cellIds' | 'switchIds' | 'signalIds'
@@ -597,6 +670,7 @@ interface StationRouteTime {
     cellID: string
     startOccupationShift: number | null
     endOccupationShift: number | null
+    isInterruptCell: boolean
 }
 interface GanttCell { id: string; name: string }
 interface GanttTimeChange {
@@ -670,6 +744,7 @@ const stationSchemeOptions = ref<StationSchemeOption[]>([])
 const loadingStationSchemes = ref(false)
 const loadingData = ref(false)
 const loadingRoutes = ref(false)
+const loadingRouteEnds = ref(false)
 const loadingRouteTimes = ref(false)
 const creatingRouteTimes = ref(false)
 const savingRouteTimes = ref(false)
@@ -690,8 +765,12 @@ const showLayoutCurveArc = ref(true)
 const showLayoutCellNames = ref(false)
 const routeObjectOptions = ref<RouteObjectOptionMap>(createEmptyRouteObjectOptions())
 const stationRoutes = ref<StationRoute[]>([])
+const stationRouteEndOptions = ref<StationRouteEndOption[]>([])
 const selectedRouteId = ref('')
 const routeFilters = ref<StationRouteFilters>(createEmptyRouteFilters())
+const routeQuickTypeFilter = ref('')
+const routeQuickStartRouteEndIds = ref<string[]>([])
+const routeQuickEndRouteEndIds = ref<string[]>([])
 const routeTimes = ref<StationRouteTime[]>([])
 const batchRouteTimeSettings = ref<BatchRouteTimeSetting[]>([])
 const uniformStartOccupationShift = ref<number | null>(0)
@@ -705,6 +784,21 @@ const isResizing = ref(false)
 
 const routeHighlightColors = { arrival: '#ef4444', departure: '#2563eb', locomotive: '#16a34a', shunting: '#facc15' }
 const routeTypeOptions = ['Arrival', 'Departure', 'Shunting', 'Locomotive']
+const stationRouteTypeLabelKeys: Record<string, string> = {
+    arrival: 'routeDesign.stationRoute.types.arrival',
+    '接车': 'routeDesign.stationRoute.types.arrival',
+    '接车进路': 'routeDesign.stationRoute.types.arrival',
+    departure: 'routeDesign.stationRoute.types.departure',
+    '发车': 'routeDesign.stationRoute.types.departure',
+    '发车进路': 'routeDesign.stationRoute.types.departure',
+    locomotive: 'routeDesign.stationRoute.types.locomotive',
+    '机车出入段': 'routeDesign.stationRoute.types.locomotive',
+    '机车出入段进路': 'routeDesign.stationRoute.types.locomotive',
+    '机车走行': 'routeDesign.stationRoute.types.locomotive',
+    shunting: 'routeDesign.stationRoute.types.shunting',
+    '调车': 'routeDesign.stationRoute.types.shunting',
+    '调车进路': 'routeDesign.stationRoute.types.shunting',
+}
 const routeFilterFieldControls: RouteFilterControl[] = [
     { field: 'startNodeIds', placeholderKey: 'routeDesign.stationRoute.filter.startNode', optionField: 'nodeList' },
     { field: 'endNodeIds', placeholderKey: 'routeDesign.stationRoute.filter.endNode', optionField: 'nodeList' },
@@ -762,9 +856,36 @@ const isActiveBatchRouteListIndeterminate = computed(() => Boolean(
     activeBatchRouteSetting.value.selectedRouteIds.length < activeBatchRouteSetting.value.routeCount
 ))
 const selectedStationRoute = computed(() => stationRoutes.value.find((item) => item.id === selectedRouteId.value) || null)
-const routeFiltersActive = computed(() => Object.values(routeFilters.value).some((values) => values.length > 0))
+const stationRouteEndByBindingNodeId = computed(() => {
+    const map = new Map<string, StationRouteEndOption>()
+    for (const routeEnd of stationRouteEndOptions.value) {
+        const bindingNodeID = routeEnd.bindingNodeID.trim()
+        if (bindingNodeID) map.set(bindingNodeID, routeEnd)
+    }
+    return map
+})
+const routeEndFilterOptions = computed<RouteListSelectOption[]>(() => {
+    const optionsById = new Map<string, RouteListSelectOption>()
+    for (const routeEnd of stationRouteEndOptions.value) {
+        if (!optionsById.has(routeEnd.id)) {
+            optionsById.set(routeEnd.id, { id: routeEnd.id, name: getStationRouteEndDisplayName(routeEnd) })
+        }
+    }
+    for (const id of normalizeRouteListValues([...routeQuickStartRouteEndIds.value, ...routeQuickEndRouteEndIds.value])) {
+        if (!optionsById.has(id)) optionsById.set(id, { id, name: id })
+    }
+    return [...optionsById.values()].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
+})
+const routeQuickTypeOptions = computed(() => buildRouteTypeFilterOptions([...routeTypeOptions, ...stationRoutes.value.map((route) => route.type)]))
+const advancedRouteFiltersActive = computed(() => Object.values(routeFilters.value).some((values) => values.length > 0))
+const routeQuickFiltersActive = computed(() => Boolean(
+    routeQuickTypeFilter.value ||
+    routeQuickStartRouteEndIds.value.length > 0 ||
+    routeQuickEndRouteEndIds.value.length > 0
+))
+const routeFiltersActive = computed(() => advancedRouteFiltersActive.value || routeQuickFiltersActive.value)
 const filteredStationRoutes = computed(() => stationRoutes.value.filter(routeMatchesFilters))
-const routeFilterTypeOptions = computed(() => normalizeRouteListValues([...routeTypeOptions, ...stationRoutes.value.map((route) => route.type)]).map((id) => ({ id, name: id })))
+const routeFilterTypeOptions = computed(() => routeQuickTypeOptions.value)
 const stationRouteTableEmptyText = computed(() => routeFiltersActive.value ? t('routeDesign.stationRoute.filter.empty') : t('routeDesign.stationRoute.empty'))
 const stationRouteListSummary = computed(() => routeFiltersActive.value
     ? t('routeDesign.stationRoute.filter.count', { filtered: filteredStationRoutes.value.length, total: stationRoutes.value.length })
@@ -785,9 +906,28 @@ const highlightedRouteLinkIds = computed(() => selectedStationRoute.value ? pars
 const highlightedRouteColor = computed(() => getStationRouteHighlightColor(selectedStationRoute.value?.type || ''))
 const highlightedRouteArrowVisible = computed(() => highlightedRouteArrowNodeIds.value.length >= 2)
 const selectedRouteCellIds = computed(() => selectedStationRoute.value ? parseRouteIdText(selectedStationRoute.value.cellList) : [])
+const selectedRouteInterruptCellIds = computed(() => {
+    const route = selectedStationRoute.value
+    if (!route) return []
+    const occupiedCellSet = new Set(selectedRouteCellIds.value.map((id) => id.toLowerCase()))
+    return normalizeRouteListValues(parseRouteIdText(route.interruptCellList))
+        .filter((id) => !occupiedCellSet.has(id.toLowerCase()))
+})
+const selectedRouteOccupancyCellIds = computed(() => normalizeRouteListValues([
+    ...selectedRouteCellIds.value,
+    ...selectedRouteInterruptCellIds.value,
+]))
 const ganttCells = computed<GanttCell[]>(() => {
-    const cellIds = selectedRouteCellIds.value.length > 0 ? selectedRouteCellIds.value : routeTimes.value.map((row) => row.cellID)
-    return cellIds.map((id) => ({ id, name: getCellDisplayName(id) || id }))
+    const cellIds = selectedRouteOccupancyCellIds.value.length > 0
+        ? selectedRouteOccupancyCellIds.value
+        : routeTimes.value.map((row) => row.cellID)
+    const interruptCellSet = new Set(selectedRouteInterruptCellIds.value.map((id) => id.toLowerCase()))
+    return cellIds.map((id) => ({
+        id,
+        name: interruptCellSet.has(id.toLowerCase())
+            ? `${getCellDisplayName(id) || id}（${t('calculationParameters.manager.directInterrupt')}）`
+            : (getCellDisplayName(id) || id),
+    }))
 })
 const occupancyGanttEmptyText = computed(() => selectedRouteId.value
     ? t('calculationParameters.occupancy.emptyCells')
@@ -806,6 +946,7 @@ const tractionResult = computed(() => buildSampleTractionResult(selectedStationR
 let stationSchemeLoadVersion = 0
 let layoutLoadVersion = 0
 let routeLoadVersion = 0
+let routeEndLoadVersion = 0
 let routeTimeLoadVersion = 0
 let resizeTarget: 'left' | 'right' | 'row' | '' = ''
 let previousBodyCursor = ''
@@ -821,6 +962,39 @@ function readString(source: any, ...keys: string[]) {
 
 function normalizeStationRouteType(type: string) {
     return String(type || '').trim().replace(/\s+/g, '').toLowerCase()
+}
+
+function getStationRouteTypeLabelKey(type: string): string {
+    return stationRouteTypeLabelKeys[normalizeStationRouteType(type)] || ''
+}
+
+function getStationRouteTypeLabel(type: string): string {
+    const routeType = String(type || '').trim()
+    if (!routeType) return ''
+
+    const labelKey = getStationRouteTypeLabelKey(routeType)
+    return labelKey ? t(labelKey) : routeType
+}
+
+function routeTypeValuesMatch(selectedType: string, routeType: string) {
+    const selectedText = String(selectedType || '').trim()
+    const routeText = String(routeType || '').trim()
+    if (!selectedText) return true
+    if (selectedText === routeText) return true
+
+    const selectedLabelKey = getStationRouteTypeLabelKey(selectedText)
+    const routeLabelKey = getStationRouteTypeLabelKey(routeText)
+    return Boolean(selectedLabelKey && routeLabelKey && selectedLabelKey === routeLabelKey)
+}
+
+function buildRouteTypeFilterOptions(values: unknown[]): RouteListSelectOption[] {
+    const optionsByKey = new Map<string, RouteListSelectOption>()
+    for (const id of normalizeRouteListValues(values)) {
+        const labelKey = getStationRouteTypeLabelKey(id)
+        const key = labelKey || `raw:${id}`
+        if (!optionsByKey.has(key)) optionsByKey.set(key, { id, name: getStationRouteTypeLabel(id) || id })
+    }
+    return [...optionsByKey.values()]
 }
 
 function getStationRouteHighlightColor(type: string) {
@@ -902,10 +1076,21 @@ function getRouteFilterSelectOptions(control: RouteFilterControl) {
 
 function clearRouteFilters() {
     routeFilters.value = createEmptyRouteFilters()
+    clearRouteQuickFilters()
+}
+
+function clearRouteQuickFilters() {
+    routeQuickTypeFilter.value = ''
+    routeQuickStartRouteEndIds.value = []
+    routeQuickEndRouteEndIds.value = []
 }
 
 function routeMatchesScalarFilter(selectedIds: string[], value: string) {
     return selectedIds.length === 0 || selectedIds.includes(String(value || '').trim())
+}
+
+function routeMatchesTypeFilter(selectedTypes: string[], routeType: string) {
+    return selectedTypes.length === 0 || selectedTypes.some((selectedType) => routeTypeValuesMatch(selectedType, routeType))
 }
 
 function routeMatchesListFilter(selectedIds: string[], routeIds: string[]) {
@@ -914,9 +1099,20 @@ function routeMatchesListFilter(selectedIds: string[], routeIds: string[]) {
     return selectedIds.some((id) => routeIdSet.has(id))
 }
 
+function getStationRouteEndIdByNodeId(nodeID: string) {
+    return stationRouteEndByBindingNodeId.value.get(String(nodeID || '').trim())?.id || ''
+}
+
+function routeMatchesQuickFilters(route: StationRoute) {
+    return routeMatchesTypeFilter(routeQuickTypeFilter.value ? [routeQuickTypeFilter.value] : [], route.type) &&
+        routeMatchesScalarFilter(routeQuickStartRouteEndIds.value, getStationRouteEndIdByNodeId(route.startNodeID)) &&
+        routeMatchesScalarFilter(routeQuickEndRouteEndIds.value, getStationRouteEndIdByNodeId(route.endNodeID))
+}
+
 function routeMatchesFilters(route: StationRoute) {
     const filters = routeFilters.value
-    return routeMatchesScalarFilter(filters.types, route.type) &&
+    return routeMatchesQuickFilters(route) &&
+        routeMatchesTypeFilter(filters.types, route.type) &&
         routeMatchesScalarFilter(filters.startNodeIds, route.startNodeID) &&
         routeMatchesScalarFilter(filters.endNodeIds, route.endNodeID) &&
         routeMatchesListFilter(filters.nodeIds, [route.startNodeID, route.endNodeID, ...parseRouteIdText(route.nodeList)]) &&
@@ -956,6 +1152,7 @@ function normalizeStationRoute(item: any): StationRoute | null {
         linkList: readString(item, 'linkList', 'LinkList').trim(),
         switchList: readString(item, 'switchList', 'SwitchList').trim(),
         cellList: readString(item, 'cellList', 'CellList').trim(),
+        interruptCellList: readString(item, 'interruptCellList', 'InterruptCellList').trim(),
         signalList: readString(item, 'signalList', 'SignalList').trim(),
         allowanceTags: readString(item, 'allowanceTags', 'AllowanceTags').trim(),
         forbiddenTags: readString(item, 'forbiddenTags', 'ForbiddenTags').trim(),
@@ -970,6 +1167,27 @@ function normalizeStationRoute(item: any): StationRoute | null {
             item?.OccupancyConfigured,
         ),
     }
+}
+
+function normalizeStationRouteEndOption(item: any): StationRouteEndOption | null {
+    const id = readString(item, 'id', 'ID').trim()
+    const bindingNodeID = readString(item, 'bindingNodeID', 'BindingNodeID').trim()
+    if (!id || !bindingNodeID) return null
+    return {
+        instanceID: readString(item, 'instanceID', 'InstanceID').trim(),
+        stationSchemeID: readString(item, 'stationSchemeID', 'StationSchemeID').trim(),
+        id,
+        bindingNodeID,
+        type: readString(item, 'type', 'Type').trim(),
+        segmentTag: readString(item, 'segmentTag', 'SegmentTag').trim(),
+        sidingTag: readString(item, 'sidingTag', 'SidingTag').trim(),
+    }
+}
+
+function getStationRouteEndDisplayName(routeEnd: StationRouteEndOption | null) {
+    if (!routeEnd) return ''
+    const tag = `${routeEnd.segmentTag || ''}${routeEnd.sidingTag || ''}`.trim()
+    return tag ? `${tag} (${routeEnd.id})` : routeEnd.id
 }
 
 function routeHasOccupancyTime(route: StationRoute) {
@@ -993,7 +1211,99 @@ function normalizeStationRouteTime(item: any): StationRouteTime | null {
         cellID,
         startOccupationShift: normalizeNullableInteger(item?.startOccupationShift ?? item?.StartOccupationShift),
         endOccupationShift: normalizeNullableInteger(item?.endOccupationShift ?? item?.EndOccupationShift),
+        isInterruptCell: normalizeBooleanFlag(item?.isInterruptCell ?? item?.IsInterruptCell),
     }
+}
+
+function getRouteTimeDefaultWindow(rows: StationRouteTime[], interruptCellSet: Set<string>) {
+    const routeRows = rows.filter((row) => !interruptCellSet.has(row.cellID.toLowerCase()))
+    const startValues = routeRows
+        .map((row) => normalizeNullableInteger(row.startOccupationShift))
+        .filter((value): value is number => value !== null)
+    const endValues = routeRows
+        .map((row) => normalizeNullableInteger(row.endOccupationShift))
+        .filter((value): value is number => value !== null)
+    return {
+        startOccupationShift: startValues.length > 0 ? Math.min(...startValues) : 0,
+        endOccupationShift: endValues.length > 0 ? Math.max(...endValues) : 0,
+    }
+}
+
+function fillInterruptRouteTime(
+    row: StationRouteTime,
+    interruptCellSet: Set<string>,
+    defaultWindow: { startOccupationShift: number; endOccupationShift: number },
+): StationRouteTime {
+    const isInterruptCell = row.isInterruptCell || interruptCellSet.has(row.cellID.toLowerCase())
+    if (!isInterruptCell) return { ...row, isInterruptCell }
+
+    const startOccupationShift = normalizeNullableInteger(row.startOccupationShift)
+    const endOccupationShift = normalizeNullableInteger(row.endOccupationShift)
+    const hasDefaultZeroShift =
+        (startOccupationShift ?? 0) === 0 &&
+        (endOccupationShift ?? 0) === 0 &&
+        (defaultWindow.startOccupationShift !== 0 || defaultWindow.endOccupationShift !== 0)
+    return {
+        ...row,
+        startOccupationShift: hasDefaultZeroShift
+            ? defaultWindow.startOccupationShift
+            : (startOccupationShift ?? defaultWindow.startOccupationShift),
+        endOccupationShift: hasDefaultZeroShift
+            ? defaultWindow.endOccupationShift
+            : (endOccupationShift ?? defaultWindow.endOccupationShift),
+        isInterruptCell,
+    }
+}
+
+function mergeRouteTimesWithSelectedRouteCells(rows: StationRouteTime[], includeMissingCells = rows.length > 0) {
+    const cellIDs = selectedRouteOccupancyCellIds.value
+    const interruptCellSet = new Set(selectedRouteInterruptCellIds.value.map((id) => id.toLowerCase()))
+    const defaultWindow = getRouteTimeDefaultWindow(rows, interruptCellSet)
+    if (cellIDs.length === 0) {
+        return rows.map((row) => fillInterruptRouteTime(row, interruptCellSet, defaultWindow))
+    }
+
+    const usedIndexes = new Set<number>()
+    const mergedRows: StationRouteTime[] = []
+    cellIDs.forEach((cellID) => {
+        const lowerCellID = cellID.toLowerCase()
+        const rowIndex = rows.findIndex((row, index) => !usedIndexes.has(index) && row.cellID.toLowerCase() === lowerCellID)
+        if (rowIndex >= 0) {
+            const row = rows[rowIndex]
+            if (!row) return
+            usedIndexes.add(rowIndex)
+            mergedRows.push(fillInterruptRouteTime({
+                ...row,
+                cellID,
+                isInterruptCell: row.isInterruptCell || interruptCellSet.has(lowerCellID),
+            }, interruptCellSet, defaultWindow))
+            return
+        }
+
+        if (includeMissingCells) {
+            mergedRows.push({
+                instanceID: selectedInstanceId.value,
+                stationSchemeID: currentStationSchemeId.value.trim(),
+                routeID: selectedRouteId.value,
+                trainTypeID: '',
+                cellID,
+                startOccupationShift: interruptCellSet.has(lowerCellID) ? defaultWindow.startOccupationShift : 0,
+                endOccupationShift: interruptCellSet.has(lowerCellID) ? defaultWindow.endOccupationShift : 0,
+                isInterruptCell: interruptCellSet.has(lowerCellID),
+            })
+        }
+    })
+
+    if (cellIDs.length === 0) {
+        rows.forEach((row, index) => {
+            if (usedIndexes.has(index)) return
+            mergedRows.push(fillInterruptRouteTime({
+                ...row,
+                isInterruptCell: row.isInterruptCell || interruptCellSet.has(row.cellID.toLowerCase()),
+            }, interruptCellSet, defaultWindow))
+        })
+    }
+    return mergedRows
 }
 
 function getUniformRouteTimeShift(field: 'startOccupationShift' | 'endOccupationShift') {
@@ -1459,7 +1769,15 @@ function clearStationRoutes() {
     selectedRouteId.value = ''
     routeTimes.value = []
     syncUniformShiftDraftFromRows()
-    routeFilters.value = createEmptyRouteFilters()
+    clearRouteFilters()
+}
+
+function clearStationRouteEnds() {
+    routeEndLoadVersion++
+    stationRouteEndOptions.value = []
+    loadingRouteEnds.value = false
+    routeQuickStartRouteEndIds.value = []
+    routeQuickEndRouteEndIds.value = []
 }
 
 async function loadStationSchemes() {
@@ -1543,6 +1861,34 @@ async function loadStationRoutes() {
     }
 }
 
+async function loadStationRouteEnds() {
+    const instanceID = selectedInstanceId.value
+    const stationSchemeID = currentStationSchemeId.value.trim()
+    if (!instanceID || !stationSchemeID) {
+        clearStationRouteEnds()
+        return
+    }
+
+    const loadVersion = ++routeEndLoadVersion
+    loadingRouteEnds.value = true
+    try {
+        const response = await axios.get('/StationLayout/GetStationRouteEnds', {
+            params: { instanceID, stationSchemeID },
+        })
+        if (loadVersion !== routeEndLoadVersion || instanceID !== selectedInstanceId.value || stationSchemeID !== currentStationSchemeId.value.trim()) return
+        stationRouteEndOptions.value = (Array.isArray(response.data) ? response.data : [])
+            .map(normalizeStationRouteEndOption)
+            .filter((item): item is StationRouteEndOption => item !== null)
+    } catch (error) {
+        if (loadVersion !== routeEndLoadVersion || instanceID !== selectedInstanceId.value || stationSchemeID !== currentStationSchemeId.value.trim()) return
+        console.error('Failed to load calculation parameter route ends:', error)
+        stationRouteEndOptions.value = []
+        ElMessage.error(t('routeDesign.routeEnd.messages.loadFailed'))
+    } finally {
+        if (loadVersion === routeEndLoadVersion) loadingRouteEnds.value = false
+    }
+}
+
 async function loadRouteTimes() {
     const instanceID = selectedInstanceId.value
     const stationSchemeID = currentStationSchemeId.value.trim()
@@ -1560,9 +1906,9 @@ async function loadRouteTimes() {
             params: { instanceID, stationSchemeID, routeID, trainTypeID: '' },
         })
         if (loadVersion !== routeTimeLoadVersion || routeID !== selectedRouteId.value) return
-        routeTimes.value = (Array.isArray(response.data) ? response.data : [])
+        routeTimes.value = mergeRouteTimesWithSelectedRouteCells((Array.isArray(response.data) ? response.data : [])
             .map(normalizeStationRouteTime)
-            .filter((item): item is StationRouteTime => item !== null)
+            .filter((item): item is StationRouteTime => item !== null))
         syncUniformShiftDraftFromRows()
         setSelectedRouteOccupancyConfigured(routeTimes.value.length > 0)
     } catch (error) {
@@ -1594,9 +1940,9 @@ async function createRouteTimes() {
             routeID,
             trainTypeID: '',
         })
-        routeTimes.value = (Array.isArray(response.data) ? response.data : [])
+        routeTimes.value = mergeRouteTimesWithSelectedRouteCells((Array.isArray(response.data) ? response.data : [])
             .map(normalizeStationRouteTime)
-            .filter((item): item is StationRouteTime => item !== null)
+            .filter((item): item is StationRouteTime => item !== null), true)
         syncUniformShiftDraftFromRows()
         setSelectedRouteOccupancyConfigured(routeTimes.value.length > 0)
         ElMessage.success(t('calculationParameters.manager.messages.createSuccess', { count: routeTimes.value.length }))
@@ -1635,9 +1981,9 @@ async function saveRouteTimes() {
                 endOccupationShift: normalizeNullableInteger(row.endOccupationShift),
             })),
         })
-        routeTimes.value = (Array.isArray(response.data) ? response.data : [])
+        routeTimes.value = mergeRouteTimesWithSelectedRouteCells((Array.isArray(response.data) ? response.data : [])
             .map(normalizeStationRouteTime)
-            .filter((item): item is StationRouteTime => item !== null)
+            .filter((item): item is StationRouteTime => item !== null), true)
         syncUniformShiftDraftFromRows()
         setSelectedRouteOccupancyConfigured(routeTimes.value.length > 0)
         ElMessage.success(t('calculationParameters.manager.messages.saveSuccess'))
@@ -1652,13 +1998,17 @@ async function saveRouteTimes() {
 async function refreshForInstance() {
     await loadStationSchemes()
     await loadLayout()
-    await loadStationRoutes()
+    await Promise.all([loadStationRoutes(), loadStationRouteEnds()])
+}
+
+async function refreshRouteList() {
+    await Promise.all([loadStationRoutes(), loadStationRouteEnds()])
 }
 
 async function handleStationSchemeChange() {
     clearRouteFilters()
     await loadLayout()
-    await loadStationRoutes()
+    await Promise.all([loadStationRoutes(), loadStationRouteEnds()])
 }
 
 function clampValue(value: number, min: number, max: number) {
@@ -1734,6 +2084,7 @@ function resetLayoutPaneHeight() {
 watch(() => props.selectedInstanceId, () => {
     currentStationSchemeId.value = ''
     clearStationRoutes()
+    clearStationRouteEnds()
     void refreshForInstance()
 }, { immediate: true })
 
@@ -2058,6 +2409,15 @@ onBeforeUnmount(() => {
     width: 98px;
 }
 
+.calc-route-time-cell-name {
+    vertical-align: middle;
+}
+
+.calc-route-time-cell-tag {
+    margin-left: 6px;
+    vertical-align: middle;
+}
+
 .calc-vertical-resizer,
 .calc-horizontal-resizer {
     position: relative;
@@ -2151,6 +2511,69 @@ onBeforeUnmount(() => {
     justify-content: center;
     padding-right: 0;
     padding-left: 0;
+}
+
+.calc-route-quick-filters {
+    display: grid;
+    flex: 0 0 auto;
+    grid-template-columns: 1fr;
+    gap: 8px;
+    padding: 8px 10px;
+    border-bottom: 1px solid #d8e2ef;
+    background: #f6f9fd;
+}
+
+.calc-route-filter-row {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    gap: 8px;
+}
+
+.calc-route-end-row {
+    align-items: flex-start;
+}
+
+.calc-route-filter-label {
+    flex: 0 0 auto;
+    color: #4b5a6a;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 24px;
+    white-space: nowrap;
+}
+
+.calc-route-type-toggle-wrap {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+}
+
+.calc-route-type-toggle {
+    white-space: nowrap;
+}
+
+.calc-route-type-toggle :deep(.el-radio-button__inner) {
+    padding: 4px 8px;
+    font-size: 12px;
+}
+
+.calc-route-end-selects {
+    display: grid;
+    flex: 1 1 auto;
+    min-width: 0;
+    grid-template-columns: 1fr;
+    gap: 6px;
+}
+
+.calc-route-end-filter {
+    width: 100%;
+}
+
+.calc-route-table {
+    flex: 1 1 auto;
+    min-height: 0;
 }
 
 .calc-filter-panel {

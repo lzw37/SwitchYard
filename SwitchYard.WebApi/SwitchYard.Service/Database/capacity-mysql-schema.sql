@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS `stationroute` (
     `LinkList` LONGTEXT NULL,
     `SwitchList` LONGTEXT NULL,
     `CellList` LONGTEXT NULL,
+    `InterruptCellList` LONGTEXT NULL,
     `SignalList` LONGTEXT NULL,
     `AllowanceTags` LONGTEXT NULL,
     `ForbiddenTags` LONGTEXT NULL,
@@ -84,38 +85,56 @@ CREATE TABLE IF NOT EXISTS `curve` (
     `SweepFlag` TINYINT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
+CREATE TABLE IF NOT EXISTS `operationplan` (
+    `InstanceID` VARCHAR(50) NULL,
+    `StationSchemeID` VARCHAR(50) NULL,
+    `OperationPlanID` VARCHAR(50) NULL,
+    `Name` VARCHAR(100) NULL,
+    `Description` VARCHAR(500) NULL,
+    `SortOrder` INT NULL,
+    `CreatedDate` DATETIME NULL,
+    `UpdatedDate` DATETIME NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS `traintemplate` (
     `InstanceID` VARCHAR(50) NULL,
     `StationSchemeID` VARCHAR(50) NULL,
+    `OperationPlanID` VARCHAR(50) NULL,
     `TrainTemplateID` VARCHAR(50) NULL,
     `Name` VARCHAR(50) NULL,
     `Type` VARCHAR(50) NULL,
-    `Number` INT NULL
+    `Number` INT NULL,
+    `IsFixedOperation` TINYINT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `movementtemplate` (
     `InstanceID` VARCHAR(50) NULL,
     `StationSchemeID` VARCHAR(50) NULL,
+    `OperationPlanID` VARCHAR(50) NULL,
     `TrainTemplateID` VARCHAR(50) NULL,
     `MovementID` VARCHAR(50) NULL,
     `Name` VARCHAR(50) NULL,
     `RouteIDList` LONGTEXT NULL,
-    `MinDuration` INT NULL
+    `MinDuration` INT NULL,
+    `SortOrder` INT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `train` (
     `InstanceID` VARCHAR(50) NULL,
     `StationSchemeID` VARCHAR(50) NULL,
+    `OperationPlanID` VARCHAR(50) NULL,
     `ID` VARCHAR(50) NULL,
     `TrainTemplateID` VARCHAR(50) NULL,
     `TrainNumber` VARCHAR(50) NULL,
     `Name` VARCHAR(50) NULL,
-    `TrainType` VARCHAR(20) NULL
+    `TrainType` VARCHAR(20) NULL,
+    `IsFixedOperation` TINYINT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `movement` (
     `InstanceID` VARCHAR(50) NULL,
     `StationSchemeID` VARCHAR(50) NULL,
+    `OperationPlanID` VARCHAR(50) NULL,
     `TrainID` VARCHAR(50) NULL,
     `TrainTemplateID` VARCHAR(50) NULL,
     `MovementID` VARCHAR(50) NULL,
@@ -125,14 +144,111 @@ CREATE TABLE IF NOT EXISTS `movement` (
     `EarliestStartTime` VARCHAR(50) NULL,
     `LatestEndTime` VARCHAR(50) NULL,
     `Route` VARCHAR(50) NULL,
-    `Tag` VARCHAR(50) NULL
+    `Tag` VARCHAR(50) NULL,
+    `SortOrder` INT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `operationbottlenecksummarycategory` (
     `InstanceID` VARCHAR(50) NULL,
     `StationSchemeID` VARCHAR(50) NULL,
+    `OperationPlanID` VARCHAR(50) NULL,
     `CategoryID` VARCHAR(50) NULL,
     `Name` VARCHAR(100) NULL,
-    `RouteIDList` LONGTEXT NULL,
+    `SortOrder` INT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `operationbottlenecksummarycategoryroute` (
+    `InstanceID` VARCHAR(50) NULL,
+    `StationSchemeID` VARCHAR(50) NULL,
+    `OperationPlanID` VARCHAR(50) NULL,
+    `CategoryID` VARCHAR(50) NULL,
+    `RouteID` VARCHAR(50) NULL,
+    `SortOrder` INT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `operationanalysismeta` (
+    `InstanceID` VARCHAR(50) NULL,
+    `StationSchemeID` VARCHAR(50) NULL,
+    `OperationPlanID` VARCHAR(50) NULL,
+    `TotalTimeSeconds` INT NULL,
+    `UpdatedDate` DATETIME NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `operationanalysiscell` (
+    `InstanceID` VARCHAR(50) NULL,
+    `StationSchemeID` VARCHAR(50) NULL,
+    `OperationPlanID` VARCHAR(50) NULL,
+    `CellID` VARCHAR(50) NULL,
+    `CellName` VARCHAR(100) NULL,
+    `SortOrder` INT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `operationoccupationtimerow` (
+    `InstanceID` VARCHAR(50) NULL,
+    `StationSchemeID` VARCHAR(50) NULL,
+    `OperationPlanID` VARCHAR(50) NULL,
+    `RowKey` VARCHAR(100) NULL,
+    `RowType` VARCHAR(20) NULL,
+    `SequenceText` VARCHAR(50) NULL,
+    `RouteID` VARCHAR(50) NULL,
+    `RouteName` VARCHAR(200) NULL,
+    `OperationCountText` VARCHAR(50) NULL,
+    `SortOrder` INT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `operationoccupationtimecell` (
+    `InstanceID` VARCHAR(50) NULL,
+    `StationSchemeID` VARCHAR(50) NULL,
+    `OperationPlanID` VARCHAR(50) NULL,
+    `RowKey` VARCHAR(100) NULL,
+    `CellID` VARCHAR(50) NULL,
+    `CellValue` DOUBLE NULL,
+    `InterruptCellValue` DOUBLE NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `operationoccupationtimesubtable` (
+    `InstanceID` VARCHAR(50) NULL,
+    `StationSchemeID` VARCHAR(50) NULL,
+    `OperationPlanID` VARCHAR(50) NULL,
+    `SubTableID` VARCHAR(50) NULL,
+    `SubTableName` VARCHAR(100) NULL,
+    `CellIDList` LONGTEXT NULL,
+    `SortOrder` INT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `operationbottleneckanalysisresult` (
+    `InstanceID` VARCHAR(50) NULL,
+    `StationSchemeID` VARCHAR(50) NULL,
+    `OperationPlanID` VARCHAR(50) NULL,
+    `RouteID` VARCHAR(50) NULL,
+    `RouteName` VARCHAR(200) NULL,
+    `OperationCount` INT NULL,
+    `BottleneckCellID` VARCHAR(50) NULL,
+    `BottleneckCellName` VARCHAR(100) NULL,
+    `BottleneckUtilization` DOUBLE NULL,
+    `ThroughputCapacity` DOUBLE NULL,
+    `SortOrder` INT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `operationthroughputsummaryresult` (
+    `InstanceID` VARCHAR(50) NULL,
+    `StationSchemeID` VARCHAR(50) NULL,
+    `OperationPlanID` VARCHAR(50) NULL,
+    `CategoryID` VARCHAR(50) NULL,
+    `GroupKey` VARCHAR(50) NULL,
+    `GroupText` VARCHAR(100) NULL,
+    `RouteCount` INT NULL,
+    `OperationCount` INT NULL,
+    `CapacityTotal` DOUBLE NULL,
+    `CapacityAverage` DOUBLE NULL,
+    `SortOrder` INT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `operationthroughputsummaryroute` (
+    `InstanceID` VARCHAR(50) NULL,
+    `StationSchemeID` VARCHAR(50) NULL,
+    `OperationPlanID` VARCHAR(50) NULL,
+    `CategoryID` VARCHAR(50) NULL,
+    `RouteID` VARCHAR(50) NULL,
     `SortOrder` INT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
