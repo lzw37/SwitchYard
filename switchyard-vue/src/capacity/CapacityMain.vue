@@ -86,9 +86,10 @@
                     </div>
                 </el-tab-pane>
                 <el-tab-pane :label="t('capacityMain.tabs.simulation')" name="simulation">
-                    <div class="tab-placeholder">
-                        <el-empty :description="t('capacityMain.placeholders.simulation')" />
+                    <div v-if="hasSelectedInstance" class="operation-simulation-pane">
+                        <OperationSimulation :selected-instance-id="selectedInstance || ''" />
                     </div>
+                    <el-empty v-else :description="t('capacityMain.placeholders.selectInstance')" />
                 </el-tab-pane>
             </el-tabs>
         </div>
@@ -120,6 +121,7 @@ import RouteDesign from './RouteDesign.vue'
 import StationLayout3D from './StationLayout3D.vue'
 import CalculationParameters from './CalculationParameters.vue'
 import OperationPlan from './OperationPlan.vue'
+import OperationSimulation from './OperationSimulation.vue'
 import CapacityInstanceManager from './CapacityInstanceManager.vue'
 import UserManagement from '@/views/UserManagement.vue'
 
@@ -402,6 +404,14 @@ watch(selectedInstance, () => {
     overflow: hidden;
 }
 
+.operation-simulation-pane {
+    width: 100%;
+    max-width: 100%;
+    height: calc(100dvh - 118px);
+    min-height: 420px;
+    overflow: hidden;
+}
+
 @media (max-width: 768px) {
     .capacity-main {
         padding: 16px;
@@ -431,7 +441,8 @@ watch(selectedInstance, () => {
 
     .route-design-pane,
     .calculation-parameters-pane,
-    .operation-plan-pane {
+    .operation-plan-pane,
+    .operation-simulation-pane {
         height: calc(100dvh - 188px);
         min-height: 420px;
     }

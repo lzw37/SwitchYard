@@ -1997,12 +1997,11 @@ namespace SwitchYard.Service.Controllers
                 template => template.TrainTemplateID ?? string.Empty,
                 template => Math.Max(0, template.Number ?? 0),
                 StringComparer.OrdinalIgnoreCase);
-            var totalMovementCount = templates.Sum(template =>
-            {
-                var trainTemplateID = template.TrainTemplateID ?? string.Empty;
-                movementTemplatesByTrainTemplate.TryGetValue(trainTemplateID, out var movementTemplates);
-                return generatedTrainCountByTemplate[trainTemplateID] * (movementTemplates?.Count ?? 0);
-            });
+            var generatedTrainPlans = BuildGeneratedTrainPlans(
+                templates,
+                generatedTrainCountByTemplate,
+                movementTemplatesByTrainTemplate);
+            var totalMovementCount = generatedTrainPlans.Sum(plan => plan.MovementTemplates.Count);
             var maxMinDuration = movementTemplatesByTrainTemplate.Values
                 .SelectMany(movementTemplates => movementTemplates)
                 .Select(movement => Math.Max(0, movement.MinDuration ?? 0))
@@ -2018,68 +2017,125 @@ namespace SwitchYard.Service.Controllers
             var usedTrainIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var result = new TrainOperationPlanResponse();
 
-            foreach (var template in templates)
+            foreach (var trainPlan in generatedTrainPlans)
             {
-                var trainTemplateID = template.TrainTemplateID ?? string.Empty;
-                var trainCount = generatedTrainCountByTemplate[trainTemplateID];
-                movementTemplatesByTrainTemplate.TryGetValue(trainTemplateID, out var movementTemplates);
-                movementTemplates ??= new List<MovementTemplateRow>();
-
-                for (var trainSequence = 1; trainSequence <= trainCount; trainSequence++)
+                var template = trainPlan.Template;
+                var trainTemplateID = trainPlan.TrainTemplateID;
+                var trainSequence = trainPlan.TrainSequence;
+                var movementTemplates = trainPlan.MovementTemplates;
+                var trainID = BuildGeneratedTrainID(trainTemplateID, trainSequence, usedTrainIds);
+                usedTrainIds.Add(trainID);
+                result.Trains.Add(new TrainRow
                 {
-                    var trainID = BuildGeneratedTrainID(trainTemplateID, trainSequence, usedTrainIds);
-                    usedTrainIds.Add(trainID);
-                    result.Trains.Add(new TrainRow
+                    InstanceID = instanceID,
+                    StationSchemeID = stationSchemeID,
+                    OperationPlanID = operationPlanID,
+                    ID = trainID,
+                    TrainTemplateID = trainTemplateID,
+                    TrainNumber = (generatedTrainSequence++).ToString(),
+                    Name = TrimToMaxLength(template.Name ?? string.Empty, 50),
+                    TrainType = TrimToMaxLength(template.Type ?? string.Empty, 20),
+                    IsFixedOperation = NormalizeBinaryFlag(template.IsFixedOperation)
+                });
+
+                var trainCursorMinutes = startMinutes;
+                for (var movementSortOrder = 0; movementSortOrder < movementTemplates.Count; movementSortOrder++)
+                {
+                    var movementTemplate = movementTemplates[movementSortOrder];
+                    var minDuration = Math.Max(0, movementTemplate.MinDuration ?? 0);
+                    var plannedStartMinutes = startMinutes + (int)Math.Round(generatedMovementIndex * movementSlotSize);
+                    var earliestStartMinutes = Math.Max(plannedStartMinutes, trainCursorMinutes);
+                    var latestEndMinutes = earliestStartMinutes + minDuration;
+                    var routeAlternatives = ParseRouteIDList(movementTemplate.RouteIDList);
+                    var route = routeAlternatives.Count > 0
+                        ? routeAlternatives[(trainSequence - 1) % routeAlternatives.Count]
+                        : string.Empty;
+
+                    result.Movements.Add(new MovementRow
                     {
                         InstanceID = instanceID,
                         StationSchemeID = stationSchemeID,
                         OperationPlanID = operationPlanID,
-                        ID = trainID,
-                        TrainTemplateID = trainTemplateID,
-                        TrainNumber = (generatedTrainSequence++).ToString(),
-                        Name = TrimToMaxLength(template.Name ?? string.Empty, 50),
-                        TrainType = TrimToMaxLength(template.Type ?? string.Empty, 20),
-                        IsFixedOperation = NormalizeBinaryFlag(template.IsFixedOperation)
+                        TrainID = trainID,
+                        TrainTemplateID = TrimToMaxLength(movementTemplate.TrainTemplateID ?? string.Empty, 50),
+                        MovementID = TrimToMaxLength(movementTemplate.MovementID ?? string.Empty, 50),
+                        Name = TrimToMaxLength(movementTemplate.Name ?? string.Empty, 50),
+                        RouteIDList = movementTemplate.RouteIDList ?? string.Empty,
+                        MinDuration = movementTemplate.MinDuration,
+                        EarliestStartTime = FormatPlanTime(earliestStartMinutes),
+                        LatestEndTime = FormatPlanTime(latestEndMinutes),
+                        Route = TrimToMaxLength(route, 50),
+                        Tag = TrimToMaxLength(movementTemplate.Name ?? string.Empty, 50),
+                        SortOrder = movementSortOrder
                     });
 
-                    var trainCursorMinutes = startMinutes;
-                    for (var movementSortOrder = 0; movementSortOrder < movementTemplates.Count; movementSortOrder++)
-                    {
-                        var movementTemplate = movementTemplates[movementSortOrder];
-                        var minDuration = Math.Max(0, movementTemplate.MinDuration ?? 0);
-                        var plannedStartMinutes = startMinutes + (int)Math.Round(generatedMovementIndex * movementSlotSize);
-                        var earliestStartMinutes = Math.Max(plannedStartMinutes, trainCursorMinutes);
-                        var latestEndMinutes = earliestStartMinutes + minDuration;
-                        var routeAlternatives = ParseRouteIDList(movementTemplate.RouteIDList);
-                        var route = routeAlternatives.Count > 0
-                            ? routeAlternatives[(trainSequence - 1) % routeAlternatives.Count]
-                            : string.Empty;
-
-                        result.Movements.Add(new MovementRow
-                        {
-                            InstanceID = instanceID,
-                            StationSchemeID = stationSchemeID,
-                            OperationPlanID = operationPlanID,
-                            TrainID = trainID,
-                            TrainTemplateID = TrimToMaxLength(movementTemplate.TrainTemplateID ?? string.Empty, 50),
-                            MovementID = TrimToMaxLength(movementTemplate.MovementID ?? string.Empty, 50),
-                            Name = TrimToMaxLength(movementTemplate.Name ?? string.Empty, 50),
-                            RouteIDList = movementTemplate.RouteIDList ?? string.Empty,
-                            MinDuration = movementTemplate.MinDuration,
-                            EarliestStartTime = FormatPlanTime(earliestStartMinutes),
-                            LatestEndTime = FormatPlanTime(latestEndMinutes),
-                            Route = TrimToMaxLength(route, 50),
-                            Tag = TrimToMaxLength(movementTemplate.Name ?? string.Empty, 50),
-                            SortOrder = movementSortOrder
-                        });
-
-                        trainCursorMinutes = latestEndMinutes;
-                        generatedMovementIndex++;
-                    }
+                    trainCursorMinutes = latestEndMinutes;
+                    generatedMovementIndex++;
                 }
             }
 
             return result;
+        }
+
+        private static List<GeneratedTrainPlan> BuildGeneratedTrainPlans(
+            IReadOnlyList<TrainTemplateRow> templates,
+            IReadOnlyDictionary<string, int> generatedTrainCountByTemplate,
+            IReadOnlyDictionary<string, List<MovementTemplateRow>> movementTemplatesByTrainTemplate)
+        {
+            var trainPlans = new List<GeneratedTrainPlan>();
+            for (var templateOrder = 0; templateOrder < templates.Count; templateOrder++)
+            {
+                var template = templates[templateOrder];
+                var trainTemplateID = template.TrainTemplateID ?? string.Empty;
+                if (!generatedTrainCountByTemplate.TryGetValue(trainTemplateID, out var trainCount))
+                {
+                    trainCount = Math.Max(0, template.Number ?? 0);
+                }
+                if (trainCount <= 0)
+                {
+                    continue;
+                }
+
+                movementTemplatesByTrainTemplate.TryGetValue(trainTemplateID, out var movementTemplates);
+                movementTemplates ??= new List<MovementTemplateRow>();
+                for (var trainSequence = 1; trainSequence <= trainCount; trainSequence++)
+                {
+                    var distributionPosition = trainCount == 1
+                        ? 0.5d
+                        : (trainSequence - 1) / (double)(trainCount - 1);
+                    trainPlans.Add(new GeneratedTrainPlan
+                    {
+                        Template = template,
+                        TrainTemplateID = trainTemplateID,
+                        MovementTemplates = movementTemplates,
+                        TrainSequence = trainSequence,
+                        TemplateOrder = templateOrder,
+                        DistributionPosition = distributionPosition
+                    });
+                }
+            }
+
+            // Interleave templates by their relative train sequence so each template spans the full generated window.
+            return trainPlans
+                .OrderBy(plan => plan.DistributionPosition)
+                .ThenBy(plan => plan.TemplateOrder)
+                .ThenBy(plan => plan.TrainSequence)
+                .ToList();
+        }
+
+        private sealed class GeneratedTrainPlan
+        {
+            public TrainTemplateRow Template { get; set; } = new();
+
+            public string TrainTemplateID { get; set; } = string.Empty;
+
+            public List<MovementTemplateRow> MovementTemplates { get; set; } = new();
+
+            public int TrainSequence { get; set; }
+
+            public int TemplateOrder { get; set; }
+
+            public double DistributionPosition { get; set; }
         }
 
         private static bool TryParsePlanTime(string? value, out int minutes)

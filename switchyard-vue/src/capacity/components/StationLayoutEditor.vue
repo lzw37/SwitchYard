@@ -572,6 +572,19 @@ function buildDefaultAnnotation(x, y) {
     });
 }
 
+function getCanvasViewportState() {
+    return {
+        minX: canvasBounds.value.minX,
+        minY: canvasBounds.value.minY,
+        maxX: canvasBounds.value.maxX,
+        maxY: canvasBounds.value.maxY,
+        width: svgScreenWidth.value,
+        height: svgScreenHeight.value,
+        scaleX: safeDisplayScaleX.value,
+        scaleY: safeDisplayScaleY.value,
+    };
+}
+
 function normalizeCurve(curve) {
     return {
         id: curve?.id ?? nextId(),
@@ -4356,6 +4369,7 @@ defineExpose({
     clearElements,
     getFullViewRect,
     scrollDataRectIntoView,
+    getCanvasViewportState,
 });
 </script>
 
