@@ -180,8 +180,46 @@
 
                 <section class="simulation-gantt-panel" :style="simulationGanttPanelStyle">
                     <div class="simulation-gantt-header">
-                        <h3>计划甘特图</h3>
-                        <span>{{ ganttSummaryText }}</span>
+                        <div class="simulation-gantt-title">
+                            <h3>计划甘特图</h3>
+                            <span>{{ ganttSummaryText }}</span>
+                        </div>
+                        <div class="simulation-gantt-subtable-toolbar">
+                            <el-tabs
+                                v-model="activeGanttSubTableId"
+                                type="card"
+                                class="simulation-gantt-sub-tabs"
+                                @tab-remove="removeGanttSubTable"
+                            >
+                                <el-tab-pane
+                                    v-for="(subTable, index) in ganttSubTables"
+                                    :key="subTable.id"
+                                    :name="subTable.id"
+                                    :label="formatGanttSubTableLabel(subTable, index)"
+                                    :closable="ganttSubTables.length > 1"
+                                />
+                            </el-tabs>
+                            <div class="simulation-gantt-subtable-actions">
+                                <span class="simulation-gantt-subtable-summary">
+                                    {{ activeGanttSubTableSummaryText }}
+                                </span>
+                                <el-button
+                                    :icon="Edit"
+                                    circle
+                                    size="small"
+                                    :disabled="!activeGanttSubTable"
+                                    title="编辑子表"
+                                    @click="openEditGanttSubTableDialog"
+                                />
+                                <el-button
+                                    :icon="Plus"
+                                    circle
+                                    size="small"
+                                    title="新增子表"
+                                    @click="openCreateGanttSubTableDialog"
+                                />
+                            </div>
+                        </div>
                     </div>
                     <div
                         v-if="ganttLanes.length > 0"
@@ -239,6 +277,51 @@
                         {{ ganttEmptyText }}
                     </div>
                 </section>
+
+                <el-dialog
+                    v-model="ganttSubTableDialogVisible"
+                    :title="ganttSubTableDialogTitle"
+                    width="560px"
+                    class="simulation-gantt-subtable-dialog"
+                >
+                    <el-form label-position="top">
+                        <el-form-item label="子表名称">
+                            <el-input
+                                v-model="ganttSubTableDialogForm.name"
+                                maxlength="100"
+                                show-word-limit
+                                placeholder="请输入子表名称"
+                            />
+                        </el-form-item>
+                        <el-form-item label="显示轨道电路区段">
+                            <el-select
+                                v-model="ganttSubTableDialogForm.cellIds"
+                                class="simulation-gantt-subtable-cell-select"
+                                multiple
+                                filterable
+                                clearable
+                                collapse-tags
+                                collapse-tags-tooltip
+                                placeholder="请选择要显示的轨道电路区段"
+                            >
+                                <el-option
+                                    v-for="cell in ganttAvailableCells"
+                                    :key="cell.id"
+                                    :label="cell.name || cell.id"
+                                    :value="cell.id"
+                                />
+                            </el-select>
+                        </el-form-item>
+                    </el-form>
+                    <template #footer>
+                        <el-button @click="ganttSubTableDialogVisible = false">
+                            取消
+                        </el-button>
+                        <el-button type="primary" @click="confirmGanttSubTableDialog">
+                            确认
+                        </el-button>
+                    </template>
+                </el-dialog>
             </div>
 
             <aside class="simulation-side-panel">
@@ -372,7 +455,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { Aim, Refresh, RefreshLeft, VideoPause, VideoPlay } from '@element-plus/icons-vue'
+import { Aim, Edit, Plus, Refresh, RefreshLeft, VideoPause, VideoPlay } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import axios from '@/utils/axios'
 import StationLayoutEditor from './components/StationLayoutEditor.vue'
@@ -567,6 +650,25 @@ interface GanttLane {
     blocks: GanttBlock[]
 }
 
+interface GanttSubTable {
+    id: string
+    name: string
+    cellIds: string[]
+    hasCustomSelection: boolean
+}
+
+interface GanttSubTableSettingPayload {
+    subTableID: string
+    subTableName: string
+    cellIDs: string[]
+    sortOrder: number
+}
+
+interface GanttSubTableDialogForm {
+    name: string
+    cellIds: string[]
+}
+
 const props = defineProps<{
     selectedInstanceId: string
 }>()
@@ -585,6 +687,7 @@ const ganttSidebarWidth = 168
 const ganttMinTimelineWidth = 860
 const ganttMaxTimelineWidth = 6400
 const ganttTargetPixelsPerSecond = 0.08
+const ganttDefaultSubTableCount = 3
 const defaultGanttPanelHeight = 260
 const minGanttPanelHeight = 160
 const minLayoutPanelHeight = 220
@@ -641,6 +744,21 @@ const activeLockingRunCount = ref(0)
 const activeMovingRunCount = ref(0)
 const runPhaseByKey = ref<Record<string, RunPhase>>({})
 const ganttPanelHeight = ref(defaultGanttPanelHeight)
+const ganttSubTableSequence = ref(ganttDefaultSubTableCount)
+const ganttSubTables = ref<GanttSubTable[]>(
+    Array.from({ length: ganttDefaultSubTableCount }, (_, index) => createGanttSubTable(index + 1)),
+)
+const activeGanttSubTableId = ref(ganttSubTables.value[0]?.id || '')
+const loadingGanttSubTableSettings = ref(false)
+const savingGanttSubTableSettings = ref(false)
+const ganttSubTableDialogVisible = ref(false)
+const ganttSubTableDialogMode = ref<'create' | 'edit'>('create')
+const ganttSubTableDialogTargetId = ref('')
+const ganttSubTableDialogTargetSequence = ref(0)
+const ganttSubTableDialogForm = ref<GanttSubTableDialogForm>({
+    name: '',
+    cellIds: [],
+})
 
 let stationSchemeLoadVersion = 0
 let operationPlanLoadVersion = 0
@@ -648,10 +766,14 @@ let stationRouteLoadVersion = 0
 let stationRouteTimeLoadVersion = 0
 let trainPlanLoadVersion = 0
 let layoutLoadVersion = 0
+let ganttSubTableLoadVersion = 0
 let animationFrameId: number | null = null
 let tableScrollFrameId: number | null = null
 let ganttScrollFrameId: number | null = null
 let ganttResizeState: { pointerStartY: number; startHeight: number } | null = null
+let ganttSubTableSaveTimer: ReturnType<typeof window.setTimeout> | null = null
+let suppressGanttSubTableSave = false
+let ganttSubTableSaveRevision = 0
 let previousBodyCursor = ''
 let previousBodyUserSelect = ''
 let lastAnimationTimestamp = 0
@@ -667,6 +789,8 @@ const loadingAnyData = computed(() => (
     loadingStationRoutes.value ||
     loadingStationRouteTimes.value ||
     loadingTrainOperationPlan.value ||
+    loadingGanttSubTableSettings.value ||
+    savingGanttSubTableSettings.value ||
     loadingLayout.value
 ))
 const trainOptions = computed(() => trainOperationPlanTrains.value)
@@ -734,14 +858,34 @@ const ganttPlayheadStyle = computed(() => ({
     left: `${ganttPlayheadLeft.value}px`,
 }))
 const ganttTicks = computed<GanttTick[]>(() => buildGanttTicks())
+const ganttAvailableCells = computed<LayoutCell[]>(() => getGanttAvailableCells())
+const activeGanttSubTable = computed(() => (
+    ganttSubTables.value.find((subTable) => subTable.id === activeGanttSubTableId.value) ||
+    ganttSubTables.value[0] ||
+    null
+))
+const activeGanttSubTableCellIds = computed(() => normalizeGanttSubTableCellIds(activeGanttSubTable.value?.cellIds || []))
+const activeGanttSubTableCells = computed<LayoutCell[]>(() => {
+    const selectedCellIds = new Set(activeGanttSubTableCellIds.value)
+    return ganttAvailableCells.value.filter((cell) => selectedCellIds.has(cell.id))
+})
 const ganttLanes = computed<GanttLane[]>(() => buildGanttLanes())
 const ganttSummaryText = computed(() => {
     if (routeRuns.value.length === 0) return '暂无可播放作业'
     const blockCount = ganttLanes.value.reduce((count, lane) => count + lane.blocks.length, 0)
     return `${ganttLanes.value.length} 个区段 · ${blockCount} 条占用`
 })
+const activeGanttSubTableSummaryText = computed(() => (
+    `${activeGanttSubTableCells.value.length}/${ganttAvailableCells.value.length} 个轨道电路区段`
+))
+const ganttSubTableDialogTitle = computed(() => (
+    ganttSubTableDialogMode.value === 'create' ? '新建甘特图子表' : '编辑甘特图子表'
+))
 const ganttEmptyText = computed(() => {
     if (routeRuns.value.length === 0) return movementTableEmptyText.value
+    if (ganttAvailableCells.value.length > 0 && activeGanttSubTableCells.value.length === 0) {
+        return '当前子表没有选择轨道电路区段'
+    }
     return '当前计划没有可显示的轨道电路区段占用'
 })
 const activeRun = computed(() => {
@@ -907,23 +1051,13 @@ function formatGanttTickLabel(seconds: number) {
 function buildGanttLanes(): GanttLane[] {
     if (routeRuns.value.length === 0) return []
     const lanesByCell = buildGanttBaseLanes()
-    let appendedLaneIndex = lanesByCell.size
 
     routeRuns.value.forEach((run) => {
         const trainLabel = formatTrainLabel(run.train)
         const routeName = getRouteDisplayName(run.route.id)
-        buildGanttBlocksForRun(run).forEach(({ cellID, block }, blockIndex) => {
-            const laneKey = cellID || `unknown-${blockIndex}`
-            let lane = lanesByCell.get(laneKey)
-            if (!lane) {
-                lane = {
-                    key: laneKey,
-                    label: cellID,
-                    sortIndex: appendedLaneIndex++,
-                    blocks: [],
-                }
-                lanesByCell.set(laneKey, lane)
-            }
+        buildGanttBlocksForRun(run).forEach(({ cellID, block }) => {
+            const lane = lanesByCell.get(cellID)
+            if (!lane) return
             lane.blocks.push({
                 ...block,
                 label: trainLabel,
@@ -945,10 +1079,7 @@ function buildGanttLanes(): GanttLane[] {
 
 function buildGanttBaseLanes() {
     const lanesByCell = new Map<string, GanttLane>()
-    const sourceCells = layoutCells.value.length > 0
-        ? layoutCells.value
-        : getFallbackGanttCellsFromRouteTimes()
-    sourceCells.forEach((cell, index) => {
+    activeGanttSubTableCells.value.forEach((cell, index) => {
         const cellID = String(cell.id || cell.name || '').trim()
         if (!cellID || lanesByCell.has(cellID)) return
         lanesByCell.set(cellID, {
@@ -959,6 +1090,12 @@ function buildGanttBaseLanes() {
         })
     })
     return lanesByCell
+}
+
+function getGanttAvailableCells() {
+    return layoutCells.value.length > 0
+        ? layoutCells.value
+        : getFallbackGanttCellsFromRouteTimes()
 }
 
 function getFallbackGanttCellsFromRouteTimes() {
@@ -1083,6 +1220,231 @@ function getGanttBlockClassName(block: GanttBlock) {
     return classes.join(' ')
 }
 
+function getGanttSubTableFallbackName(index: number) {
+    return `子表 ${index}`
+}
+
+function createGanttSubTable(index: number, name?: string): GanttSubTable {
+    return {
+        id: `occupation-time-sub-table-${index}`,
+        name: name?.trim() || getGanttSubTableFallbackName(index),
+        cellIds: [],
+        hasCustomSelection: false,
+    }
+}
+
+function formatGanttSubTableLabel(subTable: GanttSubTable, index: number) {
+    return subTable.name?.trim() || getGanttSubTableFallbackName(index + 1)
+}
+
+function normalizeGanttSubTableCellIds(cellIds: string[]) {
+    const availableCellIds = new Set(ganttAvailableCells.value.map((cell) => cell.id))
+    return normalizeUniqueStrings(cellIds).filter((cellID) => availableCellIds.has(cellID))
+}
+
+function normalizeStoredGanttSubTableCellIds(cellIds: string[]) {
+    return normalizeUniqueStrings(cellIds)
+}
+
+function runWithoutGanttSubTableSave(action: () => void) {
+    suppressGanttSubTableSave = true
+    try {
+        action()
+    } finally {
+        void nextTick(() => {
+            suppressGanttSubTableSave = false
+        })
+    }
+}
+
+function resetGanttSubTables() {
+    ganttSubTableSequence.value = ganttDefaultSubTableCount
+    ganttSubTables.value = Array.from(
+        { length: ganttDefaultSubTableCount },
+        (_, index) => createGanttSubTable(index + 1),
+    )
+    activeGanttSubTableId.value = ganttSubTables.value[0]?.id || ''
+}
+
+function syncGanttSubTables(cells: LayoutCell[]) {
+    if (ganttSubTables.value.length === 0) {
+        ganttSubTables.value = [createGanttSubTable(1)]
+        ganttSubTableSequence.value = 1
+    }
+
+    const cellIds = cells.map((cell) => cell.id).filter(Boolean)
+    const availableCellIds = new Set(cellIds)
+    if (cellIds.length === 0) return
+
+    ganttSubTables.value = ganttSubTables.value.map((subTable) => ({
+        ...subTable,
+        cellIds: subTable.cellIds.filter((cellID) => availableCellIds.has(cellID)),
+    }))
+
+    if (!ganttSubTables.value.some((subTable) => subTable.id === activeGanttSubTableId.value)) {
+        activeGanttSubTableId.value = ganttSubTables.value[0]?.id || ''
+    }
+
+    const hasCustomSelection = ganttSubTables.value.some((subTable) => subTable.hasCustomSelection)
+    if (hasCustomSelection) return
+
+    const tableCount = Math.max(1, ganttSubTables.value.length)
+    const chunkSize = Math.max(1, Math.ceil(cellIds.length / tableCount))
+    ganttSubTables.value = ganttSubTables.value.map((subTable, index) => ({
+        ...subTable,
+        cellIds: cellIds.slice(index * chunkSize, (index + 1) * chunkSize),
+        hasCustomSelection: false,
+    }))
+}
+
+function getNextGanttSubTableDraft() {
+    const usedIds = new Set(ganttSubTables.value.map((item) => item.id))
+    let sequence = ganttSubTableSequence.value
+    let subTable: GanttSubTable
+    do {
+        sequence += 1
+        subTable = createGanttSubTable(sequence)
+    } while (usedIds.has(subTable.id))
+
+    return { sequence, subTable }
+}
+
+function openCreateGanttSubTableDialog() {
+    const { sequence, subTable } = getNextGanttSubTableDraft()
+    const selectedCellIds = new Set(ganttSubTables.value.flatMap((item) => item.cellIds))
+    const remainingCellIds = ganttAvailableCells.value
+        .map((cell) => cell.id)
+        .filter((cellID) => !selectedCellIds.has(cellID))
+
+    ganttSubTableDialogMode.value = 'create'
+    ganttSubTableDialogTargetId.value = subTable.id
+    ganttSubTableDialogTargetSequence.value = sequence
+    ganttSubTableDialogForm.value = {
+        name: subTable.name,
+        cellIds: remainingCellIds,
+    }
+    ganttSubTableDialogVisible.value = true
+}
+
+function openEditGanttSubTableDialog() {
+    const activeSubTable = activeGanttSubTable.value
+    if (!activeSubTable) return
+
+    const activeIndex = ganttSubTables.value.findIndex((subTable) => subTable.id === activeSubTable.id)
+    ganttSubTableDialogMode.value = 'edit'
+    ganttSubTableDialogTargetId.value = activeSubTable.id
+    ganttSubTableDialogTargetSequence.value = 0
+    ganttSubTableDialogForm.value = {
+        name: activeSubTable.name?.trim() || getGanttSubTableFallbackName(activeIndex + 1),
+        cellIds: [...activeSubTable.cellIds],
+    }
+    ganttSubTableDialogVisible.value = true
+}
+
+function confirmGanttSubTableDialog() {
+    const name = ganttSubTableDialogForm.value.name.trim()
+    if (!name) {
+        ElMessage.warning('请输入子表名称')
+        return
+    }
+
+    const cellIds = normalizeGanttSubTableCellIds(ganttSubTableDialogForm.value.cellIds)
+    if (ganttSubTableDialogMode.value === 'create') {
+        let subTableId = ganttSubTableDialogTargetId.value
+        let sequence = ganttSubTableDialogTargetSequence.value
+        if (!subTableId || ganttSubTables.value.some((subTable) => subTable.id === subTableId)) {
+            const draft = getNextGanttSubTableDraft()
+            subTableId = draft.subTable.id
+            sequence = draft.sequence
+        }
+
+        ganttSubTableSequence.value = Math.max(ganttSubTableSequence.value, sequence)
+        ganttSubTables.value = [
+            ...ganttSubTables.value,
+            {
+                id: subTableId,
+                name,
+                cellIds,
+                hasCustomSelection: true,
+            },
+        ]
+        activeGanttSubTableId.value = subTableId
+    } else {
+        const subTableId = ganttSubTableDialogTargetId.value
+        ganttSubTables.value = ganttSubTables.value.map((subTable) => (
+            subTable.id === subTableId
+                ? {
+                    ...subTable,
+                    name,
+                    cellIds,
+                    hasCustomSelection: true,
+                }
+                : subTable
+        ))
+    }
+
+    ganttSubTableDialogVisible.value = false
+}
+
+function removeGanttSubTable(name: string | number) {
+    if (ganttSubTables.value.length <= 1) return
+
+    const subTableId = String(name)
+    const removedIndex = ganttSubTables.value.findIndex((subTable) => subTable.id === subTableId)
+    if (removedIndex < 0) return
+
+    const nextSubTables = ganttSubTables.value.filter((subTable) => subTable.id !== subTableId)
+    ganttSubTables.value = nextSubTables
+    if (activeGanttSubTableId.value === subTableId) {
+        activeGanttSubTableId.value = nextSubTables[Math.min(removedIndex, nextSubTables.length - 1)]?.id || ''
+    }
+}
+
+function normalizeGanttSubTableSetting(item: unknown): GanttSubTable | null {
+    const id = readString(item, 'subTableID', 'SubTableID', 'id', 'ID').trim()
+    if (!id) return null
+
+    const cellIDs = normalizeStoredGanttSubTableCellIds(
+        readArray(item, 'cellIDs', 'CellIDs', 'cellIds').map((cellID) => String(cellID ?? '')),
+    )
+    const fallbackCellIDList = readString(item, 'cellIDList', 'CellIDList').trim()
+    return {
+        id,
+        name: readString(item, 'subTableName', 'SubTableName', 'name', 'Name').trim(),
+        cellIds: cellIDs.length > 0
+            ? cellIDs
+            : normalizeStoredGanttSubTableCellIds(parseRouteReferenceList(fallbackCellIDList)),
+        hasCustomSelection: true,
+    }
+}
+
+function applyGanttSubTableSettings(settings: GanttSubTable[]) {
+    const nextSettings = settings.length > 0
+        ? settings
+        : Array.from({ length: ganttDefaultSubTableCount }, (_, index) => createGanttSubTable(index + 1))
+
+    runWithoutGanttSubTableSave(() => {
+        ganttSubTables.value = nextSettings.map((setting, index) => ({
+            ...setting,
+            name: setting.name?.trim() || getGanttSubTableFallbackName(index + 1),
+            cellIds: normalizeStoredGanttSubTableCellIds(setting.cellIds),
+            hasCustomSelection: true,
+        }))
+        ganttSubTableSequence.value = Math.max(ganttDefaultSubTableCount, ganttSubTables.value.length)
+        activeGanttSubTableId.value = ganttSubTables.value[0]?.id || ''
+        syncGanttSubTables(ganttAvailableCells.value)
+    })
+}
+
+function buildGanttSubTableSettingsPayload(): GanttSubTableSettingPayload[] {
+    return ganttSubTables.value.map((subTable, index) => ({
+        subTableID: subTable.id,
+        subTableName: subTable.name?.trim() || getGanttSubTableFallbackName(index + 1),
+        cellIDs: normalizeStoredGanttSubTableCellIds(subTable.cellIds),
+        sortOrder: index,
+    }))
+}
+
 function readString(source: unknown, ...keys: string[]) {
     const record = source && typeof source === 'object' ? source as Record<string, unknown> : {}
     for (const key of keys) {
@@ -1090,6 +1452,15 @@ function readString(source: unknown, ...keys: string[]) {
         if (value !== undefined && value !== null) return String(value)
     }
     return ''
+}
+
+function readArray(source: unknown, ...keys: string[]) {
+    const record = source && typeof source === 'object' ? source as Record<string, unknown> : {}
+    for (const key of keys) {
+        const value = record[key]
+        if (Array.isArray(value)) return value
+    }
+    return []
 }
 
 function readOptionalInteger(source: unknown, ...keys: string[]): number | null {
@@ -2246,6 +2617,7 @@ function clearOperationPlans() {
     operationPlanLoadVersion++
     operationPlanOptions.value = []
     currentOperationPlanId.value = ''
+    clearGanttSubTableState()
     clearTrainPlan()
 }
 
@@ -2268,6 +2640,24 @@ function clearStationRouteTimes() {
     stationRouteTimeLoadVersion++
     stationRouteTimesByKey.value = {}
     loadingStationRouteTimes.value = false
+}
+
+function clearGanttSubTableState() {
+    ganttSubTableLoadVersion++
+    if (ganttSubTableSaveTimer) {
+        window.clearTimeout(ganttSubTableSaveTimer)
+        ganttSubTableSaveTimer = null
+    }
+    loadingGanttSubTableSettings.value = false
+    savingGanttSubTableSettings.value = false
+    ganttSubTableDialogVisible.value = false
+    ganttSubTableDialogTargetId.value = ''
+    ganttSubTableDialogTargetSequence.value = 0
+    ganttSubTableDialogForm.value = {
+        name: '',
+        cellIds: [],
+    }
+    runWithoutGanttSubTableSave(resetGanttSubTables)
 }
 
 function clearLayout() {
@@ -2502,6 +2892,125 @@ async function loadStationRouteTimes() {
     }
 }
 
+async function loadGanttSubTableSettings() {
+    const instanceID = props.selectedInstanceId
+    const stationSchemeID = currentStationSchemeId.value.trim()
+    const operationPlanID = currentOperationPlanId.value.trim()
+    if (!instanceID || !stationSchemeID || !operationPlanID) {
+        runWithoutGanttSubTableSave(resetGanttSubTables)
+        return
+    }
+
+    const loadVersion = ++ganttSubTableLoadVersion
+    loadingGanttSubTableSettings.value = true
+    try {
+        const response = await axios.get('/OperationPlan/GetOperationOccupationTimeSubTables', {
+            params: {
+                instanceID,
+                stationSchemeID,
+                operationPlanID,
+            },
+        })
+        if (
+            loadVersion !== ganttSubTableLoadVersion ||
+            instanceID !== props.selectedInstanceId ||
+            stationSchemeID !== currentStationSchemeId.value.trim() ||
+            operationPlanID !== currentOperationPlanId.value.trim()
+        ) {
+            return
+        }
+
+        const settings = (Array.isArray(response.data) ? response.data : [])
+            .map(normalizeGanttSubTableSetting)
+            .filter((item): item is GanttSubTable => item !== null)
+        if (settings.length > 0) {
+            applyGanttSubTableSettings(settings)
+            return
+        }
+
+        runWithoutGanttSubTableSave(() => {
+            resetGanttSubTables()
+            syncGanttSubTables(ganttAvailableCells.value)
+        })
+        void nextTick(() => {
+            scheduleSaveGanttSubTableSettings(0)
+        })
+    } catch (error) {
+        if (loadVersion !== ganttSubTableLoadVersion) return
+        console.error('Failed to load simulation gantt sub table settings:', error)
+        runWithoutGanttSubTableSave(() => {
+            resetGanttSubTables()
+            syncGanttSubTables(ganttAvailableCells.value)
+        })
+    } finally {
+        if (loadVersion === ganttSubTableLoadVersion) {
+            loadingGanttSubTableSettings.value = false
+        }
+    }
+}
+
+async function saveGanttSubTableSettingsNow() {
+    if (
+        suppressGanttSubTableSave ||
+        loadingGanttSubTableSettings.value ||
+        savingGanttSubTableSettings.value
+    ) {
+        return
+    }
+
+    const instanceID = props.selectedInstanceId
+    const stationSchemeID = currentStationSchemeId.value.trim()
+    const operationPlanID = currentOperationPlanId.value.trim()
+    if (!instanceID || !stationSchemeID || !operationPlanID) return
+
+    const subTables = buildGanttSubTableSettingsPayload()
+    if (subTables.length === 0) return
+
+    const savingRevision = ganttSubTableSaveRevision
+    savingGanttSubTableSettings.value = true
+    try {
+        const response = await axios.put('/OperationPlan/SaveOperationOccupationTimeSubTables', {
+            instanceID,
+            stationSchemeID,
+            operationPlanID,
+            subTables,
+        })
+        if (
+            instanceID !== props.selectedInstanceId ||
+            stationSchemeID !== currentStationSchemeId.value.trim() ||
+            operationPlanID !== currentOperationPlanId.value.trim()
+        ) {
+            return
+        }
+
+        const settings = (Array.isArray(response.data) ? response.data : [])
+            .map(normalizeGanttSubTableSetting)
+            .filter((item): item is GanttSubTable => item !== null)
+        if (settings.length > 0 && savingRevision === ganttSubTableSaveRevision) {
+            applyGanttSubTableSettings(settings)
+        }
+    } catch (error) {
+        console.error('Failed to save simulation gantt sub table settings:', error)
+    } finally {
+        savingGanttSubTableSettings.value = false
+        if (savingRevision !== ganttSubTableSaveRevision) {
+            scheduleSaveGanttSubTableSettings(0)
+        }
+    }
+}
+
+function scheduleSaveGanttSubTableSettings(delay = 500) {
+    if (suppressGanttSubTableSave || loadingGanttSubTableSettings.value) return
+
+    if (ganttSubTableSaveTimer) {
+        window.clearTimeout(ganttSubTableSaveTimer)
+    }
+    ganttSubTableSaveTimer = window.setTimeout(() => {
+        ganttSubTableSaveTimer = null
+        void saveGanttSubTableSettingsNow()
+    }, delay)
+}
+
 async function loadLayout() {
     const instanceID = props.selectedInstanceId
     const stationSchemeID = currentStationSchemeId.value.trim()
@@ -2609,17 +3118,19 @@ async function refreshSimulationData() {
     if (!hasScope.value) {
         clearStationRoutes()
         clearTrainPlan()
+        clearGanttSubTableState()
         await loadLayout()
         return
     }
     stopPlaybackForReload()
     await Promise.all([loadStationRoutes(), loadTrainOperationPlan(), loadLayout()])
-    await loadStationRouteTimes()
+    await Promise.all([loadStationRouteTimes(), loadGanttSubTableSettings()])
 }
 
 async function handleStationSchemeChange() {
     stopPlaybackForReload()
     currentOperationPlanId.value = ''
+    clearGanttSubTableState()
     clearStationRoutes()
     clearTrainPlan()
     await loadOperationPlans()
@@ -2629,8 +3140,9 @@ async function handleStationSchemeChange() {
 async function handleOperationPlanChange() {
     stopPlaybackForReload()
     clearTrainPlan()
+    clearGanttSubTableState()
     await loadTrainOperationPlan()
-    await loadStationRouteTimes()
+    await Promise.all([loadStationRouteTimes(), loadGanttSubTableSettings()])
 }
 
 function handleTrainChange() {
@@ -2660,6 +3172,24 @@ watch(routeRuns, () => {
     scheduleScrollGanttToPlayhead()
 })
 
+watch(
+    ganttAvailableCells,
+    (cells) => {
+        syncGanttSubTables(cells)
+    },
+    { immediate: true },
+)
+
+watch(
+    ganttSubTables,
+    () => {
+        if (suppressGanttSubTableSave || loadingGanttSubTableSettings.value) return
+        ganttSubTableSaveRevision += 1
+        scheduleSaveGanttSubTableSettings()
+    },
+    { deep: true },
+)
+
 watch([activeRunIndex, activeRunIndices], () => {
     scheduleScrollSimulationTableToCurrentRun()
 }, {
@@ -2675,6 +3205,10 @@ watch(playheadSeconds, () => {
 onBeforeUnmount(() => {
     pausePlayback()
     stopGanttPanelResize()
+    if (ganttSubTableSaveTimer) {
+        window.clearTimeout(ganttSubTableSaveTimer)
+        ganttSubTableSaveTimer = null
+    }
     if (tableScrollFrameId !== null) {
         window.cancelAnimationFrame(tableScrollFrameId)
         tableScrollFrameId = null
@@ -2862,9 +3396,19 @@ onBeforeUnmount(() => {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
-    padding: 10px 12px 8px;
+    gap: 10px;
+    min-height: 40px;
+    padding: 6px 10px;
     border-bottom: 1px solid #edf2f7;
+}
+
+.simulation-gantt-title {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: baseline;
+    gap: 8px;
+    min-width: 0;
+    white-space: nowrap;
 }
 
 .simulation-gantt-header h3 {
@@ -2874,9 +3418,61 @@ onBeforeUnmount(() => {
     font-weight: 700;
 }
 
-.simulation-gantt-header span {
+.simulation-gantt-title span {
     color: #65758a;
     font-size: 12px;
+}
+
+.simulation-gantt-subtable-toolbar {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.simulation-gantt-sub-tabs {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.simulation-gantt-sub-tabs :deep(.el-tabs__header) {
+    margin: 0;
+}
+
+.simulation-gantt-sub-tabs :deep(.el-tabs__nav-wrap::after) {
+    display: none;
+}
+
+.simulation-gantt-sub-tabs :deep(.el-tabs__item) {
+    height: 28px;
+    padding: 0 12px;
+    font-size: 12px;
+    line-height: 28px;
+}
+
+.simulation-gantt-subtable-actions {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 6px;
+}
+
+.simulation-gantt-subtable-actions :deep(.el-button + .el-button) {
+    margin-left: 0;
+}
+
+.simulation-gantt-subtable-summary {
+    flex: 0 0 auto;
+    color: #65758a;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.simulation-gantt-subtable-cell-select {
+    width: 100%;
 }
 
 .simulation-gantt-viewport {
