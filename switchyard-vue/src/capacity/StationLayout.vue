@@ -59,6 +59,11 @@ const showCellNames = ref(true);
 const showGrid = ref(true);
 const gridSpacing = ref(DEFAULT_GRID_SPACING);
 const layoutStyleDialogVisible = ref(false);
+const bindingCorrectionDialogVisible = ref(false);
+const bindingCorrectionTableRef = ref(null);
+const bindingCorrectionPlan = ref(null);
+const bindingCorrectionRows = ref([]);
+const selectedBindingCorrectionRows = ref([]);
 const layoutScaleXDisplay = computed(() => layoutScaleX.value.toFixed(2));
 const layoutScaleYDisplay = computed(() => layoutScaleY.value.toFixed(2));
 
@@ -179,7 +184,52 @@ const highlightedEditorLinkIds = computed(() => {
 const selectedDrawingBufferStopDirection = ref(DEFAULT_BUFFER_STOP_DIRECTION);
 const selectedDrawingBufferStopType = ref(DEFAULT_BUFFER_STOP_TYPE);
 const selectedDrawingSignalType = ref(DEFAULT_SIGNAL_TYPE);
-const signalTypeCascaderProps = { emitPath: false };
+const activeDrawingObject = ref("l");
+const drawingObjectCodes = new Set(["l", "n", "s", "w", "i", "r", "e", "p", "a"]);
+const drawingSignalMenuGroups = computed(() => signalTypeMenuOptions.map((option) => {
+    const children = Array.isArray(option.children) && option.children.length > 0
+        ? option.children
+        : [{ label: option.label, value: option.value }];
+
+    return {
+        label: option.label,
+        value: option.value,
+        showLabel: children.length > 1,
+        options: children.map((child) => ({
+            label: child.label,
+            value: child.value,
+        })),
+    };
+}));
+const selectedDrawingSignalTypeLabel = computed(() => {
+    const selectedValue = String(selectedDrawingSignalType.value || "");
+    for (const group of drawingSignalMenuGroups.value) {
+        const option = group.options.find((item) => item.value === selectedValue);
+        if (option) return option.label;
+    }
+    return selectedValue || t("stationLayout.draw.signal");
+});
+const selectedDrawingBufferStopTypeLabel = computed(() =>
+    getOptionLabel(bufferStopTypeOptions, selectedDrawingBufferStopType.value, t("stationLayout.draw.buffer"))
+);
+const selectedDrawingBufferStopDirectionLabel = computed(() =>
+    getOptionLabel(bufferStopDirectionOptions, selectedDrawingBufferStopDirection.value, "")
+);
+const drawingSignalButtonLabel = computed(() =>
+    `${t("stationLayout.draw.signal")} ${selectedDrawingSignalTypeLabel.value}`
+);
+const drawingBufferStopButtonLabel = computed(() =>
+    `${t("stationLayout.draw.buffer")} ${selectedDrawingBufferStopTypeLabel.value}/${selectedDrawingBufferStopDirectionLabel.value}`
+);
+
+function getOptionLabel(options, value, fallback = "") {
+    const selectedValue = String(value || "");
+    return options.find((option) => option.value === selectedValue)?.label || selectedValue || fallback;
+}
+
+function getDrawingButtonType(drawingObj) {
+    return !isSelectMode.value && activeDrawingObject.value === drawingObj ? "primary" : "default";
+}
 
 const annotationFontFamilyOptions = ["Arial", "Microsoft YaHei", "SimSun", "SimHei", "Times New Roman", "Consolas"];
 const annotationFontWeightOptions = [
@@ -247,6 +297,7 @@ function setSelectMode() {
 function setDrawMode() {
     activeEditMode.value = 1;
     stationLayoutEditorRef.value?.setEditMode(1);
+    stationLayoutEditorRef.value?.setDrawingObject(activeDrawingObject.value);
 }
 function handleEditModeChange(mode) {
     if (Number(mode) === 0) {
@@ -1007,10 +1058,64 @@ function clearSelection() {
     stationLayoutEditorRef.value?.clearSelectedNodes();
     stationLayoutEditorRef.value?.clearSelectedEquipment();
 }
-function deleteSelection() {
-    stationLayoutEditorRef.value?.deleteLine();
-    stationLayoutEditorRef.value?.deleteNode();
-    stationLayoutEditorRef.value?.deleteEquipment();
+const boundNodeEquipmentDeleteLabels = {
+    signal: "信号机",
+    insulationJoint: "钢轨绝缘",
+    switch: "道岔",
+    bufferStop: "车挡",
+};
+
+function formatBoundNodeEquipmentDeleteMessage(plan) {
+    const countText = Object.entries(plan?.counts || {})
+        .filter(([, count]) => Number(count) > 0)
+        .map(([kind, count]) => `${boundNodeEquipmentDeleteLabels[kind] || kind} ${count} 个`)
+        .join("、");
+    const detailText = (plan?.boundEquipment || [])
+        .slice(0, 8)
+        .map((equipment) => {
+            const label = boundNodeEquipmentDeleteLabels[equipment.kind] || equipment.kind;
+            const name = equipment.name || equipment.id || "";
+            return `${label}${name ? ` ${name}` : ""}`;
+        })
+        .join("、");
+    const moreCount = Math.max(0, (plan?.boundEquipment?.length || 0) - 8);
+    const detailSuffix = detailText
+        ? `\n\n绑定设备：${detailText}${moreCount > 0 ? ` 等 ${plan.boundEquipment.length} 个` : ""}`
+        : "";
+
+    return `所选 ${plan?.nodeIds?.length || 0} 个节点上绑定了 ${countText || "设备"}。确认删除节点，并一并删除这些绑定设备吗？${detailSuffix}`;
+}
+
+async function confirmDeleteNodesWithBoundEquipment(plan) {
+    if (!plan?.requiresConfirmation) return true;
+
+    try {
+        await ElMessageBox.confirm(
+            formatBoundNodeEquipmentDeleteMessage(plan),
+            "删除节点及绑定设备",
+            {
+                confirmButtonText: "删除",
+                cancelButtonText: "取消",
+                type: "warning",
+            }
+        );
+        return true;
+    } catch (err) {
+        return false;
+    }
+}
+
+async function deleteSelection() {
+    const editor = stationLayoutEditorRef.value;
+    if (!editor) return;
+
+    const nodeDeletePlan = editor.getSelectedNodeDeletePlan?.();
+    const canDeleteNodes = await confirmDeleteNodesWithBoundEquipment(nodeDeletePlan);
+    if (!canDeleteNodes) return;
+
+    editor.deleteLine();
+    editor.deleteNode({ deleteBoundEquipment: true });
+    editor.deleteEquipment();
     refreshLayoutSnapshot();
     pruneCellLinksToExistingTracks();
 }
@@ -1681,6 +1786,21 @@ function validateStationLayoutJson(jsonObj) {
         }
     }
 }
+
+function handleFileToolbarCommand(command) {
+    if (command === "load") {
+        getData();
+    } else if (command === "save") {
+        saveData();
+    } else if (command === "importJson") {
+        openImportJsonFile();
+    } else if (command === "exportJson") {
+        exportJsonFile();
+    } else if (command === "extractDwg") {
+        openExtractDwgDialog();
+    }
+}
+
 function autoSeparateLine() {
     stationLayoutEditorRef.value?.autoSeparateLine();
 }
@@ -1695,14 +1815,19 @@ function snapLine() {
 }
 function setDrawingObject(drawingObj) {
     if (isSelectMode.value) return;
-    stationLayoutEditorRef.value?.setDrawingObject(drawingObj);
+    const nextDrawingObject = String(drawingObj || "");
+    if (!drawingObjectCodes.has(nextDrawingObject)) return;
+
+    activeDrawingObject.value = nextDrawingObject;
+    stationLayoutEditorRef.value?.setDrawingObject(nextDrawingObject);
 }
 
 function setDrawingSignalType(signalType) {
     if (isSelectMode.value) return;
-    selectedDrawingSignalType.value = signalType;
-    stationLayoutEditorRef.value?.setDrawingSignalType(signalType);
-    stationLayoutEditorRef.value?.setDrawingObject("s");
+    const nextSignalType = Array.isArray(signalType) ? signalType[signalType.length - 1] : signalType;
+    selectedDrawingSignalType.value = nextSignalType;
+    stationLayoutEditorRef.value?.setDrawingSignalType(nextSignalType);
+    setDrawingObject("s");
     signalDropdownRef.value?.handleClose?.();
 }
 
@@ -1714,7 +1839,7 @@ function setDrawingBufferStopOption(option) {
     selectedDrawingBufferStopDirection.value = direction;
     stationLayoutEditorRef.value?.setDrawingBufferStopType(type);
     stationLayoutEditorRef.value?.setDrawingBufferStopDirection(direction);
-    stationLayoutEditorRef.value?.setDrawingObject("e");
+    setDrawingObject("e");
 }
 
 function setDrawingBufferStopDirection(direction) {
@@ -1722,10 +1847,6 @@ function setDrawingBufferStopDirection(direction) {
         type: selectedDrawingBufferStopType.value,
         direction,
     });
-}
-
-function isSelectedDrawingBufferStopOption(type, direction) {
-    return type === selectedDrawingBufferStopType.value && direction === selectedDrawingBufferStopDirection.value;
 }
 
 function autoGenerateNode() {
@@ -1736,8 +1857,145 @@ function autoMergeNode() {
     stationLayoutEditorRef.value?.autoMergeNode();
 }   
 
-function autoGenerateSwitch() {
-    stationLayoutEditorRef.value?.autoGenerateSwitches();
+function correctEquipmentBindingNodes() {
+    const result = stationLayoutEditorRef.value?.correctEquipmentBindingNodesByPosition?.();
+    if (!result) return;
+
+    if (result.totalCount === 0) {
+        ElMessage.info("当前没有需要修正绑定节点的设备");
+        return;
+    }
+
+    const unmatchedText = result.unmatchedCount > 0 ? `，${result.unmatchedCount} 个设备当前位置没有节点` : "";
+    if (result.fixedCount > 0) {
+        ElMessage.success(`已修正 ${result.fixedCount} 个设备绑定节点${unmatchedText}`);
+    } else if (result.unmatchedCount > 0 && result.alreadyCorrectCount === 0) {
+        ElMessage.warning(`未修正：${result.unmatchedCount} 个设备当前位置没有节点`);
+    } else {
+        ElMessage.info(`设备绑定节点已正确${unmatchedText}`);
+    }
+}
+
+function openEquipmentBindingCorrectionDialog() {
+    const plan = stationLayoutEditorRef.value?.getEquipmentBindingNodeCorrectionPlan?.();
+    if (!plan) return;
+
+    if (plan.totalCount === 0) {
+        ElMessage.info("当前没有需要修正绑定节点的设备");
+        return;
+    }
+
+    if (!Array.isArray(plan.items) || plan.items.length === 0) {
+        const unmatchedText = plan.unmatchedCount > 0 ? `，${plan.unmatchedCount} 个设备当前位置没有节点` : "";
+        ElMessage.info(`设备绑定节点已正确${unmatchedText}`);
+        return;
+    }
+
+    bindingCorrectionPlan.value = plan;
+    bindingCorrectionRows.value = plan.items;
+    selectedBindingCorrectionRows.value = [];
+    bindingCorrectionDialogVisible.value = true;
+    nextTick(() => {
+        bindingCorrectionTableRef.value?.clearSelection?.();
+        for (const row of bindingCorrectionRows.value) {
+            bindingCorrectionTableRef.value?.toggleRowSelection?.(row, true);
+        }
+    });
+}
+
+function handleBindingCorrectionSelectionChange(selection) {
+    selectedBindingCorrectionRows.value = Array.isArray(selection) ? selection : [];
+}
+
+function closeBindingCorrectionDialog() {
+    bindingCorrectionDialogVisible.value = false;
+}
+
+function handleBindingCorrectionDialogClosed() {
+    bindingCorrectionPlan.value = null;
+    bindingCorrectionRows.value = [];
+    selectedBindingCorrectionRows.value = [];
+}
+
+function applySelectedBindingCorrections() {
+    if (selectedBindingCorrectionRows.value.length === 0) {
+        ElMessage.warning("请先勾选需要修正的设备");
+        return;
+    }
+
+    const result = stationLayoutEditorRef.value?.applyEquipmentBindingNodeCorrections?.(selectedBindingCorrectionRows.value);
+    if (!result) return;
+
+    bindingCorrectionDialogVisible.value = false;
+
+    const skippedText = result.unmatchedCount > 0 ? `，${result.unmatchedCount} 个设备当前位置没有节点或已不存在` : "";
+    if (result.fixedCount > 0) {
+        ElMessage.success(`已修正 ${result.fixedCount} 个设备绑定节点${skippedText}`);
+    } else if (result.alreadyCorrectCount > 0) {
+        ElMessage.info(`所选设备绑定节点已正确${skippedText}`);
+    } else {
+        ElMessage.warning(`未修正设备绑定节点${skippedText}`);
+    }
+}
+
+function formatSwitchLineIds(lineIds) {
+    return Array.isArray(lineIds) && lineIds.length > 0 ? lineIds.join(", ") : "无";
+}
+
+function formatSwitchRebuildMessage(plan) {
+    const items = plan?.reconstructItems || [];
+    const details = items
+        .slice(0, 8)
+        .map((item) => {
+            const switchLabel = item.switchName || item.switchId || "未命名道岔";
+            return `${switchLabel}（节点 ${item.nodeName || item.nodeId}：${formatSwitchLineIds(item.previousLineIds)} -> ${formatSwitchLineIds(item.nextLineIds)}）`;
+        })
+        .join("\n");
+    const moreText = items.length > 8 ? `\n等 ${items.length} 组道岔` : "";
+    const createText = plan?.createCount > 0 ? `\n\n同时将新增生成 ${plan.createCount} 组道岔。` : "";
+
+    return `检测到 ${items.length} 组道岔绑定节点的邻接边发生变化，需要重新构造。确认后将保留原道岔 ID，并按当前邻接边重构。${details ? `\n\n${details}${moreText}` : ""}${createText}`;
+}
+
+async function confirmSwitchRebuild(plan) {
+    if (!plan?.requiresConfirmation) return true;
+
+    try {
+        await ElMessageBox.confirm(
+            formatSwitchRebuildMessage(plan),
+            "重构道岔",
+            {
+                confirmButtonText: "重构",
+                cancelButtonText: "取消",
+                type: "warning",
+            }
+        );
+        return true;
+    } catch (err) {
+        return false;
+    }
+}
+
+async function autoGenerateSwitch() {
+    const editor = stationLayoutEditorRef.value;
+    if (!editor) return;
+
+    const plan = editor.getAutoGenerateSwitchPlan?.();
+    if (!plan) return;
+
+    const canRebuild = await confirmSwitchRebuild(plan);
+    if (!canRebuild) return;
+
+    const result = editor.autoGenerateSwitches({ plan, confirmed: true });
+    if (!result?.applied) {
+        ElMessage.info("没有需要生成或重构的道岔");
+        return;
+    }
+
+    const messageParts = [];
+    if (result.reconstructCount > 0) messageParts.push(`重构 ${result.reconstructCount} 组`);
+    if (result.createCount > 0) messageParts.push(`新增 ${result.createCount} 组`);
+    ElMessage.success(`道岔生成完成：${messageParts.join("，")}`);
 }
 
 function autoGenerateCurve() {
@@ -1841,10 +2099,10 @@ watch(
 
 <template>
     <div v-loading="loadingData || savingData" class="station-layout-page">
-        <el-menu mode="horizontal" class="station-toolbar" :ellipsis="false">
-            <el-menu-item index="station-scheme" class="station-scheme-menu-item" @click.stop>
-                <div class="station-scheme-selector" @click.stop>
-                    <span class="toolbar-group-label">{{ t('stationLayout.menu.stationScheme') }}</span>
+        <div class="toolbar-row station-toolbar">
+            <div class="toolbar-group station-scheme-toolbar-group">
+                <span class="toolbar-group-label">{{ t('stationLayout.menu.stationScheme') }}</span>
+                <div class="station-scheme-control-row">
                     <el-select v-model="currentStationSchemeId" size="small" filterable
                         class="station-scheme-select" :loading="loadingStationSchemes"
                         :disabled="!props.selectedInstanceId || loadingStationSchemes || loadingData || savingData"
@@ -1859,88 +2117,129 @@ watch(
                         {{ t('stationLayout.schemeManager.manage') }}
                     </el-button>
                 </div>
-            </el-menu-item>
+            </div>
             <!-- 文件操作 -->
-            <el-sub-menu index="file">
-                <template #title>
-                    <el-icon>
-                        <Download />
-                    </el-icon>{{ t('stationLayout.menu.file') }}
-                </template>
-                <el-menu-item index="file-load" @click="getData">
+            <el-divider direction="vertical" />
+            <div class="toolbar-group">
+                <el-dropdown trigger="click" @command="handleFileToolbarCommand">
+                    <el-button size="small" :icon="Download">
+                        {{ t('stationLayout.menu.file') }}
+                        <el-icon class="el-icon--right">
+                            <ArrowDown />
+                        </el-icon>
+                    </el-button>
+                    <template #dropdown>
+                        <el-dropdown-menu>
+                            <el-dropdown-item command="load">
+                                <el-icon>
+                                    <Download />
+                                </el-icon>{{ t('stationLayout.menu.loadData') }}
+                            </el-dropdown-item>
+                            <el-dropdown-item command="save">
+                                <el-icon>
+                                    <Upload />
+                                </el-icon>{{ t('stationLayout.menu.saveData') }}
+                            </el-dropdown-item>
+                            <el-dropdown-item command="importJson">
+                                <el-icon>
+                                    <Upload />
+                                </el-icon>导入JSON
+                            </el-dropdown-item>
+                            <el-dropdown-item command="exportJson">
+                                <el-icon>
+                                    <Download />
+                                </el-icon>导出JSON
+                            </el-dropdown-item>
+                            <el-dropdown-item command="extractDwg">
+                                <el-icon>
+                                    <Download />
+                                </el-icon>提取DWG
+                            </el-dropdown-item>
+                        </el-dropdown-menu>
+                    </template>
+                </el-dropdown>
+                <el-button-group v-if="false">
+                <el-button size="small" @click="getData">
                     <el-icon>
                         <Download />
                     </el-icon>{{ t('stationLayout.menu.loadData') }}
-                </el-menu-item>
-                <el-menu-item index="file-save" @click="saveData">
+                </el-button>
+                <el-button size="small" @click="saveData">
                     <el-icon>
                         <Upload />
                     </el-icon>{{ t('stationLayout.menu.saveData') }}
-                </el-menu-item>
-                <el-menu-item index="file-import-json" @click="openImportJsonFile">
+                </el-button>
+                <el-button size="small" @click="openImportJsonFile">
                     <el-icon>
                         <Upload />
                     </el-icon> 导入JSON文件
-                </el-menu-item>
-                <el-menu-item index="file-export-json" @click="exportJsonFile">
+                </el-button>
+                <el-button size="small" @click="exportJsonFile">
                     <el-icon>
                         <Download />
                     </el-icon> 导出JSON文件
-                </el-menu-item>
-                <el-menu-item index="extract-dwg-file" @click="openExtractDwgDialog">
+                </el-button>
+                <el-button size="small" @click="openExtractDwgDialog">
                     <el-icon>
                         <Download />
                     </el-icon> 从DWG文件提取
-                </el-menu-item>
-            </el-sub-menu>
+                </el-button>
+                </el-button-group>
+            </div>
 
             <!-- 追踪设置 -->
-            <el-menu-item index="snap-grid" class="toolbar-checkbox-item">
+            <el-divider direction="vertical" />
+            <div class="toolbar-group">
                 <el-checkbox v-model="mouseSnap" :label="t('stationLayout.menu.gridSnap')"
                     @change="mouseGridSnapChange" />
-            </el-menu-item>
-            <el-menu-item index="snap-obj" class="toolbar-checkbox-item">
+            
                 <el-checkbox v-model="objectSnap" :label="t('stationLayout.menu.objectSnap')"
                     @change="mouseObjectSnapChange" />
-            </el-menu-item>
-            <el-menu-item index="snap-distance" class="toolbar-field-item" @click.stop>
+            
+                <div class="toolbar-field-item">
                 <span class="toolbar-group-label">{{ t('stationLayout.menu.snapDistance') }}</span>
                 <el-input-number v-model="objectSnapDistance" size="small" :min="0" :max="200" :step="1"
                     controls-position="right" :disabled="!objectSnap" />
-            </el-menu-item>
-            <el-menu-item index="show-grid" class="toolbar-checkbox-item">
+                </div>
+            
                 <el-checkbox v-model="showGrid" :label="t('stationLayout.menu.showGrid')" />
-            </el-menu-item>
-            <el-menu-item index="grid-spacing" class="toolbar-field-item" @click.stop>
+            
+                <div class="toolbar-field-item">
                 <span class="toolbar-group-label">{{ t('stationLayout.menu.gridSpacing') }}</span>
                 <el-input-number v-model="gridSpacing" size="small" :min="1" :max="500" :step="1"
                     controls-position="right" />
-            </el-menu-item>
+                </div>
+            </div>
 
             <!-- 撤销/重做 -->
-            <el-menu-item index="undo" @click="revoke">
+            <el-divider direction="vertical" />
+            <div class="toolbar-group">
+                <el-button-group>
+            <el-button size="small" @click="revoke">
                 <el-icon>
                     <RefreshLeft />
                 </el-icon>{{ t('stationLayout.menu.undo') }}
-            </el-menu-item>
-            <el-menu-item index="redo" @click="redo">
+            </el-button>
+            <el-button size="small" @click="redo">
                 <el-icon>
                     <RefreshRight />
                 </el-icon>{{ t('stationLayout.menu.redo') }}
-            </el-menu-item>
+            </el-button>
 
             <!-- 选择操作 -->
-            <el-menu-item index="clear-sel" @click="clearSelection">
+            <el-button size="small" @click="clearSelection">
                 <el-icon>
                     <CircleClose />
                 </el-icon>{{ t('stationLayout.menu.clearSelection') }}
-            </el-menu-item>
-            <el-menu-item index="delete-sel" @click="deleteSelection">
+            </el-button>
+            <el-button size="small" @click="deleteSelection">
                 <el-icon>
                     <Delete />
                 </el-icon>{{ t('stationLayout.menu.deleteSelection') }}
-            </el-menu-item>
-        </el-menu>
+            </el-button>
+                </el-button-group>
+            </div>
+        </div>
         <input ref="importJsonFileInputRef" type="file" accept=".json,application/json" class="hidden-file-input"
             @change="handleImportJsonFileChange" />
 
@@ -1995,6 +2294,47 @@ watch(
                 <el-button @click="stationSchemeManagerVisible = false">
                     {{ t('stationLayout.schemeManager.close') }}
                 </el-button>
+            </template>
+        </el-dialog>
+
+        <el-dialog v-model="bindingCorrectionDialogVisible" title="修正设备绑定节点" width="860px"
+            :close-on-click-modal="false" @closed="handleBindingCorrectionDialogClosed">
+            <div class="binding-correction-dialog">
+                <div class="binding-correction-summary">
+                    检测到 {{ bindingCorrectionRows.length }} 个设备的 binding node 将被修改，请勾选确认需要修正的项。
+                    <span v-if="bindingCorrectionPlan?.unmatchedCount > 0">
+                        另有 {{ bindingCorrectionPlan.unmatchedCount }} 个设备当前位置没有节点，已跳过。
+                    </span>
+                </div>
+                <el-table ref="bindingCorrectionTableRef" :data="bindingCorrectionRows" row-key="key" size="small"
+                    height="360" @selection-change="handleBindingCorrectionSelectionChange">
+                    <el-table-column type="selection" width="48" />
+                    <el-table-column prop="kindLabel" label="设备类型" width="110" />
+                    <el-table-column label="设备" min-width="160" show-overflow-tooltip>
+                        <template #default="{ row }">
+                            <span>{{ row.equipmentName || row.equipmentId }}</span>
+                        </template>
+                    </el-table-column>
+                    <el-table-column prop="previousBindingNodeID" label="原 binding node" width="150" />
+                    <el-table-column prop="nextBindingNodeID" label="修正为 node" width="140" />
+                    <el-table-column label="设备位置" width="150">
+                        <template #default="{ row }">
+                            <span>({{ row.position?.x }}, {{ row.position?.y }})</span>
+                        </template>
+                    </el-table-column>
+                </el-table>
+            </div>
+            <template #footer>
+                <div class="binding-correction-footer">
+                    <span>已选择 {{ selectedBindingCorrectionRows.length }} / {{ bindingCorrectionRows.length }}</span>
+                    <div class="binding-correction-actions">
+                        <el-button @click="closeBindingCorrectionDialog">取消</el-button>
+                        <el-button type="primary" :disabled="selectedBindingCorrectionRows.length === 0"
+                            @click="applySelectedBindingCorrections">
+                            确认修正
+                        </el-button>
+                    </div>
+                </div>
             </template>
         </el-dialog>
 
@@ -2133,38 +2473,49 @@ watch(
             <div class="toolbar-group">
                 <span class="toolbar-group-label">{{ t('stationLayout.group.drawingObject') }}</span>
                 <el-button-group>
-                    <el-button :icon="Minus" :disabled="isSelectMode" @click="setDrawingObject('l')">{{ t('stationLayout.draw.line')
+                    <el-button size="small" :icon="Minus" :disabled="isSelectMode" :type="getDrawingButtonType('l')"
+                        @click="setDrawingObject('l')">{{ t('stationLayout.draw.line')
                         }}</el-button>
-                    <el-button :icon="Location" :disabled="isSelectMode" @click="setDrawingObject('n')">{{ t('stationLayout.draw.node')
+                    <el-button size="small" :icon="Location" :disabled="isSelectMode" :type="getDrawingButtonType('n')"
+                        @click="setDrawingObject('n')">{{ t('stationLayout.draw.node')
                         }}</el-button>
-                    <el-dropdown ref="signalDropdownRef" trigger="click" :disabled="isSelectMode" :hide-on-click="false">
-                        <el-button :icon="Bell" :disabled="isSelectMode">
-                            {{ t('stationLayout.draw.signal') }}
+                    <el-dropdown ref="signalDropdownRef" trigger="click" :disabled="isSelectMode"
+                        @command="setDrawingSignalType">
+                        <el-button size="small" :icon="Bell" :disabled="isSelectMode" :type="getDrawingButtonType('s')"
+                            @click="setDrawingObject('s')">
+                            <span class="drawing-object-button-label">{{ drawingSignalButtonLabel }}</span>
                             <el-icon class="el-icon--right">
                                 <ArrowDown />
                             </el-icon>
                         </el-button>
                         <template #dropdown>
-                            <el-dropdown-menu class="signal-type-dropdown-menu">
-                                <li class="signal-type-cascader-item">
-                                    <el-cascader-panel class="signal-type-cascader-panel"
-                                        :model-value="selectedDrawingSignalType"
-                                        :options="signalTypeMenuOptions"
-                                        :props="signalTypeCascaderProps"
-                                        @change="setDrawingSignalType" />
-                                </li>
+                            <el-dropdown-menu class="drawing-object-dropdown-menu">
+                                <template v-for="(group, groupIndex) in drawingSignalMenuGroups" :key="group.value">
+                                    <el-dropdown-item v-if="group.showLabel" disabled class="drawing-option-group-label"
+                                        :divided="groupIndex > 0">
+                                        {{ group.label }}
+                                    </el-dropdown-item>
+                                    <el-dropdown-item v-for="option in group.options" :key="option.value"
+                                        :command="option.value">
+                                        {{ option.label }}
+                                    </el-dropdown-item>
+                                </template>
                             </el-dropdown-menu>
                         </template>
                     </el-dropdown>
-                    <el-button :icon="Switch" :disabled="isSelectMode" @click="setDrawingObject('w')">{{ t('stationLayout.draw.switch')
+                    <el-button size="small" :icon="Switch" :disabled="isSelectMode" :type="getDrawingButtonType('w')"
+                        @click="setDrawingObject('w')">{{ t('stationLayout.draw.switch')
                         }}</el-button>
-                    <el-button :icon="Filter" :disabled="isSelectMode" @click="setDrawingObject('i')">{{ t('stationLayout.draw.insulation')
+                    <el-button size="small" :icon="Filter" :disabled="isSelectMode" :type="getDrawingButtonType('i')"
+                        @click="setDrawingObject('i')">{{ t('stationLayout.draw.insulation')
                         }}</el-button>
-                    <el-button :icon="Guide" :disabled="isSelectMode" @click="setDrawingObject('r')">{{ t('stationLayout.draw.route')
+                    <el-button size="small" :icon="Guide" :disabled="isSelectMode" :type="getDrawingButtonType('r')"
+                        @click="setDrawingObject('r')">{{ t('stationLayout.draw.route')
                         }}</el-button>
                     <el-dropdown trigger="click" :disabled="isSelectMode" @command="setDrawingBufferStopOption">
-                        <el-button :icon="Stopwatch" :disabled="isSelectMode">
-                            {{ t('stationLayout.draw.buffer') }}
+                        <el-button size="small" :icon="Stopwatch" :disabled="isSelectMode" :type="getDrawingButtonType('e')"
+                            @click="setDrawingObject('e')">
+                            <span class="drawing-object-button-label">{{ drawingBufferStopButtonLabel }}</span>
                             <el-icon class="el-icon--right">
                                 <ArrowDown />
                             </el-icon>
@@ -2179,17 +2530,18 @@ watch(
                                     </el-dropdown-item>
                                     <el-dropdown-item v-for="directionOption in bufferStopDirectionOptions"
                                         :key="`${typeOption.value}-${directionOption.value}`"
-                                        :command="{ type: typeOption.value, direction: directionOption.value }"
-                                        :class="{ 'drawing-option-selected': isSelectedDrawingBufferStopOption(typeOption.value, directionOption.value) }">
+                                        :command="{ type: typeOption.value, direction: directionOption.value }">
                                         {{ directionOption.label }}
                                     </el-dropdown-item>
                                 </template>
                             </el-dropdown-menu>
                         </template>
                     </el-dropdown>
-                    <el-button :icon="Platform" :disabled="isSelectMode" @click="setDrawingObject('p')">{{ t('stationLayout.draw.platform')
+                    <el-button size="small" :icon="Platform" :disabled="isSelectMode" :type="getDrawingButtonType('p')"
+                        @click="setDrawingObject('p')">{{ t('stationLayout.draw.platform')
                         }}</el-button>
-                    <el-button :icon="EditPen" :disabled="isSelectMode" @click="setDrawingObject('a')">{{ t('stationLayout.draw.annotation')
+                    <el-button size="small" :icon="EditPen" :disabled="isSelectMode" :type="getDrawingButtonType('a')"
+                        @click="setDrawingObject('a')">{{ t('stationLayout.draw.annotation')
                         }}</el-button>
                 </el-button-group>
             </div>
@@ -2197,33 +2549,34 @@ watch(
             <div class="toolbar-group">
                 <span class="toolbar-group-label">{{ t('stationLayout.group.tools') }}</span>
                 <el-button-group>
-                    <el-button :icon="Aim" @click="showCrossPoint">{{ t('stationLayout.tools.showCrossPoint')
+                    <el-button size="small" :icon="Aim" @click="showCrossPoint">{{ t('stationLayout.tools.showCrossPoint')
                         }}</el-button>
-                    <el-button :icon="Hide" @click="hideCrossPoint">{{ t('stationLayout.tools.hideCrossPoint')
+                    <el-button size="small" :icon="Hide" @click="hideCrossPoint">{{ t('stationLayout.tools.hideCrossPoint')
                         }}</el-button>
-                    <el-button :icon="Connection" @click="snapLine">{{ t('stationLayout.tools.snapLine') }}</el-button>
-                    <el-button :icon="Scissor" @click="autoSeparateLine">{{ t('stationLayout.tools.separateLine')
+                    <el-button size="small" :icon="Connection" @click="snapLine">{{ t('stationLayout.tools.snapLine') }}</el-button>
+                    <el-button size="small" :icon="Scissor" @click="autoSeparateLine">{{ t('stationLayout.tools.separateLine')
                         }}</el-button>
-                    <el-button :icon="Share" @click="autoGenerateNode">{{ t('stationLayout.tools.generateNode')
+                    <el-button size="small" :icon="Share" @click="autoGenerateNode">{{ t('stationLayout.tools.generateNode')
                         }}</el-button>
-                        <el-button :icon="Share" @click="autoMergeNode">节点合并</el-button>
-                    <el-button :icon="SetUp" @click="autoGenerateSwitch">{{ t('stationLayout.tools.generateSwitch')
+                        <el-button size="small" :icon="Share" @click="autoMergeNode">节点合并</el-button>
+                    <el-button size="small" :icon="Connection" @click="openEquipmentBindingCorrectionDialog">修正设备绑定节点</el-button>
+                    <el-button size="small" :icon="SetUp" @click="autoGenerateSwitch">{{ t('stationLayout.tools.generateSwitch')
                         }}</el-button>
-                    <el-button :icon="Connection" @click="autoGenerateCurve">{{ t('stationLayout.tools.generateCurve')
+                    <el-button size="small" :icon="Connection" @click="autoGenerateCurve">{{ t('stationLayout.tools.generateCurve')
                         }}</el-button>
                 </el-button-group>
             </div>
             <el-divider direction="vertical" />
             <div class="toolbar-group">
                 <span class="toolbar-group-label">路径测试</span>
-                <el-button :icon="Guide" :type="routeTesterVisible ? 'primary' : 'default'" @click="toggleRouteTester">
+                <el-button size="small" :icon="Guide" :type="routeTesterVisible ? 'primary' : 'default'" @click="toggleRouteTester">
                     路径搜索
                 </el-button>
             </div>
             <el-divider direction="vertical" />
             <div class="toolbar-group">
                 <span class="toolbar-group-label">Cell</span>
-                <el-button :icon="Magnet" :type="cellPanelVisible ? 'primary' : 'default'" @click="toggleCellPanel">
+                <el-button size="small" :icon="Magnet" :type="cellPanelVisible ? 'primary' : 'default'" @click="toggleCellPanel">
                     轨道电路区段
                 </el-button>
             </div>
@@ -2255,7 +2608,7 @@ watch(
             <el-divider direction="vertical" />
             <div class="toolbar-group">
                 <span class="toolbar-group-label">显示样式</span>
-                <el-button :icon="SetUp" @click="layoutStyleDialogVisible = true">配置</el-button>
+                <el-button size="small" :icon="SetUp" @click="layoutStyleDialogVisible = true">配置</el-button>
             </div>
             <el-divider direction="vertical" />
             <div class="toolbar-group scale-toolbar-group">
@@ -2323,7 +2676,8 @@ watch(
                     @selected-annotation-change="handleSelectedAnnotationChange"
                     @selected-equipment-change="handleSelectedEquipmentChange"
                     @route-node-pick="handleRouteNodePick"
-                    @cell-name-click="handleCellNameClick" />
+                    @cell-name-click="handleCellNameClick"
+                    @delete-selection-request="deleteSelection" />
             </div>
             <aside v-if="cellPanelVisible" class="cell-side-panel">
                 <div class="cell-side-panel-header">
@@ -2648,40 +3002,32 @@ watch(
 }
 
 .station-toolbar {
-    flex: 0 0 auto;
+    row-gap: 4px;
+}
+
+.station-scheme-toolbar-group {
+    flex: 1 1 360px;
     max-width: 100%;
-    overflow-x: auto;
-    overflow-y: hidden;
-    border-bottom: 1px solid var(--el-border-color-light);
-    background-color: #fff;
-    height: 32px;
 }
 
-.station-toolbar .el-menu-item,
-.station-toolbar :deep(.el-sub-menu__title) {
-    height: 32px;
-    line-height: 32px;
-    font-size: 13px;
-}
-
-.station-scheme-menu-item {
-    padding: 0 10px;
-    cursor: default;
-}
-
-.station-scheme-menu-item:hover {
-    background-color: transparent !important;
-}
-
-.station-scheme-selector {
-    display: flex;
+.station-scheme-control-row {
+    display: inline-flex;
     align-items: center;
+    flex: 1 1 300px;
+    flex-wrap: nowrap;
     gap: 6px;
-    height: 32px;
+    min-width: 0;
+    max-width: 100%;
 }
 
 .station-scheme-select {
-    width: 240px;
+    flex: 1 1 220px;
+    min-width: 0;
+    max-width: 240px;
+}
+
+.station-scheme-control-row :deep(.el-button) {
+    flex: 0 0 auto;
 }
 
 .station-scheme-manager {
@@ -2709,6 +3055,32 @@ watch(
     display: flex;
     align-items: center;
     gap: 6px;
+}
+
+.binding-correction-dialog {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.binding-correction-summary {
+    font-size: 13px;
+    line-height: 1.5;
+    color: #606266;
+}
+
+.binding-correction-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
+}
+
+.binding-correction-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
 }
 
 .layout-style-table {
@@ -2831,10 +3203,18 @@ watch(
     border-radius: 0;
 }
 
-:global(.drawing-option-selected) {
-    color: var(--el-color-primary);
-    font-weight: 600;
-    background-color: var(--el-color-primary-light-9);
+.drawing-object-button-label {
+    display: inline-block;
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: bottom;
+}
+
+:global(.drawing-object-dropdown-menu) {
+    max-height: 360px;
+    overflow-y: auto;
 }
 
 :global(.drawing-option-group-label) {
@@ -2846,20 +3226,6 @@ watch(
 
 :global(.drawing-option-group-label.is-disabled) {
     opacity: 1;
-}
-
-:global(.signal-type-dropdown-menu) {
-    padding: 0;
-}
-
-:global(.signal-type-cascader-item) {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-}
-
-:global(.signal-type-cascader-panel) {
-    border: 0;
 }
 
 .mode-toggle :deep(.el-radio-button__inner) {

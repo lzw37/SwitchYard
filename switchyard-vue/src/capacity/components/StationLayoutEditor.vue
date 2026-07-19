@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import {
     DEFAULT_BUFFER_STOP_DIRECTION,
     DEFAULT_BUFFER_STOP_TYPE,
@@ -32,7 +32,7 @@ const props = defineProps({
     highlightedRouteArrowVisible: { type: Boolean, default: true },
     readonly: { type: Boolean, default: false },
 });
-const emit = defineEmits(["selected-annotation-change", "selected-equipment-change", "route-node-pick", "cell-name-click"]);
+const emit = defineEmits(["selected-annotation-change", "selected-equipment-change", "route-node-pick", "cell-name-click", "delete-selection-request"]);
 
 const svgRef = ref(null);
 const defaultEditorDisplayStyles = {
@@ -50,6 +50,7 @@ const defaultEditorDisplayStyles = {
 
 const editModeCode = ref(0);
 const drawingObject = ref("l");
+const isDrawingMode = computed(() => editModeCode.value === 1 && !props.readonly);
 const mouseGridSnapModeCode = ref(1);
 const mouseObjectSnapModeCode = ref(1);
 const snapDistance = computed(() => Math.max(0, toFiniteNumber(props.objectSnapDistance)));
@@ -697,7 +698,7 @@ function canHoverElement(kind, id) {
         return Boolean(props.routePickTarget) || editModeCode.value === 0 || (editModeCode.value === 1 && drawingObject.value === "w");
     }
     if (props.routePickTarget) {
-        return Boolean(equipment.bindingNodeID ?? equipment.BindingNodeID);
+        return Boolean(getEquipmentBindingNodeId(equipment));
     }
     return editModeCode.value === 0;
 }
@@ -1246,13 +1247,13 @@ function applyState(state) {
     tracks.value = state.tracks || [];
     curves.value = (state.curves || []).map((curve) => normalizeCurve(curve));
     nodes.value = state.nodes || [];
-    signals.value = (state.signals || []).map((signal) => normalizeNamedEquipment(signal));
-    insulationJoints.value = state.insulationJoints || [];
+    signals.value = (state.signals || []).map((signal) => normalizeNamedBoundEquipment(signal));
+    insulationJoints.value = (state.insulationJoints || []).map((ij) => normalizeBoundEquipment(ij));
     bufferStops.value = (state.bufferStops || []).map((bufferStop) => normalizeBufferStop(bufferStop));
     platforms.value = (state.platforms || []).map((platform) => normalizeNamedEquipment(platform));
-    switches.value = (state.switches || []).map((sw) => normalizeNamedEquipment(sw));
+    switches.value = (state.switches || []).map((sw) => normalizeNamedBoundEquipment(sw));
     annotations.value = state.annotations || [];
-    syncSignalsToBindingNodes();
+    syncBoundEquipmentToBindingNodes();
     selectedLineIds.value = new Set(state.selectedLineIds || []);
     selectedNodeIds.value = new Set(state.selectedNodeIds || []);
     selectedSignalIds.value = new Set(state.selectedSignalIds || []);
@@ -1311,28 +1312,78 @@ function normalizeNamedEquipment(equipment) {
     return normalized;
 }
 
+function getEquipmentBindingNodeId(equipment) {
+    return String(
+        equipment?.bindingNodeID ??
+        equipment?.BindingNodeID ??
+        equipment?.bindingNodeId ??
+        equipment?.BindingNodeId ??
+        ""
+    ).trim();
+}
+
+function setEquipmentBindingNodeId(equipment, nodeId) {
+    if (!equipment) return "";
+
+    const normalizedNodeId = String(nodeId ?? "").trim();
+    equipment.bindingNodeID = normalizedNodeId;
+    delete equipment.BindingNodeID;
+    delete equipment.bindingNodeId;
+    delete equipment.BindingNodeId;
+    return normalizedNodeId;
+}
+
+function normalizeBoundEquipment(equipment) {
+    const normalized = { ...(equipment || {}) };
+    setEquipmentBindingNodeId(normalized, getEquipmentBindingNodeId(normalized));
+    return normalized;
+}
+
+function normalizeNamedBoundEquipment(equipment) {
+    return normalizeBoundEquipment(normalizeNamedEquipment(equipment));
+}
+
 function normalizeBufferStop(bufferStop) {
-    const normalized = { ...(bufferStop || {}) };
+    const normalized = normalizeBoundEquipment(bufferStop);
     normalized.direction = normalizeBufferStopDirection(normalized.direction ?? normalized.Direction);
     normalized.type = normalizeBufferStopType(normalized.type ?? normalized.Type ?? normalized.style ?? normalized.Style);
     return normalized;
 }
 
-function syncSignalPositionToBindingNode(signal) {
-    const bindingNode = getNodeById(signal?.bindingNodeID);
-    if (!bindingNode) return signal;
+function syncEquipmentPositionToBindingNode(equipment) {
+    const bindingNode = getNodeById(getEquipmentBindingNodeId(equipment));
+    if (!bindingNode) return null;
 
-    signal.position = {
-        ...(signal.position || {}),
+    setEquipmentBindingNodeId(equipment, bindingNode.id);
+
+    equipment.position = {
+        ...(equipment.position || {}),
         x: toFiniteNumber(bindingNode.x),
         y: toFiniteNumber(bindingNode.y),
     };
+    return bindingNode;
+}
+
+function syncSignalPositionToBindingNode(signal) {
+    syncEquipmentPositionToBindingNode(signal);
     return signal;
 }
 
-function syncSignalsToBindingNodes() {
+function syncBoundEquipmentToBindingNodes() {
     for (const signal of signals.value) {
-        syncSignalPositionToBindingNode(signal);
+        syncEquipmentPositionToBindingNode(signal);
+    }
+    for (const insulationJoint of insulationJoints.value) {
+        syncEquipmentPositionToBindingNode(insulationJoint);
+    }
+    for (const bufferStop of bufferStops.value) {
+        syncEquipmentPositionToBindingNode(bufferStop);
+    }
+    for (const sw of switches.value) {
+        const bindingNode = syncEquipmentPositionToBindingNode(sw);
+        if (bindingNode) {
+            sw.branchVectorList = buildSwitchBranchVectorList(bindingNode);
+        }
     }
 }
 
@@ -1364,9 +1415,23 @@ function clearSelectedEquipment() {
     emitSelectedEquipmentChange();
 }
 
+function clearTemporaryDrawingState() {
+    tempLine.value = null;
+    tempSignal.value = { ...tempSignal.value, visible: false };
+    tempInsulationJoint.value = { ...tempInsulationJoint.value, visible: false };
+    tempBufferStop.value = { ...tempBufferStop.value, visible: false };
+    tempNode.value = { ...tempNode.value, visible: false };
+    tempPlatformPosition.value = null;
+    perpendicularPoint.value = null;
+}
+
 function setEditMode(code) {
     clearHoveredElement();
-    editModeCode.value = props.readonly ? 0 : Number(code);
+    const nextEditModeCode = props.readonly ? 0 : Number(code);
+    if (nextEditModeCode !== 1 || editModeCode.value !== 1) {
+        clearTemporaryDrawingState();
+    }
+    editModeCode.value = nextEditModeCode;
 }
 
 function setDrawingSignalType(type) {
@@ -1384,18 +1449,24 @@ function setDrawingBufferStopType(type) {
 function setDrawingObject(obj) {
     if (props.readonly) return;
 
-    drawingObject.value = obj;
-    if (obj === "s") {
+    const nextDrawingObject = String(obj || "");
+    if (drawingObject.value !== nextDrawingObject) {
+        clearTemporaryDrawingState();
+    }
+    drawingObject.value = nextDrawingObject;
+    if (!isDrawingMode.value) return;
+
+    if (nextDrawingObject === "s") {
         startDrawingSignal();
-    } else if (obj === "i") {
+    } else if (nextDrawingObject === "i") {
         startDrawingInsulationJoint();
-    } else if (obj === "e") {
+    } else if (nextDrawingObject === "e") {
         startDrawingBufferStop();
-    } else if (obj === "n") {
+    } else if (nextDrawingObject === "n") {
         startDrawingNode();
-    } else if (obj === "p") {
+    } else if (nextDrawingObject === "p") {
         startDrawingPlatform();
-    } else if (obj === "a") {
+    } else if (nextDrawingObject === "a") {
         cancelSelectionBox();
     }
 }
@@ -1786,14 +1857,98 @@ function deleteLine() {
     emitSelectedEquipmentChange();
 }
 
-function deleteNode() {
+function getBoundEquipmentForNodeIds(nodeIds) {
+    const normalizedNodeIds = new Set([...nodeIds].map((nodeId) => String(nodeId ?? "")));
+    const collect = (kind, collection) => collection
+        .filter((equipment) => normalizedNodeIds.has(getEquipmentBindingNodeId(equipment)))
+        .map((equipment) => ({
+            kind,
+            id: equipment.id,
+            name: equipment.name || equipment.id || "",
+            bindingNodeID: getEquipmentBindingNodeId(equipment),
+        }));
+
+    return [
+        ...collect("signal", signals.value),
+        ...collect("insulationJoint", insulationJoints.value),
+        ...collect("switch", switches.value),
+        ...collect("bufferStop", bufferStops.value),
+    ];
+}
+
+function summarizeBoundEquipment(boundEquipment) {
+    return boundEquipment.reduce((counts, equipment) => {
+        counts[equipment.kind] = (counts[equipment.kind] || 0) + 1;
+        return counts;
+    }, {});
+}
+
+function getSelectedNodeDeletePlan() {
+    const nodeIds = [...selectedNodeIds.value];
+    const boundEquipment = getBoundEquipmentForNodeIds(new Set(nodeIds));
+    return {
+        nodeIds,
+        boundEquipment,
+        counts: summarizeBoundEquipment(boundEquipment),
+        requiresConfirmation: boundEquipment.length > 0,
+    };
+}
+
+function deleteBoundEquipment(boundEquipment) {
+    const idsByKind = boundEquipment.reduce((result, equipment) => {
+        if (!result[equipment.kind]) result[equipment.kind] = new Set();
+        result[equipment.kind].add(equipment.id);
+        return result;
+    }, {});
+
+    if (idsByKind.signal) {
+        signals.value = signals.value.filter((signal) => !idsByKind.signal.has(signal.id));
+        selectedSignalIds.value = new Set([...selectedSignalIds.value].filter((id) => !idsByKind.signal.has(id)));
+    }
+    if (idsByKind.insulationJoint) {
+        insulationJoints.value = insulationJoints.value.filter((ij) => !idsByKind.insulationJoint.has(ij.id));
+        selectedInsulationJointIds.value = new Set([...selectedInsulationJointIds.value].filter((id) => !idsByKind.insulationJoint.has(id)));
+    }
+    if (idsByKind.switch) {
+        switches.value = switches.value.filter((sw) => !idsByKind.switch.has(sw.id));
+        selectedSwitchIds.value = new Set([...selectedSwitchIds.value].filter((id) => !idsByKind.switch.has(id)));
+    }
+    if (idsByKind.bufferStop) {
+        bufferStops.value = bufferStops.value.filter((bufferStop) => !idsByKind.bufferStop.has(bufferStop.id));
+        selectedBufferStopIds.value = new Set([...selectedBufferStopIds.value].filter((id) => !idsByKind.bufferStop.has(id)));
+    }
+    clearLastSelectedEquipment((selection) => Boolean(idsByKind[selection.kind]?.has(selection.id)));
+}
+
+function deleteNode(options = {}) {
     if (props.readonly) return;
 
     if (selectedNodeIds.value.size === 0) return;
+    const selectedIds = new Set(selectedNodeIds.value);
+    const boundEquipment = getBoundEquipmentForNodeIds(selectedIds);
+    if (boundEquipment.length > 0 && options?.deleteBoundEquipment !== true) {
+        return {
+            requiresConfirmation: true,
+            nodeIds: [...selectedIds],
+            boundEquipment,
+            counts: summarizeBoundEquipment(boundEquipment),
+        };
+    }
+
     executeMutation(() => {
-        nodes.value = nodes.value.filter((n) => !selectedNodeIds.value.has(n.id));
+        nodes.value = nodes.value.filter((n) => !selectedIds.has(n.id));
         selectedNodeIds.value = new Set();
+        if (options?.deleteBoundEquipment === true) {
+            deleteBoundEquipment(boundEquipment);
+        }
     });
+    emitSelectedEquipmentChange();
+    return {
+        deleted: true,
+        nodeIds: [...selectedIds],
+        boundEquipment,
+        counts: summarizeBoundEquipment(boundEquipment),
+    };
 }
 
 function deleteEquipment() {
@@ -2114,14 +2269,15 @@ function autoMergeNode() {
         }
 
         const rebindToMergedNode = (equipment, afterRebind) => {
-            const targetNodeID = resolveNodeID(equipment.bindingNodeID);
+            const targetNodeID = resolveNodeID(getEquipmentBindingNodeId(equipment));
             const targetNode = nodeByID.get(targetNodeID);
             if (!targetNode) return;
-            equipment.bindingNodeID = targetNodeID;
-            if (equipment.position) {
-                equipment.position.x = targetNode.x;
-                equipment.position.y = targetNode.y;
-            }
+            setEquipmentBindingNodeId(equipment, targetNodeID);
+            equipment.position = {
+                ...(equipment.position || {}),
+                x: targetNode.x,
+                y: targetNode.y,
+            };
             if (afterRebind) {
                 afterRebind(equipment, targetNode);
             }
@@ -2132,6 +2288,9 @@ function autoMergeNode() {
         }
         for (const insulationJoint of insulationJoints.value) {
             rebindToMergedNode(insulationJoint);
+        }
+        for (const bufferStop of bufferStops.value) {
+            rebindToMergedNode(bufferStop);
         }
         for (const sw of switches.value) {
             rebindToMergedNode(sw, (switchItem, targetNode) => {
@@ -2411,12 +2570,24 @@ function drawingNodeMouseDown(x, y) {
 function autoGenerateNodes() {
     executeMutation(() => {
         const previousNodeByID = new Map(nodes.value.map((node) => [node.id, { ...node }]));
+        const previousNodes = nodes.value.map((node) => ({ ...node }));
         nodes.value = [];
         const nodeList = [];
+        const findReusablePreviousNode = (x, y) => {
+            const point = { x: Number(x), y: Number(y) };
+            return previousNodes.find((node) => isSamePoint(node, point)) || null;
+        };
         const getOrCreateNode = (x, y) => {
-            const found = nodeList.find((n) => Number(n.x) === Number(x) && Number(n.y) === Number(y));
+            const found = nodeList.find((n) => isSamePoint(n, { x, y }));
             if (found) return found;
-            const n = { id: nextId(), x: Number(x), y: Number(y), adjacentLineIDList: [] };
+            const previousNode = findReusablePreviousNode(x, y);
+            const n = {
+                ...(previousNode || {}),
+                id: String(previousNode?.id ?? "").trim() || nextId(),
+                x: Number(x),
+                y: Number(y),
+                adjacentLineIDList: [],
+            };
             nodeList.push(n);
             return n;
         };
@@ -2510,12 +2681,13 @@ function buildSwitchCandidate(node) {
     };
 }
 
-function buildSwitch(node, candidate = buildSwitchCandidate(node)) {
+function buildSwitch(node, candidate = buildSwitchCandidate(node), options = {}) {
     if (!candidate) return null;
-    const id = nextId();
+    const id = String(options.id ?? "").trim() || nextId();
+    const name = options.name == null ? id : String(options.name).trim();
     return {
         id,
-        name: id,
+        name: name || id,
         type: candidate.type,
         position: { x: node.x, y: node.y },
         bindingNodeID: node.id,
@@ -2528,7 +2700,7 @@ function normalizeSwitchTypeValue(type) {
 }
 
 function isSwitchBoundToNode(sw, node) {
-    return String(sw?.bindingNodeID ?? "") === String(node?.id ?? "");
+    return getEquipmentBindingNodeId(sw) === String(node?.id ?? "");
 }
 
 function isSwitchBranchListMatchedWithNode(sw, node) {
@@ -2566,39 +2738,125 @@ function trimSelectedSwitchesToExisting() {
     clearLastSelectedEquipment((selection) => selection.kind === "switch" && !switchIdSet.has(selection.id));
 }
 
+function createSwitchPlanItem(node, candidate, existingSwitchesAtNode = []) {
+    const preservedSwitch = existingSwitchesAtNode[0] || null;
+    const previousLineIds = preservedSwitch
+        ? (Array.isArray(preservedSwitch.branchVectorList) ? preservedSwitch.branchVectorList : [])
+            .map((vector) => String(vector?.lineID ?? ""))
+            .filter((lineID) => lineID !== "")
+        : [];
+
+    return {
+        nodeId: String(node.id),
+        nodeName: String(node.name || node.id || ""),
+        switchId: String(preservedSwitch?.id || ""),
+        switchName: String(preservedSwitch?.name || preservedSwitch?.id || ""),
+        existingSwitchIds: existingSwitchesAtNode.map((sw) => String(sw.id || "")).filter((id) => id !== ""),
+        previousLineIds,
+        nextLineIds: getNodeAdjacentLineIds(node),
+        candidate,
+    };
+}
+
+function getAutoGenerateSwitchPlan() {
+    const createItems = [];
+    const reconstructItems = [];
+
+    for (const node of nodes.value) {
+        const candidate = buildSwitchCandidate(node);
+        if (!candidate) continue;
+
+        const existingSwitchesAtNode = switches.value.filter((sw) => isSwitchBoundToNode(sw, node));
+        if (existingSwitchesAtNode.length === 0) {
+            createItems.push(createSwitchPlanItem(node, candidate));
+            continue;
+        }
+
+        const primarySwitch = existingSwitchesAtNode[0];
+        if (!isSwitchBranchListMatchedWithNode(primarySwitch, node)) {
+            reconstructItems.push(createSwitchPlanItem(node, candidate, existingSwitchesAtNode));
+        }
+    }
+
+    return {
+        createItems,
+        reconstructItems,
+        createCount: createItems.length,
+        reconstructCount: reconstructItems.length,
+        requiresConfirmation: reconstructItems.length > 0,
+    };
+}
+
+function applyAutoGenerateSwitchPlan(plan) {
+    const reconstructNodeIdSet = new Set((plan?.reconstructItems || []).map((item) => String(item.nodeId)));
+    const nextSwitches = switches.value.filter((sw) => !reconstructNodeIdSet.has(getEquipmentBindingNodeId(sw)));
+
+    for (const item of plan?.reconstructItems || []) {
+        const node = getNodeById(item.nodeId);
+        if (!node) continue;
+
+        const candidate = buildSwitchCandidate(node);
+        if (!candidate) continue;
+
+        const rebuiltSwitch = buildSwitch(node, candidate, {
+            id: item.switchId,
+            name: item.switchName,
+        });
+        if (rebuiltSwitch) nextSwitches.push(rebuiltSwitch);
+    }
+
+    for (const item of plan?.createItems || []) {
+        const node = getNodeById(item.nodeId);
+        if (!node) continue;
+        if (switches.value.some((sw) => isSwitchBoundToNode(sw, node))) continue;
+
+        const candidate = buildSwitchCandidate(node);
+        const createdSwitch = buildSwitch(node, candidate);
+        if (createdSwitch) nextSwitches.push(createdSwitch);
+    }
+
+    switches.value = nextSwitches;
+}
+
 function generateSwitchAtNode(node) {
     const candidate = buildSwitchCandidate(node);
     if (!candidate) return;
 
     const matchedSwitch = findMatchedSwitchForNode(node, candidate);
     const existingSwitchesAtNode = switches.value.filter((sw) => isSwitchBoundToNode(sw, node));
+    const preservedSwitch = existingSwitchesAtNode[0] || null;
 
     if (matchedSwitch && existingSwitchesAtNode.length === 1) return;
 
     executeMutation(() => {
         switches.value = switches.value.filter((sw) => !isSwitchBoundToNode(sw, node));
-        switches.value.push(matchedSwitch || buildSwitch(node, candidate));
+        switches.value.push(matchedSwitch || buildSwitch(node, candidate, {
+            id: preservedSwitch?.id,
+            name: preservedSwitch?.name,
+        }));
         trimSelectedSwitchesToExisting();
     });
     emitSelectedEquipmentChange();
 }
 
-function autoGenerateSwitches() {
+function autoGenerateSwitches(options = {}) {
+    const plan = options.plan || getAutoGenerateSwitchPlan();
+    if (plan.requiresConfirmation && options.confirmed !== true) {
+        return plan;
+    }
+    if (plan.createCount === 0 && plan.reconstructCount === 0) {
+        return plan;
+    }
+
     executeMutation(() => {
-        const generated = [];
-
-        for (const n of nodes.value) {
-            const candidate = buildSwitchCandidate(n);
-            if (!candidate) continue;
-
-            const matchedSwitch = findMatchedSwitchForNode(n, candidate);
-            generated.push(matchedSwitch || buildSwitch(n, candidate));
-        }
-
-        switches.value = generated;
+        applyAutoGenerateSwitchPlan(plan);
         trimSelectedSwitchesToExisting();
     });
     emitSelectedEquipmentChange();
+    return {
+        ...plan,
+        applied: true,
+    };
 }
 
 function clampCos(value) {
@@ -2859,13 +3117,13 @@ function loadDataFromJson(jsonObj) {
         tracks.value = (jsonObj?.tracks || []).map((track) => ({ name: "", ...track }));
         curves.value = (jsonObj?.curves || []).map((curve) => normalizeCurve(curve));
         nodes.value = (jsonObj?.nodes || []).map((node) => ({ ...node }));
-        signals.value = (jsonObj?.signals || []).map((signal) => normalizeNamedEquipment(signal));
-        insulationJoints.value = (jsonObj?.insulationJoints || []).map((ij) => ({ ...ij }));
+        signals.value = (jsonObj?.signals || []).map((signal) => normalizeNamedBoundEquipment(signal));
+        insulationJoints.value = (jsonObj?.insulationJoints || []).map((ij) => normalizeBoundEquipment(ij));
         bufferStops.value = (jsonObj?.bufferStops || []).map((bufferStop) => normalizeBufferStop(bufferStop));
         platforms.value = (jsonObj?.platforms || []).map((platform) => normalizeNamedEquipment(platform));
-        switches.value = (jsonObj?.switches || []).map((sw) => normalizeNamedEquipment(sw));
+        switches.value = (jsonObj?.switches || []).map((sw) => normalizeNamedBoundEquipment(sw));
         annotations.value = (jsonObj?.annotations || []).map((annotation) => normalizeAnnotation(annotation));
-        syncSignalsToBindingNodes();
+        syncBoundEquipmentToBindingNodes();
         if (!applyGridSettingsMetadata(jsonObj?.metadata?.gridSettings)) {
             alignGridOriginToCurrentContent();
         }
@@ -2924,7 +3182,7 @@ function emitRouteNodePick(nodeId) {
 function handleRouteEquipmentPick(event, equipment) {
     if (!props.routePickTarget) return false;
 
-    const bindingNodeID = equipment?.bindingNodeID ?? equipment?.BindingNodeID;
+    const bindingNodeID = getEquipmentBindingNodeId(equipment);
     if (!bindingNodeID) return false;
 
     event.preventDefault();
@@ -3011,11 +3269,15 @@ function updateSelectedEquipment(kind, id, patch) {
         if (kind === "signal" || kind === "switch" || kind === "platform") {
             Object.assign(target, normalizeNamedEquipment(target));
         }
-        if (kind === "signal") {
-            syncSignalPositionToBindingNode(target);
-        }
         if (kind === "bufferStop") {
             Object.assign(target, normalizeBufferStop(target));
+        }
+        if (["signal", "insulationJoint", "bufferStop", "switch"].includes(kind)) {
+            setEquipmentBindingNodeId(target, getEquipmentBindingNodeId(target));
+            const bindingNode = syncEquipmentPositionToBindingNode(target);
+            if (kind === "switch" && bindingNode) {
+                target.branchVectorList = buildSwitchBranchVectorList(bindingNode);
+            }
         }
 
         if (kind === "link" && patch.id != null && patch.id !== previousId) {
@@ -3080,8 +3342,9 @@ function updateLinesForNode(node) {
 }
 
 function syncBoundEquipmentForNode(node) {
-    const isBoundToNode = (equipment) => String(equipment?.bindingNodeID || "") === String(node.id);
+    const isBoundToNode = (equipment) => getEquipmentBindingNodeId(equipment) === String(node.id);
     const moveEquipmentToNode = (equipment) => {
+        setEquipmentBindingNodeId(equipment, node.id);
         equipment.position = {
             ...(equipment.position || {}),
             x: toFiniteNumber(node.x),
@@ -3103,6 +3366,180 @@ function syncBoundEquipmentForNode(node) {
         moveEquipmentToNode(sw);
         sw.branchVectorList = buildSwitchBranchVectorList(node);
     }
+}
+
+function getEquipmentPositionForBindingCorrection(equipment) {
+    if (!equipment?.position) return null;
+    const x = Number(equipment.position.x);
+    const y = Number(equipment.position.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+    return { x, y };
+}
+
+function getBindingCorrectionEquipmentCollection(kind) {
+    if (kind === "signal") return signals.value;
+    if (kind === "insulationJoint") return insulationJoints.value;
+    if (kind === "bufferStop") return bufferStops.value;
+    if (kind === "switch") return switches.value;
+    return [];
+}
+
+function getBindingCorrectionKindLabel(kind) {
+    if (kind === "signal") return "信号机";
+    if (kind === "insulationJoint") return "钢轨绝缘";
+    if (kind === "bufferStop") return "车挡";
+    if (kind === "switch") return "道岔";
+    return "设备";
+}
+
+function getEquipmentBindingNodeCorrectionPlan() {
+    if (props.readonly) {
+        return { totalCount: 0, items: [], alreadyCorrectCount: 0, unmatchedCount: 0 };
+    }
+
+    const items = [];
+    let totalCount = 0;
+    let alreadyCorrectCount = 0;
+    let unmatchedCount = 0;
+
+    const collectItem = (kind, equipment) => {
+        totalCount += 1;
+        const position = getEquipmentPositionForBindingCorrection(equipment);
+        if (!position) {
+            unmatchedCount += 1;
+            return;
+        }
+
+        const node = findNodeAtPosition(position.x, position.y);
+        if (!node) {
+            unmatchedCount += 1;
+            return;
+        }
+
+        const previousBindingNodeID = getEquipmentBindingNodeId(equipment);
+        const nextBindingNodeID = String(node.id ?? "").trim();
+        if (previousBindingNodeID === nextBindingNodeID) {
+            alreadyCorrectCount += 1;
+            return;
+        }
+
+        const kindLabel = getBindingCorrectionKindLabel(kind);
+        const equipmentId = String(equipment?.id ?? "");
+        const equipmentName = getEquipmentDisplayName(equipment, kindLabel);
+        items.push({
+            key: `${kind}:${equipmentId}:${previousBindingNodeID}:${nextBindingNodeID}`,
+            kind,
+            kindLabel,
+            equipmentId,
+            equipmentName,
+            previousBindingNodeID,
+            nextBindingNodeID,
+            nodeName: String(node.name || node.id || ""),
+            position: {
+                x: roundLayoutNumber(position.x),
+                y: roundLayoutNumber(position.y),
+            },
+        });
+    };
+
+    signals.value.forEach((signal) => collectItem("signal", signal));
+    insulationJoints.value.forEach((insulationJoint) => collectItem("insulationJoint", insulationJoint));
+    bufferStops.value.forEach((bufferStop) => collectItem("bufferStop", bufferStop));
+    switches.value.forEach((sw) => collectItem("switch", sw));
+
+    return {
+        totalCount,
+        items,
+        alreadyCorrectCount,
+        unmatchedCount,
+    };
+}
+
+function applyEquipmentBindingNodeCorrections(items = []) {
+    if (props.readonly) {
+        return { requestedCount: 0, fixedCount: 0, alreadyCorrectCount: 0, unmatchedCount: 0 };
+    }
+
+    const selectedItems = Array.isArray(items) ? items : [];
+    const updates = [];
+    let alreadyCorrectCount = 0;
+    let unmatchedCount = 0;
+
+    for (const item of selectedItems) {
+        const kind = String(item?.kind || "");
+        const equipmentId = String(item?.equipmentId ?? "");
+        const equipment = getBindingCorrectionEquipmentCollection(kind)
+            .find((candidate) => String(candidate?.id ?? "") === equipmentId);
+        if (!equipment) {
+            unmatchedCount += 1;
+            continue;
+        }
+
+        const position = getEquipmentPositionForBindingCorrection(equipment);
+        if (!position) {
+            unmatchedCount += 1;
+            continue;
+        }
+
+        const node = findNodeAtPosition(position.x, position.y);
+        if (!node) {
+            unmatchedCount += 1;
+            continue;
+        }
+
+        const previousBindingNodeID = getEquipmentBindingNodeId(equipment);
+        const plannedBindingNodeID = String(item?.nextBindingNodeID ?? "").trim();
+        const nextBindingNodeID = String(node.id ?? "").trim();
+        if (plannedBindingNodeID && plannedBindingNodeID !== nextBindingNodeID) {
+            unmatchedCount += 1;
+            continue;
+        }
+        if (previousBindingNodeID === nextBindingNodeID) {
+            alreadyCorrectCount += 1;
+            continue;
+        }
+
+        updates.push({
+            kind,
+            equipment,
+            node,
+            previousBindingNodeID,
+            nextBindingNodeID,
+        });
+    }
+
+    if (updates.length > 0) {
+        executeMutation(() => {
+            for (const update of updates) {
+                setEquipmentBindingNodeId(update.equipment, update.nextBindingNodeID);
+                if (update.kind === "switch") {
+                    update.equipment.branchVectorList = buildSwitchBranchVectorList(update.node);
+                }
+            }
+        });
+        emitSelectedEquipmentChange();
+    }
+
+    return {
+        requestedCount: selectedItems.length,
+        fixedCount: updates.length,
+        alreadyCorrectCount,
+        unmatchedCount,
+        fixedEquipment: updates.map((update) => ({
+            kind: update.kind,
+            id: update.equipment.id,
+            previousBindingNodeID: update.previousBindingNodeID,
+            nextBindingNodeID: update.nextBindingNodeID,
+        })),
+    };
+}
+
+function correctEquipmentBindingNodesByPosition() {
+    const plan = getEquipmentBindingNodeCorrectionPlan();
+    return {
+        ...plan,
+        ...applyEquipmentBindingNodeCorrections(plan.items),
+    };
 }
 
 function refreshCurvesForChangedGeometry({ lineIds = new Set(), nodeIds = new Set() } = {}) {
@@ -3612,6 +4049,10 @@ function onMouseUp(event) {
 }
 
 function onKeydown(event) {
+    if (event.key === "Delete") {
+        event.preventDefault();
+        emit("delete-selection-request");
+    }
     if (event.key === "Escape") {
         cancelSelectionBox();
         finishNodeInteraction();
@@ -4322,6 +4763,12 @@ onMounted(() => {
     svgRef.value?.focus({ preventScroll: true });
 });
 
+watch(() => props.readonly, (readonly) => {
+    if (readonly) {
+        setEditMode(0);
+    }
+});
+
 onBeforeUnmount(() => {
     removeSelectionBoxWindowListeners();
     removeAnchorInteractionWindowListeners();
@@ -4345,6 +4792,7 @@ defineExpose({
     clearSelectedNodes,
     clearSelectedEquipment,
     deleteLine,
+    getSelectedNodeDeletePlan,
     deleteNode,
     deleteEquipment,
     revoke,
@@ -4357,6 +4805,10 @@ defineExpose({
     snapLine,
     autoMergeNode,
     autoGenerateNodes,
+    getEquipmentBindingNodeCorrectionPlan,
+    applyEquipmentBindingNodeCorrections,
+    correctEquipmentBindingNodesByPosition,
+    getAutoGenerateSwitchPlan,
     autoGenerateSwitches,
     autoGenerateCurves,
     startDrawingSignal,
@@ -4414,7 +4866,7 @@ defineExpose({
                     :cy="tailCircle.cy" :r="tailCircle.r" />
             </g>
 
-            <line v-if="tempLine" class="track track-temp" :x1="screenX(tempLine.x1)" :y1="screenY(tempLine.y1)"
+            <line v-if="isDrawingMode && drawingObject === 'l' && tempLine" class="track track-temp" :x1="screenX(tempLine.x1)" :y1="screenY(tempLine.y1)"
                 :x2="screenX(tempLine.x2)" :y2="screenY(tempLine.y2)"
                 :style="{ strokeWidth: editorDisplayStyles.track.strokeWidth }" />
 
@@ -4425,7 +4877,7 @@ defineExpose({
             <circle v-for="(cp, idx) in crossPoints" :key="`cp-${idx}`" class="crosspoint" :class="`rela${cp.code}`"
                 :cx="screenX(cp.x)" :cy="screenY(cp.y)" r="4" />
 
-            <circle v-if="perpendicularPoint" class="perpendicular" :cx="screenX(perpendicularPoint.x)"
+            <circle v-if="isDrawingMode && perpendicularPoint" class="perpendicular" :cx="screenX(perpendicularPoint.x)"
                 :cy="screenY(perpendicularPoint.y)" r="4" />
         </g>
 
@@ -4437,7 +4889,7 @@ defineExpose({
                 @mouseleave="clearHoveredElement('node', node.id)"
                 @mousedown="handleNodeClick($event, node.id)" />
 
-            <circle v-if="tempNode.visible" class="node node-temp" :cx="screenX(tempNode.x)" :cy="screenY(tempNode.y)"
+            <circle v-if="isDrawingMode && drawingObject === 'n' && tempNode.visible" class="node node-temp" :cx="screenX(tempNode.x)" :cy="screenY(tempNode.y)"
                 :r="editorDisplayStyles.node.radius" />
         </g>
 
@@ -4487,7 +4939,7 @@ defineExpose({
                 {{ getEquipmentDisplayName(signal, "SIGNAL") }}
             </text>
 
-            <g v-if="tempSignal.visible" id="tempsignal"
+            <g v-if="isDrawingMode && drawingObject === 's' && tempSignal.visible" id="tempsignal"
                 :class="['signal', signalStyleClass(tempSignal), 'signal-temp']"
                 :transform="tempSignalTransform()">
                 <component :is="element.tag" v-for="(element, index) in signalStyleElements(tempSignal)"
@@ -4507,7 +4959,7 @@ defineExpose({
                 <line x1="0" y1="-5" x2="0" y2="5" />
             </g>
 
-            <g v-if="tempInsulationJoint.visible" id="tempinsulationjoint" class="insulationjoint insulationjoint-temp">
+            <g v-if="isDrawingMode && drawingObject === 'i' && tempInsulationJoint.visible" id="tempinsulationjoint" class="insulationjoint insulationjoint-temp">
                 <line :x1="screenX(tempInsulationJoint.x)" :x2="screenX(tempInsulationJoint.x)"
                     :y1="screenY(tempInsulationJoint.y) - 5" :y2="screenY(tempInsulationJoint.y) + 5" />
             </g>
@@ -4531,7 +4983,7 @@ defineExpose({
                     :style="elementHighlightStyle('bufferStop', bufferStop.id)" />
             </g>
 
-            <g v-if="tempBufferStop.visible" id="tempbufferstop"
+            <g v-if="isDrawingMode && drawingObject === 'e' && tempBufferStop.visible" id="tempbufferstop"
                 :class="['bufferstop', bufferStopStyleClass(tempBufferStop), 'bufferstop-temp']"
                 :transform="tempBufferStopTransform()">
                 <g class="bufferstop-shape" :style="bufferStopLineStyle()"
@@ -4575,7 +5027,7 @@ defineExpose({
                 </text>
             </g>
 
-            <rect class="platform platform-temp" :x="screenX(tempPlatformView.x)" :y="screenY(tempPlatformView.y)"
+            <rect v-if="isDrawingMode && drawingObject === 'p' && tempPlatformPosition" class="platform platform-temp" :x="screenX(tempPlatformView.x)" :y="screenY(tempPlatformView.y)"
                 :width="screenDeltaX(tempPlatformView.width)" :height="screenDeltaY(tempPlatformView.height)"
                 :style="platformLineDisplayStyle()" />
         </g>
@@ -4601,11 +5053,11 @@ defineExpose({
         <g id="cursor">
             <rect v-if="selectionBoxView.visible" class="selection-box" :x="selectionBoxView.x"
                 :y="selectionBoxView.y" :width="selectionBoxView.width" :height="selectionBoxView.height" />
-            <g v-if="editModeCode === 1 && drawingObject === 's'" class="drawing-hint signal-direction-hint">
+            <g v-if="isDrawingMode && drawingObject === 's'" class="drawing-hint signal-direction-hint">
                 <rect x="12" y="12" width="245" height="28" rx="4" />
                 <text x="24" y="31">方向: 按 w / e / s / d 设置</text>
             </g>
-            <template v-if="editModeCode !== 0">
+            <template v-if="isDrawingMode">
                 <rect class="cursor" :x="screenX(cursorParam.x) - cursorParam.size / 2"
                     :y="screenY(cursorParam.y) - cursorParam.size / 2" :width="cursorParam.size"
                     :height="cursorParam.size" />
