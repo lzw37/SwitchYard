@@ -1528,10 +1528,70 @@
     "stationLayout3d": {
         "buttons": {
             "refresh": "Refresh layout",
-            "resetView": "Reset view"
+            "resetView": "Reset view",
+            "resetPlayback": "Reset playback",
+            "play": "Play",
+            "pause": "Pause",
+            "editSubTable": "Edit sub-table",
+            "createSubTable": "Add sub-table"
         },
         "labels": {
-            "showLabels": "Show labels"
+            "showLabels": "Show labels",
+            "operationPlan": "Operation plan",
+            "playbackScope": "Scope",
+            "train": "Train",
+            "speed": "Speed",
+            "subTableName": "Sub-table name",
+            "subTableCells": "Track circuit sections"
+        },
+        "placeholders": {
+            "selectOperationPlan": "Select an operation plan",
+            "selectTrain": "Select a train",
+            "allTrains": "All trains in station",
+            "subTableName": "Enter a sub-table name",
+            "selectSubTableCells": "Select track circuit sections"
+        },
+        "playbackModes": {
+            "single": "Single train",
+            "all": "Station"
+        },
+        "playback": {
+            "selectTrain": "Select a train",
+            "singleSummary": "{train} · {movementCount} movements",
+            "allSummary": "{trainCount} trains · {routeCount} valid routes"
+        },
+        "status": {
+            "notReady": "Not ready",
+            "playing": "Playing",
+            "finished": "Finished",
+            "paused": "Paused"
+        },
+        "phase": {
+            "waiting": "Waiting",
+            "selecting": "Select",
+            "locking": "Locking route",
+            "movingWithProgress": "Train moving {progress}%",
+            "finishedWithCount": "Finished {finished}/{total}",
+            "allActive": "Locking {locking} / Moving {moving}"
+        },
+        "gantt": {
+            "title": "Plan Gantt",
+            "cellAxis": "Track circuit section",
+            "summary": "{laneCount} sections · {blockCount} occupations",
+            "subTableSummary": "{selected}/{total} track circuit sections",
+            "subTableFallbackName": "Sub-table {index}",
+            "noPlayableWork": "No playable work",
+            "emptySubTable": "No track circuit sections are selected in this sub-table",
+            "emptyOccupation": "The current plan has no displayable track circuit occupation",
+            "emptyAllPlan": "The current operation plan has no playable route with parseable start/end times",
+            "emptyTrainPlan": "The current train has no operation plan",
+            "emptyRoute": "The current train has no playable route"
+        },
+        "dialogs": {
+            "createGanttSubTable": "Create Gantt sub-table",
+            "editGanttSubTable": "Edit Gantt sub-table",
+            "cancel": "Cancel",
+            "confirm": "OK"
         },
         "metrics": {
             "tracks": "Tracks",
@@ -1540,7 +1600,12 @@
         },
         "messages": {
             "empty": "The selected instance has no layout data to render",
-            "loadFailed": "Failed to load 3D station layout"
+            "loadFailed": "Failed to load 3D station layout",
+            "loadOperationPlansFailed": "Failed to load operation plans",
+            "loadStationRoutesFailed": "Failed to load routes",
+            "loadTrainOperationPlanFailed": "Failed to load train operation plan",
+            "loadRouteTimesFailed": "Failed to load route occupation times",
+            "subTableNameRequired": "Enter a sub-table name"
         }
     },
     "calculationParameters": {

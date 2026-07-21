@@ -3155,8 +3155,10 @@ watch(
 .toolbar-field-item {
     display: flex;
     align-items: center;
+    flex-wrap: nowrap;
     gap: 6px;
     cursor: default;
+    white-space: nowrap;
 }
 
 .toolbar-field-item:hover {
@@ -3235,7 +3237,11 @@ watch(
 }
 
 .toolbar-group-label {
+    display: inline-flex;
+    align-items: center;
+    min-height: 24px;
     font-size: 12px;
+    line-height: 1;
     color: #909399;
     white-space: nowrap;
     font-weight: 500;
@@ -3284,8 +3290,12 @@ watch(
 }
 
 .scale-slider-label {
+    display: inline-flex;
+    align-items: center;
     width: 12px;
+    min-height: 24px;
     font-size: 12px;
+    line-height: 1;
     color: #606266;
 }
 
@@ -3326,7 +3336,11 @@ watch(
 }
 
 .annotation-field-label {
+    display: inline-flex;
+    align-items: center;
+    min-height: 24px;
     font-size: 12px;
+    line-height: 1;
     color: #606266;
     white-space: nowrap;
 }
@@ -3408,10 +3422,38 @@ watch(
     padding-bottom: 8px;
 }
 
+.equipment-form :deep(.el-form-item) {
+    margin-bottom: 10px;
+}
+
+.equipment-form :deep(.el-form-item__label) {
+    display: inline-flex;
+    align-items: center;
+    min-height: 18px;
+    padding: 0;
+    margin-bottom: 4px;
+    line-height: 18px;
+}
+
+.equipment-form :deep(.el-form-item__content) {
+    min-width: 0;
+    line-height: normal;
+}
+
+.equipment-form :deep(.el-input),
+.equipment-form :deep(.el-select),
+.equipment-form :deep(.el-input-number) {
+    width: 100%;
+}
+
 .equipment-form-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 0 10px;
+}
+
+.equipment-form-grid :deep(.el-form-item) {
+    min-width: 0;
 }
 
 .equipment-form-grid :deep(.el-input-number) {
@@ -3506,6 +3548,25 @@ watch(
 
 .cell-form {
     padding-right: 4px;
+}
+
+.cell-form :deep(.el-form-item) {
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.cell-form :deep(.el-form-item__label) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    min-height: 24px;
+    padding-right: 8px;
+    line-height: 16px;
+}
+
+.cell-form :deep(.el-form-item__content) {
+    min-width: 0;
+    line-height: normal;
 }
 
 .cell-link-toolbar {
@@ -3606,11 +3667,14 @@ watch(
 
 .route-search-form {
     display: grid;
-    gap: 8px;
+    gap: 6px;
 }
 
 .route-search-label {
+    display: inline-flex;
+    align-items: center;
     font-size: 12px;
+    line-height: 16px;
     font-weight: 500;
     color: #606266;
 }
@@ -3667,11 +3731,14 @@ watch(
 
 .dwg-extract-form {
     display: grid;
-    gap: 10px;
+    gap: 6px;
 }
 
 .dwg-extract-label {
+    display: inline-flex;
+    align-items: center;
     font-size: 13px;
+    line-height: 18px;
     color: #606266;
     font-weight: 500;
 }

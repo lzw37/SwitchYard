@@ -1516,10 +1516,70 @@
     "stationLayout3d": {
         "buttons": {
             "refresh": "刷新布置图",
-            "resetView": "重置视角"
+            "resetView": "重置视角",
+            "resetPlayback": "重置播放",
+            "play": "播放",
+            "pause": "暂停",
+            "editSubTable": "编辑子表",
+            "createSubTable": "新增子表"
         },
         "labels": {
-            "showLabels": "显示标签"
+            "showLabels": "显示标签",
+            "operationPlan": "作业计划",
+            "playbackScope": "范围",
+            "train": "列车",
+            "speed": "速度",
+            "subTableName": "子表名称",
+            "subTableCells": "显示轨道电路区段"
+        },
+        "placeholders": {
+            "selectOperationPlan": "请选择作业计划",
+            "selectTrain": "请选择列车",
+            "allTrains": "全站全部列车",
+            "subTableName": "请输入子表名称",
+            "selectSubTableCells": "请选择要显示的轨道电路区段"
+        },
+        "playbackModes": {
+            "single": "单列车",
+            "all": "全站"
+        },
+        "playback": {
+            "selectTrain": "请选择一列列车",
+            "singleSummary": "{train} · {movementCount} 个作业",
+            "allSummary": "{trainCount} 列车 · {routeCount} 条有效进路"
+        },
+        "status": {
+            "notReady": "未就绪",
+            "playing": "播放中",
+            "finished": "已结束",
+            "paused": "已暂停"
+        },
+        "phase": {
+            "waiting": "等待",
+            "selecting": "待选择",
+            "locking": "办理进路",
+            "movingWithProgress": "列车走行 {progress}%",
+            "finishedWithCount": "已完成 {finished}/{total}",
+            "allActive": "办理 {locking} / 走行 {moving}"
+        },
+        "gantt": {
+            "title": "计划甘特图",
+            "cellAxis": "轨道电路区段",
+            "summary": "{laneCount} 个区段 · {blockCount} 条占用",
+            "subTableSummary": "{selected}/{total} 个轨道电路区段",
+            "subTableFallbackName": "子表 {index}",
+            "noPlayableWork": "暂无可播放作业",
+            "emptySubTable": "当前子表没有选择轨道电路区段",
+            "emptyOccupation": "当前计划没有可显示的轨道电路区段占用",
+            "emptyAllPlan": "当前作业计划没有包含可解析开始/结束时间的可播放进路",
+            "emptyTrainPlan": "当前列车没有作业计划",
+            "emptyRoute": "当前列车没有可播放的进路"
+        },
+        "dialogs": {
+            "createGanttSubTable": "新建甘特图子表",
+            "editGanttSubTable": "编辑甘特图子表",
+            "cancel": "取消",
+            "confirm": "确认"
         },
         "metrics": {
             "tracks": "轨道",
@@ -1528,7 +1588,12 @@
         },
         "messages": {
             "empty": "当前实例没有可显示的布置图数据",
-            "loadFailed": "加载 3D 布置图失败"
+            "loadFailed": "加载 3D 布置图失败",
+            "loadOperationPlansFailed": "加载作业计划失败",
+            "loadStationRoutesFailed": "加载进路失败",
+            "loadTrainOperationPlanFailed": "加载列车作业计划失败",
+            "loadRouteTimesFailed": "加载进路占用时间失败",
+            "subTableNameRequired": "请输入子表名称"
         }
     },
     "calculationParameters": {
