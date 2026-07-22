@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useI18n } from 'vue-i18n';
 import axios from "@/utils/axios";
 import { ElMessage, ElMessageBox } from "element-plus";
@@ -88,7 +88,7 @@ function fitDataRectInLayout(rect, options = {}) {
 }
 
 function fitFullLayout() {
-    const rect = stationLayoutEditorRef.value?.getFullViewRect?.({ screenMargin: 80 });
+    const rect = stationLayoutEditorRef.value?.getFullViewRect?.();
     fitDataRectInLayout(rect, { screenMargin: 48, padding: 160 });
 }
 
@@ -96,9 +96,12 @@ const selectedAnnotation = ref(null);
 const selectedEquipment = ref(null);
 const equipmentDrawerVisible = ref(false);
 const equipmentForm = ref({});
+const equipmentFormBaseline = ref({});
 const equipmentSaving = ref(false);
 const activeEditMode = ref(0);
 const isSelectMode = computed(() => activeEditMode.value === 0);
+const isEquipmentBatchMode = computed(() => Boolean(selectedEquipment.value?.batch));
+let f4HoldPreviousEditMode = null;
 const routeTesterVisible = ref(false);
 const routeSearchLoading = ref(false);
 const routeNodePickTarget = ref("");
@@ -287,6 +290,9 @@ const equipmentKindLabels = {
 const equipmentDrawerTitle = computed(() => {
     if (!selectedEquipment.value) return "设备信息";
     const label = equipmentKindLabels[selectedEquipment.value.kind] || "设备";
+    if (isEquipmentBatchMode.value) {
+        return `${label} 批处理（${selectedEquipment.value.count || 0} 个）`;
+    }
     return `${label} ${selectedEquipment.value.id || ""}`;
 });
 
@@ -306,6 +312,48 @@ function handleEditModeChange(mode) {
         routeNodePickTarget.value = "";
         setDrawMode();
     }
+}
+
+function isStationLayoutVisible() {
+    const frame = stationLayoutEditorFrameRef.value;
+    return Boolean(frame?.isConnected && frame.getClientRects().length > 0);
+}
+
+function isEditableShortcutTarget(target) {
+    if (!(target instanceof HTMLElement)) return false;
+    return Boolean(target.isContentEditable || target.closest("input, textarea, select, [contenteditable='true'], [contenteditable='']"));
+}
+
+function isPlainF4Event(event) {
+    return event.key === "F4" && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey;
+}
+
+function handleStationLayoutKeydown(event) {
+    if (!isPlainF4Event(event)) return;
+    if (!isStationLayoutVisible() || isEditableShortcutTarget(event.target)) return;
+
+    event.preventDefault();
+    if (f4HoldPreviousEditMode != null) return;
+
+    f4HoldPreviousEditMode = activeEditMode.value;
+    if (activeEditMode.value === 1) {
+        setSelectMode();
+    }
+}
+
+function restoreF4HoldEditMode() {
+    const previousEditMode = f4HoldPreviousEditMode;
+    f4HoldPreviousEditMode = null;
+    if (previousEditMode === 1) {
+        setDrawMode();
+    }
+}
+
+function handleStationLayoutKeyup(event) {
+    if (event.key !== "F4" || f4HoldPreviousEditMode == null) return;
+
+    event.preventDefault();
+    restoreF4HoldEditMode();
 }
 
 function toggleRouteTester() {
@@ -1550,6 +1598,7 @@ function handleSelectedEquipmentChange(equipment) {
             addLinkToCell(equipment.id);
         }
         equipmentForm.value = {};
+        equipmentFormBaseline.value = {};
         selectedEquipment.value = null;
         return;
     }
@@ -1557,10 +1606,16 @@ function handleSelectedEquipmentChange(equipment) {
     selectedEquipment.value = equipment;
     if (!equipment) {
         equipmentForm.value = {};
+        equipmentFormBaseline.value = {};
         return;
     }
 
     equipmentForm.value = buildEquipmentForm(equipment);
+    equipmentFormBaseline.value = clonePlainObject(equipmentForm.value);
+}
+
+function clonePlainObject(value) {
+    return JSON.parse(JSON.stringify(value || {}));
 }
 
 function readSignalType(data) {
@@ -1576,6 +1631,12 @@ function readEquipmentType(data) {
 }
 
 function buildEquipmentForm(equipment) {
+    if (equipment?.batch) return buildBatchEquipmentForm(equipment);
+
+    return buildSingleEquipmentForm(equipment);
+}
+
+function buildSingleEquipmentForm(equipment) {
     const data = equipment?.data || {};
     const shouldFallbackNameToId = ["signal", "switch", "platform"].includes(equipment?.kind);
     const equipmentType = equipment?.kind === "signal"
@@ -1613,9 +1674,89 @@ function buildEquipmentForm(equipment) {
     return form;
 }
 
+function getEmptyBatchEquipmentValue(field) {
+    return ["x", "y", "x1", "y1", "x2", "y2", "width", "height"].includes(field) ? null : "";
+}
+
+function areEquipmentFormValuesEqual(a, b) {
+    return Object.is(a, b);
+}
+
+function getCommonEquipmentFormValue(forms, field) {
+    if (!Array.isArray(forms) || forms.length === 0) return getEmptyBatchEquipmentValue(field);
+
+    const firstValue = forms[0]?.[field];
+    return forms.every((form) => areEquipmentFormValuesEqual(form?.[field], firstValue))
+        ? firstValue
+        : getEmptyBatchEquipmentValue(field);
+}
+
+function buildBatchEquipmentForm(equipment) {
+    const itemForms = (Array.isArray(equipment?.items) ? equipment.items : [])
+        .map((item) => buildSingleEquipmentForm({
+            kind: equipment.kind,
+            id: item?.id,
+            data: item?.data || {},
+        }));
+
+    const representativeForm = buildSingleEquipmentForm(equipment);
+    if (itemForms.length === 0) {
+        return {
+            ...representativeForm,
+            originalId: "",
+            id: "",
+        };
+    }
+
+    const batchForm = {
+        ...representativeForm,
+        originalId: "",
+    };
+
+    for (const field of Object.keys(batchForm)) {
+        if (field === "kind" || field === "originalId") continue;
+        batchForm[field] = getCommonEquipmentFormValue(itemForms, field);
+    }
+
+    return batchForm;
+}
+
 function toNumber(value) {
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function normalizedString(value) {
+    return String(value ?? "").trim();
+}
+
+function normalizedUpperString(value) {
+    return normalizedString(value).toUpperCase();
+}
+
+function shouldApplyEquipmentField(field, currentValue, options = {}) {
+    if (options.changedOnly !== true) return true;
+
+    const baselineValue = options.baseline?.[field];
+    if ((baselineValue === null || baselineValue === undefined) && currentValue !== baselineValue) return true;
+
+    const normalize = options.normalize || ((value) => value);
+    return normalize(currentValue) !== normalize(baselineValue);
+}
+
+function assignEquipmentPatchField(patch, patchKey, formField, value, options = {}) {
+    if (shouldApplyEquipmentField(formField, value, options)) {
+        patch[patchKey] = options.normalize ? options.normalize(value) : value;
+    }
+}
+
+function assignEquipmentPositionPatch(patch, form, options = {}) {
+    const positionPatch = {};
+    assignEquipmentPatchField(positionPatch, "x", "x", form.x, { ...options, normalize: toNumber });
+    assignEquipmentPatchField(positionPatch, "y", "y", form.y, { ...options, normalize: toNumber });
+    if (Object.keys(positionPatch).length > 0) {
+        patch.position = positionPatch;
+    }
 }
 
 function buildEquipmentPatchFromForm() {
@@ -1677,30 +1818,117 @@ function buildEquipmentPatchFromForm() {
     return patch;
 }
 
+function buildEquipmentPatchFromFormForSave(options = {}) {
+    const form = equipmentForm.value;
+    const patch = {};
+    const includeId = options.includeId !== false;
+    if (includeId) {
+        patch.id = normalizedString(form.id);
+    }
+
+    if (form.kind === "signal") {
+        assignEquipmentPatchField(patch, "name", "name", form.name, { ...options, normalize: normalizedString });
+        assignEquipmentPatchField(patch, "type", "type", form.type, { ...options, normalize: normalizedString });
+        assignEquipmentPatchField(patch, "direction", "direction", form.direction, { ...options, normalize: normalizedString });
+        assignEquipmentPatchField(patch, "bindingNodeID", "bindingNodeID", form.bindingNodeID, { ...options, normalize: normalizedString });
+        assignEquipmentPositionPatch(patch, form, options);
+    } else if (form.kind === "switch") {
+        assignEquipmentPatchField(patch, "name", "name", form.name, { ...options, normalize: normalizedString });
+        assignEquipmentPatchField(patch, "type", "type", form.type, { ...options, normalize: normalizedString });
+        assignEquipmentPatchField(patch, "bindingNodeID", "bindingNodeID", form.bindingNodeID, { ...options, normalize: normalizedString });
+        assignEquipmentPositionPatch(patch, form, options);
+        if (shouldApplyEquipmentField("branchVectorListText", form.branchVectorListText, {
+            ...options,
+            normalize: (value) => String(value ?? "").trim(),
+        })) {
+            try {
+                const branchVectorList = form.branchVectorListText?.trim()
+                    ? JSON.parse(form.branchVectorListText)
+                    : [];
+                if (!Array.isArray(branchVectorList)) {
+                    throw new Error("branchVectorList must be an array.");
+                }
+                patch.branchVectorList = branchVectorList;
+            } catch (err) {
+                ElMessage.error("道岔分支向量 JSON 格式不正确");
+                return null;
+            }
+        }
+    } else if (form.kind === "platform") {
+        assignEquipmentPatchField(patch, "name", "name", form.name, { ...options, normalize: normalizedString });
+        assignEquipmentPatchField(patch, "x", "x", form.x, { ...options, normalize: toNumber });
+        assignEquipmentPatchField(patch, "y", "y", form.y, { ...options, normalize: toNumber });
+        assignEquipmentPatchField(patch, "width", "width", form.width, { ...options, normalize: toNumber });
+        assignEquipmentPatchField(patch, "height", "height", form.height, { ...options, normalize: toNumber });
+    } else if (form.kind === "insulationJoint") {
+        assignEquipmentPatchField(patch, "type", "type", form.type, { ...options, normalize: normalizedString });
+        assignEquipmentPatchField(patch, "bindingNodeID", "bindingNodeID", form.bindingNodeID, { ...options, normalize: normalizedString });
+        assignEquipmentPositionPatch(patch, form, options);
+    } else if (form.kind === "bufferStop") {
+        assignEquipmentPatchField(patch, "type", "type", form.type || DEFAULT_BUFFER_STOP_TYPE, { ...options, normalize: normalizedString });
+        assignEquipmentPatchField(patch, "direction", "direction", form.direction || DEFAULT_BUFFER_STOP_DIRECTION, { ...options, normalize: normalizedString });
+        assignEquipmentPatchField(patch, "bindingNodeID", "bindingNodeID", form.bindingNodeID, { ...options, normalize: normalizedString });
+        assignEquipmentPositionPatch(patch, form, options);
+    } else if (form.kind === "link") {
+        assignEquipmentPatchField(patch, "name", "name", form.name, { ...options, normalize: normalizedString });
+        assignEquipmentPatchField(patch, "x1", "x1", form.x1, { ...options, normalize: toNumber });
+        assignEquipmentPatchField(patch, "y1", "y1", form.y1, { ...options, normalize: toNumber });
+        assignEquipmentPatchField(patch, "x2", "x2", form.x2, { ...options, normalize: toNumber });
+        assignEquipmentPatchField(patch, "y2", "y2", form.y2, { ...options, normalize: toNumber });
+        assignEquipmentPatchField(patch, "fromNodeID", "fromNodeID", form.fromNodeID, { ...options, normalize: normalizedString });
+        assignEquipmentPatchField(patch, "toNodeID", "toNodeID", form.toNodeID, { ...options, normalize: normalizedString });
+        assignEquipmentPatchField(patch, "arrowDirection", "arrowDirection", form.arrowDirection, { ...options, normalize: normalizedUpperString });
+        assignEquipmentPatchField(patch, "arrowType", "arrowType", form.arrowType, { ...options, normalize: normalizedUpperString });
+    }
+
+    return patch;
+}
+
 async function saveEquipmentForm() {
     if (!selectedEquipment.value) return;
-    const patch = buildEquipmentPatchFromForm();
+    const patch = buildEquipmentPatchFromFormForSave(isEquipmentBatchMode.value
+        ? { changedOnly: true, includeId: false, baseline: equipmentFormBaseline.value }
+        : {}
+    );
     if (!patch) return;
-    if (!patch.id) {
+    if (!isEquipmentBatchMode.value && !patch.id) {
         ElMessage.warning("设备 ID 不能为空");
+        return;
+    }
+
+    if (isEquipmentBatchMode.value && Object.keys(patch).length === 0) {
+        ElMessage.warning("请先修改需要批处理的字段");
         return;
     }
 
     equipmentSaving.value = true;
     try {
         const previousId = equipmentForm.value.originalId;
-        stationLayoutEditorRef.value?.updateSelectedEquipment(
-            selectedEquipment.value.kind,
-            previousId,
-            patch
-        );
-        if (selectedEquipment.value.kind === "link") {
+        if (isEquipmentBatchMode.value) {
+            stationLayoutEditorRef.value?.updateSelectedEquipmentBatch(
+                selectedEquipment.value.kind,
+                selectedEquipment.value.ids || [],
+                patch
+            );
+        } else {
+            stationLayoutEditorRef.value?.updateSelectedEquipment(
+                selectedEquipment.value.kind,
+                previousId,
+                patch
+            );
+        }
+        if (!isEquipmentBatchMode.value && selectedEquipment.value.kind === "link") {
             updateCellLinkReferences(previousId, patch.id);
+            refreshLayoutSnapshot();
+        } else if (selectedEquipment.value.kind === "link") {
             refreshLayoutSnapshot();
         }
         const saved = await saveData({ silent: true });
         if (saved) {
-            equipmentForm.value.originalId = patch.id;
+            if (!isEquipmentBatchMode.value) {
+                equipmentForm.value.originalId = patch.id;
+            }
+            equipmentFormBaseline.value = clonePlainObject(equipmentForm.value);
         }
     } finally {
         equipmentSaving.value = false;
@@ -2078,8 +2306,17 @@ function extractDwgFile() {
 }
 
 onMounted(() => {
+    document.addEventListener("keydown", handleStationLayoutKeydown);
+    document.addEventListener("keyup", handleStationLayoutKeyup);
+    window.addEventListener("blur", restoreF4HoldEditMode);
     loadStationSchemes();
     getData();
+});
+
+onBeforeUnmount(() => {
+    document.removeEventListener("keydown", handleStationLayoutKeydown);
+    document.removeEventListener("keyup", handleStationLayoutKeyup);
+    window.removeEventListener("blur", restoreF4HoldEditMode);
 });
 
 watch(
@@ -2798,7 +3035,7 @@ watch(
                             <el-tag type="info">{{ equipmentKindLabels[equipmentForm.kind] || "设备" }}</el-tag>
                         </el-form-item>
                         <el-form-item label="ID">
-                            <el-input v-model="equipmentForm.id" />
+                            <el-input v-model="equipmentForm.id" :disabled="isEquipmentBatchMode" />
                         </el-form-item>
                         <el-form-item v-if="['link', 'signal', 'switch', 'platform'].includes(equipmentForm.kind)"
                             label="Name">

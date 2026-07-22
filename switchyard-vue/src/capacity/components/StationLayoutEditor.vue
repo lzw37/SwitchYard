@@ -63,6 +63,7 @@ const curveRadiusLineFitRatio = 0.98;
 const linkArrowShape = {
     length: 12,
     gap: 4,
+    namePadding: 6,
     halfWidth: 5,
     minLength: 4,
     tailLineSpacing: 4,
@@ -70,6 +71,8 @@ const linkArrowShape = {
     tailCircleGap: 1,
     tailGap: 3,
 };
+const lineNameWidthFallbackRatio = 0.62;
+let textMeasureContext = null;
 
 const grid = { visible: true, verticalSpace: 20, horizontalSpace: 20, originX: 0, originY: 0 };
 const cursorParam = ref({ size: 10, barVisible: false, barLength: 100, x: 200, y: 200 });
@@ -240,6 +243,7 @@ const selectedPlatformIds = ref(new Set());
 const selectedAnnotationIds = ref(new Set());
 const lastSelectedEquipmentRef = ref(null);
 const hoveredElement = ref(null);
+const selectableEquipmentKinds = ["link", "signal", "insulationJoint", "bufferStop", "switch", "platform"];
 
 const crossPoints = ref([]);
 const perpendicularPoint = ref(null);
@@ -486,7 +490,7 @@ function scrollDataRectIntoView(rect, options = {}) {
 }
 
 function getFullViewRect(options = {}) {
-    const screenMargin = Math.max(0, toFiniteNumber(options.screenMargin ?? canvasElementScreenMargin));
+    const screenMargin = Math.max(0, toFiniteNumber(options.screenMargin ?? 0));
     const rect = buildCanvasContentRect(screenMargin);
     return isCanvasContentRectEmpty(rect) ? null : { ...rect };
 }
@@ -761,22 +765,41 @@ function clearLastSelectedEquipment(predicate) {
 }
 
 function getSelectedEquipment() {
-    const lastSelectedEquipment = getLastSelectedEquipment();
-    if (lastSelectedEquipment) return lastSelectedEquipment;
-
-    const selected = [];
-    for (const kind of ["link", "signal", "insulationJoint", "bufferStop", "switch", "platform"]) {
+    const selectedGroups = [];
+    for (const kind of selectableEquipmentKinds) {
         const selectedIds = [...getEquipmentSelectedSet(kind)];
-        if (selectedIds.length !== 1) {
-            if (selectedIds.length > 1) return null;
+        if (selectedIds.length === 0) {
             continue;
         }
 
-        const equipment = getEquipmentCollection(kind).find((item) => item.id === selectedIds[0]);
-        if (equipment) selected.push(cloneEquipment(kind, equipment));
+        const selectedItems = selectedIds
+            .map((id) => getEquipmentCollection(kind).find((item) => item.id === id))
+            .filter((item) => item != null);
+        if (selectedItems.length > 0) {
+            selectedGroups.push({ kind, ids: selectedItems.map((item) => item.id), items: selectedItems });
+        }
     }
 
-    return selected.length === 1 ? selected[0] : null;
+    if (selectedGroups.length !== 1) return null;
+
+    const selectedGroup = selectedGroups[0];
+    if (selectedGroup.items.length === 1) {
+        return cloneEquipment(selectedGroup.kind, selectedGroup.items[0]);
+    }
+
+    const lastSelectedEquipment = lastSelectedEquipmentRef.value;
+    const representativeId = lastSelectedEquipment?.kind === selectedGroup.kind && selectedGroup.ids.some((id) => String(id) === String(lastSelectedEquipment.id))
+        ? lastSelectedEquipment.id
+        : selectedGroup.ids[0];
+    const representative = selectedGroup.items.find((item) => String(item.id) === String(representativeId)) || selectedGroup.items[0];
+
+    return {
+        ...cloneEquipment(selectedGroup.kind, representative),
+        batch: true,
+        ids: selectedGroup.ids,
+        items: selectedGroup.items.map((item) => cloneEquipment(selectedGroup.kind, item)),
+        count: selectedGroup.items.length,
+    };
 }
 
 function emitSelectedEquipmentChange() {
@@ -1415,6 +1438,24 @@ function clearSelectedEquipment() {
     emitSelectedEquipmentChange();
 }
 
+function clearAllSelectedElements(options = {}) {
+    const notify = options.notify !== false;
+
+    selectedLineIds.value = new Set();
+    selectedNodeIds.value = new Set();
+    clearSelectedDeviceIds();
+    selectedAnnotationIds.value = new Set();
+    lastSelectedEquipmentRef.value = null;
+    finishAnchorInteraction();
+    finishNodeInteraction();
+    finishAnnotationInteraction();
+
+    if (notify) {
+        emitSelectedAnnotationChange();
+        emitSelectedEquipmentChange();
+    }
+}
+
 function clearTemporaryDrawingState() {
     tempLine.value = null;
     tempSignal.value = { ...tempSignal.value, visible: false };
@@ -1838,9 +1879,23 @@ function endDrawLine() {
     tempLine.value = null;
 }
 
-function selectLine(lineId) {
-    selectedLineIds.value = new Set([...selectedLineIds.value, lineId]);
-    setLastSelectedEquipment("link", lineId);
+function selectElement(kind, id, event) {
+    if (!event?.ctrlKey) {
+        clearAllSelectedElements({ notify: false });
+    }
+
+    if (kind === "node") {
+        selectedNodeIds.value = new Set([...selectedNodeIds.value, id]);
+    } else if (kind === "annotation") {
+        selectedAnnotationIds.value = new Set([...selectedAnnotationIds.value, id]);
+    } else {
+        const selectedIds = new Set(getEquipmentSelectedSet(kind));
+        selectedIds.add(id);
+        setEquipmentSelectedSet(kind, selectedIds);
+        setLastSelectedEquipment(kind, id);
+    }
+
+    emitSelectedAnnotationChange();
     emitSelectedEquipmentChange();
 }
 
@@ -3133,9 +3188,9 @@ function loadDataFromJson(jsonObj) {
     emitSelectedAnnotationChange();
 }
 
-function handleLineClick(lineId) {
+function handleLineClick(event, lineId) {
     if (editModeCode.value !== 0) return;
-    selectLine(lineId);
+    selectElement("link", lineId, event);
 }
 
 function shouldHandleElementMouseDown(event) {
@@ -3163,8 +3218,7 @@ function handleNodeClick(event, nodeId) {
     if (!shouldHandleElementMouseDown(event)) return;
     event.preventDefault();
     cancelSelectionBox();
-    finishAnnotationInteraction();
-    selectedNodeIds.value = new Set([...selectedNodeIds.value, nodeId]);
+    selectElement("node", nodeId, event);
     if (!props.readonly) beginNodeMove(event, nodeId);
 }
 
@@ -3190,47 +3244,39 @@ function handleRouteEquipmentPick(event, equipment) {
     return emitRouteNodePick(bindingNodeID);
 }
 
-function selectEquipment(kind, id) {
-    const targetSet = new Set(getEquipmentSelectedSet(kind));
-    targetSet.add(id);
-    setEquipmentSelectedSet(kind, targetSet);
-    setLastSelectedEquipment(kind, id);
-    emitSelectedEquipmentChange();
-}
-
 function handleSignalClick(event, signalId) {
     if (handleRouteEquipmentPick(event, signals.value.find((signal) => signal.id === signalId))) return;
     if (!shouldHandleElementMouseDown(event)) return;
-    selectEquipment("signal", signalId);
+    selectElement("signal", signalId, event);
 }
 
 function handleInsulationJointClick(event, id) {
     if (handleRouteEquipmentPick(event, insulationJoints.value.find((ij) => ij.id === id))) return;
     if (!shouldHandleElementMouseDown(event)) return;
-    selectEquipment("insulationJoint", id);
+    selectElement("insulationJoint", id, event);
 }
 
 function handleBufferStopClick(event, id) {
     if (handleRouteEquipmentPick(event, bufferStops.value.find((bufferStop) => bufferStop.id === id))) return;
     if (!shouldHandleElementMouseDown(event)) return;
-    selectEquipment("bufferStop", id);
+    selectElement("bufferStop", id, event);
 }
 
 function handleSwitchClick(event, id) {
     if (handleRouteEquipmentPick(event, switches.value.find((sw) => sw.id === id))) return;
     if (!shouldHandleElementMouseDown(event)) return;
-    selectEquipment("switch", id);
+    selectElement("switch", id, event);
 }
 
 function handlePlatformClick(event, id) {
     if (handleRouteEquipmentPick(event, platforms.value.find((platform) => platform.id === id))) return;
     if (!shouldHandleElementMouseDown(event)) return;
-    selectEquipment("platform", id);
+    selectElement("platform", id, event);
 }
 
 function handleAnnotationClick(event, id) {
     if (!shouldHandleElementMouseDown(event)) return;
-    setSelectedAnnotationIds([...selectedAnnotationIds.value, id]);
+    selectElement("annotation", id, event);
 }
 
 function getAnnotationById(id) {
@@ -3245,54 +3291,84 @@ function updateSelectedEquipment(kind, id, patch) {
     if (!target) return;
 
     executeMutation(() => {
-        const previousId = target.id;
-        const previousLinkState = kind === "link"
-            ? {
-                fromNodeID: target.fromNodeID,
-                toNodeID: target.toNodeID,
-                x1: target.x1,
-                y1: target.y1,
-                x2: target.x2,
-                y2: target.y2,
-            }
-            : null;
-        const normalizedPatch = { ...patch };
-        if (patch.position) {
-            target.position = {
-                ...(target.position || {}),
-                ...patch.position,
-            };
-            normalizedPatch.position = target.position;
-        }
-        Object.assign(target, normalizedPatch);
+        applyEquipmentPatch(kind, target, patch);
+    });
 
-        if (kind === "signal" || kind === "switch" || kind === "platform") {
-            Object.assign(target, normalizeNamedEquipment(target));
-        }
-        if (kind === "bufferStop") {
-            Object.assign(target, normalizeBufferStop(target));
-        }
-        if (["signal", "insulationJoint", "bufferStop", "switch"].includes(kind)) {
-            setEquipmentBindingNodeId(target, getEquipmentBindingNodeId(target));
-            const bindingNode = syncEquipmentPositionToBindingNode(target);
-            if (kind === "switch" && bindingNode) {
-                target.branchVectorList = buildSwitchBranchVectorList(bindingNode);
-            }
-        }
+    emitSelectedEquipmentChange();
+}
 
-        if (kind === "link" && patch.id != null && patch.id !== previousId) {
-            updateLinkReferences(previousId, patch.id);
-            replaceSelectedEquipmentId(kind, previousId, patch.id);
-        } else if (patch.id != null && patch.id !== id) {
-            replaceSelectedEquipmentId(kind, id, patch.id);
-        }
+function updateSelectedEquipmentBatch(kind, ids, patch) {
+    if (props.readonly) return;
 
-        if (kind === "link" && previousLinkState) {
-            syncLineEndpointMoveEffects(target, previousLinkState);
+    const selectedIds = new Set((Array.isArray(ids) ? ids : []).map((id) => String(id ?? "")));
+    if (selectedIds.size === 0) return;
+
+    const normalizedPatch = { ...patch };
+    delete normalizedPatch.id;
+
+    const collection = getEquipmentCollection(kind);
+    const targets = collection.filter((item) => selectedIds.has(String(item.id)));
+    if (targets.length === 0) return;
+
+    executeMutation(() => {
+        for (const target of targets) {
+            applyEquipmentPatch(kind, target, normalizedPatch, { allowIdUpdate: false });
         }
     });
 
     emitSelectedEquipmentChange();
+}
+
+function applyEquipmentPatch(kind, target, patch, options = {}) {
+    const allowIdUpdate = options.allowIdUpdate !== false;
+    const previousId = target.id;
+    const previousLinkState = kind === "link"
+        ? {
+            fromNodeID: target.fromNodeID,
+            toNodeID: target.toNodeID,
+            x1: target.x1,
+            y1: target.y1,
+            x2: target.x2,
+            y2: target.y2,
+        }
+        : null;
+    const normalizedPatch = { ...patch };
+    if (!allowIdUpdate) {
+        delete normalizedPatch.id;
+    }
+    if (normalizedPatch.position) {
+        target.position = {
+            ...(target.position || {}),
+            ...normalizedPatch.position,
+        };
+        normalizedPatch.position = target.position;
+    }
+    Object.assign(target, normalizedPatch);
+
+    if (kind === "signal" || kind === "switch" || kind === "platform") {
+        Object.assign(target, normalizeNamedEquipment(target));
+    }
+    if (kind === "bufferStop") {
+        Object.assign(target, normalizeBufferStop(target));
+    }
+    if (["signal", "insulationJoint", "bufferStop", "switch"].includes(kind)) {
+        setEquipmentBindingNodeId(target, getEquipmentBindingNodeId(target));
+        const bindingNode = syncEquipmentPositionToBindingNode(target);
+        if (kind === "switch" && bindingNode) {
+            target.branchVectorList = buildSwitchBranchVectorList(bindingNode);
+        }
+    }
+
+    if (allowIdUpdate && kind === "link" && normalizedPatch.id != null && normalizedPatch.id !== previousId) {
+        updateLinkReferences(previousId, normalizedPatch.id);
+        replaceSelectedEquipmentId(kind, previousId, normalizedPatch.id);
+    } else if (allowIdUpdate && normalizedPatch.id != null && normalizedPatch.id !== previousId) {
+        replaceSelectedEquipmentId(kind, previousId, normalizedPatch.id);
+    }
+
+    if (kind === "link" && previousLinkState) {
+        syncLineEndpointMoveEffects(target, previousLinkState);
+    }
 }
 
 function hasOwnProperty(object, key) {
@@ -4017,6 +4093,7 @@ function onMouseDown(event) {
     if (editModeCode.value === 0) {
         if (event.button === 0) {
             event.preventDefault();
+            clearAllSelectedElements();
             startSelectionBox(event);
         }
         return;
@@ -4488,6 +4565,61 @@ function getLineName(line) {
     return String(line?.name || "").trim();
 }
 
+function getTextMeasureContext() {
+    if (textMeasureContext) return textMeasureContext;
+    if (typeof document === "undefined") return null;
+
+    textMeasureContext = document.createElement("canvas").getContext("2d");
+    return textMeasureContext;
+}
+
+function formatCanvasFontFamily(fontFamily) {
+    return String(fontFamily || "Arial")
+        .split(",")
+        .map((family) => family.trim())
+        .filter((family) => family !== "")
+        .map((family) => {
+            if (/^["'].*["']$/.test(family) || /^[\w-]+$/.test(family)) return family;
+            return `"${family.replace(/"/g, "\\\"")}"`;
+        })
+        .join(", ") || "Arial";
+}
+
+function approximateTextWidth(text, fontSize) {
+    return Array.from(String(text || "")).reduce((width, char) => {
+        return width + (/^[\x00-\x7F]$/.test(char) ? lineNameWidthFallbackRatio : 1);
+    }, 0) * fontSize;
+}
+
+function measureLineNameWidth(line) {
+    const lineName = getLineName(line);
+    if (!lineName) return 0;
+
+    const style = editorDisplayStyles.value.lineName;
+    const fontSize = Math.max(0, toFiniteNumber(style.fontSize));
+    const context = getTextMeasureContext();
+    if (context) {
+        context.font = `${style.fontStyle || "normal"} ${style.fontWeight || "normal"} ${fontSize}px ${formatCanvasFontFamily(style.fontFamily)}`;
+        const metrics = context.measureText(lineName);
+        if (Number.isFinite(metrics.width)) return metrics.width;
+    }
+
+    return approximateTextWidth(lineName, fontSize);
+}
+
+function getLinkArrowCenterGap(line, vector) {
+    const lineNameWidth = measureLineNameWidth(line);
+    if (lineNameWidth <= 0) return linkArrowShape.gap;
+
+    const lineNameFontSize = Math.max(0, toFiniteNumber(editorDisplayStyles.value.lineName.fontSize));
+    const projectedHalfNameSize = (
+        lineNameWidth * Math.abs(vector.ux) +
+        lineNameFontSize * Math.abs(vector.uy)
+    ) / 2;
+
+    return Math.max(linkArrowShape.gap, projectedHalfNameSize + linkArrowShape.namePadding);
+}
+
 function getLinkArrowDirection(line) {
     return String(line?.arrowDirection ?? line?.ArrowDirection ?? "").trim().toUpperCase();
 }
@@ -4653,7 +4785,8 @@ function buildLinkArrowViews(line) {
     const vector = getLinkScreenVector(line);
     if (!vector) return [];
 
-    const availableLength = vector.length / 2 - linkArrowShape.gap - getLinkArrowTailDepth(arrowType);
+    const centerGap = getLinkArrowCenterGap(line, vector);
+    const availableLength = vector.length / 2 - centerGap - getLinkArrowTailDepth(arrowType);
     if (availableLength < linkArrowShape.minLength) return [];
 
     const arrowLength = Math.min(linkArrowShape.length, availableLength / count);
@@ -4667,8 +4800,8 @@ function buildLinkArrowViews(line) {
             ? { x: vector.ux, y: vector.uy }
             : { x: -vector.ux, y: -vector.uy };
         const nearestTip = {
-            x: vector.center.x - direction.x * linkArrowShape.gap,
-            y: vector.center.y - direction.y * linkArrowShape.gap,
+            x: vector.center.x - direction.x * centerGap,
+            y: vector.center.y - direction.y * centerGap,
         };
 
         for (let index = 0; index < count; index++) {
@@ -4818,6 +4951,7 @@ defineExpose({
     startDrawingPlatform,
     updateSelectedAnnotation,
     updateSelectedEquipment,
+    updateSelectedEquipmentBatch,
     clearElements,
     getFullViewRect,
     scrollDataRectIntoView,
@@ -4841,13 +4975,13 @@ defineExpose({
                 :style="trackDisplayStyle(segment.line.id)"
                 @mouseenter="setHoveredElement('link', segment.line.id)"
                 @mouseleave="clearHoveredElement('link', segment.line.id)"
-                @mousedown.stop @click.stop="handleLineClick(segment.line.id)" />
+                @mousedown.stop @click.stop="handleLineClick($event, segment.line.id)" />
             <text v-for="lineName in lineNameViews" v-show="getLineName(lineName.line)" :key="`line-name-${lineName.id}`"
                 class="trackname" :class="{ 'name-selected': isLineHighlighted(lineName.line.id) }"
                 :style="textDisplayStyle('lineName', isLineHighlighted(lineName.line.id), elementHighlightColor('link', lineName.line.id))" :x="screenX(lineName.x)"
                 :y="screenY(lineName.y)" @mouseenter="setHoveredElement('link', lineName.line.id)"
                 @mouseleave="clearHoveredElement('link', lineName.line.id)"
-                @mousedown.stop @click.stop="handleLineClick(lineName.line.id)">
+                @mousedown.stop @click.stop="handleLineClick($event, lineName.line.id)">
                 {{ getLineName(lineName.line) }}
             </text>
 

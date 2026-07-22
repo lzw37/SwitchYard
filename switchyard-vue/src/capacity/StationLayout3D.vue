@@ -668,7 +668,19 @@ interface SceneMaterials {
 interface TrainCarObjectEntry {
     group: THREE.Group
     body: THREE.Mesh
-    head: THREE.Mesh
+    sidePanels: THREE.Mesh[]
+    endPanels: THREE.Mesh[]
+    ribs: THREE.Mesh[]
+    doorPanels: THREE.Mesh[]
+    underframe: THREE.Mesh
+    centerBeam: THREE.Mesh
+    bogieFrames: THREE.Mesh[]
+    axles: THREE.Mesh[]
+    wheels: THREE.Mesh[]
+    couplers: THREE.Mesh[]
+    bodyMaterial: THREE.MeshStandardMaterial
+    sidePanelMaterial: THREE.MeshStandardMaterial
+    detailMaterial: THREE.MeshStandardMaterial
     label: CSS2DObject
     labelElement: HTMLElement
 }
@@ -3708,36 +3720,123 @@ function addLabel(text: string, position: THREE.Vector3, className: string) {
     layoutGroup.add(label)
 }
 
+function createBoxMesh(material: THREE.Material) {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), material)
+    setShadow(mesh, true, true)
+    return mesh
+}
+
+function createWheelMesh(material: THREE.Material) {
+    const wheelGeometry = new THREE.CylinderGeometry(0.5, 0.5, 1, 24)
+    wheelGeometry.rotateX(Math.PI / 2)
+    const wheel = new THREE.Mesh(wheelGeometry, material)
+    setShadow(wheel, true, true)
+    return wheel
+}
+
+function createAxleMesh(material: THREE.Material) {
+    const axleGeometry = new THREE.CylinderGeometry(0.5, 0.5, 1, 12)
+    axleGeometry.rotateX(Math.PI / 2)
+    const axle = new THREE.Mesh(axleGeometry, material)
+    setShadow(axle, true, true)
+    return axle
+}
+
 function createTrainCarObject(): TrainCarObjectEntry {
     const group = new THREE.Group()
-    const body = new THREE.Mesh(
-        new THREE.BoxGeometry(1, 1, 1),
-        new THREE.MeshStandardMaterial({
-            color: 0x2563eb,
-            roughness: 0.48,
-            metalness: 0.2,
-        }),
-    )
-    setShadow(body, true, true)
+    const bodyMaterial = new THREE.MeshStandardMaterial({
+        color: 0x8a3b2b,
+        roughness: 0.72,
+        metalness: 0.08,
+    })
+    const sidePanelMaterial = new THREE.MeshStandardMaterial({
+        color: 0x713124,
+        roughness: 0.78,
+        metalness: 0.06,
+    })
+    const detailMaterial = new THREE.MeshStandardMaterial({
+        color: 0x1f2933,
+        roughness: 0.62,
+        metalness: 0.32,
+    })
+    const wheelMaterial = new THREE.MeshStandardMaterial({
+        color: 0x111827,
+        roughness: 0.48,
+        metalness: 0.55,
+    })
+
+    const body = createBoxMesh(bodyMaterial)
     group.add(body)
 
-    const head = new THREE.Mesh(
-        new THREE.BoxGeometry(1, 1, 1),
-        new THREE.MeshStandardMaterial({
-            color: 0xf8fafc,
-            roughness: 0.35,
-            metalness: 0.1,
-        }),
-    )
-    setShadow(head, true, false)
-    group.add(head)
+    const sidePanels = Array.from({ length: 2 }, () => {
+        const panel = createBoxMesh(sidePanelMaterial)
+        group.add(panel)
+        return panel
+    })
+    const endPanels = Array.from({ length: 2 }, () => {
+        const panel = createBoxMesh(sidePanelMaterial)
+        group.add(panel)
+        return panel
+    })
+    const ribs = Array.from({ length: 16 }, () => {
+        const rib = createBoxMesh(detailMaterial)
+        group.add(rib)
+        return rib
+    })
+    const doorPanels = Array.from({ length: 4 }, () => {
+        const door = createBoxMesh(sidePanelMaterial)
+        group.add(door)
+        return door
+    })
+    const underframe = createBoxMesh(detailMaterial)
+    const centerBeam = createBoxMesh(detailMaterial)
+    group.add(underframe, centerBeam)
+
+    const bogieFrames = Array.from({ length: 4 }, () => {
+        const frame = createBoxMesh(detailMaterial)
+        group.add(frame)
+        return frame
+    })
+    const axles = Array.from({ length: 4 }, () => {
+        const axle = createAxleMesh(wheelMaterial)
+        group.add(axle)
+        return axle
+    })
+    const wheels = Array.from({ length: 8 }, () => {
+        const wheel = createWheelMesh(wheelMaterial)
+        group.add(wheel)
+        return wheel
+    })
+    const couplers = Array.from({ length: 2 }, () => {
+        const coupler = createBoxMesh(detailMaterial)
+        group.add(coupler)
+        return coupler
+    })
 
     const labelElement = document.createElement('div')
     labelElement.className = 'layout3d-label layout3d-label-train'
     const label = new CSS2DObject(labelElement)
     group.add(label)
 
-    return { group, body, head, label, labelElement }
+    return {
+        group,
+        body,
+        sidePanels,
+        endPanels,
+        ribs,
+        doorPanels,
+        underframe,
+        centerBeam,
+        bogieFrames,
+        axles,
+        wheels,
+        couplers,
+        bodyMaterial,
+        sidePanelMaterial,
+        detailMaterial,
+        label,
+        labelElement,
+    }
 }
 
 function updateTrainCarObject(entry: TrainCarObjectEntry, car: SimulationTrainCar, mapper: LayoutMapper) {
@@ -3746,23 +3845,103 @@ function updateTrainCarObject(entry: TrainCarObjectEntry, car: SimulationTrainCa
     const length = Math.max(mapper.mapLength(car.length), trackGauge * 2.25, 1.05)
     const width = Math.max(mapper.mapLength(car.width), trackGauge * 1.45, 0.38)
     const height = Math.max(trainCarBaseHeight, trackGauge * 0.68)
-    const bodyMaterial = entry.body.material as THREE.MeshStandardMaterial
-    const bodyColor = new THREE.Color(car.fill || '#2563eb')
-    bodyMaterial.color.copy(bodyColor)
-    bodyMaterial.emissive.copy(bodyColor).multiplyScalar(0.08)
-    bodyMaterial.needsUpdate = true
+    const bodyColor = getFreightCarBodyColor(car)
+    entry.bodyMaterial.color.copy(bodyColor)
+    entry.bodyMaterial.emissive.copy(bodyColor).multiplyScalar(0.035)
+    entry.bodyMaterial.needsUpdate = true
+    entry.sidePanelMaterial.color.copy(bodyColor.clone().multiplyScalar(0.78))
+    entry.sidePanelMaterial.needsUpdate = true
+    entry.detailMaterial.color.set(0x202833)
+    entry.detailMaterial.needsUpdate = true
 
     entry.group.position.set(position.x, 0, position.z)
     entry.group.rotation.y = -normalizePathAngle(car.angle) * Math.PI / 180
-    entry.body.scale.set(length, height, width)
-    entry.body.position.set(0, RAIL_Y + height / 2 + 0.15, 0)
+    const bodyLength = length * 0.84
+    const bodyWidth = width * 0.92
+    const bodyHeight = height * 0.88
+    const wheelRadius = Math.max(0.08, trackGauge * 0.2)
+    const wheelThickness = Math.max(0.035, trackGauge * 0.075)
+    const wheelCenterY = RAIL_Y + wheelRadius + 0.02
+    const bodyBottomY = wheelCenterY + wheelRadius + height * 0.16
+    const bodyCenterY = bodyBottomY + bodyHeight / 2
 
-    entry.head.scale.set(Math.max(0.04, length * 0.035), height * 0.62, width * 0.82)
-    entry.head.position.set(length / 2 - Math.max(0.04, length * 0.035) * 0.7, RAIL_Y + height / 2 + 0.15, 0)
+    entry.body.scale.set(bodyLength, bodyHeight, bodyWidth)
+    entry.body.position.set(0, bodyCenterY, 0)
+
+    entry.sidePanels.forEach((panel, index) => {
+        const side = index === 0 ? -1 : 1
+        panel.scale.set(bodyLength * 0.96, bodyHeight * 0.82, Math.max(0.018, bodyWidth * 0.035))
+        panel.position.set(0, bodyCenterY, side * bodyWidth * 0.515)
+    })
+    entry.endPanels.forEach((panel, index) => {
+        const side = index === 0 ? -1 : 1
+        panel.scale.set(Math.max(0.035, bodyLength * 0.025), bodyHeight * 0.9, bodyWidth * 0.94)
+        panel.position.set(side * bodyLength * 0.505, bodyCenterY, 0)
+    })
+
+    const ribCountPerSide = entry.ribs.length / 2
+    entry.ribs.forEach((rib, index) => {
+        const side = index < ribCountPerSide ? -1 : 1
+        const ribIndex = index % ribCountPerSide
+        const rate = ribCountPerSide <= 1 ? 0.5 : ribIndex / (ribCountPerSide - 1)
+        rib.scale.set(Math.max(0.018, bodyLength * 0.018), bodyHeight * 0.9, Math.max(0.022, bodyWidth * 0.045))
+        rib.position.set(-bodyLength * 0.43 + rate * bodyLength * 0.86, bodyCenterY, side * bodyWidth * 0.545)
+    })
+
+    entry.doorPanels.forEach((door, index) => {
+        const side = index < 2 ? -1 : 1
+        const doorIndex = index % 2
+        door.scale.set(bodyLength * 0.18, bodyHeight * 0.58, Math.max(0.024, bodyWidth * 0.05))
+        door.position.set((doorIndex === 0 ? -1 : 1) * bodyLength * 0.14, bodyCenterY + bodyHeight * 0.02, side * bodyWidth * 0.565)
+    })
+
+    entry.underframe.scale.set(bodyLength * 0.96, Math.max(0.06, height * 0.11), bodyWidth * 0.78)
+    entry.underframe.position.set(0, bodyBottomY - height * 0.08, 0)
+    entry.centerBeam.scale.set(bodyLength * 1.02, Math.max(0.035, height * 0.07), Math.max(0.04, bodyWidth * 0.12))
+    entry.centerBeam.position.set(0, wheelCenterY + wheelRadius * 0.7, 0)
+
+    const bogieCenters = [-bodyLength * 0.32, bodyLength * 0.32]
+    const bogieLength = Math.max(bodyLength * 0.18, trackGauge * 0.9)
+    const bogieFrameHeight = Math.max(0.055, wheelRadius * 0.46)
+    entry.bogieFrames.forEach((frame, index) => {
+        const bogieIndex = Math.floor(index / 2)
+        const side = index % 2 === 0 ? -1 : 1
+        frame.scale.set(bogieLength, bogieFrameHeight, Math.max(0.035, bodyWidth * 0.055))
+        frame.position.set(bogieCenters[bogieIndex] || 0, wheelCenterY + wheelRadius * 0.25, side * bodyWidth * 0.39)
+    })
+
+    const wheelTrack = bodyWidth * 0.34
+    const axleHalfSpacing = bogieLength * 0.23
+    entry.axles.forEach((axle, index) => {
+        const bogieIndex = Math.floor(index / 2)
+        const axleSide = index % 2 === 0 ? -1 : 1
+        axle.scale.set(Math.max(0.025, wheelRadius * 0.18), Math.max(0.025, wheelRadius * 0.18), wheelTrack * 2.2)
+        axle.position.set((bogieCenters[bogieIndex] || 0) + axleSide * axleHalfSpacing, wheelCenterY, 0)
+    })
+    entry.wheels.forEach((wheel, index) => {
+        const axleIndex = Math.floor(index / 2)
+        const side = index % 2 === 0 ? -1 : 1
+        const bogieIndex = Math.floor(axleIndex / 2)
+        const axleSide = axleIndex % 2 === 0 ? -1 : 1
+        wheel.scale.set(wheelRadius, wheelRadius, wheelThickness)
+        wheel.position.set((bogieCenters[bogieIndex] || 0) + axleSide * axleHalfSpacing, wheelCenterY, side * wheelTrack)
+    })
+
+    entry.couplers.forEach((coupler, index) => {
+        const side = index === 0 ? -1 : 1
+        coupler.scale.set(Math.max(0.08, length * 0.06), Math.max(0.035, height * 0.08), Math.max(0.08, width * 0.18))
+        coupler.position.set(side * (bodyLength / 2 + length * 0.055), wheelCenterY + wheelRadius * 0.58, 0)
+    })
 
     entry.label.position.set(0, RAIL_Y + height + 0.62, 0)
     entry.labelElement.textContent = car.label || ''
     entry.labelElement.style.display = car.label ? '' : 'none'
+}
+
+function getFreightCarBodyColor(car: SimulationTrainCar) {
+    const palette = [0x8a3b2b, 0x566f42, 0x6b7280, 0x9a4f2f, 0x475569, 0x7a4a2f]
+    const hash = car.key.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0)
+    return new THREE.Color(palette[hash % palette.length] || 0x8a3b2b)
 }
 
 function removeTrainCarObject(key: string) {
