@@ -99,6 +99,7 @@ const equipmentForm = ref({});
 const equipmentFormBaseline = ref({});
 const equipmentSaving = ref(false);
 const activeEditMode = ref(0);
+const topologyGenerationMode = ref("auto");
 const isSelectMode = computed(() => activeEditMode.value === 0);
 const isEquipmentBatchMode = computed(() => Boolean(selectedEquipment.value?.batch));
 let f4HoldPreviousEditMode = null;
@@ -118,6 +119,7 @@ const selectedCellLinkId = ref("");
 const cellLinkHighlightScope = ref("cell");
 const cellLinkPickMode = ref(false);
 const cellForm = ref(createEmptyCellForm());
+const topologyRepairPending = ref(false);
 const layoutSnapshot = ref({
     tracks: [],
     nodes: [],
@@ -398,6 +400,29 @@ function selectStationRoute(row) {
 function clearRouteSearchResult() {
     routeSearchRoutes.value = [];
     clearSelectedRoute();
+}
+
+function handleTopologyRebuilt(impact) {
+    if (!impact?.requiresRepair) return;
+
+    topologyRepairPending.value = true;
+    refreshLayoutSnapshot();
+    clearRouteSearchResult();
+}
+
+function showTopologyRepairReminderAfterSave() {
+    if (!topologyRepairPending.value) return;
+
+    topologyRepairPending.value = false;
+    void ElMessageBox.alert(
+        "已保存最新拓扑。线路分段、节点生成或节点合并可能已影响设备绑定、道岔/曲线关联、Cell 构成以及既有进路。请使用“修正设备绑定节点”检查设备，并在 Cell 面板中重新检查或生成 Cell；如已配置进路，也请重新校验进路。",
+        "请检查拓扑关联",
+        {
+            type: "warning",
+            confirmButtonText: "知道了",
+            closeOnClickModal: false,
+        }
+    ).catch(() => {});
 }
 
 function createEmptyCellForm() {
@@ -1469,6 +1494,7 @@ function saveData(options = {}) {
             if (shouldReloadGeneratedCellIds) {
                 getData({ stationSchemeId: savedStationSchemeId });
             }
+            showTopologyRepairReminderAfterSave();
             return true;
         })
         .catch((err) => {
@@ -1558,6 +1584,7 @@ function handleStationSchemeChange(stationSchemeId) {
     if (!stationSchemeId) return;
     routeNodePickTarget.value = "";
     clearRouteSearchResult();
+    topologyRepairPending.value = false;
     getData({ stationSchemeId });
 }
 
@@ -2708,6 +2735,14 @@ watch(
             </div>
             <el-divider direction="vertical" />
             <div class="toolbar-group">
+                <span class="toolbar-group-label">拓扑生成</span>
+                <el-radio-group v-model="topologyGenerationMode" size="small">
+                    <el-radio-button value="auto">自动生成拓扑</el-radio-button>
+                    <el-radio-button value="manual">手动生成拓扑</el-radio-button>
+                </el-radio-group>
+            </div>
+            <el-divider direction="vertical" />
+            <div class="toolbar-group">
                 <span class="toolbar-group-label">{{ t('stationLayout.group.drawingObject') }}</span>
                 <el-button-group>
                     <el-button size="small" :icon="Minus" :disabled="isSelectMode" :type="getDrawingButtonType('l')"
@@ -2901,6 +2936,7 @@ watch(
                 <StationLayoutEditor ref="stationLayoutEditorRef" :display-scale-x="layoutScaleX"
                     :display-scale-y="layoutScaleY" :show-curve-arc="showCurveArc" :show-nodes="showNodes"
                     :show-grid="showGrid" :object-snap-distance="objectSnapDistance"
+                    :auto-generate-topology="topologyGenerationMode === 'auto'"
                     :grid-spacing="gridSpacing"
                     :display-styles="layoutDisplayStyles"
                     :editor-state="stationLayoutEditorState"
@@ -2914,6 +2950,7 @@ watch(
                     @selected-equipment-change="handleSelectedEquipmentChange"
                     @route-node-pick="handleRouteNodePick"
                     @cell-name-click="handleCellNameClick"
+                    @topology-rebuilt="handleTopologyRebuilt"
                     @delete-selection-request="deleteSelection" />
             </div>
             <aside v-if="cellPanelVisible" class="cell-side-panel">

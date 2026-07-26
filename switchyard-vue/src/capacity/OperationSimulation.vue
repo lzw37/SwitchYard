@@ -3110,8 +3110,16 @@ function fitLayoutDataRect(
 }
 
 function fitLayoutToFullView() {
-    const fullRect = layoutEditorRef.value?.getFullViewRect?.({ screenMargin: 60 }) || null
-    fitLayoutDataRect(fullRect, { screenMargin: 36, padding: 140 })
+    // Keep the data bounds independent of the current zoom. Passing a pixel margin
+    // to getFullViewRect converts it to data units using the current scale, which
+    // makes each click only move the layout toward the eventual fit scale.
+    const contentScreenMargin = 60
+    const viewportScreenMargin = 36
+    const fullRect = layoutEditorRef.value?.getFullViewRect?.({ screenMargin: 0 }) || null
+    fitLayoutDataRect(fullRect, {
+        screenMargin: contentScreenMargin + viewportScreenMargin,
+        padding: 140,
+    })
 }
 
 async function refreshSimulationData() {

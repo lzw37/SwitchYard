@@ -30,9 +30,17 @@ const props = defineProps({
     highlightedRouteArrowNodeIds: { type: Array, default: () => [] },
     highlightedRouteColor: { type: String, default: "#ffd600" },
     highlightedRouteArrowVisible: { type: Boolean, default: true },
+    autoGenerateTopology: { type: Boolean, default: true },
     readonly: { type: Boolean, default: false },
 });
-const emit = defineEmits(["selected-annotation-change", "selected-equipment-change", "route-node-pick", "cell-name-click", "delete-selection-request"]);
+const emit = defineEmits([
+    "selected-annotation-change",
+    "selected-equipment-change",
+    "route-node-pick",
+    "cell-name-click",
+    "delete-selection-request",
+    "topology-rebuilt",
+]);
 
 const svgRef = ref(null);
 const defaultEditorDisplayStyles = {
@@ -88,6 +96,8 @@ const hoverHighlightColor = "#9ec7e8";
 const selectedHighlightColor = "#e2bf6a";
 const hoverOutlineColor = "#6f9fc5";
 const selectedOutlineColor = "#b8924d";
+const boundTrackColor = "#ffffff";
+const unboundTrackColor = "#808080";
 const anchorParam = { size: 10 };
 const safeDisplayScaleX = computed(() => normalizeDisplayScale(props.displayScaleX));
 const safeDisplayScaleY = computed(() => normalizeDisplayScale(props.displayScaleY));
@@ -264,6 +274,7 @@ const annotationInteraction = ref(null);
 
 const finishedCmdList = ref([]);
 const revokedCmdList = ref([]);
+let mutationDepth = 0;
 
 const selectionBoxView = computed(() => {
     if (!selectionBox.value) {
@@ -1294,13 +1305,24 @@ function applyState(state) {
 function executeMutation(mutator, options = {}) {
     if (props.readonly && options?.allowReadonly !== true) return;
 
-    finishedCmdList.value.push(cloneState());
-    if (finishedCmdList.value.length > 30) {
-        finishedCmdList.value.shift();
+    const isRootMutation = mutationDepth === 0;
+    if (isRootMutation) {
+        finishedCmdList.value.push(cloneState());
+        if (finishedCmdList.value.length > 30) {
+            finishedCmdList.value.shift();
+        }
+        revokedCmdList.value = [];
     }
-    revokedCmdList.value = [];
-    mutator();
-    ensureCanvasForAllElements();
+
+    mutationDepth += 1;
+    try {
+        return mutator();
+    } finally {
+        mutationDepth -= 1;
+        if (isRootMutation) {
+            ensureCanvasForAllElements();
+        }
+    }
 }
 
 function revoke() {
@@ -1873,10 +1895,25 @@ function endDrawLine() {
         fromNodeID: "",
         toNodeID: "",
     };
+    const topologyBefore = props.autoGenerateTopology ? captureTopologyState() : null;
+    let topologyImpact = null;
     executeMutation(() => {
         tracks.value.push(line);
+        if (props.autoGenerateTopology) {
+            // Keep the completed stroke and all topology changes in one undo step.
+            autoSeparateLine();
+            autoGenerateNodes();
+            autoMergeNode();
+            syncBoundEquipmentToBindingNodes();
+            refreshCurvesForChangedGeometry({
+                lineIds: new Set(tracks.value.map((track) => track.id)),
+                nodeIds: new Set(nodes.value.map((node) => node.id)),
+            });
+            topologyImpact = buildTopologyImpact(topologyBefore);
+        }
     });
     tempLine.value = null;
+    emitTopologyImpact(topologyImpact);
 }
 
 function selectElement(kind, id, event) {
@@ -2026,6 +2063,98 @@ function getLineList() {
 
 function getNodeList() {
     return nodes.value.map((node) => ({ ...node }));
+}
+
+function getBoundTopologyEquipment() {
+    return [
+        ...signals.value.map((equipment) => ({ kind: "signal", equipment })),
+        ...insulationJoints.value.map((equipment) => ({ kind: "insulationJoint", equipment })),
+        ...bufferStops.value.map((equipment) => ({ kind: "bufferStop", equipment })),
+        ...switches.value.map((equipment) => ({ kind: "switch", equipment })),
+    ];
+}
+
+function captureTopologyState() {
+    const equipmentBindings = new Map();
+    for (const { kind, equipment } of getBoundTopologyEquipment()) {
+        const id = String(equipment?.id ?? "").trim();
+        if (!id) continue;
+        equipmentBindings.set(`${kind}:${id}`, getEquipmentBindingNodeId(equipment));
+    }
+
+    return {
+        lineIds: new Set(tracks.value.map((line) => String(line?.id ?? "")).filter((id) => id !== "")),
+        nodeIds: new Set(nodes.value.map((node) => String(node?.id ?? "")).filter((id) => id !== "")),
+        equipmentBindings,
+        equipmentCount: equipmentBindings.size,
+        curveCount: curves.value.length,
+        switchCount: switches.value.length,
+        hasCells: Array.isArray(props.cells) && props.cells.length > 0,
+    };
+}
+
+function buildTopologyImpact(before) {
+    if (!before) return null;
+
+    const nextLineIds = new Set(tracks.value.map((line) => String(line?.id ?? "")).filter((id) => id !== ""));
+    const nextNodeIds = new Set(nodes.value.map((node) => String(node?.id ?? "")).filter((id) => id !== ""));
+    const removedLineIds = [...before.lineIds].filter((id) => !nextLineIds.has(id));
+    const removedNodeIds = [...before.nodeIds].filter((id) => !nextNodeIds.has(id));
+    const addedLineCount = [...nextLineIds].filter((id) => !before.lineIds.has(id)).length;
+    const addedNodeCount = [...nextNodeIds].filter((id) => !before.nodeIds.has(id)).length;
+
+    const changedEquipmentBindings = [];
+    const missingEquipmentBindings = [];
+    for (const { kind, equipment } of getBoundTopologyEquipment()) {
+        const id = String(equipment?.id ?? "").trim();
+        if (!id) continue;
+
+        const key = `${kind}:${id}`;
+        const currentBindingNodeId = getEquipmentBindingNodeId(equipment);
+        const previousBindingNodeId = before.equipmentBindings.get(key);
+        if (previousBindingNodeId != null && previousBindingNodeId !== currentBindingNodeId) {
+            changedEquipmentBindings.push({ kind, id, previousBindingNodeId, currentBindingNodeId });
+        }
+        if (currentBindingNodeId && !nextNodeIds.has(currentBindingNodeId)) {
+            missingEquipmentBindings.push({ kind, id, bindingNodeId: currentBindingNodeId });
+        }
+    }
+
+    const rewiredExistingTopology = removedLineIds.length > 0 || removedNodeIds.length > 0;
+    const topologyChanged = rewiredExistingTopology || addedLineCount > 0 || addedNodeCount > 0;
+    const cellsMayNeedRebuild = before.hasCells && topologyChanged;
+    const equipmentMayNeedRepair =
+        changedEquipmentBindings.length > 0 ||
+        missingEquipmentBindings.length > 0 ||
+        (rewiredExistingTopology && before.equipmentCount > 0);
+    const curvesMayNeedRepair = rewiredExistingTopology && before.curveCount > 0;
+    const switchesMayNeedRepair = rewiredExistingTopology && before.switchCount > 0;
+    const routesMayNeedReview = rewiredExistingTopology;
+
+    return {
+        topologyChanged,
+        rewiredExistingTopology,
+        removedLineIds,
+        removedNodeIds,
+        changedEquipmentBindings,
+        missingEquipmentBindings,
+        cellsMayNeedRebuild,
+        equipmentMayNeedRepair,
+        curvesMayNeedRepair,
+        switchesMayNeedRepair,
+        routesMayNeedReview,
+        requiresRepair:
+            cellsMayNeedRebuild ||
+            equipmentMayNeedRepair ||
+            curvesMayNeedRepair ||
+            switchesMayNeedRepair ||
+            routesMayNeedReview,
+    };
+}
+
+function emitTopologyImpact(impact) {
+    if (!impact?.requiresRepair) return;
+    emit("topology-rebuilt", impact);
 }
 
 function calculatePointDist(p1, p2) {
@@ -2226,6 +2355,8 @@ function snapLine() {
 }
 
 function autoMergeNode() {
+    const isRootMutation = mutationDepth === 0;
+    const topologyBefore = isRootMutation ? captureTopologyState() : null;
     const tolerance = Number(autoMergeNodeTolerance.value);
     if (!Number.isFinite(tolerance) || tolerance < 0 || nodes.value.length < 2) return;
 
@@ -2366,9 +2497,14 @@ function autoMergeNode() {
         });
         markCrossPoint();
     });
+    const topologyImpact = isRootMutation ? buildTopologyImpact(topologyBefore) : null;
+    emitTopologyImpact(topologyImpact);
+    return topologyImpact;
 }
 
 function autoSeparateLine() {
+    const isRootMutation = mutationDepth === 0;
+    const topologyBefore = isRootMutation ? captureTopologyState() : null;
     executeMutation(() => {
         const lineSet = getLineList();
         const candidateLineDict = {};
@@ -2433,6 +2569,7 @@ function autoSeparateLine() {
                 const p2 = pList[idx + 1];
                 if (isSamePoint(p1, p2)) continue;
                 nextTracks.push({
+                    ...line,
                     id: `${line.id}s${idx}`,
                     x1: p1.x,
                     y1: p1.y,
@@ -2447,6 +2584,9 @@ function autoSeparateLine() {
         tracks.value = nextTracks;
         markCrossPoint();
     });
+    const topologyImpact = isRootMutation ? buildTopologyImpact(topologyBefore) : null;
+    emitTopologyImpact(topologyImpact);
+    return topologyImpact;
 }
 
 function startDrawingSignal() {
@@ -2623,6 +2763,8 @@ function drawingNodeMouseDown(x, y) {
 }
 
 function autoGenerateNodes() {
+    const isRootMutation = mutationDepth === 0;
+    const topologyBefore = isRootMutation ? captureTopologyState() : null;
     executeMutation(() => {
         const previousNodeByID = new Map(nodes.value.map((node) => [node.id, { ...node }]));
         const previousNodes = nodes.value.map((node) => ({ ...node }));
@@ -2670,6 +2812,9 @@ function autoGenerateNodes() {
             nodeIds: new Set(nodes.value.map((node) => node.id)),
         });
     });
+    const topologyImpact = isRootMutation ? buildTopologyImpact(topologyBefore) : null;
+    emitTopologyImpact(topologyImpact);
+    return topologyImpact;
 }
 
 function buildSwitchBranchVectorList(node) {
@@ -4465,12 +4610,19 @@ function getCellLinkMembershipCount(lineId) {
     return Number.isFinite(count) && count > 0 ? count : 0;
 }
 
-function trackDisplayStyle(lineId) {
+function hasBothEndpointNodes(line) {
+    return [line?.fromNodeID, line?.toNodeID]
+        .every((nodeId) => String(nodeId ?? "").trim() !== "");
+}
+
+function trackDisplayStyle(line) {
     const style = editorDisplayStyles.value.track;
+    const lineId = line?.id;
     const selected = isLineSelected(lineId);
     const hovered = isElementHovered("link", lineId);
     const highlighted = selected || hovered;
     const highlightColor = elementHighlightColor("link", lineId);
+    const baseColor = hasBothEndpointNodes(line) ? boundTrackColor : unboundTrackColor;
     const baseStrokeWidth = highlighted
         ? Math.max(style.strokeWidth + 2, style.strokeWidth * 2)
         : style.strokeWidth;
@@ -4487,21 +4639,21 @@ function trackDisplayStyle(lineId) {
 
         if (membershipCount === 1) {
             return {
-                stroke: highlightColor || style.color,
+                stroke: highlightColor || baseColor,
                 strokeWidth: baseStrokeWidth,
                 strokeDasharray: "none",
             };
         }
 
         return {
-            stroke: highlightColor || style.color,
+            stroke: highlightColor || baseColor,
             strokeWidth: baseStrokeWidth,
             strokeDasharray: "10 7",
         };
     }
 
     return {
-        stroke: highlightColor || style.color,
+        stroke: highlightColor || baseColor,
         strokeWidth: baseStrokeWidth,
     };
 }
@@ -4965,14 +5117,14 @@ defineExpose({
         @mouseleave="clearHoveredElement()" @keydown="onKeydown" @selectstart.prevent @dragstart.prevent>
         <g id="grid">
             <circle v-for="(dot, idx) in gridDots" :key="`g-${idx}`" class="griddot" :cx="screenX(dot.x)"
-                :cy="screenY(dot.y)" r="0.5" />
+                :cy="screenY(dot.y)" r="0.7" />
         </g>
 
         <g id="linegroup">
             <line v-for="segment in renderedTrackSegments" :id="segment.id" :key="`line-${segment.id}`" class="track"
                 :class="{ 'track-selected': isLineHighlighted(segment.line.id) }" :x1="screenX(segment.x1)"
                 :y1="screenY(segment.y1)" :x2="screenX(segment.x2)" :y2="screenY(segment.y2)"
-                :style="trackDisplayStyle(segment.line.id)"
+                :style="trackDisplayStyle(segment.line)"
                 @mouseenter="setHoveredElement('link', segment.line.id)"
                 @mouseleave="clearHoveredElement('link', segment.line.id)"
                 @mousedown.stop @click.stop="handleLineClick($event, segment.line.id)" />
