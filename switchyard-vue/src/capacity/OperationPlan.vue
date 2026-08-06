@@ -1548,8 +1548,21 @@
             @closed="handleRoutePickerClosed"
         >
             <div class="operation-plan-route-picker">
-                <div class="operation-plan-route-picker-toolbar">
-                    <span>{{ routePickerSummaryText }}</span>
+                <StationLayoutViewToolbar
+                    v-model:density="routePickerToolbarDensity"
+                    v-model:show-grid="routePickerShowGrid"
+                    v-model:show-nodes="routePickerShowNodes"
+                    v-model:show-curve-arc="routePickerShowCurveArc"
+                    v-model:show-cell-names="routePickerShowCellNames"
+                    v-model:scale-x="routePickerLayoutScaleX"
+                    v-model:scale-y="routePickerLayoutScaleY"
+                    :fit-disabled="!routePickerLayoutData"
+                    @fit="fitRoutePickerLayoutToFullView"
+                >
+                    <template #context>
+                        <span>{{ routePickerSummaryText }}</span>
+                    </template>
+                    <template #primary>
                     <el-popover
                         placement="bottom-start"
                         trigger="click"
@@ -1622,7 +1635,8 @@
                             </el-button>
                         </div>
                     </el-popover>
-                </div>
+                    </template>
+                </StationLayoutViewToolbar>
 
                 <div ref="routePickerSplitRef" class="operation-plan-route-picker-split">
                     <div
@@ -1720,12 +1734,12 @@
                                 :display-scale-x="routePickerLayoutScaleX"
                                 :display-scale-y="routePickerLayoutScaleY"
                                 :display-styles="routePickerLayoutDisplayStyles"
-                                :show-grid="false"
-                                :show-nodes="true"
-                                :show-curve-arc="true"
+                                :show-grid="routePickerShowGrid"
+                                :show-nodes="routePickerShowNodes"
+                                :show-curve-arc="routePickerShowCurveArc"
                                 :grid-spacing="routePickerLayoutGridSpacing"
                                 :cells="routePickerLayoutCells"
-                                :show-cell-names="false"
+                                :show-cell-names="routePickerShowCellNames"
                                 :route-pick-target="routePickerNodePickTarget"
                                 :highlighted-route-node-ids="routePickerHighlightedRouteNodeIds"
                                 :highlighted-route-link-ids="routePickerHighlightedRouteLinkIds"
@@ -1865,6 +1879,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown, ArrowRight, ArrowUp, Check, Close, CopyDocument, Delete, Edit, Filter, MagicStick, Plus, Refresh, Setting } from '@element-plus/icons-vue'
 import axios from '@/utils/axios'
 import StationLayoutEditor from './components/StationLayoutEditor.vue'
+import StationLayoutViewToolbar from './components/StationLayoutViewToolbar.vue'
 
 interface StationSchemeOption {
     id: string
@@ -2250,6 +2265,11 @@ const routePickerLayoutCells = ref<Array<{ id: string; name: string; linkIDList:
 const routePickerLayoutGridSpacing = ref(20)
 const routePickerLayoutScaleX = ref(1)
 const routePickerLayoutScaleY = ref(1)
+const routePickerToolbarDensity = ref('compact')
+const routePickerShowGrid = ref(false)
+const routePickerShowNodes = ref(true)
+const routePickerShowCurveArc = ref(true)
+const routePickerShowCellNames = ref(false)
 const routePickerTableHeight = ref(routePickerDefaultTableHeight)
 const routePickerNodeFilterStage = ref<RoutePickerNodeFilterStage>('start')
 const loadingRoutePickerLayout = ref(false)

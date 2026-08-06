@@ -1,7 +1,17 @@
 <template>
     <section class="calc-params-page" v-loading="loadingData">
-        <div class="calc-params-toolbar">
-            <div class="calc-scheme-control">
+        <StationLayoutViewToolbar
+            v-model:density="viewToolbarDensity"
+            v-model:show-grid="showLayoutGrid"
+            v-model:show-nodes="showLayoutNodes"
+            v-model:show-curve-arc="showLayoutCurveArc"
+            v-model:show-cell-names="showLayoutCellNames"
+            v-model:scale-x="layoutScaleX"
+            v-model:scale-y="layoutScaleY"
+            @fit="fitFullLayout"
+        >
+            <template #context>
+                <div class="calc-scheme-control">
                 <span class="calc-control-label">{{ t('stationLayout.menu.stationScheme') }}</span>
                 <el-select
                     v-model="currentStationSchemeId"
@@ -15,6 +25,9 @@
                 >
                     <el-option v-for="option in stationSchemeOptions" :key="option.id" :label="option.name" :value="option.id" />
                 </el-select>
+                </div>
+            </template>
+            <template #primary>
                 <el-button
                     :icon="SetUp"
                     type="primary"
@@ -33,46 +46,8 @@
                 >
                     {{ t('calculationParameters.traction.button') }}
                 </el-button>
-            </div>
-
-            <div class="calc-display-toolbar">
-                <span class="calc-control-label">{{ t('routeDesign.toolbar.layoutDisplay') }}</span>
-                <div class="calc-switch-control">
-                    <span>{{ t('routeDesign.toolbar.showGrid') }}</span>
-                    <el-switch v-model="showLayoutGrid" size="small" />
-                </div>
-                <div class="calc-switch-control">
-                    <span>{{ t('routeDesign.toolbar.showNodes') }}</span>
-                    <el-switch v-model="showLayoutNodes" size="small" />
-                </div>
-                <div class="calc-switch-control">
-                    <span>{{ t('routeDesign.toolbar.curveDisplay') }}</span>
-                    <el-switch
-                        v-model="showLayoutCurveArc"
-                        size="small"
-                        inline-prompt
-                        :active-text="t('stationLayout.curveDisplay.arc')"
-                        :inactive-text="t('stationLayout.curveDisplay.tangent')"
-                    />
-                </div>
-                <div class="calc-switch-control">
-                    <span>{{ t('routeDesign.toolbar.showCellNames') }}</span>
-                    <el-switch v-model="showLayoutCellNames" size="small" />
-                </div>
-                <div class="calc-scale-control">
-                    <span>{{ t('routeDesign.toolbar.displayScale') }}</span>
-                    <span>{{ t('stationLayout.scale.x') }}</span>
-                    <el-slider v-model="layoutScaleX" size="small" :min="0.25" :max="4" :step="0.05" class="calc-scale-slider" />
-                    <span class="calc-scale-value">{{ layoutScaleX.toFixed(2) }}</span>
-                    <span>{{ t('stationLayout.scale.y') }}</span>
-                    <el-slider v-model="layoutScaleY" size="small" :min="0.25" :max="4" :step="0.05" class="calc-scale-slider" />
-                    <span class="calc-scale-value">{{ layoutScaleY.toFixed(2) }}</span>
-                </div>
-                <el-button :icon="Aim" size="small" @click="fitFullLayout">
-                    {{ t('stationLayout.tools.fitFullView') }}
-                </el-button>
-            </div>
-        </div>
+            </template>
+        </StationLayoutViewToolbar>
 
         <div ref="bodyRef" class="calc-params-body" :class="{ 'is-resizing': isResizing }" :style="calcBodyStyle">
             <aside class="calc-route-pane" v-loading="loadingRoutes">
@@ -621,10 +596,11 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
-import { Aim, Check, Close, DataAnalysis, Filter, Plus, Refresh, SetUp } from '@element-plus/icons-vue'
+import { Check, Close, DataAnalysis, Filter, Plus, Refresh, SetUp } from '@element-plus/icons-vue'
 import axios from '@/utils/axios'
 import OccupationTimeGantt from './components/OccupationTimeGantt.vue'
 import StationLayoutEditor from './components/StationLayoutEditor.vue'
+import StationLayoutViewToolbar from './components/StationLayoutViewToolbar.vue'
 
 interface StationSchemeOption { id: string; name: string }
 interface RouteListSelectOption { id: string; name: string }
@@ -759,6 +735,7 @@ const layoutData = ref<any>({})
 const layoutGridSpacing = ref(20)
 const layoutScaleX = ref(1)
 const layoutScaleY = ref(1)
+const viewToolbarDensity = ref('compact')
 const showLayoutGrid = ref(true)
 const showLayoutNodes = ref(true)
 const showLayoutCurveArc = ref(true)

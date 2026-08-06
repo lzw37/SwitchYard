@@ -1,7 +1,16 @@
 <template>
     <section class="route-design-page" v-loading="loadingData">
-        <div class="route-design-toolbar">
-            <div class="route-design-toolbar-left">
+        <StationLayoutViewToolbar
+            v-model:density="viewToolbarDensity"
+            v-model:show-grid="showLayoutGrid"
+            v-model:show-nodes="showLayoutNodes"
+            v-model:show-curve-arc="showLayoutCurveArc"
+            v-model:show-cell-names="showLayoutCellNames"
+            v-model:scale-x="layoutScaleX"
+            v-model:scale-y="layoutScaleY"
+            @fit="fitFullLayout"
+        >
+            <template #context>
                 <div class="route-design-scheme-control">
                     <span class="route-design-control-label">{{ t('stationLayout.menu.stationScheme') }}</span>
                     <el-select
@@ -22,6 +31,8 @@
                         />
                     </el-select>
                 </div>
+            </template>
+            <template #primary>
                 <el-button
                     :icon="MagicStick"
                     size="small"
@@ -31,59 +42,8 @@
                 >
                     {{ t('routeDesign.toolbar.generateInterruptCells') }}
                 </el-button>
-            </div>
-            <div class="route-design-toolbar-right">
-                <div class="route-design-display-toolbar">
-                    <span class="route-design-control-label">{{ t('routeDesign.toolbar.layoutDisplay') }}</span>
-                    <div class="route-design-switch-control">
-                        <span class="route-design-control-label">{{ t('routeDesign.toolbar.showGrid') }}</span>
-                        <el-switch v-model="showLayoutGrid" size="small" />
-                    </div>
-                    <div class="route-design-switch-control">
-                        <span class="route-design-control-label">{{ t('routeDesign.toolbar.showNodes') }}</span>
-                        <el-switch v-model="showLayoutNodes" size="small" />
-                    </div>
-                    <div class="route-design-switch-control">
-                        <span class="route-design-control-label">{{ t('routeDesign.toolbar.curveDisplay') }}</span>
-                        <el-switch
-                            v-model="showLayoutCurveArc"
-                            size="small"
-                            inline-prompt
-                            :active-text="t('stationLayout.curveDisplay.arc')"
-                            :inactive-text="t('stationLayout.curveDisplay.tangent')"
-                        />
-                    </div>
-                    <div class="route-design-switch-control">
-                        <span class="route-design-control-label">{{ t('routeDesign.toolbar.showCellNames') }}</span>
-                        <el-switch v-model="showLayoutCellNames" size="small" />
-                    </div>
-                    <div class="route-design-scale-control">
-                        <span class="route-design-control-label">{{ t('routeDesign.toolbar.displayScale') }}</span>
-                        <span class="route-design-scale-label">{{ t('stationLayout.scale.x') }}</span>
-                        <el-slider
-                            v-model="layoutScaleX"
-                            size="small"
-                            :min="0.25"
-                            :max="4"
-                            :step="0.05"
-                            class="route-design-scale-slider"
-                        />
-                        <span class="route-design-scale-value">{{ layoutScaleX.toFixed(2) }}</span>
-                        <span class="route-design-scale-label">{{ t('stationLayout.scale.y') }}</span>
-                        <el-slider
-                            v-model="layoutScaleY"
-                            size="small"
-                            :min="0.25"
-                            :max="4"
-                            :step="0.05"
-                            class="route-design-scale-slider"
-                        />
-                        <span class="route-design-scale-value">{{ layoutScaleY.toFixed(2) }}</span>
-                    </div>
-                    <el-button :icon="Aim" size="small" @click="fitFullLayout">
-                        {{ t('stationLayout.tools.fitFullView') }}
-                    </el-button>
-                </div>
+            </template>
+            <template #details>
                 <div class="route-design-switch-control">
                     <span class="route-design-control-label">{{ t('routeDesign.toolbar.stationRoute') }}</span>
                     <el-switch v-model="showStationRouteCard" size="small" />
@@ -92,8 +52,8 @@
                     <span class="route-design-control-label">{{ t('routeDesign.toolbar.routeEnd') }}</span>
                     <el-switch v-model="showRouteEndCard" size="small" />
                 </div>
-            </div>
-        </div>
+            </template>
+        </StationLayoutViewToolbar>
 
         <div
             ref="splitContainerRef"
@@ -963,6 +923,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Aim, Check, Close, Delete, Filter, MagicStick, Plus, Refresh } from '@element-plus/icons-vue'
 import axios from '@/utils/axios'
 import StationLayoutEditor from './components/StationLayoutEditor.vue'
+import StationLayoutViewToolbar from './components/StationLayoutViewToolbar.vue'
 
 interface StationSchemeOption {
     id: string
@@ -1115,6 +1076,7 @@ const layoutBufferStops = ref<RouteEndAutoSource[]>([])
 const layoutGridSpacing = ref(20)
 const layoutScaleX = ref(1)
 const layoutScaleY = ref(1)
+const viewToolbarDensity = ref('compact')
 const showLayoutGrid = ref(true)
 const showLayoutNodes = ref(true)
 const showLayoutCurveArc = ref(true)

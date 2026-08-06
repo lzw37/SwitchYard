@@ -1435,6 +1435,12 @@
         }
     },
     "stationLayout": {
+        "toolbar": {
+            "edit": "Edit toolbar",
+            "view": "View toolbar",
+            "compact": "Compact",
+            "full": "Full"
+        },
         "menu": {
             "stationScheme": "Station Scheme",
             "file": "File",

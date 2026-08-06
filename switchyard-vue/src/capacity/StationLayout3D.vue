@@ -1,7 +1,7 @@
 <template>
     <section class="station-layout-3d-page" v-loading="loadingAnyData">
-        <div class="layout3d-toolbar">
-            <div class="layout3d-toolbar-left">
+        <StationLayoutViewToolbar v-model:density="viewToolbarDensity" :show-display-controls="false">
+            <template #context>
                 <div class="layout3d-scheme-control">
                     <span class="layout3d-control-label">{{ t('stationLayout.menu.stationScheme') }}</span>
                     <el-select
@@ -22,7 +22,8 @@
                         />
                     </el-select>
                 </div>
-
+            </template>
+            <template #primary>
                 <div class="layout3d-scheme-control">
                     <span class="layout3d-control-label">{{ t('stationLayout3d.labels.operationPlan') }}</span>
                     <el-select
@@ -56,7 +57,8 @@
                         <el-radio-button value="all">{{ t('stationLayout3d.playbackModes.all') }}</el-radio-button>
                     </el-radio-group>
                 </div>
-
+            </template>
+            <template #details>
                 <div class="layout3d-scheme-control">
                     <span class="layout3d-control-label">{{ t('stationLayout3d.labels.train') }}</span>
                     <el-select
@@ -92,9 +94,8 @@
                         <strong>{{ layoutStats.platforms }}</strong>
                     </span>
                 </div>
-            </div>
-
-            <div class="layout3d-actions">
+            </template>
+            <template #actions>
                 <el-tooltip :content="t('stationLayout3d.buttons.refresh')">
                     <el-button
                         size="small"
@@ -138,11 +139,12 @@
                     <el-option :value="180" label="180x" />
                     <el-option :value="300" label="300x" />
                 </el-select>
-                <el-checkbox v-model="showLabels" size="small">
-                    {{ t('stationLayout3d.labels.showLabels') }}
-                </el-checkbox>
-            </div>
-        </div>
+                <div class="station-toolbar-switch-control">
+                    <span class="station-toolbar-switch-control__label">{{ t('stationLayout3d.labels.showLabels') }}</span>
+                    <el-switch v-model="showLabels" size="small" />
+                </div>
+            </template>
+        </StationLayoutViewToolbar>
 
         <div class="layout3d-playback-bar">
             <div class="layout3d-playback-summary">
@@ -326,6 +328,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { CSS2DObject, CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js'
 import axios from '@/utils/axios'
 import { getSignalStyleAsset } from '@/assets/stationLayoutSignalStyles'
+import StationLayoutViewToolbar from './components/StationLayoutViewToolbar.vue'
 
 interface Props {
     selectedInstanceId?: string | null
@@ -745,6 +748,7 @@ const layoutGridSpacing = ref(20)
 const loadingData = ref(false)
 const loadErrorMessage = ref('')
 const showLabels = ref(true)
+const viewToolbarDensity = ref('compact')
 const currentStationSchemeId = ref('')
 const currentOperationPlanId = ref('')
 const selectedTrainId = ref('')

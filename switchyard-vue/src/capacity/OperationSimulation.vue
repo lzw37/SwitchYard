@@ -1,7 +1,17 @@
 <template>
     <section class="operation-simulation-page">
-        <div class="simulation-toolbar">
-            <div class="simulation-toolbar-left">
+        <StationLayoutViewToolbar
+            v-model:density="viewToolbarDensity"
+            v-model:show-grid="showSimulationGrid"
+            v-model:show-nodes="showSimulationNodes"
+            v-model:show-curve-arc="showSimulationCurveArc"
+            v-model:show-cell-names="showSimulationCellNames"
+            v-model:scale-x="layoutScaleX"
+            v-model:scale-y="layoutScaleY"
+            :fit-disabled="!layoutData"
+            @fit="fitLayoutToFullView"
+        >
+            <template #context>
                 <label class="simulation-toolbar-control">
                     <span>车站方案</span>
                     <el-select
@@ -22,6 +32,8 @@
                         />
                     </el-select>
                 </label>
+            </template>
+            <template #primary>
                 <label class="simulation-toolbar-control">
                     <span>作业计划</span>
                     <el-select
@@ -74,8 +86,8 @@
                         />
                     </el-select>
                 </label>
-            </div>
-            <div class="simulation-toolbar-right">
+            </template>
+            <template #actions>
                 <el-button
                     :icon="Refresh"
                     size="small"
@@ -85,16 +97,8 @@
                 >
                     刷新
                 </el-button>
-                <el-button
-                    :icon="Aim"
-                    size="small"
-                    :disabled="!layoutData"
-                    @click="fitLayoutToFullView"
-                >
-                    全图
-                </el-button>
-            </div>
-        </div>
+            </template>
+        </StationLayoutViewToolbar>
 
         <div class="simulation-body">
             <div ref="simulationLeftPanelRef" class="simulation-left-panel">
@@ -110,12 +114,12 @@
                             :display-scale-x="layoutScaleX"
                             :display-scale-y="layoutScaleY"
                             :display-styles="layoutDisplayStyles"
-                            :show-grid="false"
-                            :show-nodes="true"
-                            :show-curve-arc="true"
+                            :show-grid="showSimulationGrid"
+                            :show-nodes="showSimulationNodes"
+                            :show-curve-arc="showSimulationCurveArc"
                             :grid-spacing="layoutGridSpacing"
                             :cells="layoutCells"
-                            :show-cell-names="true"
+                            :show-cell-names="showSimulationCellNames"
                             :highlighted-route-node-ids="highlightedRouteNodeIds"
                             :highlighted-route-link-ids="highlightedRouteLinkIds"
                             :highlighted-route-arrow-node-ids="highlightedRouteArrowNodeIds"
@@ -455,10 +459,11 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { Aim, Edit, Plus, Refresh, RefreshLeft, VideoPause, VideoPlay } from '@element-plus/icons-vue'
+import { Edit, Plus, Refresh, RefreshLeft, VideoPause, VideoPlay } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import axios from '@/utils/axios'
 import StationLayoutEditor from './components/StationLayoutEditor.vue'
+import StationLayoutViewToolbar from './components/StationLayoutViewToolbar.vue'
 
 interface StationSchemeOption {
     id: string
@@ -721,6 +726,11 @@ const layoutCells = ref<LayoutCell[]>([])
 const layoutGridSpacing = ref(20)
 const layoutScaleX = ref(1)
 const layoutScaleY = ref(1)
+const viewToolbarDensity = ref('compact')
+const showSimulationGrid = ref(false)
+const showSimulationNodes = ref(true)
+const showSimulationCurveArc = ref(true)
+const showSimulationCellNames = ref(true)
 const layoutEditorRef = ref<any | null>(null)
 const simulationLeftPanelRef = ref<HTMLElement | null>(null)
 const layoutViewportRef = ref<HTMLElement | null>(null)

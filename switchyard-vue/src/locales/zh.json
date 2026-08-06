@@ -1423,6 +1423,12 @@
         }
     },
     "stationLayout": {
+        "toolbar": {
+            "edit": "编辑工具栏",
+            "view": "查看工具栏",
+            "compact": "简洁模式",
+            "full": "完整模式"
+        },
         "menu": {
             "stationScheme": "车站方案",
             "file": "文件",
