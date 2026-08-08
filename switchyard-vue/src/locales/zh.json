@@ -1083,6 +1083,7 @@
             "layout3d": "3D",
             "calcParams": "计算参数",
             "operationPlan": "作业计划",
+            "modelSolving": "模型求解",
             "resultAnalysis": "结果分析",
             "simulation": "仿真"
         },
@@ -1091,6 +1092,74 @@
         },
         "messages": {
             "loadInstancesError": "加载实例列表失败"
+        }
+    },
+    "modelSolving": {
+        "fields": {
+            "stationScheme": "站场方案",
+            "operationPlan": "作业计划",
+            "status": "状态",
+            "agent": "CapacityAgent",
+            "account": "认证账号",
+            "models": "可用模型",
+            "selectedAgent": "执行 Agent",
+            "model": "求解模型"
+        },
+        "placeholders": {
+            "stationScheme": "请选择站场方案",
+            "operationPlan": "请选择作业计划",
+            "agent": "请选择在线 Agent",
+            "model": "请选择模型",
+            "input": "生成输入数据后，可在这里检查或编辑 JSON",
+            "result": "求解完成后，结果 JSON 将显示在这里"
+        },
+        "actions": {
+            "generateInput": "生成请求数据",
+            "refreshConnections": "刷新连接",
+            "solve": "发送求解请求",
+            "refreshJob": "刷新任务",
+            "downloadResult": "下载结果 JSON"
+        },
+        "sections": {
+            "connections": "CapacityAgent 连接管理",
+            "job": "当前求解任务",
+            "input": "请求数据 JSON",
+            "result": "求解结果 JSON"
+        },
+        "connection": {
+            "online": "在线",
+            "offline": "离线",
+            "busy": "忙碌",
+            "onlineCount": "在线 {count}"
+        },
+        "empty": {
+            "noAgents": "暂无 CapacityAgent 连接",
+            "noJob": "尚未提交求解任务"
+        },
+        "hints": {
+            "editableJson": "发送前可编辑"
+        },
+        "jobs": {
+            "queued": "等待中",
+            "running": "求解中",
+            "completed": "已完成",
+            "failed": "失败"
+        },
+        "messages": {
+            "loadSchemesFailed": "加载站场方案失败",
+            "loadPlansFailed": "加载作业计划失败",
+            "loadAgentsFailed": "加载 CapacityAgent 连接失败",
+            "inputGenerated": "求解请求数据已生成",
+            "generateInputFailed": "生成求解请求数据失败",
+            "invalidJson": "请求数据不是有效的 JSON",
+            "jobSubmitted": "求解任务已发送",
+            "submitFailed": "发送求解任务失败",
+            "jobCompleted": "模型求解完成，可以下载结果",
+            "jobFailed": "模型求解失败",
+            "refreshJobFailed": "刷新求解任务失败"
+        },
+        "units": {
+            "trains": "列车"
         }
     },
     "operationPlan": {

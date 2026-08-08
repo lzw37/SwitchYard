@@ -13,6 +13,8 @@ using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
+using SwitchYard.Capacity;
+using SwitchYard.Service.Hubs;
 
 using IPNetwork = Microsoft.AspNetCore.HttpOverrides.IPNetwork;
 static string[] GetDisplayAddresses(string address)
@@ -249,6 +251,15 @@ try
     builder.Services.AddScoped<InstanceAuthorizationService>();
     builder.Services.AddScoped<HumpInstanceCopyService>();
     builder.Services.AddSingleton<SnowflakeIdGenerator>();
+    builder.Services.AddSingleton<CapacityAgentRegistry>();
+    builder.Services.AddSingleton<CapacitySolveJobService>();
+    builder.Services.AddScoped<StationCapacityInputBuilder>();
+    builder.Services.AddSignalR()
+        .AddJsonProtocol(options =>
+        {
+            options.PayloadSerializerOptions.NumberHandling =
+                System.Text.Json.Serialization.JsonNumberHandling.AllowNamedFloatingPointLiterals;
+        });
 
     // 配置JWT认证
     var jwtSettings = builder.Configuration.GetSection("Jwt");
@@ -274,9 +285,32 @@ try
             ValidateLifetime = true,
             ClockSkew = TimeSpan.Zero
         };
+        options.Events = new JwtBearerEvents
+        {
+            OnMessageReceived = context =>
+            {
+                var accessToken = context.Request.Query["access_token"];
+                if (!string.IsNullOrWhiteSpace(accessToken) &&
+                    context.HttpContext.Request.Path.StartsWithSegments("/hubs/capacity-agent"))
+                {
+                    context.Token = accessToken;
+                }
+
+                return Task.CompletedTask;
+            }
+        };
     });
 
-    builder.Services.AddAuthorization();
+    builder.Services.AddAuthorization(options =>
+    {
+        options.AddPolicy("CapacityAgent", policy =>
+        {
+            policy.RequireAuthenticatedUser();
+            policy.RequireClaim(
+                CapacityAgentProtocol.ClientTypeClaim,
+                CapacityAgentProtocol.CapacityAgentClientType);
+        });
+    });
 
     // 速率限制：针对认证端点按客户端 IP 限流，防止暴力破解与账号枚举。
     builder.Services.AddRateLimiter(options =>
@@ -436,6 +470,7 @@ try
     logger.LogInformation("RateLimiter enabled");
 
     app.MapControllers();
+    app.MapHub<CapacityAgentHub>("/hubs/capacity-agent");
 
     DBConnector.SetConfiguration(builder.Configuration);
     logger.LogInformation("Database connector configured");

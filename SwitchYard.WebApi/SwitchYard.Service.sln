@@ -1,13 +1,15 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 17
-VisualStudioVersion = 17.14.36623.8
+# Visual Studio Version 18
+VisualStudioVersion = 18.8.12023.21 stable
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SwitchYard.Hump", "SwitchYard.Hump\SwitchYard.Hump.csproj", "{59EA8A0C-C50F-501F-9EA9-7CB5BE9881A8}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SwitchYard.Service", "SwitchYard.Service\SwitchYard.Service.csproj", "{FAFC9616-BAFE-7C50-1991-F7D22A081DA9}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SwitchYard.Capacity", "SwitchYard.Capacity\SwitchYard.Capacity.csproj", "{AAE4DC51-7BF1-4626-8376-CCCEC437060F}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SwitchYard.CapacityAgent", "SwitchYard.CapacityAgent\SwitchYard.CapacityAgent.csproj", "{3C8BAC4B-D7C3-43E8-A7EE-1B2C7F08FB2E}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -27,6 +29,10 @@ Global
 		{AAE4DC51-7BF1-4626-8376-CCCEC437060F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{AAE4DC51-7BF1-4626-8376-CCCEC437060F}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{AAE4DC51-7BF1-4626-8376-CCCEC437060F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3C8BAC4B-D7C3-43E8-A7EE-1B2C7F08FB2E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3C8BAC4B-D7C3-43E8-A7EE-1B2C7F08FB2E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3C8BAC4B-D7C3-43E8-A7EE-1B2C7F08FB2E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3C8BAC4B-D7C3-43E8-A7EE-1B2C7F08FB2E}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

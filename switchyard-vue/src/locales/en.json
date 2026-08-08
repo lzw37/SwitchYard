@@ -1095,6 +1095,7 @@
             "layout3d": "3D",
             "calcParams": "Calc Params",
             "operationPlan": "Operation Plan",
+            "modelSolving": "Model Solving",
             "resultAnalysis": "Result Analysis",
             "simulation": "Simulation"
         },
@@ -1103,6 +1104,74 @@
         },
         "messages": {
             "loadInstancesError": "Failed to load instance list"
+        }
+    },
+    "modelSolving": {
+        "fields": {
+            "stationScheme": "Station Scheme",
+            "operationPlan": "Operation Plan",
+            "status": "Status",
+            "agent": "CapacityAgent",
+            "account": "Account",
+            "models": "Models",
+            "selectedAgent": "Execution Agent",
+            "model": "Solver Model"
+        },
+        "placeholders": {
+            "stationScheme": "Select a station scheme",
+            "operationPlan": "Select an operation plan",
+            "agent": "Select an online agent",
+            "model": "Select a model",
+            "input": "Generate input data, then review or edit its JSON here",
+            "result": "The result JSON will appear here after solving"
+        },
+        "actions": {
+            "generateInput": "Generate Request Data",
+            "refreshConnections": "Refresh Connections",
+            "solve": "Send Solve Request",
+            "refreshJob": "Refresh Job",
+            "downloadResult": "Download Result JSON"
+        },
+        "sections": {
+            "connections": "CapacityAgent Connections",
+            "job": "Current Solve Job",
+            "input": "Request JSON",
+            "result": "Result JSON"
+        },
+        "connection": {
+            "online": "Online",
+            "offline": "Offline",
+            "busy": "Busy",
+            "onlineCount": "{count} online"
+        },
+        "empty": {
+            "noAgents": "No CapacityAgent connections",
+            "noJob": "No solve job submitted"
+        },
+        "hints": {
+            "editableJson": "Editable before dispatch"
+        },
+        "jobs": {
+            "queued": "Queued",
+            "running": "Running",
+            "completed": "Completed",
+            "failed": "Failed"
+        },
+        "messages": {
+            "loadSchemesFailed": "Failed to load station schemes",
+            "loadPlansFailed": "Failed to load operation plans",
+            "loadAgentsFailed": "Failed to load CapacityAgent connections",
+            "inputGenerated": "Solve request data generated",
+            "generateInputFailed": "Failed to generate solve request data",
+            "invalidJson": "Request data is not valid JSON",
+            "jobSubmitted": "Solve job dispatched",
+            "submitFailed": "Failed to dispatch solve job",
+            "jobCompleted": "Model solving completed; the result is ready to download",
+            "jobFailed": "Model solving failed",
+            "refreshJobFailed": "Failed to refresh solve job"
+        },
+        "units": {
+            "trains": "trains"
         }
     },
     "operationPlan": {

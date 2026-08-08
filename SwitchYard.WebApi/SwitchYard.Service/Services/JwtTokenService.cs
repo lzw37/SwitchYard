@@ -2,6 +2,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
 using Microsoft.IdentityModel.Tokens;
+using SwitchYard.Capacity;
 using SwitchYard.Service.Models;
 
 namespace SwitchYard.Service.Services
@@ -33,6 +34,26 @@ namespace SwitchYard.Service.Services
         /// <returns>JWT Token字符串</returns>
         public string GenerateToken(User user)
         {
+            return GenerateToken(user, Array.Empty<Claim>(), _expirationMinutes);
+        }
+
+        public string GenerateCapacityAgentToken(User user)
+        {
+            var expirationMinutes = int.Parse(
+                _configuration["Jwt:CapacityAgentExpirationMinutes"] ?? "1440");
+            return GenerateToken(
+                user,
+                new[]
+                {
+                    new Claim(
+                        CapacityAgentProtocol.ClientTypeClaim,
+                        CapacityAgentProtocol.CapacityAgentClientType)
+                },
+                expirationMinutes);
+        }
+
+        private string GenerateToken(User user, IEnumerable<Claim> additionalClaims, int expirationMinutes)
+        {
             var tokenHandler = new JwtSecurityTokenHandler();
             var key = Encoding.UTF8.GetBytes(_secretKey);
 
@@ -49,10 +70,12 @@ namespace SwitchYard.Service.Services
                 claims.Add(new Claim(ClaimTypes.Email, user.Email));
             }
 
+            claims.AddRange(additionalClaims);
+
             var tokenDescriptor = new SecurityTokenDescriptor
             {
                 Subject = new ClaimsIdentity(claims),
-                Expires = DateTime.UtcNow.AddMinutes(_expirationMinutes),
+                Expires = DateTime.UtcNow.AddMinutes(expirationMinutes),
                 Issuer = _issuer,
                 Audience = _audience,
                 SigningCredentials = new SigningCredentials(
@@ -118,6 +141,13 @@ namespace SwitchYard.Service.Services
         public int GetExpirationSeconds()
         {
             return _expirationMinutes * 60;
+        }
+
+        public int GetCapacityAgentExpirationSeconds()
+        {
+            var expirationMinutes = int.Parse(
+                _configuration["Jwt:CapacityAgentExpirationMinutes"] ?? "1440");
+            return expirationMinutes * 60;
         }
     }
 }

@@ -80,6 +80,12 @@
                     </div>
                     <el-empty v-else :description="t('capacityMain.placeholders.selectInstance')" />
                 </el-tab-pane>
+                <el-tab-pane :label="t('capacityMain.tabs.modelSolving')" name="modelSolving" lazy>
+                    <div v-if="hasSelectedInstance" class="model-solving-pane">
+                        <ModelSolving :selected-instance-id="selectedInstance || ''" />
+                    </div>
+                    <el-empty v-else :description="t('capacityMain.placeholders.selectInstance')" />
+                </el-tab-pane>
                 <el-tab-pane :label="t('capacityMain.tabs.resultAnalysis')" name="resultAnalysis">
                     <div class="tab-placeholder">
                         <el-empty :description="t('capacityMain.placeholders.resultAnalysis')" />
@@ -122,6 +128,7 @@ import StationLayout3D from './StationLayout3D.vue'
 import CalculationParameters from './CalculationParameters.vue'
 import OperationPlan from './OperationPlan.vue'
 import OperationSimulation from './OperationSimulation.vue'
+import ModelSolving from './ModelSolving.vue'
 import CapacityInstanceManager from './CapacityInstanceManager.vue'
 import UserManagement from '@/views/UserManagement.vue'
 
@@ -412,6 +419,14 @@ watch(selectedInstance, () => {
     overflow: hidden;
 }
 
+.model-solving-pane {
+    width: 100%;
+    max-width: 100%;
+    height: calc(100dvh - 118px);
+    min-height: 420px;
+    overflow: hidden;
+}
+
 @media (max-width: 768px) {
     .capacity-main {
         padding: 16px;
@@ -443,6 +458,11 @@ watch(selectedInstance, () => {
     .calculation-parameters-pane,
     .operation-plan-pane,
     .operation-simulation-pane {
+        height: calc(100dvh - 188px);
+        min-height: 420px;
+    }
+
+    .model-solving-pane {
         height: calc(100dvh - 188px);
         min-height: 420px;
     }
