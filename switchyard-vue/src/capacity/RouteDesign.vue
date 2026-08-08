@@ -33,6 +33,24 @@
                 </div>
             </template>
             <template #primary>
+                <el-button-group class="route-design-panel-toggle">
+                    <el-button
+                        size="small"
+                        :type="showStationRouteCard ? 'primary' : 'default'"
+                        :aria-pressed="showStationRouteCard"
+                        @click="toggleRouteDataPanel('stationRoute')"
+                    >
+                        {{ t('routeDesign.toolbar.stationRoute') }}
+                    </el-button>
+                    <el-button
+                        size="small"
+                        :type="showRouteEndCard ? 'primary' : 'default'"
+                        :aria-pressed="showRouteEndCard"
+                        @click="toggleRouteDataPanel('routeEnd')"
+                    >
+                        {{ t('routeDesign.toolbar.routeEnd') }}
+                    </el-button>
+                </el-button-group>
                 <el-button
                     :icon="MagicStick"
                     size="small"
@@ -42,16 +60,6 @@
                 >
                     {{ t('routeDesign.toolbar.generateInterruptCells') }}
                 </el-button>
-            </template>
-            <template #details>
-                <div class="route-design-switch-control">
-                    <span class="route-design-control-label">{{ t('routeDesign.toolbar.stationRoute') }}</span>
-                    <el-switch v-model="showStationRouteCard" size="small" />
-                </div>
-                <div class="route-design-switch-control">
-                    <span class="route-design-control-label">{{ t('routeDesign.toolbar.routeEnd') }}</span>
-                    <el-switch v-model="showRouteEndCard" size="small" />
-                </div>
             </template>
         </StationLayoutViewToolbar>
 
@@ -171,6 +179,7 @@
                 </section>
             </div>
             <div
+                v-if="isRouteDataPaneVisible"
                 class="route-design-resizer"
                 role="separator"
                 aria-orientation="vertical"
@@ -178,6 +187,7 @@
                 @dblclick="resetSplit"
             />
             <aside
+                v-if="isRouteDataPaneVisible"
                 class="route-design-data-pane"
                 :class="{ 'is-single-card': visibleRoutePanelCount === 1 }"
             >
@@ -1090,13 +1100,18 @@ const isStationRouteStackResizing = ref(false)
 const routeEndStackListHeight = ref(0)
 const isRouteEndStackResizing = ref(false)
 const showStationRouteCard = ref(true)
-const showRouteEndCard = ref(true)
+const showRouteEndCard = ref(false)
 const showAutoRouteGenerateCard = ref(false)
 const autoRoutePickStage = ref<AutoRouteNodePickStage>('none')
 const autoRouteStartNodeIds = ref<string[]>([])
 const autoRouteEndNodeIds = ref<string[]>([])
 const autoRouteGenerationLoading = ref(false)
 const autoRouteGenerationStatus = ref('')
+const isRouteDataPaneVisible = computed(() => (
+    showStationRouteCard.value ||
+    showAutoRouteGenerateCard.value ||
+    showRouteEndCard.value
+))
 const stationRoutes = ref<StationRoute[]>([])
 const selectedRouteId = ref('')
 const selectedRouteSelectionIds = ref<string[]>([])
@@ -1267,11 +1282,30 @@ const routeFilterFieldControls: RouteFilterControl[] = [
 ]
 
 const selectedInstanceId = computed(() => props.selectedInstanceId || '')
-const leftPaneStyle = computed(() => (
-    leftPaneWidth.value > 0
+const leftPaneStyle = computed(() => {
+    if (!isRouteDataPaneVisible.value) {
+        return { flexBasis: '100%', flexGrow: '1' }
+    }
+    return leftPaneWidth.value > 0
         ? { flexBasis: `${leftPaneWidth.value}px` }
         : { flexBasis: '64%' }
-))
+})
+
+function toggleRouteDataPanel(panel: 'stationRoute' | 'routeEnd') {
+    if (panel === 'stationRoute') {
+        const nextVisible = !showStationRouteCard.value
+        if (nextVisible) showRouteEndCard.value = false
+        showStationRouteCard.value = nextVisible
+        return
+    }
+
+    const nextVisible = !showRouteEndCard.value
+    if (nextVisible) {
+        showStationRouteCard.value = false
+        showAutoRouteGenerateCard.value = false
+    }
+    showRouteEndCard.value = nextVisible
+}
 const stationRouteContentStyle = computed((): Record<string, string> => {
     if (stationRouteStackListHeight.value <= 0) return {}
 

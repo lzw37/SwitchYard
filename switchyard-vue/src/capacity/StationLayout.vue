@@ -2459,6 +2459,33 @@ watch(
                             @click="setDrawingObject('w')">{{ t('stationLayout.draw.switch') }}</el-button>
                         <el-button size="small" :icon="Filter" :disabled="isSelectMode" :type="getDrawingButtonType('i')"
                             @click="setDrawingObject('i')">{{ t('stationLayout.draw.insulation') }}</el-button>
+                        <el-button size="small" :icon="Guide" :disabled="isSelectMode" :type="getDrawingButtonType('r')"
+                            @click="setDrawingObject('r')">{{ t('stationLayout.draw.route') }}</el-button>
+                        <el-dropdown trigger="click" :disabled="isSelectMode" @command="setDrawingBufferStopOption">
+                            <el-button size="small" :icon="Stopwatch" :disabled="isSelectMode" :type="getDrawingButtonType('e')"
+                                @click="setDrawingObject('e')">
+                                <span class="drawing-object-button-label">{{ drawingBufferStopButtonLabel }}</span>
+                                <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+                            </el-button>
+                            <template #dropdown>
+                                <el-dropdown-menu>
+                                    <template v-for="(typeOption, typeIndex) in bufferStopTypeOptions" :key="typeOption.value">
+                                        <el-dropdown-item disabled class="drawing-option-group-label" :divided="typeIndex > 0">
+                                            {{ typeOption.label }}
+                                        </el-dropdown-item>
+                                        <el-dropdown-item v-for="directionOption in bufferStopDirectionOptions"
+                                            :key="`${typeOption.value}-${directionOption.value}`"
+                                            :command="{ type: typeOption.value, direction: directionOption.value }">
+                                            {{ directionOption.label }}
+                                        </el-dropdown-item>
+                                    </template>
+                                </el-dropdown-menu>
+                            </template>
+                        </el-dropdown>
+                        <el-button size="small" :icon="Platform" :disabled="isSelectMode" :type="getDrawingButtonType('p')"
+                            @click="setDrawingObject('p')">{{ t('stationLayout.draw.platform') }}</el-button>
+                        <el-button size="small" :icon="EditPen" :disabled="isSelectMode" :type="getDrawingButtonType('a')"
+                            @click="setDrawingObject('a')">{{ t('stationLayout.draw.annotation') }}</el-button>
                     </el-button-group>
                 </div>
                 <div class="station-toolbar-group">
@@ -2481,6 +2508,30 @@ watch(
                     <div class="station-toolbar-switch-control">
                         <span class="station-toolbar-switch-control__label">节点</span>
                         <el-switch v-model="showNodes" size="small" />
+                    </div>
+                </div>
+                <div class="station-toolbar-group">
+                    <span class="station-toolbar-group__label">辅助面板</span>
+                    <el-button size="small" :icon="Magnet" :type="cellPanelVisible ? 'primary' : 'default'"
+                        :aria-pressed="cellPanelVisible" @click="toggleCellPanel">
+                        轨道电路区段
+                    </el-button>
+                    <el-button size="small" :icon="SetUp" :type="equipmentDrawerVisible ? 'primary' : 'default'"
+                        :aria-pressed="equipmentDrawerVisible" @click="equipmentDrawerVisible = !equipmentDrawerVisible">
+                        设备信息
+                    </el-button>
+                </div>
+                <div class="station-toolbar-group scale-toolbar-group">
+                    <span class="station-toolbar-group__label">{{ t('stationLayout.group.displayScale') }}</span>
+                    <div class="scale-slider">
+                        <span class="scale-slider-label">{{ t('stationLayout.scale.x') }}</span>
+                        <el-slider v-model="layoutScaleX" :min="0.25" :max="4" :step="0.05" size="small" />
+                        <span class="scale-slider-value">{{ layoutScaleXDisplay }}</span>
+                    </div>
+                    <div class="scale-slider">
+                        <span class="scale-slider-label">{{ t('stationLayout.scale.y') }}</span>
+                        <el-slider v-model="layoutScaleY" :min="0.25" :max="4" :step="0.05" size="small" />
+                        <span class="scale-slider-value">{{ layoutScaleYDisplay }}</span>
                     </div>
                 </div>
             </template>
@@ -2517,38 +2568,6 @@ watch(
                     </div>
                 </div>
                 <div class="station-toolbar-group">
-                    <span class="station-toolbar-group__label">更多绘图</span>
-                    <el-button-group>
-                        <el-button size="small" :icon="Guide" :disabled="isSelectMode" :type="getDrawingButtonType('r')"
-                            @click="setDrawingObject('r')">{{ t('stationLayout.draw.route') }}</el-button>
-                        <el-dropdown trigger="click" :disabled="isSelectMode" @command="setDrawingBufferStopOption">
-                            <el-button size="small" :icon="Stopwatch" :disabled="isSelectMode" :type="getDrawingButtonType('e')"
-                                @click="setDrawingObject('e')">
-                                <span class="drawing-object-button-label">{{ drawingBufferStopButtonLabel }}</span>
-                                <el-icon class="el-icon--right"><ArrowDown /></el-icon>
-                            </el-button>
-                            <template #dropdown>
-                                <el-dropdown-menu>
-                                    <template v-for="(typeOption, typeIndex) in bufferStopTypeOptions" :key="typeOption.value">
-                                        <el-dropdown-item disabled class="drawing-option-group-label" :divided="typeIndex > 0">
-                                            {{ typeOption.label }}
-                                        </el-dropdown-item>
-                                        <el-dropdown-item v-for="directionOption in bufferStopDirectionOptions"
-                                            :key="`${typeOption.value}-${directionOption.value}`"
-                                            :command="{ type: typeOption.value, direction: directionOption.value }">
-                                            {{ directionOption.label }}
-                                        </el-dropdown-item>
-                                    </template>
-                                </el-dropdown-menu>
-                            </template>
-                        </el-dropdown>
-                        <el-button size="small" :icon="Platform" :disabled="isSelectMode" :type="getDrawingButtonType('p')"
-                            @click="setDrawingObject('p')">{{ t('stationLayout.draw.platform') }}</el-button>
-                        <el-button size="small" :icon="EditPen" :disabled="isSelectMode" :type="getDrawingButtonType('a')"
-                            @click="setDrawingObject('a')">{{ t('stationLayout.draw.annotation') }}</el-button>
-                    </el-button-group>
-                </div>
-                <div class="station-toolbar-group">
                     <span class="station-toolbar-group__label">拓扑</span>
                     <el-radio-group v-model="topologyGenerationMode" size="small">
                         <el-radio-button value="auto">自动</el-radio-button>
@@ -2567,13 +2586,8 @@ watch(
                     </el-button-group>
                 </div>
                 <div class="station-toolbar-group">
-                    <span class="station-toolbar-group__label">辅助面板</span>
+                    <span class="station-toolbar-group__label">路径测试</span>
                     <el-button size="small" :icon="Guide" :type="routeTesterVisible ? 'primary' : 'default'" @click="toggleRouteTester">路径搜索</el-button>
-                    <el-button size="small" :icon="Magnet" :type="cellPanelVisible ? 'primary' : 'default'" @click="toggleCellPanel">轨道电路区段</el-button>
-                    <div class="station-toolbar-switch-control">
-                        <span class="station-toolbar-switch-control__label">设备信息</span>
-                        <el-switch v-model="equipmentDrawerVisible" size="small" />
-                    </div>
                 </div>
                 <div class="station-toolbar-group">
                     <span class="station-toolbar-group__label">显示</span>
@@ -2589,16 +2603,6 @@ watch(
                         <el-switch v-model="showCellNames" size="small" />
                     </div>
                     <el-button size="small" :icon="SetUp" @click="layoutStyleDialogVisible = true">显示样式</el-button>
-                    <div class="scale-slider">
-                        <span class="scale-slider-label">{{ t('stationLayout.scale.x') }}</span>
-                        <el-slider v-model="layoutScaleX" :min="0.25" :max="4" :step="0.05" size="small" />
-                        <span class="scale-slider-value">{{ layoutScaleXDisplay }}</span>
-                    </div>
-                    <div class="scale-slider">
-                        <span class="scale-slider-label">{{ t('stationLayout.scale.y') }}</span>
-                        <el-slider v-model="layoutScaleY" :min="0.25" :max="4" :step="0.05" size="small" />
-                        <span class="scale-slider-value">{{ layoutScaleYDisplay }}</span>
-                    </div>
                 </div>
             </template>
         </StationLayoutEditToolbar>
