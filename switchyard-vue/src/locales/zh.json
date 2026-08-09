@@ -1103,7 +1103,10 @@
             "account": "认证账号",
             "models": "可用模型",
             "selectedAgent": "执行 Agent",
-            "model": "求解模型"
+            "model": "求解模型",
+            "workload": "并发任务",
+            "cpu": "CPU",
+            "memory": "内存"
         },
         "placeholders": {
             "stationScheme": "请选择站场方案",
@@ -1130,7 +1133,18 @@
             "online": "在线",
             "offline": "离线",
             "busy": "忙碌",
+            "running": "运行中 {active}/{max}",
+            "full": "槽位已满",
+            "accessDenied": "无权使用",
             "onlineCount": "在线 {count}"
+        },
+        "resources": {
+            "slots": "任务槽位",
+            "availableSlots": "可用 {count} 个槽位",
+            "cpuUsage": "Agent CPU 使用率",
+            "memoryUsage": "Agent 工作集内存",
+            "perJob": "每任务资源上限",
+            "allocated": "已分配 {cpu} CPU / {memory}"
         },
         "empty": {
             "noAgents": "暂无 CapacityAgent 连接",
@@ -1160,6 +1174,45 @@
         },
         "units": {
             "trains": "列车"
+        },
+        "presets": {
+            "title": "求解预设管理",
+            "fields": {
+                "preset": "求解预设",
+                "name": "预设名称",
+                "description": "说明",
+                "leftTolerance": "允许提前（秒）",
+                "rightTolerance": "允许延后（秒）",
+                "timeLimit": "求解时限（秒）",
+                "threadCount": "求解线程数",
+                "objective": "优化目标"
+            },
+            "sections": {
+                "settings": "模型参数"
+            },
+            "placeholders": {
+                "select": "请选择求解预设",
+                "newPreset": "新建预设"
+            },
+            "actions": {
+                "manage": "管理预设",
+                "new": "新建预设",
+                "delete": "删除预设"
+            },
+            "objectives": {
+                "minEndTime": "最小化作业结束时间",
+                "minDuration": "最小化作业持续时间",
+                "minStartAndEnd": "最小化开始与结束时间"
+            },
+            "messages": {
+                "loadFailed": "加载求解预设失败",
+                "required": "请填写预设名称、CapacityAgent 和模型",
+                "saved": "求解预设已保存",
+                "saveFailed": "保存求解预设失败",
+                "deleteConfirm": "确定删除求解预设“{name}”吗？",
+                "deleted": "求解预设已删除",
+                "deleteFailed": "删除求解预设失败"
+            }
         }
     },
     "operationPlan": {
@@ -1176,6 +1229,22 @@
             "expand": "展开",
             "collapse": "收起",
             "confirm": "确定"
+        },
+        "saturatedPlan": {
+            "actions": {
+                "generate": "生成饱和计划",
+                "generating": "求解中 {progress}%"
+            },
+            "placeholders": {
+                "preset": "选择求解预设"
+            },
+            "messages": {
+                "loadPresetsFailed": "加载求解预设失败",
+                "confirm": "将使用预设“{preset}”对作业计划“{plan}”进行求解，并把结果保存为一个新的作业计划。是否继续？",
+                "generated": "饱和作业计划“{name}”已生成并保存",
+                "generateFailed": "生成饱和作业计划失败",
+                "missingResultPlan": "求解完成，但服务器没有返回新作业计划信息"
+            }
         },
         "fields": {
             "operation": "操作"

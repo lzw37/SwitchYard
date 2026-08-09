@@ -217,7 +217,20 @@ axios.interceptors.response.use(
                     ElMessage.error(i18n.global.t("axios.notFound") as string);
                     break;
                 case 500:
-                    ElMessage.error(i18n.global.t("axios.serverError") as string);
+                    {
+                        const payload = error.response.data as any;
+                        const message = typeof payload?.message === "string"
+                            ? payload.message.trim()
+                            : "";
+                        const detail = typeof payload?.detail === "string"
+                            ? payload.detail.trim()
+                            : "";
+                        ElMessage.error(
+                            message && detail
+                                ? `${message} ${detail}`
+                                : message || detail || (i18n.global.t("axios.serverError") as string),
+                        );
+                    }
                     break;
                 default:
                     ElMessage.error(

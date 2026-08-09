@@ -23,14 +23,11 @@ public sealed class CapacityAgentHub : Hub
         _logger = logger;
     }
 
-    public Task RegisterAgent(
-        string agentId,
-        string name,
-        List<CapacityModelDescriptor> models,
-        string? activeJobId = null)
+    public Task RegisterAgent(CapacityAgentRegistration registration)
     {
-        var normalizedAgentId = agentId?.Trim();
-        var normalizedName = name?.Trim();
+        registration ??= new CapacityAgentRegistration();
+        var normalizedAgentId = registration.AgentId?.Trim();
+        var normalizedName = registration.Name?.Trim();
         if (string.IsNullOrWhiteSpace(normalizedAgentId) || normalizedAgentId.Length > 100)
         {
             throw new HubException("Agent ID 无效。");
@@ -41,7 +38,7 @@ public sealed class CapacityAgentHub : Hub
             throw new HubException("Agent 名称无效。");
         }
 
-        var normalizedModels = (models ?? new List<CapacityModelDescriptor>())
+        var normalizedModels = (registration.Models ?? new List<CapacityModelDescriptor>())
             .Where(model => !string.IsNullOrWhiteSpace(model.Id))
             .Take(20)
             .ToList();
@@ -51,24 +48,49 @@ public sealed class CapacityAgentHub : Hub
         }
 
         var username = Context.User?.FindFirstValue(ClaimTypes.Name) ?? string.Empty;
-        var abandonedJobId = _agents.Register(
+        var isAdministrator = string.Equals(username, "Admin", StringComparison.OrdinalIgnoreCase) ||
+                              string.Equals(
+                                  Context.User?.FindFirstValue(ClaimTypes.Role),
+                                  "Admin",
+                                  StringComparison.OrdinalIgnoreCase);
+        var abandonedJobIds = _agents.Register(
             normalizedAgentId,
             normalizedName,
             username,
             Context.ConnectionId,
             normalizedModels,
-            activeJobId);
-        if (!string.IsNullOrWhiteSpace(abandonedJobId))
+            (registration.ActiveJobIds ?? new List<string>()).Take(128).ToList(),
+            registration.Resources ?? new CapacityAgentResourceStatus(),
+            isAdministrator,
+            registration.AccessPolicy ?? new CapacityAgentAccessPolicy());
+        foreach (var abandonedJobId in abandonedJobIds)
         {
             _jobs.FailJob(abandonedJobId, "CapacityAgent 已重启，原求解任务未能完成。");
         }
 
         _logger.LogInformation(
-            "CapacityAgent {AgentId} ({AgentName}) registered by {Username} with {ModelCount} model(s).",
+            "CapacityAgent {AgentId} ({AgentName}) registered by {Username} ({Role}) with {ModelCount} model(s), {ActiveJobCount}/{MaxConcurrentJobs} active jobs. Requested allow-all: {AllowAllUsers}; whitelist entries: {AllowedUserCount}.",
             normalizedAgentId,
             normalizedName,
             username,
-            normalizedModels.Count);
+            isAdministrator ? "Admin" : "User",
+            normalizedModels.Count,
+            registration.ActiveJobIds?.Count ?? 0,
+            registration.Resources?.MaxConcurrentJobs ?? 1,
+            registration.AccessPolicy?.AllowAllUsers ?? false,
+            registration.AccessPolicy?.AllowedUsers?.Count ?? 0);
+        return Task.CompletedTask;
+    }
+
+    public Task ReportStatus(CapacityAgentResourceStatus resources)
+    {
+        var agentId = _agents.GetAgentId(Context.ConnectionId);
+        if (string.IsNullOrWhiteSpace(agentId))
+        {
+            throw new HubException("CapacityAgent 尚未注册。");
+        }
+
+        _agents.UpdateStatus(agentId, Context.ConnectionId, resources ?? new CapacityAgentResourceStatus());
         return Task.CompletedTask;
     }
 

@@ -1115,7 +1115,10 @@
             "account": "Account",
             "models": "Models",
             "selectedAgent": "Execution Agent",
-            "model": "Solver Model"
+            "model": "Solver Model",
+            "workload": "Jobs",
+            "cpu": "CPU",
+            "memory": "Memory"
         },
         "placeholders": {
             "stationScheme": "Select a station scheme",
@@ -1142,7 +1145,18 @@
             "online": "Online",
             "offline": "Offline",
             "busy": "Busy",
+            "running": "Running {active}/{max}",
+            "full": "At Capacity",
+            "accessDenied": "Access Denied",
             "onlineCount": "{count} online"
+        },
+        "resources": {
+            "slots": "Job Slots",
+            "availableSlots": "{count} slots available",
+            "cpuUsage": "Agent CPU Usage",
+            "memoryUsage": "Agent Working Set",
+            "perJob": "Per-job Limits",
+            "allocated": "Allocated {cpu} CPU / {memory}"
         },
         "empty": {
             "noAgents": "No CapacityAgent connections",
@@ -1172,6 +1186,45 @@
         },
         "units": {
             "trains": "trains"
+        },
+        "presets": {
+            "title": "Solve Preset Management",
+            "fields": {
+                "preset": "Solve Preset",
+                "name": "Preset Name",
+                "description": "Description",
+                "leftTolerance": "Early Tolerance (s)",
+                "rightTolerance": "Late Tolerance (s)",
+                "timeLimit": "Time Limit (s)",
+                "threadCount": "Solver Threads",
+                "objective": "Objective"
+            },
+            "sections": {
+                "settings": "Model Settings"
+            },
+            "placeholders": {
+                "select": "Select a solve preset",
+                "newPreset": "New preset"
+            },
+            "actions": {
+                "manage": "Manage Presets",
+                "new": "New Preset",
+                "delete": "Delete Preset"
+            },
+            "objectives": {
+                "minEndTime": "Minimize operation end time",
+                "minDuration": "Minimize operation duration",
+                "minStartAndEnd": "Minimize start and end time"
+            },
+            "messages": {
+                "loadFailed": "Failed to load solve presets",
+                "required": "Preset name, CapacityAgent, and model are required",
+                "saved": "Solve preset saved",
+                "saveFailed": "Failed to save solve preset",
+                "deleteConfirm": "Delete solve preset “{name}”?",
+                "deleted": "Solve preset deleted",
+                "deleteFailed": "Failed to delete solve preset"
+            }
         }
     },
     "operationPlan": {
@@ -1188,6 +1241,22 @@
             "expand": "Expand",
             "collapse": "Collapse",
             "confirm": "OK"
+        },
+        "saturatedPlan": {
+            "actions": {
+                "generate": "Generate Saturated Plan",
+                "generating": "Solving {progress}%"
+            },
+            "placeholders": {
+                "preset": "Select a solve preset"
+            },
+            "messages": {
+                "loadPresetsFailed": "Failed to load solve presets",
+                "confirm": "Solve operation plan “{plan}” with preset “{preset}” and save the result as a new operation plan?",
+                "generated": "Saturated operation plan “{name}” was generated and saved",
+                "generateFailed": "Failed to generate saturated operation plan",
+                "missingResultPlan": "Solving completed, but the server did not return the new operation plan"
+            }
         },
         "fields": {
             "operation": "Operation"

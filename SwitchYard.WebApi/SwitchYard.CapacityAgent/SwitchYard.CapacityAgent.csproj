@@ -10,10 +10,20 @@
   <ItemGroup>
     <PackageReference Include="Google.OrTools" Version="9.15.6755" />
     <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.10" />
+    <PackageReference Include="Serilog" Version="4.0.0" />
+    <PackageReference Include="Serilog.Sinks.Console" Version="5.0.0" />
+    <PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\SwitchYard.Capacity\SwitchYard.Capacity.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="capacity-agent.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </None>
   </ItemGroup>
 
 </Project>

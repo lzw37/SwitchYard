@@ -9,9 +9,14 @@ internal interface ICapacityModel
 
     Task<JsonElement> SolveAsync(
         JsonElement input,
+        CapacityModelExecutionContext executionContext,
         Func<int, string, Task> reportProgress,
         CancellationToken cancellationToken);
 }
+
+internal sealed record CapacityModelExecutionContext(
+    string JobId,
+    CapacityTaskResourceLimits Resources);
 
 internal sealed class CapacityModelRegistry
 {

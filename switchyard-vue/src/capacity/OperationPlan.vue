@@ -42,6 +42,32 @@
                 </el-select>
             </div>
             <div class="operation-plan-toolbar-actions">
+                <el-select
+                    v-model="selectedSaturatedPresetId"
+                    size="small"
+                    filterable
+                    class="operation-plan-saturated-preset-select"
+                    :loading="loadingSolvePresets"
+                    :disabled="generatingSaturatedPlan"
+                    :placeholder="t('operationPlan.saturatedPlan.placeholders.preset')"
+                >
+                    <el-option
+                        v-for="preset in solvePresets"
+                        :key="preset.presetId"
+                        :label="preset.name"
+                        :value="preset.presetId"
+                    />
+                </el-select>
+                <el-button
+                    :icon="MagicStick"
+                    type="success"
+                    size="small"
+                    :loading="generatingSaturatedPlan"
+                    :disabled="!canGenerateSaturatedPlan"
+                    @click="generateSaturatedPlan"
+                >
+                    {{ saturatedPlanButtonText }}
+                </el-button>
                 <el-button
                     :icon="Setting"
                     size="small"
@@ -1898,6 +1924,23 @@ interface StationOperationPlan {
     isDraft?: boolean
 }
 
+interface SolvePresetOption {
+    presetId: string
+    name: string
+    agentId: string
+    modelId: string
+}
+
+interface SaturatedPlanJob {
+    jobId: string
+    status: 'queued' | 'running' | 'completed' | 'failed'
+    progress: number
+    progressMessage: string
+    error?: string
+    resultOperationPlanId?: string
+    resultOperationPlanName?: string
+}
+
 interface StationRouteOption {
     id: string
     name: string
@@ -2169,6 +2212,9 @@ const currentOperationPlanId = ref('')
 const activeOperationPlanTab = ref<OperationPlanSubTab>('trainTemplate')
 const stationSchemeOptions = ref<StationSchemeOption[]>([])
 const operationPlanOptions = ref<StationOperationPlan[]>([])
+const solvePresets = ref<SolvePresetOption[]>([])
+const selectedSaturatedPresetId = ref('')
+const saturatedPlanJob = ref<SaturatedPlanJob | null>(null)
 const stationRouteOptions = ref<StationRouteOption[]>([])
 const stationRouteEndOptions = ref<StationRouteEndOption[]>([])
 const stationLayoutCells = ref<OperationPlanChartCell[]>([])
@@ -2211,6 +2257,7 @@ const operationBottleneckRoutePickerFilters = ref<OperationBottleneckRoutePicker
 
 const loadingStationSchemes = ref(false)
 const loadingOperationPlans = ref(false)
+const loadingSolvePresets = ref(false)
 const loadingStationRoutes = ref(false)
 const loadingStationRouteEnds = ref(false)
 const loadingTrainTemplates = ref(false)
@@ -2226,6 +2273,7 @@ const savingTrainOperationPlanTrain = ref(false)
 const savingTrainOperationPlanMovement = ref(false)
 const savingOperationBottleneckSummaryCategories = ref(false)
 const generatingTrainOperationPlan = ref(false)
+const generatingSaturatedPlan = ref(false)
 const trainTemplateCreating = ref(false)
 const movementTemplateCreating = ref(false)
 const trainOperationPlanTrainCreating = ref(false)
@@ -2286,6 +2334,7 @@ let trainTemplateLoadVersion = 0
 let movementTemplateLoadVersion = 0
 let trainOperationPlanLoadVersion = 0
 let operationPlanChartLoadVersion = 0
+let saturatedPlanRunVersion = 0
 let routePickerLayoutLoadVersion = 0
 let routePickerResizeState: RoutePickerResizeState | null = null
 let operationAnalysisSnapshotSaveTimer: ReturnType<typeof window.setTimeout> | null = null
@@ -2334,6 +2383,18 @@ const canGenerateTrainOperationPlan = computed(() => (
     !generatingTrainOperationPlan.value &&
     !loadingTrainOperationPlan.value &&
     !operationPlanInlineActive.value
+))
+const canGenerateSaturatedPlan = computed(() => (
+    hasScope.value &&
+    Boolean(selectedSaturatedPresetId.value) &&
+    !loadingSolvePresets.value &&
+    !generatingSaturatedPlan.value &&
+    !operationPlanInlineActive.value
+))
+const saturatedPlanButtonText = computed(() => (
+    generatingSaturatedPlan.value && saturatedPlanJob.value
+        ? t('operationPlan.saturatedPlan.actions.generating', { progress: saturatedPlanJob.value.progress })
+        : t('operationPlan.saturatedPlan.actions.generate')
 ))
 const canEditTrainOperationPlan = computed(() => (
     hasScope.value &&
@@ -5315,6 +5376,126 @@ async function loadOperationPlans() {
     }
 }
 
+async function loadSolvePresets() {
+    const previousPresetId = selectedSaturatedPresetId.value
+    loadingSolvePresets.value = true
+    try {
+        const response = await axios.get('/api/capacity-agents/presets')
+        solvePresets.value = (Array.isArray(response.data) ? response.data : [])
+            .map((item: any): SolvePresetOption => ({
+                presetId: String(item?.presetId || '').trim(),
+                name: String(item?.name || '').trim(),
+                agentId: String(item?.agentId || '').trim(),
+                modelId: String(item?.modelId || '').trim(),
+            }))
+            .filter((item: SolvePresetOption) => (
+                item.presetId && item.modelId.toLowerCase() === 'station-capacity-v1'
+            ))
+        selectedSaturatedPresetId.value = solvePresets.value.some((item) => item.presetId === previousPresetId)
+            ? previousPresetId
+            : (solvePresets.value[0]?.presetId || '')
+    } catch (error) {
+        console.error('Failed to load capacity solve presets:', error)
+        solvePresets.value = []
+        selectedSaturatedPresetId.value = ''
+        ElMessage.error(getApiErrorMessage(error, t('operationPlan.saturatedPlan.messages.loadPresetsFailed')))
+    } finally {
+        loadingSolvePresets.value = false
+    }
+}
+
+async function generateSaturatedPlan() {
+    const { instanceID, stationSchemeID, operationPlanID } = getOperationPlanScope()
+    const preset = solvePresets.value.find((item) => item.presetId === selectedSaturatedPresetId.value)
+    if (!instanceID || !stationSchemeID || !operationPlanID || !preset) return
+
+    const sourcePlanName = operationPlanOptions.value.find((item) => item.operationPlanID === operationPlanID)?.name
+        || operationPlanID
+    try {
+        await ElMessageBox.confirm(
+            t('operationPlan.saturatedPlan.messages.confirm', {
+                plan: sourcePlanName,
+                preset: preset.name,
+            }),
+            t('operationPlan.saturatedPlan.actions.generate'),
+            {
+                type: 'warning',
+                confirmButtonText: t('operationPlan.saturatedPlan.actions.generate'),
+                cancelButtonText: t('operationPlan.actions.cancel'),
+            },
+        )
+    } catch {
+        return
+    }
+
+    const runVersion = ++saturatedPlanRunVersion
+    generatingSaturatedPlan.value = true
+    saturatedPlanJob.value = null
+    try {
+        const response = await axios.post<SaturatedPlanJob>('/api/capacity-agents/saturated-plan-jobs', {
+            presetId: preset.presetId,
+            instanceId: instanceID,
+            stationSchemeId: stationSchemeID,
+            operationPlanId: operationPlanID,
+        })
+        saturatedPlanJob.value = response.data
+
+        while (
+            runVersion === saturatedPlanRunVersion &&
+            saturatedPlanJob.value &&
+            (saturatedPlanJob.value.status === 'queued' || saturatedPlanJob.value.status === 'running')
+        ) {
+            await waitForSaturatedPlanPoll()
+            if (runVersion !== saturatedPlanRunVersion || !saturatedPlanJob.value) return
+            const jobResponse: { data: SaturatedPlanJob } = await axios.get<SaturatedPlanJob>(
+                `/api/capacity-agents/jobs/${saturatedPlanJob.value.jobId}`,
+            )
+            saturatedPlanJob.value = jobResponse.data
+        }
+
+        if (runVersion !== saturatedPlanRunVersion || !saturatedPlanJob.value) return
+        if (saturatedPlanJob.value.status === 'failed') {
+            throw new Error(saturatedPlanJob.value.error || t('operationPlan.saturatedPlan.messages.generateFailed'))
+        }
+
+        const resultPlanId = String(saturatedPlanJob.value.resultOperationPlanId || '').trim()
+        if (!resultPlanId) {
+            throw new Error(t('operationPlan.saturatedPlan.messages.missingResultPlan'))
+        }
+
+        await loadOperationPlans()
+        currentOperationPlanId.value = resultPlanId
+        activeOperationPlanTab.value = 'trainOperationPlan'
+        await refreshOperationPlanData()
+        ElMessage.success(t('operationPlan.saturatedPlan.messages.generated', {
+            name: saturatedPlanJob.value.resultOperationPlanName || resultPlanId,
+        }))
+    } catch (error) {
+        console.error('Failed to generate saturated operation plan:', error)
+        const message = (error as any)?.response
+            ? getApiErrorMessage(error, t('operationPlan.saturatedPlan.messages.generateFailed'))
+            : (error instanceof Error ? error.message : t('operationPlan.saturatedPlan.messages.generateFailed'))
+        ElMessage.error(message)
+    } finally {
+        if (runVersion === saturatedPlanRunVersion) {
+            generatingSaturatedPlan.value = false
+        }
+    }
+}
+
+function waitForSaturatedPlanPoll() {
+    return new Promise<void>((resolve) => window.setTimeout(resolve, 1500))
+}
+
+function getApiErrorMessage(error: any, fallback: string) {
+    const data = error?.response?.data
+    if (typeof data === 'string' && data.trim()) return data
+    const message = typeof data?.message === 'string' ? data.message.trim() : ''
+    const detail = typeof data?.detail === 'string' ? data.detail.trim() : ''
+    if (message && detail) return `${message} ${detail}`
+    return message || detail || fallback
+}
+
 function openOperationPlanManager() {
     operationPlanManagerVisible.value = true
     operationPlanObjectMode.value = 'create'
@@ -6799,6 +6980,8 @@ watch(
     { deep: true },
 )
 
+void loadSolvePresets()
+
 watch(
     () => props.selectedInstanceId,
     async () => {
@@ -6813,6 +6996,7 @@ watch(
 )
 
 onBeforeUnmount(() => {
+    saturatedPlanRunVersion += 1
     if (operationAnalysisSnapshotSaveTimer) {
         window.clearTimeout(operationAnalysisSnapshotSaveTimer)
         operationAnalysisSnapshotSaveTimer = null
@@ -6846,6 +7030,7 @@ onBeforeUnmount(() => {
     justify-content: space-between;
     gap: 12px;
     min-height: 36px;
+    flex-wrap: wrap;
 }
 
 .operation-plan-scheme-control,
@@ -6871,6 +7056,10 @@ onBeforeUnmount(() => {
 
 .operation-plan-object-select {
     width: min(300px, 38vw);
+}
+
+.operation-plan-saturated-preset-select {
+    width: 220px;
 }
 
 .operation-plan-object-dialog :deep(.el-dialog__body) {

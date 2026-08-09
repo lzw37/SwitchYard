@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json;
 using Google.OrTools.LinearSolver;
+using Serilog;
 using SwitchYard.Capacity;
 
 namespace SwitchYard.CapacityAgent;
@@ -10,6 +11,13 @@ internal sealed class StationCapacityModel : ICapacityModel
     private const double BigM = 300_000;
     private const double DaySeconds = 86_400;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private static readonly ILogger Logger = Log.ForContext<StationCapacityModel>();
+    private readonly bool _runInProcess;
+
+    public StationCapacityModel(bool runInProcess = false)
+    {
+        _runInProcess = runInProcess;
+    }
 
     public CapacityModelDescriptor Descriptor { get; } = new()
     {
@@ -21,18 +29,33 @@ internal sealed class StationCapacityModel : ICapacityModel
 
     public async Task<JsonElement> SolveAsync(
         JsonElement input,
+        CapacityModelExecutionContext executionContext,
         Func<int, string, Task> reportProgress,
         CancellationToken cancellationToken)
     {
+        if (!_runInProcess)
+        {
+            return await CapacitySolveWorkerProcess.SolveAsync(
+                input,
+                executionContext,
+                reportProgress,
+                cancellationToken);
+        }
+
         var modelInput = input.Deserialize<StationCapacitySolveInput>(JsonOptions)
             ?? throw new InvalidOperationException("求解输入为空或格式不正确。");
 
         Validate(modelInput);
+        Logger.Information(
+            "能力计算输入校验完成：{TrainCount} 列列车、{RouteCount} 条进路、{OccupationCount} 项占用参数",
+            modelInput.Trains.Count,
+            modelInput.Routes.Count,
+            modelInput.RouteOccupations.Count);
         await reportProgress(10, "输入数据校验完成");
 
         return await Task.Run(async () =>
         {
-            var result = Solve(modelInput, reportProgress, cancellationToken);
+            var result = Solve(modelInput, executionContext.Resources, reportProgress, cancellationToken);
             await reportProgress(100, "求解结果已生成");
             return JsonSerializer.SerializeToElement(result, JsonOptions);
         }, cancellationToken);
@@ -40,17 +63,28 @@ internal sealed class StationCapacityModel : ICapacityModel
 
     private static StationCapacitySolveResult Solve(
         StationCapacitySolveInput input,
+        CapacityTaskResourceLimits resources,
         Func<int, string, Task> reportProgress,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        using var solver = Solver.CreateSolver("SCIP") ?? Solver.CreateSolver("CBC_MIXED_INTEGER_PROGRAMMING")
-            ?? throw new InvalidOperationException("当前 OR-Tools 运行环境不包含可用的混合整数规划求解器。");
+        using var solver = CreateSolver(out var solverBackend);
 
         var settings = input.Settings ?? new StationCapacitySolveSettings();
-        solver.SetTimeLimit(Math.Clamp(settings.TimeLimitSeconds, 1, 86_400) * 1000L);
-        solver.SetNumThreads(Math.Clamp(settings.ThreadCount, 1, 64));
+        var timeLimitSeconds = Math.Clamp(settings.TimeLimitSeconds, 1, 86_400);
+        var cpuCoreLimit = Math.Clamp(resources.CpuCoreCount, 1, 128);
+        var threadCount = Math.Min(Math.Clamp(settings.ThreadCount, 1, 128), cpuCoreLimit);
+        solver.SetTimeLimit(timeLimitSeconds * 1000L);
+        solver.SetNumThreads(threadCount);
+        if (string.Equals(solverBackend, "SCIP", StringComparison.Ordinal) && resources.MemoryLimitBytes > 0)
+        {
+            var memoryLimitMb = Math.Max(1, resources.MemoryLimitBytes / (1024L * 1024L));
+            if (!solver.SetSolverSpecificParametersAsString($"limits/memory = {memoryLimitMb}"))
+            {
+                Logger.Warning("SCIP 未接受每任务内存上限参数：{MemoryLimitMb} MB", memoryLimitMb);
+            }
+        }
 
         var routeMap = input.Routes.ToDictionary(route => route.Id, StringComparer.OrdinalIgnoreCase);
         var movements = BuildMovementContexts(input, routeMap);
@@ -105,10 +139,26 @@ internal sealed class StationCapacityModel : ICapacityModel
         reportProgress(55, "模型创建完成，开始调用 OR-Tools 求解").GetAwaiter().GetResult();
         cancellationToken.ThrowIfCancellationRequested();
         using var cancellationRegistration = cancellationToken.Register(() => solver.InterruptSolve());
+        Logger.Information(
+            "OR-Tools 求解开始：后端 {SolverBackend}，版本 {SolverVersion}，变量 {VariableCount}，约束 {ConstraintCount}，时限 {TimeLimitSeconds} 秒，线程 {ThreadCount}，内存上限 {MemoryLimitMb} MB",
+            solverBackend,
+            solver.SolverVersion(),
+            solver.NumVariables(),
+            solver.NumConstraints(),
+            timeLimitSeconds,
+            threadCount,
+            resources.MemoryLimitBytes / (1024L * 1024L));
+        solver.EnableOutput();
         var stopwatch = Stopwatch.StartNew();
-        var status = solver.Solve();
+        var status = OrToolsLogCapture.Run(solver.Solve);
         stopwatch.Stop();
         cancellationToken.ThrowIfCancellationRequested();
+        Logger.Information(
+            "OR-Tools 求解结束：状态 {SolverStatus}，耗时 {ElapsedSeconds:F3} 秒，迭代 {IterationCount}，分支 {NodeCount}",
+            MapStatus(status),
+            stopwatch.Elapsed.TotalSeconds,
+            solver.Iterations(),
+            solver.Nodes());
 
         var hasSolution = status is Solver.ResultStatus.OPTIMAL or Solver.ResultStatus.FEASIBLE;
         var result = new StationCapacitySolveResult
@@ -123,6 +173,7 @@ internal sealed class StationCapacityModel : ICapacityModel
 
         if (!hasSolution)
         {
+            Logger.Warning("OR-Tools 未找到可用解：{SolverStatus}", result.Status);
             return result;
         }
 
@@ -187,8 +238,33 @@ internal sealed class StationCapacityModel : ICapacityModel
         result.CapacityValue = lastOccupationEnd <= 0
             ? 0
             : input.Trains.Count * 64_800d / lastOccupationEnd;
+        Logger.Information(
+            "能力计算结果解析完成：目标值 {ObjectiveValue}，最优界 {BestBound}，MIP Gap {MipGap:P4}，能力值 {CapacityValue}",
+            result.ObjectiveValue,
+            result.BestBound,
+            result.MipGap,
+            result.CapacityValue);
         reportProgress(90, "求解完成，正在解析结果").GetAwaiter().GetResult();
         return result;
+    }
+
+    private static Solver CreateSolver(out string backend)
+    {
+        var solver = Solver.CreateSolver("SCIP");
+        if (solver is not null)
+        {
+            backend = "SCIP";
+            return solver;
+        }
+
+        solver = Solver.CreateSolver("CBC_MIXED_INTEGER_PROGRAMMING");
+        if (solver is not null)
+        {
+            backend = "CBC";
+            return solver;
+        }
+
+        throw new InvalidOperationException("当前 OR-Tools 运行环境不包含可用的混合整数规划求解器。");
     }
 
     private static List<MovementContext> BuildMovementContexts(

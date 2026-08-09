@@ -1,0 +1,9 @@
+{
+  "agentName": "",
+  "maxConcurrentJobs": 2,
+  "cpuCoresPerJob": 2,
+  "memoryLimitMbPerJob": 2048,
+  "statusReportIntervalSeconds": 2,
+  "allowAllUsers": false,
+  "allowedUsers": []
+}
