@@ -1595,6 +1595,7 @@
             "deleteSelection": "Delete Sel"
         },
         "placeholders": {
+            "selectInstance": "Please select a station",
             "selectStationScheme": "Select station scheme"
         },
         "schemeManager": {
@@ -1666,7 +1667,8 @@
             "saveSuccess": "Save successful: ",
             "saveFailed": "Save failed: ",
             "loadFailed": "Load failed: ",
-            "loadSchemesFailed": "Failed to load station schemes"
+            "loadSchemesFailed": "Failed to load station schemes",
+            "readonly": "Read-only mode does not allow write operations"
         }
     },
     "stationLayout3d": {

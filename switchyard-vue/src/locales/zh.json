@@ -1583,6 +1583,7 @@
             "deleteSelection": "删除选择"
         },
         "placeholders": {
+            "selectInstance": "请先选择车站",
             "selectStationScheme": "选择车站方案"
         },
         "schemeManager": {
@@ -1654,7 +1655,8 @@
             "saveSuccess": "保存成功：",
             "saveFailed": "保存失败：",
             "loadFailed": "获取失败：",
-            "loadSchemesFailed": "加载车站方案失败"
+            "loadSchemesFailed": "加载车站方案失败",
+            "readonly": "当前为只读模式，不能执行写操作"
         }
     },
     "stationLayout3d": {

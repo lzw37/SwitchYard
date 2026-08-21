@@ -15,6 +15,7 @@ using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using SwitchYard.Capacity;
 using SwitchYard.Service.Hubs;
+using SwitchYard.Service.StationLayout;
 
 using IPNetwork = Microsoft.AspNetCore.HttpOverrides.IPNetwork;
 static string[] GetDisplayAddresses(string address)
@@ -251,6 +252,7 @@ try
     builder.Services.AddScoped<InstanceAuthorizationService>();
     builder.Services.AddScoped<HumpInstanceCopyService>();
     builder.Services.AddSingleton<SnowflakeIdGenerator>();
+    builder.Services.AddSwitchYardStationLayoutLegacyHost();
     builder.Services.AddSingleton<CapacityAgentRegistry>();
     builder.Services.AddSingleton<CapacitySolvePresetService>();
     builder.Services.AddSingleton<SaturatedOperationPlanService>();

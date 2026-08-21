@@ -22,6 +22,7 @@
   <ItemGroup>
     <ProjectReference Include="..\SwitchYard.Capacity\SwitchYard.Capacity.csproj" />
     <ProjectReference Include="..\SwitchYard.Hump\SwitchYard.Hump.csproj" />
+    <ProjectReference Include="..\..\SwitchYard.StationLayout\backend\SwitchYard.StationLayout.csproj" />
   </ItemGroup>
 
   <ItemGroup>

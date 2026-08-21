@@ -14,6 +14,91 @@ CREATE TABLE IF NOT EXISTS "stationscheme" (
     "GridSettings" TEXT NULL
 );
 
+CREATE TABLE IF NOT EXISTS "stationlayoutrevision" (
+    "InstanceID" TEXT NOT NULL,
+    "StationSchemeID" TEXT NOT NULL,
+    "Revision" INTEGER NOT NULL DEFAULT 0,
+    "UpdatedBy" TEXT NULL,
+    "UpdatedAtUtc" DATETIME NOT NULL,
+    PRIMARY KEY ("InstanceID", "StationSchemeID")
+);
+
+CREATE TABLE IF NOT EXISTS "node" (
+    "InstanceID" TEXT NULL,
+    "StationSchemeID" TEXT NULL,
+    "ID" INTEGER NULL,
+    "X" REAL NULL,
+    "Y" REAL NULL
+);
+
+CREATE TABLE IF NOT EXISTS "link" (
+    "InstanceID" TEXT NULL,
+    "StationSchemeID" TEXT NULL,
+    "ID" INTEGER NULL,
+    "Name" TEXT NULL,
+    "FromNodeID" INTEGER NULL,
+    "ToNodeID" INTEGER NULL,
+    "ArrowDirection" TEXT NULL,
+    "ArrowType" TEXT NULL
+);
+
+CREATE TABLE IF NOT EXISTS "signal" (
+    "InstanceID" TEXT NULL,
+    "StationSchemeID" TEXT NULL,
+    "ID" TEXT NULL,
+    "Name" TEXT NULL,
+    "Type" TEXT NULL,
+    "Direction" TEXT NULL,
+    "BindingNodeID" TEXT NULL
+);
+
+CREATE TABLE IF NOT EXISTS "insulationjoint" (
+    "InstanceID" TEXT NULL,
+    "StationSchemeID" TEXT NULL,
+    "ID" TEXT NULL,
+    "Type" TEXT NULL,
+    "BindingNodeID" TEXT NULL
+);
+
+CREATE TABLE IF NOT EXISTS "bufferstop" (
+    "InstanceID" TEXT NULL,
+    "StationSchemeID" TEXT NULL,
+    "ID" TEXT NULL,
+    "Type" TEXT NULL,
+    "Direction" TEXT NULL,
+    "BindingNodeID" TEXT NULL
+);
+
+CREATE TABLE IF NOT EXISTS "platform" (
+    "InstanceID" TEXT NULL,
+    "StationSchemeID" TEXT NULL,
+    "ID" TEXT NULL,
+    "Name" TEXT NULL,
+    "X" REAL NULL,
+    "Y" REAL NULL,
+    "Width" REAL NULL,
+    "Height" REAL NULL
+);
+
+CREATE TABLE IF NOT EXISTS "switch" (
+    "InstanceID" TEXT NULL,
+    "StationSchemeID" TEXT NULL,
+    "ID" TEXT NULL,
+    "Name" TEXT NULL,
+    "Type" TEXT NULL,
+    "BindingNodeID" TEXT NULL
+);
+
+CREATE TABLE IF NOT EXISTS "switchbranchvector" (
+    "InstanceID" TEXT NULL,
+    "StationSchemeID" TEXT NULL,
+    "SwitchID" TEXT NULL,
+    "Sequence" INTEGER NULL,
+    "X" REAL NULL,
+    "Y" REAL NULL,
+    "BindingLinkID" TEXT NULL
+);
+
 CREATE TABLE IF NOT EXISTS "stationrouteend" (
     "InstanceID" TEXT NULL,
     "StationSchemeID" TEXT NULL,
@@ -40,6 +125,16 @@ CREATE TABLE IF NOT EXISTS "stationroute" (
     "ForbiddenTags" TEXT NULL,
     "StartNodeID" TEXT NULL,
     "EndNodeID" TEXT NULL
+);
+
+CREATE TABLE IF NOT EXISTS "stationroutetime" (
+    "InstanceID" TEXT NULL,
+    "StationSchemeID" TEXT NULL,
+    "RouteID" TEXT NULL,
+    "TrainTypeID" TEXT NULL,
+    "CellID" TEXT NULL,
+    "StartOccupationShift" INTEGER NULL,
+    "EndOccupationShift" INTEGER NULL
 );
 
 CREATE TABLE IF NOT EXISTS "cell" (

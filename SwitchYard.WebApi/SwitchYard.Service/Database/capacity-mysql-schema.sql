@@ -14,6 +14,91 @@ CREATE TABLE IF NOT EXISTS `stationscheme` (
     `GridSettings` TEXT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
+CREATE TABLE IF NOT EXISTS `stationlayoutrevision` (
+    `InstanceID` VARCHAR(50) NOT NULL,
+    `StationSchemeID` VARCHAR(50) NOT NULL,
+    `Revision` BIGINT NOT NULL DEFAULT 0,
+    `UpdatedBy` VARCHAR(100) NULL,
+    `UpdatedAtUtc` DATETIME(6) NOT NULL,
+    PRIMARY KEY (`InstanceID`, `StationSchemeID`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `node` (
+    `InstanceID` VARCHAR(50) NULL,
+    `StationSchemeID` VARCHAR(50) NULL,
+    `ID` INT NULL,
+    `X` DOUBLE NULL,
+    `Y` DOUBLE NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `link` (
+    `InstanceID` VARCHAR(50) NULL,
+    `StationSchemeID` VARCHAR(50) NULL,
+    `ID` INT NULL,
+    `Name` VARCHAR(100) NULL,
+    `FromNodeID` INT NULL,
+    `ToNodeID` INT NULL,
+    `ArrowDirection` VARCHAR(10) NULL,
+    `ArrowType` VARCHAR(10) NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `signal` (
+    `InstanceID` VARCHAR(50) NULL,
+    `StationSchemeID` VARCHAR(50) NULL,
+    `ID` VARCHAR(50) NULL,
+    `Name` VARCHAR(100) NULL,
+    `Type` VARCHAR(50) NULL,
+    `Direction` VARCHAR(20) NULL,
+    `BindingNodeID` VARCHAR(50) NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `insulationjoint` (
+    `InstanceID` VARCHAR(50) NULL,
+    `StationSchemeID` VARCHAR(50) NULL,
+    `ID` VARCHAR(50) NULL,
+    `Type` VARCHAR(50) NULL,
+    `BindingNodeID` VARCHAR(50) NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `bufferstop` (
+    `InstanceID` VARCHAR(50) NULL,
+    `StationSchemeID` VARCHAR(50) NULL,
+    `ID` VARCHAR(50) NULL,
+    `Type` VARCHAR(20) NULL,
+    `Direction` VARCHAR(20) NULL,
+    `BindingNodeID` VARCHAR(50) NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `platform` (
+    `InstanceID` VARCHAR(50) NULL,
+    `StationSchemeID` VARCHAR(50) NULL,
+    `ID` VARCHAR(50) NULL,
+    `Name` VARCHAR(100) NULL,
+    `X` DOUBLE NULL,
+    `Y` DOUBLE NULL,
+    `Width` DOUBLE NULL,
+    `Height` DOUBLE NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `switch` (
+    `InstanceID` VARCHAR(50) NULL,
+    `StationSchemeID` VARCHAR(50) NULL,
+    `ID` VARCHAR(50) NULL,
+    `Name` VARCHAR(100) NULL,
+    `Type` VARCHAR(50) NULL,
+    `BindingNodeID` VARCHAR(50) NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `switchbranchvector` (
+    `InstanceID` VARCHAR(50) NULL,
+    `StationSchemeID` VARCHAR(50) NULL,
+    `SwitchID` VARCHAR(50) NULL,
+    `Sequence` INT NULL,
+    `X` DOUBLE NULL,
+    `Y` DOUBLE NULL,
+    `BindingLinkID` VARCHAR(50) NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS `stationrouteend` (
     `InstanceID` VARCHAR(50) NULL,
     `StationSchemeID` VARCHAR(50) NULL,
@@ -40,6 +125,16 @@ CREATE TABLE IF NOT EXISTS `stationroute` (
     `ForbiddenTags` LONGTEXT NULL,
     `StartNodeID` VARCHAR(50) NULL,
     `EndNodeID` VARCHAR(50) NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `stationroutetime` (
+    `InstanceID` VARCHAR(50) NULL,
+    `StationSchemeID` VARCHAR(50) NULL,
+    `RouteID` VARCHAR(50) NULL,
+    `TrainTypeID` VARCHAR(50) NULL,
+    `CellID` VARCHAR(50) NULL,
+    `StartOccupationShift` INT NULL,
+    `EndOccupationShift` INT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `cell` (

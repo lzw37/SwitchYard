@@ -19,6 +19,7 @@
     },
     "dependencies": {
         "@element-plus/icons-vue": "^2.3.2",
+        "@switchyard/station-layout": "file:../SwitchYard.StationLayout/frontend",
         "@types/three": "^0.184.0",
         "axios": "^1.13.2",
         "crypto-js": "^4.2.0",
