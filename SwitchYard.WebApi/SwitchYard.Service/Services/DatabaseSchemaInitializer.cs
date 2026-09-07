@@ -4,6 +4,13 @@ namespace SwitchYard.Service.Services
 {
     public sealed class DatabaseSchemaInitializer
     {
+        private const string MySqlUtf8mb4UnicodeCollation = "utf8mb4_unicode_ci";
+        private static readonly string[] CapacityMySqlUnicodeTables =
+        [
+            "stationroute",
+            "stationroutetime"
+        ];
+
         private readonly IConfiguration _configuration;
         private readonly ILogger<DatabaseSchemaInitializer> _logger;
 
@@ -30,6 +37,58 @@ namespace SwitchYard.Service.Services
                     DBConnector.CapacityDatabaseSectionName,
                     "capacity-sqlite-schema.sql",
                     "capacity-mysql-schema.sql");
+
+                if (DBConnector.IsMySql(DBConnector.CapacityDatabaseSectionName))
+                {
+                    EnsureMySqlTableCollations(
+                        DBConnector.CapacityDatabaseSectionName,
+                        CapacityMySqlUnicodeTables);
+                }
+            }
+        }
+
+        private void EnsureMySqlTableCollations(
+            string databaseSectionName,
+            IEnumerable<string> tableNames)
+        {
+            var dbConnector = DBConnector.GetDBConnector(databaseSectionName);
+            foreach (var tableName in tableNames)
+            {
+                var collations = dbConnector.Query<DatabaseNameRow>(
+                        @"SELECT TABLE_COLLATION AS Name
+                          FROM INFORMATION_SCHEMA.TABLES
+                          WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = @tableName
+                          UNION ALL
+                          SELECT COLLATION_NAME AS Name
+                          FROM INFORMATION_SCHEMA.COLUMNS
+                          WHERE TABLE_SCHEMA = DATABASE()
+                            AND TABLE_NAME = @tableName
+                            AND COLLATION_NAME IS NOT NULL",
+                        new { tableName })
+                    ?? [];
+                var existingCollations = collations
+                    .Select(row => row.Name)
+                    .Where(name => !string.IsNullOrWhiteSpace(name))
+                    .ToList();
+
+                if (existingCollations.Count == 0 ||
+                    existingCollations.All(collation => string.Equals(
+                        collation,
+                        MySqlUtf8mb4UnicodeCollation,
+                        StringComparison.OrdinalIgnoreCase)))
+                {
+                    continue;
+                }
+
+                _logger.LogWarning(
+                    "Normalizing MySQL collation for {TableName} from {ExistingCollations} to {TargetCollation}.",
+                    tableName,
+                    string.Join(", ", existingCollations.Distinct(StringComparer.OrdinalIgnoreCase)),
+                    MySqlUtf8mb4UnicodeCollation);
+                dbConnector.ExecuteNonQuery(
+                    $@"ALTER TABLE {QuoteMySqlIdentifier(tableName)}
+                       CONVERT TO CHARACTER SET utf8mb4
+                       COLLATE {MySqlUtf8mb4UnicodeCollation}");
             }
         }
 
@@ -79,6 +138,16 @@ namespace SwitchYard.Service.Services
             }
 
             return false;
+        }
+
+        private static string QuoteMySqlIdentifier(string identifier)
+        {
+            return $"`{identifier.Replace("`", "``")}`";
+        }
+
+        private sealed class DatabaseNameRow
+        {
+            public string? Name { get; set; }
         }
     }
 }
