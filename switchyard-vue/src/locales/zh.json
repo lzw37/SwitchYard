@@ -1838,6 +1838,16 @@
         }
     },
     "routeDesign": {
+        "sidebar": {
+            "routeInfo": "进路信息",
+            "endpointInfo": "起终点信息",
+            "basicInfo": "基本信息",
+            "endpoints": "起点与终点",
+            "pathObjects": "线路组成",
+            "operationRules": "作业约束",
+            "endpointTags": "方向与线路标签",
+            "closeAutoGenerate": "关闭自动生成，返回进路编辑"
+        },
         "toolbar": {
             "stationRoute": "进路生成",
             "routeEnd": "进路起终点配置",

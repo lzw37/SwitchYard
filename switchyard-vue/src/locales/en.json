@@ -1850,6 +1850,16 @@
         }
     },
     "routeDesign": {
+        "sidebar": {
+            "routeInfo": "Route details",
+            "endpointInfo": "Endpoint details",
+            "basicInfo": "Basic information",
+            "endpoints": "Start and end",
+            "pathObjects": "Route composition",
+            "operationRules": "Operating constraints",
+            "endpointTags": "Direction and track tags",
+            "closeAutoGenerate": "Close automatic generation and return to route editing"
+        },
         "toolbar": {
             "stationRoute": "Route Generation",
             "routeEnd": "Route End Config",
