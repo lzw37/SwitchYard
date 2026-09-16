@@ -1675,6 +1675,7 @@
         "buttons": {
             "refresh": "Refresh layout",
             "resetView": "Reset view",
+            "resetDisplayRatio": "Reset X:Y coordinate ratio to 1:1",
             "resetPlayback": "Reset playback",
             "play": "Play",
             "pause": "Pause",
@@ -1683,6 +1684,7 @@
         },
         "labels": {
             "showLabels": "Show labels",
+            "displayRatio": "X:Y coordinate ratio",
             "operationPlan": "Operation plan",
             "playbackScope": "Scope",
             "train": "Train",

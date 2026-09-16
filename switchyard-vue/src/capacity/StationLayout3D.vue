@@ -57,6 +57,30 @@
                         <el-radio-button value="all">{{ t('stationLayout3d.playbackModes.all') }}</el-radio-button>
                     </el-radio-group>
                 </div>
+                <div class="layout3d-ratio-control">
+                    <span class="layout3d-control-label">{{ t('stationLayout3d.labels.displayRatio') }}</span>
+                    <el-slider
+                        v-model="displayRatio"
+                        class="layout3d-ratio-slider"
+                        size="small"
+                        :min="0.25"
+                        :max="20"
+                        :step="0.05"
+                        :disabled="!canRender"
+                        :format-tooltip="formatDisplayRatio"
+                        :aria-label="t('stationLayout3d.labels.displayRatio')"
+                        @change="handleDisplayRatioChange"
+                    />
+                    <output class="layout3d-ratio-value">{{ formatDisplayRatio(displayRatio) }}</output>
+                    <el-tooltip :content="t('stationLayout3d.buttons.resetDisplayRatio')">
+                        <el-button
+                            size="small"
+                            :disabled="!canRender"
+                            :aria-label="t('stationLayout3d.buttons.resetDisplayRatio')"
+                            @click="resetDisplayRatio"
+                        >1:1</el-button>
+                    </el-tooltip>
+                </div>
             </template>
             <template #details>
                 <div class="layout3d-scheme-control">
@@ -324,6 +348,12 @@ import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { Aim, Edit, Plus, RefreshLeft, RefreshRight, VideoPause, VideoPlay } from '@element-plus/icons-vue'
 import * as THREE from 'three'
+import { createEmuCar, EMU_DIMENSIONS, getEmuBogieOffsets, type EmuCarRole } from './three/emuTrain'
+import { getEmuConsistSizing, getLongestRouteLinkLength } from './three/trainSizing'
+import { createRailway, getRailwayDimensions, prepareRailwayPaths } from './three/railway'
+import { createStationGround, createStationPlatform, fitStationLighting, lightStationScene } from './three/stationEnvironment'
+import { sampleCurveCoordinates, transformLayoutCoordinates } from './three/layoutCoordinates'
+import { insertRouteCurves, sampleTrainPose, followRenderedPaths } from './three/trainPath'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { CSS2DObject, CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js'
 import axios from '@/utils/axios'
@@ -382,6 +412,7 @@ interface CurveTrack {
     center: Position2D
     largeArcFlag: number
     sweepFlag: number
+    displayPoints?: Position2D[]
 }
 
 interface NodePoint {
@@ -440,13 +471,6 @@ interface Platform {
 interface SwitchBranchVector {
     x: number
     y: number
-    lineID: string
-}
-
-interface SwitchRenderBranch {
-    direction: THREE.Vector3
-    sourceLength: number
-    renderLength: number
     lineID: string
 }
 
@@ -575,6 +599,10 @@ interface RouteRun {
 
 interface SimulationTrainCar {
     key: string
+    role: EmuCarRole
+    carIndex: number
+    frontBogie: { x: number; y: number; angle: number }
+    rearBogie: { x: number; y: number; angle: number }
     x: number
     y: number
     angle: number
@@ -654,36 +682,15 @@ interface LayoutMapper {
 }
 
 interface SceneMaterials {
-    ground: THREE.MeshStandardMaterial
-    ballast: THREE.MeshStandardMaterial
-    rail: THREE.MeshStandardMaterial
-    sleeper: THREE.MeshStandardMaterial
-    platform: THREE.MeshStandardMaterial
-    platformLine: THREE.MeshStandardMaterial
     signalPost: THREE.MeshStandardMaterial
     signalHead: THREE.MeshStandardMaterial
-    switchMarker: THREE.MeshStandardMaterial
-    switchPoint: THREE.MeshStandardMaterial
-    switchGuard: THREE.MeshStandardMaterial
-    switchTie: THREE.MeshStandardMaterial
 }
 
 interface TrainCarObjectEntry {
     group: THREE.Group
-    body: THREE.Mesh
-    sidePanels: THREE.Mesh[]
-    endPanels: THREE.Mesh[]
-    ribs: THREE.Mesh[]
-    doorPanels: THREE.Mesh[]
-    underframe: THREE.Mesh
-    centerBeam: THREE.Mesh
-    bogieFrames: THREE.Mesh[]
-    axles: THREE.Mesh[]
-    wheels: THREE.Mesh[]
-    couplers: THREE.Mesh[]
-    bodyMaterial: THREE.MeshStandardMaterial
-    sidePanelMaterial: THREE.MeshStandardMaterial
-    detailMaterial: THREE.MeshStandardMaterial
+    model: THREE.Group
+    frontBogie: THREE.Object3D | undefined
+    rearBogie: THREE.Object3D | undefined
     label: CSS2DObject
     labelElement: HTMLElement
 }
@@ -703,32 +710,16 @@ const MIN_WORLD_SPAN = 48
 const STANDARD_TRACK_GAUGE_MM = 1435
 const TRACK_CENTERLINE_SPACING_MM = 5000
 const TRACK_CENTERLINE_GRID_COUNT = 2
-const BALLAST_HEIGHT = 0.14
-const RAIL_HEIGHT = 0.08
-const RAIL_Y = 0.28
-const SLEEPER_Y = 0.19
-const SLEEPER_HEIGHT = 0.08
-const SLEEPER_SPACING = 1.25
-const MAX_SLEEPERS_PER_SEGMENT = 72
 const PLATFORM_MIN_SIZE = 1.2
-const SIGNAL_SIDE_OFFSET = 1.45
+const SIGNAL_SIDE_OFFSET = 2.25
 const SIGNAL_LABEL_Y = 1.92
 const SIGNAL_HEAD_DEPTH = 0.11
 const SIGNAL_LIGHT_RADIUS = 0.07
 const SIGNAL_LIGHT_ROW_SPACING = 0.17
 const SIGNAL_LIGHT_COLUMN_SPACING = 0.18
 const SIGNAL_LIGHT_PADDING = 0.16
-const SWITCH_BRANCH_LENGTH = 4.8
-const SWITCH_MIN_BRANCH_LENGTH = 2.6
-const SWITCH_POINT_BLADE_LENGTH = 2.15
-const SWITCH_FROG_DISTANCE = 3.15
-const SWITCH_BRANCH_DUPLICATE_DOT = 0.996
 const defaultOperationPlanID = 'default'
 const trainCarCount = 8
-const trainCarLength = 34
-const trainCarWidth = 12
-const trainCarGap = 4
-const trainCarTurnSmoothingDistance = trainCarLength * 0.9
 const syntheticRouteGapSeconds = 1.2
 const routeLockMinSeconds = 1.2
 const routeLockMaxSeconds = 8
@@ -738,7 +729,6 @@ const ganttMinTimelineWidth = 860
 const ganttMaxTimelineWidth = 6400
 const ganttTargetPixelsPerSecond = 0.08
 const ganttDefaultSubTableCount = 3
-const trainCarBaseHeight = 0.78
 
 const canvasWrapperRef = ref<HTMLElement | null>(null)
 const canvasRef = ref<HTMLCanvasElement | null>(null)
@@ -748,6 +738,11 @@ const layoutGridSpacing = ref(20)
 const loadingData = ref(false)
 const loadErrorMessage = ref('')
 const showLabels = ref(true)
+const displayRatio = ref(1)
+const appliedDisplayRatio = ref(1)
+// Keep loaded coordinates intact. Rebuild geometry from transformed coordinates
+// when the slider is released, without distorting meshes or the physical gauge.
+const displayLayoutData = computed(() => transformLayoutCoordinates(layoutData.value, appliedDisplayRatio.value))
 const viewToolbarDensity = ref('compact')
 const currentStationSchemeId = ref('')
 const currentOperationPlanId = ref('')
@@ -794,6 +789,7 @@ let renderer: THREE.WebGLRenderer | null = null
 let labelRenderer: CSS2DRenderer | null = null
 let labelRendererRoot: HTMLElement | null = null
 let scene: THREE.Scene | null = null
+let disposeSceneLighting: (() => void) | null = null
 let camera: THREE.PerspectiveCamera | null = null
 let controls: OrbitControls | null = null
 let layoutGroup: THREE.Group | null = null
@@ -834,6 +830,33 @@ const loadingAnyData = computed(() => (
     loadingGanttSubTableSettings.value ||
     savingGanttSubTableSettings.value
 ))
+// Share the exact prepared centreline with the playback path. Compute once per layout.
+function buildRailwaySourcePaths(layout: StationLayoutData) {
+    const paths = buildVisibleTrackSegments(layout).map(segment => ({
+        id: segment.id,
+        points: [new THREE.Vector3(segment.x1, 0, segment.y1), new THREE.Vector3(segment.x2, 0, segment.y2)],
+    }))
+    for (const curve of layout.curves) paths.push({
+        id: `curve-${curve.id}`,
+        points: buildCurveSamplePoints(curve, 48).map(point => new THREE.Vector3(point.x, 0, point.y)),
+    })
+    return paths
+}
+const railwaySourcePaths = computed(() => buildRailwaySourcePaths(layoutData.value))
+const displayRailwayPaths = computed(() => buildRailwaySourcePaths(displayLayoutData.value))
+function buildRenderedTurnoutPaths(layout: StationLayoutData, paths: ReturnType<typeof buildRailwaySourcePaths>) {
+    return prepareRailwayPaths(paths,
+        layout.switches.map(sw => ({ id: sw.id, position: new THREE.Vector3(sw.position.x, 0, sw.position.y) })),
+        getLayoutTrackGaugeUnits(),
+    ).filter(path => !path.id.startsWith('curve-') && path.points.length > 2).map(path => ({
+        originalStart: { x: path.points[0]!.x, y: path.points[0]!.z },
+        originalEnd: { x: path.points[path.points.length - 1]!.x, y: path.points[path.points.length - 1]!.z },
+        points: path.points.map(point => ({ x: point.x, y: point.z })),
+    }))
+}
+const renderedTurnoutPaths = computed(() => buildRenderedTurnoutPaths(layoutData.value, railwaySourcePaths.value))
+const displayTurnoutPaths = computed(() => buildRenderedTurnoutPaths(displayLayoutData.value, displayRailwayPaths.value))
+
 const layoutStats = computed(() => ({
     tracks: layoutData.value.tracks.length,
     signals: layoutData.value.signals.length,
@@ -863,16 +886,6 @@ const stationRouteMap = computed(() => {
     stationRouteOptions.value.forEach((route) => map.set(route.id, route))
     return map
 })
-const layoutNodeMap = computed(() => {
-    const map = new Map<string, NodePoint>()
-    layoutData.value.nodes.forEach((node) => map.set(node.id, node))
-    return map
-})
-const layoutTrackMap = computed(() => {
-    const map = new Map<string, Track>()
-    layoutData.value.tracks.forEach((track) => map.set(track.id, track))
-    return map
-})
 const selectedTrainMovements = computed(() => {
     const trainID = selectedTrainId.value
     if (!trainID) return []
@@ -880,7 +893,22 @@ const selectedTrainMovements = computed(() => {
         .filter((movement) => movement.trainID === trainID)
         .sort(compareMovements)
 })
-const routeRuns = computed<RouteRun[]>(() => buildRouteRuns())
+const sourceRouteRuns = computed<RouteRun[]>(() => buildRouteRuns())
+// The timetable uses source distances; only the path shown in 3D changes.
+const routeRuns = computed<RouteRun[]>(() => sourceRouteRuns.value.map(run => ({
+    ...run,
+    path: buildRouteGeometry(run.route, displayLayoutData.value, displayTurnoutPaths.value).path,
+})))
+// Each operation uses its own route's complete Links, before rendering trims
+// curves/turnouts. Cache the dimensions across playback frames.
+const trainConsistSizingByRun = computed(() => {
+    const gauge = getLayoutTrackGaugeUnits()
+    const links = displayLayoutData.value.tracks
+    return new Map(routeRuns.value.map(run => [
+        run.key,
+        getEmuConsistSizing(gauge, getLongestRouteLinkLength(links, run), trainCarCount),
+    ]))
+})
 const canPlayback = computed(() => routeRuns.value.length > 0 && simulationDurationSeconds.value > 0)
 const simulationDurationSeconds = computed(() => (
     routeRuns.value.reduce((maxSeconds, run) => Math.max(maxSeconds, run.endSeconds), 0)
@@ -1762,50 +1790,59 @@ function getFallbackRouteDurationSeconds(movement: TrainOperationPlanMovement, p
     return Math.max(8, Math.min(36, pathLength / 55))
 }
 
-function buildRouteGeometry(route: StationRouteOption): RouteGeometry {
+function buildRouteGeometry(
+    route: StationRouteOption,
+    layout = layoutData.value,
+    turnoutPaths = renderedTurnoutPaths.value,
+): RouteGeometry {
+    const nodes = new Map(layout.nodes.map(node => [node.id, node]))
+    const tracks = new Map(layout.tracks.map(track => [track.id, track]))
     const linkIds = parseRouteReferenceList(route.linkList)
-    const nodeIds = normalizeUniqueStrings([
-        ...parseRouteReferenceList(route.nodeList),
-        route.startNodeID,
-        route.endNodeID,
-    ])
     let points = parseRouteReferenceList(route.nodeList)
-        .map((nodeId) => pointFromNodeId(nodeId))
+        .map((nodeId) => pointFromNodeId(nodeId, nodes))
         .filter((point): point is RoutePoint => point !== null)
 
     if (points.length < 2) {
-        points = buildPointsFromLinks(route, linkIds)
+        points = buildPointsFromLinks(route, linkIds, nodes, tracks)
     }
     if (points.length < 2) {
-        points = [pointFromNodeId(route.startNodeID), pointFromNodeId(route.endNodeID)]
+        points = [pointFromNodeId(route.startNodeID, nodes), pointFromNodeId(route.endNodeID, nodes)]
             .filter((point): point is RoutePoint => point !== null)
     }
 
     return {
-        path: buildPolylinePath(points),
-        nodeIds,
+        path: buildPolylinePath(followRenderedPaths(insertRouteCurves(points, layout.curves.map(curve => ({
+            nodeID: curve.nodeID,
+            tangentLinkID1: curve.tangentLinkID1,
+            tangentLinkID2: curve.tangentLinkID2,
+            points: buildCurveSamplePoints(curve, 48),
+        })), layout.tracks), turnoutPaths)),
+        // Preserve the traversed order for routes that only specify nodes.
+        nodeIds: points.map(point => point.nodeId).filter((id): id is string => Boolean(id)),
         linkIds,
     }
 }
 
-function pointFromNodeId(nodeId: string): RoutePoint | null {
+function pointFromNodeId(nodeId: string, nodes: Map<string, NodePoint>): RoutePoint | null {
     const id = String(nodeId || '').trim()
     if (!id) return null
-    const node = layoutNodeMap.value.get(id)
+    const node = nodes.get(id)
     if (!node) return null
     return { x: node.x, y: node.y, nodeId: id }
 }
 
-function buildPointsFromLinks(route: StationRouteOption, linkIds: string[]): RoutePoint[] {
+function buildPointsFromLinks(
+    route: StationRouteOption, linkIds: string[], nodes: Map<string, NodePoint>, tracks: Map<string, Track>,
+): RoutePoint[] {
     const points: RoutePoint[] = []
     let currentNodeId = route.startNodeID.trim()
-    const startPoint = pointFromNodeId(currentNodeId)
+    const startPoint = pointFromNodeId(currentNodeId, nodes)
     if (startPoint) points.push(startPoint)
 
     linkIds.forEach((linkId) => {
-        const track = layoutTrackMap.value.get(linkId)
+        const track = tracks.get(linkId)
         if (!track) return
-        const endpoints = getTrackEndpoints(track)
+        const endpoints = getTrackEndpoints(track, nodes)
         if (!endpoints) return
         const [fromPoint, toPoint] = endpoints
         if (points.length === 0) {
@@ -1845,9 +1882,9 @@ function buildPointsFromLinks(route: StationRouteOption, linkIds: string[]): Rou
     return points
 }
 
-function getTrackEndpoints(track: Track): [RoutePoint, RoutePoint] | null {
-    const fromNode = pointFromNodeId(track.fromNodeID)
-    const toNode = pointFromNodeId(track.toNodeID)
+function getTrackEndpoints(track: Track, nodes: Map<string, NodePoint>): [RoutePoint, RoutePoint] | null {
+    const fromNode = pointFromNodeId(track.fromNodeID, nodes)
+    const toNode = pointFromNodeId(track.toNodeID, nodes)
     const fromPoint = fromNode || { x: track.x1, y: track.y1, nodeId: track.fromNodeID || undefined }
     const toPoint = toNode || { x: track.x2, y: track.y2, nodeId: track.toNodeID || undefined }
     if (!Number.isFinite(fromPoint.x) || !Number.isFinite(fromPoint.y) || !Number.isFinite(toPoint.x) || !Number.isFinite(toPoint.y)) {
@@ -1926,62 +1963,6 @@ function clearTrainCarAngleMemory() {
     trainCarAngleMemory.clear()
 }
 
-function getPointOnPath(path: PolylinePath, distance: number) {
-    if (path.segments.length === 0) {
-        const first = path.points[0] || { x: 0, y: 0 }
-        return { x: first.x, y: first.y, angle: 0, distance: 0 }
-    }
-    const clampedDistance = Math.max(0, Math.min(path.totalLength, distance))
-    const segment = path.segments.find((item) => clampedDistance <= item.startDistance + item.length) ||
-        path.segments[path.segments.length - 1]
-    if (!segment) {
-        const first = path.points[0] || { x: 0, y: 0 }
-        return { x: first.x, y: first.y, angle: 0, distance: clampedDistance }
-    }
-    const localDistance = Math.max(0, Math.min(segment.length, clampedDistance - segment.startDistance))
-    const ratio = segment.length > 0 ? localDistance / segment.length : 0
-    return {
-        x: segment.from.x + (segment.to.x - segment.from.x) * ratio,
-        y: segment.from.y + (segment.to.y - segment.from.y) * ratio,
-        angle: segment.angle,
-        distance: clampedDistance,
-    }
-}
-
-function getPositionOnPath(
-    path: PolylinePath,
-    distance: number,
-    options: { smoothAngle?: boolean; smoothingDistance?: number } = {},
-) {
-    const point = getPointOnPath(path, distance)
-    const angle = options.smoothAngle
-        ? getSmoothedPathAngle(path, point.distance, point.angle, options.smoothingDistance ?? trainCarTurnSmoothingDistance)
-        : point.angle
-    return { x: point.x, y: point.y, angle: normalizePathAngle(angle) }
-}
-
-function getSmoothedPathAngle(
-    path: PolylinePath,
-    distance: number,
-    fallbackAngle: number,
-    smoothingDistance: number,
-) {
-    if (path.segments.length === 0 || path.totalLength <= 0) return fallbackAngle
-    const sampleDistance = Math.max(1, Math.min(path.totalLength / 2, Number(smoothingDistance || 0)))
-    if (!Number.isFinite(sampleDistance) || sampleDistance <= 0) return fallbackAngle
-
-    const beforeDistance = Math.max(0, distance - sampleDistance)
-    const afterDistance = Math.min(path.totalLength, distance + sampleDistance)
-    if (afterDistance - beforeDistance < 0.001) return fallbackAngle
-
-    const before = getPointOnPath(path, beforeDistance)
-    const after = getPointOnPath(path, afterDistance)
-    const deltaX = after.x - before.x
-    const deltaY = after.y - before.y
-    if (Math.hypot(deltaX, deltaY) < 0.001) return fallbackAngle
-    return normalizePathAngle(Math.atan2(deltaY, deltaX) * 180 / Math.PI)
-}
-
 function buildSimulationTrainCars(): SimulationTrainCar[] {
     const currentSeconds = playheadSeconds.value
     const visibleRuns = isAllTrainPlayback.value
@@ -1997,25 +1978,31 @@ function buildSimulationTrainCars(): SimulationTrainCar[] {
 }
 
 function buildSimulationTrainCarsForRun(run: RouteRun, currentSeconds: number): SimulationTrainCar[] {
+    const sizing = trainConsistSizingByRun.value.get(run.key)
+    if (!sizing) return []
     const progress = getActiveRouteProgress(run, currentSeconds)
     const headDistance = run.path.totalLength * progress
     const fill = getTrainColor(run.train.id)
+    // Eight cars plus seven gaps equal 3/4 of this operation's longest route Link.
     const cars: SimulationTrainCar[] = []
 
     for (let index = 0; index < trainCarCount; index++) {
-        const offset = index * (trainCarLength + trainCarGap)
+        const offset = index * sizing.carPitch
         const key = `${run.key}-${index}`
-        const position = getPositionOnPath(run.path, headDistance - offset, {
-            smoothAngle: true,
-            smoothingDistance: trainCarTurnSmoothingDistance,
-        })
+        const role: EmuCarRole = index === 0 ? 'head' : index === trainCarCount - 1 ? 'tail' : 'middle'
+        const bogieOffsets = getEmuBogieOffsets(role).map(value => value * sizing.longitudinalUnitsPerMeter) as [number, number]
+        const position = sampleTrainPose(run.path, headDistance - offset, bogieOffsets)
         cars.push({
             key,
+            role,
+            carIndex: index,
+            frontBogie: position.frontBogie,
+            rearBogie: position.rearBogie,
             x: position.x,
             y: position.y,
             angle: getContinuousTrainCarAngle(key, position.angle),
-            length: trainCarLength,
-            width: trainCarWidth,
+            length: sizing.carLength,
+            width: sizing.carWidth,
             fill: index === 0 ? fill : lightenTrainColor(fill, index),
             stroke: '#f8fafc',
             label: index === 0 ? run.train.trainNumber || run.train.id : '',
@@ -2718,7 +2705,10 @@ function createMapper(layout: StationLayoutData): LayoutMapper | null {
 
     const width = Math.max(1, bounds.maxX - bounds.minX)
     const depth = Math.max(1, bounds.maxY - bounds.minY)
-    const sourceSpan = Math.max(width, depth, 1)
+    // Preserve the source's world-unit conversion so coordinate changes do not
+    // resize rail profiles, wheels, signals or model heights.
+    const sourceBounds = collectBounds(layoutData.value) || bounds
+    const sourceSpan = Math.max(sourceBounds.maxX - sourceBounds.minX, sourceBounds.maxY - sourceBounds.minY, 1)
     const scale = sourceSpan / TARGET_WORLD_SPAN
     const centerX = (bounds.minX + bounds.maxX) / 2
     const centerY = (bounds.minY + bounds.maxY) / 2
@@ -2983,50 +2973,13 @@ function setObjectBasis(object: THREE.Object3D, xAxis: THREE.Vector3, zAxis: THR
 }
 
 function buildCurveSamplePoints(curve: CurveTrack, preferredSegments = 24): Position2D[] {
-    const startAngle = Math.atan2(curve.start.y - curve.center.y, curve.start.x - curve.center.x)
-    const endAngle = Math.atan2(curve.end.y - curve.center.y, curve.end.x - curve.center.x)
-    let delta = endAngle - startAngle
-
-    if (curve.sweepFlag === 1 && delta < 0) delta += Math.PI * 2
-    if (curve.sweepFlag === 0 && delta > 0) delta -= Math.PI * 2
-
-    const absoluteDelta = Math.abs(delta)
-    if (curve.largeArcFlag === 1 && absoluteDelta < Math.PI) {
-        delta += delta >= 0 ? Math.PI * 2 : -Math.PI * 2
-    } else if (curve.largeArcFlag === 0 && absoluteDelta > Math.PI) {
-        delta += delta >= 0 ? -Math.PI * 2 : Math.PI * 2
-    }
-
-    const segmentCount = Math.max(8, Math.min(56, Math.ceil(Math.abs(delta) / (Math.PI / preferredSegments))))
-    const points: Position2D[] = []
-    for (let i = 0; i <= segmentCount; i++) {
-        const rate = i / segmentCount
-        const angle = startAngle + delta * rate
-        points.push({
-            x: curve.center.x + Math.cos(angle) * curve.radius,
-            y: curve.center.y + Math.sin(angle) * curve.radius,
-        })
-    }
-
-    points[0] = curve.start
-    points[points.length - 1] = curve.end
-    return points
+    return sampleCurveCoordinates(curve, preferredSegments)
 }
 
 function createMaterials(): SceneMaterials {
     return {
-        ground: new THREE.MeshStandardMaterial({ color: 0xb8c7b2, roughness: 1, metalness: 0 }),
-        ballast: new THREE.MeshStandardMaterial({ color: 0x6c7375, roughness: 0.95, metalness: 0 }),
-        rail: new THREE.MeshStandardMaterial({ color: 0x43484d, roughness: 0.42, metalness: 0.75 }),
-        sleeper: new THREE.MeshStandardMaterial({ color: 0x5c4532, roughness: 0.9, metalness: 0.05 }),
-        platform: new THREE.MeshStandardMaterial({ color: 0x8fb3c8, roughness: 0.85, metalness: 0.05 }),
-        platformLine: new THREE.MeshStandardMaterial({ color: 0xf4d35e, roughness: 0.8, metalness: 0 }),
-        signalPost: new THREE.MeshStandardMaterial({ color: 0x2e343b, roughness: 0.65, metalness: 0.45 }),
-        signalHead: new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.7, metalness: 0.2 }),
-        switchMarker: new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.55, metalness: 0.15 }),
-        switchPoint: new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.42, metalness: 0.35 }),
-        switchGuard: new THREE.MeshStandardMaterial({ color: 0x232b34, roughness: 0.38, metalness: 0.7 }),
-        switchTie: new THREE.MeshStandardMaterial({ color: 0x513a27, roughness: 0.88, metalness: 0.05 }),
+        signalPost: new THREE.MeshStandardMaterial({ color: 0x738184, roughness: 0.52, metalness: 0.65 }),
+        signalHead: new THREE.MeshStandardMaterial({ color: 0x19252a, roughness: 0.55, metalness: 0.28 }),
     }
 }
 
@@ -3037,8 +2990,6 @@ function initThree() {
     const height = Math.max(1, canvasWrapperRef.value.clientHeight)
 
     scene = new THREE.Scene()
-    scene.background = new THREE.Color(0xe7edf5)
-    scene.fog = new THREE.Fog(0xe7edf5, 200, 950)
 
     camera = new THREE.PerspectiveCamera(52, width / height, 0.1, 3000)
     camera.position.set(0, 62, 112)
@@ -3046,8 +2997,7 @@ function initThree() {
     renderer = new THREE.WebGLRenderer({ canvas: canvasRef.value, antialias: true })
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
     renderer.setSize(width, height, false)
-    renderer.shadowMap.enabled = true
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap
+    disposeSceneLighting = lightStationScene(scene, renderer)
 
     labelRenderer = new CSS2DRenderer()
     labelRenderer.setSize(width, height)
@@ -3061,23 +3011,9 @@ function initThree() {
     controls = new OrbitControls(camera, renderer.domElement)
     controls.enableDamping = true
     controls.dampingFactor = 0.08
-    controls.minDistance = 8
+    controls.minDistance = 1.2
     controls.maxDistance = 900
     controls.maxPolarAngle = Math.PI * 0.49
-
-    scene.add(new THREE.HemisphereLight(0xffffff, 0x6b7280, 0.7))
-
-    const sun = new THREE.DirectionalLight(0xffffff, 1.05)
-    sun.position.set(140, 190, 110)
-    sun.castShadow = true
-    sun.shadow.mapSize.set(2048, 2048)
-    sun.shadow.camera.near = 20
-    sun.shadow.camera.far = 620
-    sun.shadow.camera.left = -210
-    sun.shadow.camera.right = 210
-    sun.shadow.camera.top = 210
-    sun.shadow.camera.bottom = -210
-    scene.add(sun)
 
     layoutGroup = new THREE.Group()
     scene.add(layoutGroup)
@@ -3090,31 +3026,32 @@ function initThree() {
 }
 
 function disposeObject3D(obj: THREE.Object3D) {
+    const geometries = new Set<THREE.BufferGeometry>()
+    const materials = new Set<THREE.Material>()
+    const textures = new Set<THREE.Texture>()
     obj.traverse((child) => {
         const css = child as unknown as { isCSS2DObject?: boolean; element?: HTMLElement }
-        if (css.isCSS2DObject && css.element?.parentNode) {
-            css.element.parentNode.removeChild(css.element)
-        }
-
+        if (css.isCSS2DObject) css.element?.remove()
         const mesh = child as THREE.Mesh
-        if (mesh.geometry) mesh.geometry.dispose()
-        const material = mesh.material
-        if (Array.isArray(material)) {
-            material.forEach((item) => item.dispose())
-        } else if (material) {
-            ;(material as THREE.Material).dispose()
-        }
+        if (mesh.geometry) geometries.add(mesh.geometry)
+        const owned = Array.isArray(mesh.material) ? mesh.material : mesh.material ? [mesh.material] : []
+        owned.forEach(material => {
+            materials.add(material)
+            Object.values(material).forEach(value => {
+                if (value instanceof THREE.Texture) textures.add(value)
+            })
+        })
+        if (child instanceof THREE.InstancedMesh) child.dispose()
     })
+    geometries.forEach(geometry => geometry.dispose())
+    materials.forEach(material => material.dispose())
+    textures.forEach(texture => texture.dispose())
 }
 
 function clearGroup(group: THREE.Group | null) {
     if (!group) return
-    while (group.children.length) {
-        const child = group.children[0]
-        if (!child) return
-        group.remove(child)
-        disposeObject3D(child)
-    }
+    disposeObject3D(group)
+    group.clear()
 }
 
 function setShadow(mesh: THREE.Object3D, cast = true, receive = true) {
@@ -3122,21 +3059,10 @@ function setShadow(mesh: THREE.Object3D, cast = true, receive = true) {
     mesh.receiveShadow = receive
 }
 
-function addGround(mapper: LayoutMapper, materials: SceneMaterials) {
+function addGround(mapper: LayoutMapper) {
     if (!layoutGroup) return
-    const size = Math.max(mapper.worldWidth, mapper.worldDepth, MIN_WORLD_SPAN) + 48
-    const ground = new THREE.Mesh(new THREE.PlaneGeometry(size, size), materials.ground)
-    ground.rotation.x = -Math.PI / 2
-    ground.position.y = -0.012
-    ground.receiveShadow = true
-    layoutGroup.add(ground)
-
-    const grid = new THREE.GridHelper(size, Math.min(80, Math.max(20, Math.round(size / 4))), 0x78909c, 0xc5d0d8)
-    grid.position.y = 0.004
-    const gridMaterial = grid.material as THREE.Material
-    gridMaterial.transparent = true
-    gridMaterial.opacity = 0.28
-    layoutGroup.add(grid)
+    const size = Math.max(mapper.worldWidth, mapper.worldDepth, MIN_WORLD_SPAN) + 80
+    layoutGroup.add(createStationGround(size, size))
 }
 
 function getLayoutTrackGaugeUnits() {
@@ -3148,79 +3074,6 @@ function getWorldTrackGauge(mapper: LayoutMapper) {
     return Math.max(0.001, mapper.mapLength(getLayoutTrackGaugeUnits()))
 }
 
-function getRailWidth(trackGauge: number) {
-    return Math.max(0.028, trackGauge * 0.052)
-}
-
-function getBallastWidth(trackGauge: number) {
-    return Math.max(trackGauge * 2.35, trackGauge + 0.42)
-}
-
-function getSleeperLength(trackGauge: number) {
-    return Math.max(trackGauge * 1.72, trackGauge + 0.32)
-}
-
-function getSleeperWidth(trackGauge: number) {
-    return Math.max(0.075, trackGauge * 0.095)
-}
-
-function addTrackSection(
-    segment: TrackSegment,
-    mapper: LayoutMapper,
-    materials: SceneMaterials,
-    options: { sleepers?: boolean; ballast?: boolean } = {},
-) {
-    if (!layoutGroup) return
-    const start = mapper.mapPoint({ x: segment.x1, y: segment.y1 })
-    const end = mapper.mapPoint({ x: segment.x2, y: segment.y2 })
-    const dx = end.x - start.x
-    const dz = end.z - start.z
-    const length = Math.hypot(dx, dz)
-    if (length < 0.03) return
-
-    const group = new THREE.Group()
-    group.position.set((start.x + end.x) / 2, 0, (start.z + end.z) / 2)
-    group.rotation.y = -Math.atan2(dz, dx)
-    const trackGauge = getWorldTrackGauge(mapper)
-    const railWidth = getRailWidth(trackGauge)
-    const sleeperLength = getSleeperLength(trackGauge)
-
-    if (options.ballast !== false) {
-        const ballast = new THREE.Mesh(
-            new THREE.BoxGeometry(length + 0.1, BALLAST_HEIGHT, getBallastWidth(trackGauge)),
-            materials.ballast,
-        )
-        ballast.position.y = BALLAST_HEIGHT / 2
-        setShadow(ballast, true, true)
-        group.add(ballast)
-    }
-
-    const railGeo = new THREE.BoxGeometry(length + 0.04, RAIL_HEIGHT, railWidth)
-    for (const railZ of [-trackGauge / 2, trackGauge / 2]) {
-        const rail = new THREE.Mesh(railGeo, materials.rail)
-        rail.position.set(0, RAIL_Y, railZ)
-        setShadow(rail, true, true)
-        group.add(rail)
-    }
-
-    if (options.sleepers !== false) {
-        const sleeperCount = Math.max(1, Math.min(MAX_SLEEPERS_PER_SEGMENT, Math.floor(length / SLEEPER_SPACING)))
-        const sleeperGeo = new THREE.BoxGeometry(getSleeperWidth(trackGauge), SLEEPER_HEIGHT, sleeperLength)
-        const sleepers = new THREE.InstancedMesh(sleeperGeo, materials.sleeper, sleeperCount)
-        const matrix = new THREE.Matrix4()
-        for (let i = 0; i < sleeperCount; i++) {
-            const x = -length / 2 + ((i + 0.5) / sleeperCount) * length
-            matrix.makeTranslation(x, SLEEPER_Y, 0)
-            sleepers.setMatrixAt(i, matrix)
-        }
-        sleepers.instanceMatrix.needsUpdate = true
-        setShadow(sleepers, true, true)
-        group.add(sleepers)
-    }
-
-    layoutGroup.add(group)
-}
-
 function addTrackLabels(layout: StationLayoutData, mapper: LayoutMapper) {
     const labelledTrackIds = new Set<string>()
     for (const track of layout.tracks) {
@@ -3229,39 +3082,6 @@ function addTrackLabels(layout: StationLayoutData, mapper: LayoutMapper) {
         labelledTrackIds.add(track.id)
         const mid = mapper.mapPoint({ x: (track.x1 + track.x2) / 2, y: (track.y1 + track.y2) / 2 }, 0.78)
         addLabel(label, mid, 'layout3d-label-track')
-    }
-}
-
-function addCurveTracks(layout: StationLayoutData, mapper: LayoutMapper, materials: SceneMaterials) {
-    for (const curve of layout.curves) {
-        const points = buildCurveSamplePoints(curve, 18)
-        for (let i = 0; i < points.length - 1; i++) {
-            const start = points[i]
-            const end = points[i + 1]
-            if (!start || !end) continue
-            addTrackSection(
-                {
-                    id: `${curve.id}-section-${i}`,
-                    line: {
-                        id: curve.id,
-                        name: '',
-                        x1: start.x,
-                        y1: start.y,
-                        x2: end.x,
-                        y2: end.y,
-                        fromNodeID: '',
-                        toNodeID: '',
-                    },
-                    x1: start.x,
-                    y1: start.y,
-                    x2: end.x,
-                    y2: end.y,
-                },
-                mapper,
-                materials,
-                { sleepers: false, ballast: true },
-            )
-        }
     }
 }
 
@@ -3420,7 +3240,8 @@ function addSignal(signal: Signal, layout: StationLayoutData, mapper: LayoutMapp
     const sideNormal = getTrackLeftNormal(trackTangent)
     const sideVector = mapDirectionVectorToWorld(sideNormal).multiplyScalar(directionProfile.sideSign)
     const faceVector = mapDirectionVectorToWorld(trackTangent).multiplyScalar(directionProfile.faceSign)
-    const position = trackPosition.clone().addScaledVector(sideVector, SIGNAL_SIDE_OFFSET)
+    const gauge = getWorldTrackGauge(mapper)
+    const position = trackPosition.clone().addScaledVector(sideVector, SIGNAL_SIDE_OFFSET * gauge)
 
     const group = new THREE.Group()
     group.position.set(position.x, 0, position.z)
@@ -3429,6 +3250,7 @@ function addSignal(signal: Signal, layout: StationLayoutData, mapper: LayoutMapp
     const localXAxis = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), localZAxis).normalize()
     const armSign = localXAxis.dot(sideVector.clone().multiplyScalar(-1)) >= 0 ? 1 : -1
     setObjectBasis(group, localXAxis, localZAxis)
+    group.scale.setScalar(gauge)
 
     const base = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.22, 0.12, 18), materials.signalPost)
     base.position.y = 0.06
@@ -3470,248 +3292,21 @@ function addSignal(signal: Signal, layout: StationLayoutData, mapper: LayoutMapp
     layoutGroup.add(group)
     addLabel(
         signal.name || signal.id,
-        new THREE.Vector3(position.x, Math.max(SIGNAL_LABEL_Y, headCenterY + lightLayout.height / 2 + 0.2), position.z),
+        new THREE.Vector3(position.x, gauge * Math.max(SIGNAL_LABEL_Y, headCenterY + lightLayout.height / 2 + 0.2), position.z),
         'layout3d-label-signal',
     )
 }
 
-function addPlatform(platform: Platform, mapper: LayoutMapper, materials: SceneMaterials) {
+function addPlatform(platform: Platform, mapper: LayoutMapper) {
     if (!layoutGroup) return
-
-    const center = mapper.mapPoint({
-        x: platform.x + platform.width / 2,
-        y: platform.y + platform.height / 2,
-    })
+    const gauge = getWorldTrackGauge(mapper)
+    const center = mapper.mapPoint({ x: platform.x + platform.width / 2, y: platform.y + platform.height / 2 })
     const width = Math.max(PLATFORM_MIN_SIZE, mapper.mapLength(platform.width))
     const depth = Math.max(PLATFORM_MIN_SIZE, mapper.mapLength(platform.height))
-
-    const group = new THREE.Group()
+    const group = createStationPlatform(width, depth, gauge)
     group.position.set(center.x, 0, center.z)
-
-    const platformMesh = new THREE.Mesh(new THREE.BoxGeometry(width, 0.34, depth), materials.platform)
-    platformMesh.position.y = 0.17
-    setShadow(platformMesh, true, true)
-    group.add(platformMesh)
-
-    const edgeGeometry = new THREE.EdgesGeometry(platformMesh.geometry)
-    const edgeMaterial = new THREE.LineBasicMaterial({ color: 0x3f6f89, transparent: true, opacity: 0.72 })
-    const edges = new THREE.LineSegments(edgeGeometry, edgeMaterial)
-    platformMesh.add(edges)
-
-    const longSafetyLineGeo = new THREE.BoxGeometry(Math.max(0.4, width - 0.35), 0.025, 0.045)
-    for (const z of [-depth / 2 + 0.14, depth / 2 - 0.14]) {
-        const line = new THREE.Mesh(longSafetyLineGeo, materials.platformLine)
-        line.position.set(0, 0.365, z)
-        setShadow(line, false, false)
-        group.add(line)
-    }
-
     layoutGroup.add(group)
-    addLabel(platform.name || platform.id, new THREE.Vector3(center.x, 0.84, center.z), 'layout3d-label-platform')
-}
-
-function getSwitchBranchVectors(sw: SwitchDevice, layout: StationLayoutData): SwitchBranchVector[] {
-    if (sw.branchVectorList.length > 0) return sw.branchVectorList
-
-    return getAdjacentTrackVectorCandidates(layout, sw.bindingNodeID).map((candidate) => ({
-        x: candidate.vector.x,
-        y: candidate.vector.y,
-        lineID: candidate.lineID,
-    }))
-}
-
-function buildSwitchRenderBranches(sw: SwitchDevice, layout: StationLayoutData, mapper: LayoutMapper): SwitchRenderBranch[] {
-    const branches: SwitchRenderBranch[] = []
-    for (const branchVector of getSwitchBranchVectors(sw, layout)) {
-        const unit = normalizeVector2D(branchVector)
-        if (!unit) continue
-
-        const direction = mapDirectionVectorToWorld(unit)
-        if (branches.some((branch) => branch.direction.dot(direction) > SWITCH_BRANCH_DUPLICATE_DOT)) continue
-
-        const sourceLength = getVectorLength2D(branchVector)
-        const renderLength = Math.max(
-            SWITCH_MIN_BRANCH_LENGTH,
-            Math.min(SWITCH_BRANCH_LENGTH, mapper.mapLength(sourceLength) * 0.22),
-        )
-        branches.push({
-            direction,
-            sourceLength,
-            renderLength,
-            lineID: branchVector.lineID,
-        })
-    }
-
-    return branches
-}
-
-function addBeamBetweenWorld(
-    group: THREE.Group,
-    start: THREE.Vector3,
-    end: THREE.Vector3,
-    width: number,
-    height: number,
-    material: THREE.Material,
-    centerY: number,
-) {
-    const dx = end.x - start.x
-    const dz = end.z - start.z
-    const length = Math.hypot(dx, dz)
-    if (length <= 0.000001) return null
-
-    const beam = new THREE.Mesh(new THREE.BoxGeometry(length, height, width), material)
-    beam.position.set((start.x + end.x) / 2, centerY, (start.z + end.z) / 2)
-    beam.rotation.y = -Math.atan2(dz, dx)
-    setShadow(beam, true, true)
-    group.add(beam)
-    return beam
-}
-
-function getWorldLeftNormal(direction: THREE.Vector3): THREE.Vector3 {
-    return new THREE.Vector3(direction.z, 0, -direction.x).normalize()
-}
-
-function addSwitchRouteRails(
-    group: THREE.Group,
-    origin: THREE.Vector3,
-    branch: SwitchRenderBranch,
-    materials: SceneMaterials,
-    trackGauge: number,
-) {
-    const normal = getWorldLeftNormal(branch.direction)
-    const routeStartDistance = 0.08
-    const routeEndDistance = branch.renderLength
-    const railWidth = getRailWidth(trackGauge)
-    for (const railOffset of [-trackGauge / 2, trackGauge / 2]) {
-        const start = origin
-            .clone()
-            .addScaledVector(branch.direction, routeStartDistance)
-            .addScaledVector(normal, railOffset)
-        const end = origin
-            .clone()
-            .addScaledVector(branch.direction, routeEndDistance)
-            .addScaledVector(normal, railOffset)
-        addBeamBetweenWorld(group, start, end, railWidth * 1.2, RAIL_HEIGHT * 1.18, materials.switchGuard, RAIL_Y + 0.045)
-    }
-}
-
-function addSwitchTieFan(
-    group: THREE.Group,
-    origin: THREE.Vector3,
-    branches: SwitchRenderBranch[],
-    materials: SceneMaterials,
-    trackGauge: number,
-) {
-    const sleeperLength = getSleeperLength(trackGauge)
-    const sleeperWidth = getSleeperWidth(trackGauge)
-    for (const branch of branches) {
-        const maxDistance = Math.min(branch.renderLength - 0.25, 3.35)
-        for (let distance = 0.72; distance <= maxDistance; distance += 0.72) {
-            const center = origin.clone().addScaledVector(branch.direction, distance)
-            const normal = getWorldLeftNormal(branch.direction)
-            const start = center.clone().addScaledVector(normal, -sleeperLength * 0.58)
-            const end = center.clone().addScaledVector(normal, sleeperLength * 0.58)
-            addBeamBetweenWorld(group, start, end, sleeperWidth * 0.92, SLEEPER_HEIGHT * 0.9, materials.switchTie, SLEEPER_Y + 0.02)
-        }
-    }
-}
-
-function findSwitchRoutePair(branches: SwitchRenderBranch[]) {
-    if (branches.length < 3) return null
-
-    let routeA = branches[0]
-    let routeB = branches[1]
-    let bestDot = -Infinity
-    for (let i = 0; i < branches.length; i++) {
-        for (let j = i + 1; j < branches.length; j++) {
-            const first = branches[i]
-            const second = branches[j]
-            if (!first || !second) continue
-
-            const dot = first.direction.dot(second.direction)
-            if (dot > bestDot) {
-                bestDot = dot
-                routeA = first
-                routeB = second
-            }
-        }
-    }
-
-    if (!routeA || !routeB) return null
-
-    const routeAverage = routeA.direction.clone().add(routeB.direction)
-    if (routeAverage.lengthSq() <= 0.000001) return null
-    routeAverage.normalize()
-
-    let stem: SwitchRenderBranch | null = null
-    let stemScore = Infinity
-    for (const branch of branches) {
-        if (branch === routeA || branch === routeB) continue
-        const score = branch.direction.dot(routeAverage)
-        if (score < stemScore) {
-            stemScore = score
-            stem = branch
-        }
-    }
-
-    return { routeA, routeB, routeAverage, stem }
-}
-
-function addSwitchPointWork(group: THREE.Group, origin: THREE.Vector3, branches: SwitchRenderBranch[], materials: SceneMaterials) {
-    const routePair = findSwitchRoutePair(branches)
-    if (!routePair) {
-        const plate = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.07, 0.42), materials.switchPoint)
-        plate.position.set(origin.x, RAIL_Y + 0.1, origin.z)
-        setShadow(plate, true, true)
-        group.add(plate)
-        return
-    }
-
-    const stemDirection = routePair.stem?.direction || routePair.routeAverage.clone().multiplyScalar(-1)
-    const toe = origin.clone().addScaledVector(stemDirection, 0.34)
-    const routeTipA = origin.clone().addScaledVector(routePair.routeA.direction, SWITCH_POINT_BLADE_LENGTH)
-    const routeTipB = origin.clone().addScaledVector(routePair.routeB.direction, SWITCH_POINT_BLADE_LENGTH)
-    addBeamBetweenWorld(group, toe, routeTipA, 0.06, 0.055, materials.switchPoint, RAIL_Y + 0.115)
-    addBeamBetweenWorld(group, toe, routeTipB, 0.06, 0.055, materials.switchPoint, RAIL_Y + 0.115)
-
-    const throwA = origin.clone().addScaledVector(routePair.routeA.direction, 0.82)
-    const throwB = origin.clone().addScaledVector(routePair.routeB.direction, 0.82)
-    if (throwA.distanceTo(throwB) > 0.18) {
-        addBeamBetweenWorld(group, throwA, throwB, 0.06, 0.045, materials.switchPoint, RAIL_Y + 0.16)
-    }
-
-    const frogNose = origin.clone().addScaledVector(routePair.routeAverage, SWITCH_FROG_DISTANCE)
-    const frogA = origin.clone().addScaledVector(routePair.routeA.direction, SWITCH_FROG_DISTANCE + 0.75)
-    const frogB = origin.clone().addScaledVector(routePair.routeB.direction, SWITCH_FROG_DISTANCE + 0.75)
-    addBeamBetweenWorld(group, frogNose, frogA, 0.052, 0.052, materials.switchPoint, RAIL_Y + 0.13)
-    addBeamBetweenWorld(group, frogNose, frogB, 0.052, 0.052, materials.switchPoint, RAIL_Y + 0.13)
-}
-
-function addFallbackSwitchMarker(position: THREE.Vector3, materials: SceneMaterials) {
-    if (!layoutGroup) return
-    const marker = new THREE.Mesh(new THREE.OctahedronGeometry(0.3, 0), materials.switchMarker)
-    marker.position.set(position.x, 0.42, position.z)
-    setShadow(marker, true, true)
-    layoutGroup.add(marker)
-}
-
-function addSwitchDevice(sw: SwitchDevice, layout: StationLayoutData, mapper: LayoutMapper, materials: SceneMaterials) {
-    if (!layoutGroup) return
-    const position = mapper.mapPoint(sw.position)
-    const branches = buildSwitchRenderBranches(sw, layout, mapper)
-    if (branches.length < 2) {
-        addFallbackSwitchMarker(position, materials)
-        addLabel(sw.name || sw.id, new THREE.Vector3(position.x, 0.98, position.z), 'layout3d-label-switch')
-        return
-    }
-
-    const group = new THREE.Group()
-    const trackGauge = getWorldTrackGauge(mapper)
-    branches.forEach((branch) => addSwitchRouteRails(group, position, branch, materials, trackGauge))
-    addSwitchTieFan(group, position, branches, materials, trackGauge)
-    addSwitchPointWork(group, position, branches, materials)
-    layoutGroup.add(group)
-    addLabel(sw.name || sw.id, new THREE.Vector3(position.x, 1.05, position.z), 'layout3d-label-switch')
+    addLabel(platform.name || platform.id, new THREE.Vector3(center.x, gauge * 5.1, center.z), 'layout3d-label-platform')
 }
 
 function addLabel(text: string, position: THREE.Vector3, className: string) {
@@ -3724,228 +3319,49 @@ function addLabel(text: string, position: THREE.Vector3, className: string) {
     layoutGroup.add(label)
 }
 
-function createBoxMesh(material: THREE.Material) {
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), material)
-    setShadow(mesh, true, true)
-    return mesh
-}
-
-function createWheelMesh(material: THREE.Material) {
-    const wheelGeometry = new THREE.CylinderGeometry(0.5, 0.5, 1, 24)
-    wheelGeometry.rotateX(Math.PI / 2)
-    const wheel = new THREE.Mesh(wheelGeometry, material)
-    setShadow(wheel, true, true)
-    return wheel
-}
-
-function createAxleMesh(material: THREE.Material) {
-    const axleGeometry = new THREE.CylinderGeometry(0.5, 0.5, 1, 12)
-    axleGeometry.rotateX(Math.PI / 2)
-    const axle = new THREE.Mesh(axleGeometry, material)
-    setShadow(axle, true, true)
-    return axle
-}
-
-function createTrainCarObject(): TrainCarObjectEntry {
+function createTrainCarObject(car: SimulationTrainCar): TrainCarObjectEntry {
     const group = new THREE.Group()
-    const bodyMaterial = new THREE.MeshStandardMaterial({
-        color: 0x8a3b2b,
-        roughness: 0.72,
-        metalness: 0.08,
-    })
-    const sidePanelMaterial = new THREE.MeshStandardMaterial({
-        color: 0x713124,
-        roughness: 0.78,
-        metalness: 0.06,
-    })
-    const detailMaterial = new THREE.MeshStandardMaterial({
-        color: 0x1f2933,
-        roughness: 0.62,
-        metalness: 0.32,
-    })
-    const wheelMaterial = new THREE.MeshStandardMaterial({
-        color: 0x111827,
-        roughness: 0.48,
-        metalness: 0.55,
-    })
-
-    const body = createBoxMesh(bodyMaterial)
-    group.add(body)
-
-    const sidePanels = Array.from({ length: 2 }, () => {
-        const panel = createBoxMesh(sidePanelMaterial)
-        group.add(panel)
-        return panel
-    })
-    const endPanels = Array.from({ length: 2 }, () => {
-        const panel = createBoxMesh(sidePanelMaterial)
-        group.add(panel)
-        return panel
-    })
-    const ribs = Array.from({ length: 16 }, () => {
-        const rib = createBoxMesh(detailMaterial)
-        group.add(rib)
-        return rib
-    })
-    const doorPanels = Array.from({ length: 4 }, () => {
-        const door = createBoxMesh(sidePanelMaterial)
-        group.add(door)
-        return door
-    })
-    const underframe = createBoxMesh(detailMaterial)
-    const centerBeam = createBoxMesh(detailMaterial)
-    group.add(underframe, centerBeam)
-
-    const bogieFrames = Array.from({ length: 4 }, () => {
-        const frame = createBoxMesh(detailMaterial)
-        group.add(frame)
-        return frame
-    })
-    const axles = Array.from({ length: 4 }, () => {
-        const axle = createAxleMesh(wheelMaterial)
-        group.add(axle)
-        return axle
-    })
-    const wheels = Array.from({ length: 8 }, () => {
-        const wheel = createWheelMesh(wheelMaterial)
-        group.add(wheel)
-        return wheel
-    })
-    const couplers = Array.from({ length: 2 }, () => {
-        const coupler = createBoxMesh(detailMaterial)
-        group.add(coupler)
-        return coupler
-    })
-
+    const model = createEmuCar(car.role, car.carIndex)
+    group.add(model)
     const labelElement = document.createElement('div')
     labelElement.className = 'layout3d-label layout3d-label-train'
     const label = new CSS2DObject(labelElement)
     group.add(label)
+    return { group, model, label, labelElement,
+        frontBogie: model.getObjectByName('bogie-front'), rearBogie: model.getObjectByName('bogie-rear') }
+}
 
-    return {
-        group,
-        body,
-        sidePanels,
-        endPanels,
-        ribs,
-        doorPanels,
-        underframe,
-        centerBeam,
-        bogieFrames,
-        axles,
-        wheels,
-        couplers,
-        bodyMaterial,
-        sidePanelMaterial,
-        detailMaterial,
-        label,
-        labelElement,
-    }
+// S^-1 R S steers a pivot in physical space despite the model's normalized axes.
+function steerBogie(pivot: THREE.Object3D | undefined, angle: number, bodyAngle: number, scale: THREE.Vector3) {
+    if (!pivot) return
+    const yaw = -(angle - bodyAngle) * Math.PI / 180
+    const cosine = Math.cos(yaw)
+    const sine = Math.sin(yaw)
+    pivot.matrixAutoUpdate = false
+    pivot.matrix.set(
+        cosine, 0, sine * scale.z / scale.x, pivot.position.x,
+        0, 1, 0, pivot.position.y,
+        -sine * scale.x / scale.z, 0, cosine, pivot.position.z,
+        0, 0, 0, 1,
+    )
+    pivot.matrixWorldNeedsUpdate = true
 }
 
 function updateTrainCarObject(entry: TrainCarObjectEntry, car: SimulationTrainCar, mapper: LayoutMapper) {
-    const position = mapper.mapPoint({ x: car.x, y: car.y })
-    const trackGauge = getWorldTrackGauge(mapper)
-    const length = Math.max(mapper.mapLength(car.length), trackGauge * 2.25, 1.05)
-    const width = Math.max(mapper.mapLength(car.width), trackGauge * 1.45, 0.38)
-    const height = Math.max(trainCarBaseHeight, trackGauge * 0.68)
-    const bodyColor = getFreightCarBodyColor(car)
-    entry.bodyMaterial.color.copy(bodyColor)
-    entry.bodyMaterial.emissive.copy(bodyColor).multiplyScalar(0.035)
-    entry.bodyMaterial.needsUpdate = true
-    entry.sidePanelMaterial.color.copy(bodyColor.clone().multiplyScalar(0.78))
-    entry.sidePanelMaterial.needsUpdate = true
-    entry.detailMaterial.color.set(0x202833)
-    entry.detailMaterial.needsUpdate = true
-
-    entry.group.position.set(position.x, 0, position.z)
+    const gauge = getWorldTrackGauge(mapper)
+    const length = mapper.mapLength(car.length)
+    const width = mapper.mapLength(car.width)
+    const height = gauge * EMU_DIMENSIONS.height / EMU_DIMENSIONS.railGauge
+    const position = mapper.mapPoint(car)
+    entry.group.position.set(position.x, getRailwayDimensions(gauge).railTop, position.z)
     entry.group.rotation.y = -normalizePathAngle(car.angle) * Math.PI / 180
-    const bodyLength = length * 0.84
-    const bodyWidth = width * 0.92
-    const bodyHeight = height * 0.88
-    const wheelRadius = Math.max(0.08, trackGauge * 0.2)
-    const wheelThickness = Math.max(0.035, trackGauge * 0.075)
-    const wheelCenterY = RAIL_Y + wheelRadius + 0.02
-    const bodyBottomY = wheelCenterY + wheelRadius + height * 0.16
-    const bodyCenterY = bodyBottomY + bodyHeight / 2
-
-    entry.body.scale.set(bodyLength, bodyHeight, bodyWidth)
-    entry.body.position.set(0, bodyCenterY, 0)
-
-    entry.sidePanels.forEach((panel, index) => {
-        const side = index === 0 ? -1 : 1
-        panel.scale.set(bodyLength * 0.96, bodyHeight * 0.82, Math.max(0.018, bodyWidth * 0.035))
-        panel.position.set(0, bodyCenterY, side * bodyWidth * 0.515)
-    })
-    entry.endPanels.forEach((panel, index) => {
-        const side = index === 0 ? -1 : 1
-        panel.scale.set(Math.max(0.035, bodyLength * 0.025), bodyHeight * 0.9, bodyWidth * 0.94)
-        panel.position.set(side * bodyLength * 0.505, bodyCenterY, 0)
-    })
-
-    const ribCountPerSide = entry.ribs.length / 2
-    entry.ribs.forEach((rib, index) => {
-        const side = index < ribCountPerSide ? -1 : 1
-        const ribIndex = index % ribCountPerSide
-        const rate = ribCountPerSide <= 1 ? 0.5 : ribIndex / (ribCountPerSide - 1)
-        rib.scale.set(Math.max(0.018, bodyLength * 0.018), bodyHeight * 0.9, Math.max(0.022, bodyWidth * 0.045))
-        rib.position.set(-bodyLength * 0.43 + rate * bodyLength * 0.86, bodyCenterY, side * bodyWidth * 0.545)
-    })
-
-    entry.doorPanels.forEach((door, index) => {
-        const side = index < 2 ? -1 : 1
-        const doorIndex = index % 2
-        door.scale.set(bodyLength * 0.18, bodyHeight * 0.58, Math.max(0.024, bodyWidth * 0.05))
-        door.position.set((doorIndex === 0 ? -1 : 1) * bodyLength * 0.14, bodyCenterY + bodyHeight * 0.02, side * bodyWidth * 0.565)
-    })
-
-    entry.underframe.scale.set(bodyLength * 0.96, Math.max(0.06, height * 0.11), bodyWidth * 0.78)
-    entry.underframe.position.set(0, bodyBottomY - height * 0.08, 0)
-    entry.centerBeam.scale.set(bodyLength * 1.02, Math.max(0.035, height * 0.07), Math.max(0.04, bodyWidth * 0.12))
-    entry.centerBeam.position.set(0, wheelCenterY + wheelRadius * 0.7, 0)
-
-    const bogieCenters = [-bodyLength * 0.32, bodyLength * 0.32]
-    const bogieLength = Math.max(bodyLength * 0.18, trackGauge * 0.9)
-    const bogieFrameHeight = Math.max(0.055, wheelRadius * 0.46)
-    entry.bogieFrames.forEach((frame, index) => {
-        const bogieIndex = Math.floor(index / 2)
-        const side = index % 2 === 0 ? -1 : 1
-        frame.scale.set(bogieLength, bogieFrameHeight, Math.max(0.035, bodyWidth * 0.055))
-        frame.position.set(bogieCenters[bogieIndex] || 0, wheelCenterY + wheelRadius * 0.25, side * bodyWidth * 0.39)
-    })
-
-    const wheelTrack = bodyWidth * 0.34
-    const axleHalfSpacing = bogieLength * 0.23
-    entry.axles.forEach((axle, index) => {
-        const bogieIndex = Math.floor(index / 2)
-        const axleSide = index % 2 === 0 ? -1 : 1
-        axle.scale.set(Math.max(0.025, wheelRadius * 0.18), Math.max(0.025, wheelRadius * 0.18), wheelTrack * 2.2)
-        axle.position.set((bogieCenters[bogieIndex] || 0) + axleSide * axleHalfSpacing, wheelCenterY, 0)
-    })
-    entry.wheels.forEach((wheel, index) => {
-        const axleIndex = Math.floor(index / 2)
-        const side = index % 2 === 0 ? -1 : 1
-        const bogieIndex = Math.floor(axleIndex / 2)
-        const axleSide = axleIndex % 2 === 0 ? -1 : 1
-        wheel.scale.set(wheelRadius, wheelRadius, wheelThickness)
-        wheel.position.set((bogieCenters[bogieIndex] || 0) + axleSide * axleHalfSpacing, wheelCenterY, side * wheelTrack)
-    })
-
-    entry.couplers.forEach((coupler, index) => {
-        const side = index === 0 ? -1 : 1
-        coupler.scale.set(Math.max(0.08, length * 0.06), Math.max(0.035, height * 0.08), Math.max(0.08, width * 0.18))
-        coupler.position.set(side * (bodyLength / 2 + length * 0.055), wheelCenterY + wheelRadius * 0.58, 0)
-    })
-
-    entry.label.position.set(0, RAIL_Y + height + 0.62, 0)
+    entry.model.scale.set(length, height, width)
+    steerBogie(entry.frontBogie, car.frontBogie.angle, car.angle, entry.model.scale)
+    steerBogie(entry.rearBogie, car.rearBogie.angle, car.angle, entry.model.scale)
+    entry.label.position.set(0, height + gauge * 0.45, 0)
     entry.labelElement.textContent = car.label || ''
-    entry.labelElement.style.display = car.label ? '' : 'none'
-}
-
-function getFreightCarBodyColor(car: SimulationTrainCar) {
-    const palette = [0x8a3b2b, 0x566f42, 0x6b7280, 0x9a4f2f, 0x475569, 0x7a4a2f]
-    const hash = car.key.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0)
-    return new THREE.Color(palette[hash % palette.length] || 0x8a3b2b)
+    entry.label.visible = Boolean(car.label)
+    entry.labelElement.style.borderColor = car.fill
 }
 
 function removeTrainCarObject(key: string) {
@@ -3975,7 +3391,7 @@ function updateTrainObjects() {
     cars.forEach((car) => {
         let entry = trainCarObjectMap.get(car.key)
         if (!entry) {
-            entry = createTrainCarObject()
+            entry = createTrainCarObject(car)
             trainCarObjectMap.set(car.key, entry)
             trainGroup?.add(entry.group)
         }
@@ -3989,44 +3405,85 @@ function rebuildScene() {
     clearGroup(layoutGroup)
     lastMapper = null
 
-    const mapper = createMapper(layoutData.value)
+    const layout = displayLayoutData.value
+    const mapper = createMapper(layout)
     if (!mapper) {
+        clearTrainObjects()
         renderOnce()
         return
     }
 
     lastMapper = mapper
     const materials = createMaterials()
-    addGround(mapper, materials)
+    addGround(mapper)
 
-    const trackSegments = buildVisibleTrackSegments(layoutData.value)
-    for (const segment of trackSegments) {
-        addTrackSection(segment, mapper, materials)
-    }
+    const paths = displayRailwayPaths.value.map(path => ({
+        id: path.id,
+        points: path.points.map(point => mapper.mapPoint({ x: point.x, y: point.z })),
+    }))
+    layoutGroup.add(createRailway(paths, layout.switches.map(sw => ({
+        id: sw.id, position: mapper.mapPoint(sw.position),
+    })), getWorldTrackGauge(mapper)))
+    for (const platform of layout.platforms) addPlatform(platform, mapper)
+    for (const signal of layout.signals) addSignal(signal, layout, mapper, materials)
+    if (!layout.signals.length) Object.values(materials).forEach(material => material.dispose())
+    for (const sw of layout.switches) addLabel(sw.name || sw.id,
+        mapper.mapPoint(sw.position, getWorldTrackGauge(mapper) * 0.9), 'layout3d-label-switch')
 
-    addCurveTracks(layoutData.value, mapper, materials)
-    for (const platform of layoutData.value.platforms) addPlatform(platform, mapper, materials)
-    for (const signal of layoutData.value.signals) addSignal(signal, layoutData.value, mapper, materials)
-    for (const sw of layoutData.value.switches) addSwitchDevice(sw, layoutData.value, mapper, materials)
-    addTrackLabels(layoutData.value, mapper)
+    addTrackLabels(layout, mapper)
 
     fitCameraToLayout()
     updateTrainObjects()
     renderOnce()
 }
 
+function formatDisplayRatio(value: number) {
+    return `${value.toFixed(2)}:1`
+}
+
+function handleDisplayRatioChange() {
+    appliedDisplayRatio.value = displayRatio.value
+    rebuildScene()
+}
+
+function resetDisplayRatio() {
+    displayRatio.value = 1
+    handleDisplayRatioChange()
+}
+
 function fitCameraToLayout() {
     if (!camera || !controls || !lastMapper) return
-    const span = Math.max(lastMapper.worldWidth, lastMapper.worldDepth, MIN_WORLD_SPAN)
-    const height = Math.max(28, span * 0.48)
-    const distance = Math.max(56, span * 0.82)
-
+    const worldWidth = lastMapper.worldWidth
+    const span = Math.max(worldWidth, lastMapper.worldDepth, MIN_WORLD_SPAN)
+    // Fit all corners in the tilted camera's view, including the nearer edges.
+    // A width-only distance clips wide layouts in a shallow viewport.
+    const halfFov = THREE.MathUtils.degToRad(camera.fov / 2)
+    const tanVertical = Math.tan(halfFov) * 0.88
+    const tanHorizontal = tanVertical * camera.aspect
+    const viewDirection = new THREE.Vector3(0.08, 0.54, 0.84).normalize()
+    const viewRight = new THREE.Vector3().crossVectors(camera.up, viewDirection).normalize()
+    const viewUp = new THREE.Vector3().crossVectors(viewDirection, viewRight)
+    const gauge = getWorldTrackGauge(lastMapper)
     controls.target.set(0, 0.22, 0)
-    camera.position.set(0, height, distance * 1.08)
+    let distance = 40
+    for (const x of [-1, 1]) for (const y of [0, gauge * 5]) for (const z of [-1, 1]) {
+        const corner = new THREE.Vector3(
+            x * (worldWidth / 2 + gauge), y,
+            z * (lastMapper.worldDepth / 2 + gauge),
+        ).sub(controls.target)
+        const depthOffset = corner.dot(viewDirection)
+        distance = Math.max(distance,
+            depthOffset + Math.abs(corner.dot(viewRight)) / tanHorizontal,
+            depthOffset + Math.abs(corner.dot(viewUp)) / tanVertical)
+    }
+    controls.maxDistance = Math.max(900, distance * 2)
+    camera.position.copy(controls.target).addScaledVector(viewDirection, distance)
     camera.near = 0.1
-    camera.far = Math.max(1000, span * 14)
+    camera.far = Math.max(1000, span * 14, distance * 3)
     camera.updateProjectionMatrix()
     controls.update()
+    if (scene) fitStationLighting(scene, worldWidth, lastMapper.worldDepth,
+        camera.position.distanceTo(controls.target))
 }
 
 function resetCamera() {
@@ -4576,6 +4033,8 @@ onBeforeUnmount(() => {
         controls.dispose()
         controls = null
     }
+    disposeSceneLighting?.()
+    disposeSceneLighting = null
     if (renderer) {
         renderer.dispose()
         renderer = null
@@ -4633,6 +4092,27 @@ onBeforeUnmount(() => {
     color: #4c5968;
     font-size: 12px;
     line-height: 1;
+    white-space: nowrap;
+}
+
+.layout3d-ratio-control {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    max-width: 100%;
+}
+
+.layout3d-ratio-slider {
+    width: 130px;
+    min-width: 70px;
+}
+
+.layout3d-ratio-value {
+    flex: 0 0 48px;
+    color: #4c5968;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
     white-space: nowrap;
 }
 

@@ -1663,6 +1663,7 @@
         "buttons": {
             "refresh": "刷新布置图",
             "resetView": "重置视角",
+            "resetDisplayRatio": "恢复 X:Y 坐标比例为 1:1",
             "resetPlayback": "重置播放",
             "play": "播放",
             "pause": "暂停",
@@ -1671,6 +1672,7 @@
         },
         "labels": {
             "showLabels": "显示标签",
+            "displayRatio": "X:Y 坐标比例",
             "operationPlan": "作业计划",
             "playbackScope": "范围",
             "train": "列车",
