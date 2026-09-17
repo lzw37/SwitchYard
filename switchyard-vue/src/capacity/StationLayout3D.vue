@@ -57,6 +57,26 @@
                         <el-radio-button value="all">{{ t('stationLayout3d.playbackModes.all') }}</el-radio-button>
                     </el-radio-group>
                 </div>
+                <div class="layout3d-scheme-control">
+                    <el-tooltip :content="t('stationLayout3d.trainModels.help')">
+                        <span class="layout3d-control-label">{{ t('stationLayout3d.labels.trainModel') }}</span>
+                    </el-tooltip>
+                    <el-select
+                        v-model="selectedTrainModel"
+                        size="small"
+                        filterable
+                        class="layout3d-model-select"
+                        :aria-label="t('stationLayout3d.labels.trainModel')"
+                    >
+                        <el-option value="auto" :label="t('stationLayout3d.trainModels.auto')" />
+                        <el-option
+                            v-for="option in ROLLING_STOCK_OPTIONS"
+                            :key="option.value"
+                            :label="option.label"
+                            :value="option.value"
+                        />
+                    </el-select>
+                </div>
                 <div class="layout3d-ratio-control">
                     <span class="layout3d-control-label">{{ t('stationLayout3d.labels.displayRatio') }}</span>
                     <el-slider
@@ -348,7 +368,12 @@ import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { Aim, Edit, Plus, RefreshLeft, RefreshRight, VideoPause, VideoPlay } from '@element-plus/icons-vue'
 import * as THREE from 'three'
-import { createEmuCar, EMU_DIMENSIONS, getEmuBogieOffsets, type EmuCarRole } from './three/emuTrain'
+import {
+    getRollingStockBogieOffsets, getRollingStockDimensions, ROLLING_STOCK_OPTIONS,
+    type RollingStockCarRole, type RollingStockModelId,
+} from './three/rollingStock'
+import { RollingStockTemplates, type RollingStockTemplateSpec } from './three/rollingStockTemplates'
+import { getRollingStockConsistForRun, type RollingStockModelSelection } from './three/emuModelSelection'
 import { getEmuConsistSizing, getLongestRouteLinkLength } from './three/trainSizing'
 import { createRailway, getRailwayDimensions, prepareRailwayPaths } from './three/railway'
 import { createStationGround, createStationPlatform, fitStationLighting, lightStationScene } from './three/stationEnvironment'
@@ -599,7 +624,8 @@ interface RouteRun {
 
 interface SimulationTrainCar {
     key: string
-    role: EmuCarRole
+    modelId: RollingStockModelId
+    role: RollingStockCarRole
     carIndex: number
     frontBogie: { x: number; y: number; angle: number }
     rearBogie: { x: number; y: number; angle: number }
@@ -608,6 +634,7 @@ interface SimulationTrainCar {
     angle: number
     length: number
     width: number
+    height: number
     fill: string
     stroke: string
     label?: string
@@ -719,7 +746,6 @@ const SIGNAL_LIGHT_ROW_SPACING = 0.17
 const SIGNAL_LIGHT_COLUMN_SPACING = 0.18
 const SIGNAL_LIGHT_PADDING = 0.16
 const defaultOperationPlanID = 'default'
-const trainCarCount = 8
 const syntheticRouteGapSeconds = 1.2
 const routeLockMinSeconds = 1.2
 const routeLockMaxSeconds = 8
@@ -763,6 +789,7 @@ const trainOperationPlanMovements = ref<TrainOperationPlanMovement[]>([])
 const playheadSeconds = ref(0)
 const playbackSpeed = ref(60)
 const playbackMode = ref<PlaybackMode>('single')
+const selectedTrainModel = ref<RollingStockModelSelection>('auto')
 const isPlaying = ref(false)
 const activeRunIndex = ref(-1)
 const activeRunIndices = ref<number[]>([])
@@ -786,6 +813,8 @@ const ganttSubTableDialogForm = ref<GanttSubTableDialogForm>({
 })
 
 let renderer: THREE.WebGLRenderer | null = null
+let isDisposed = false
+const dataRequests = new AbortController()
 let labelRenderer: CSS2DRenderer | null = null
 let labelRendererRoot: HTMLElement | null = null
 let scene: THREE.Scene | null = null
@@ -801,6 +830,8 @@ let ganttScrollFrameId: number | null = null
 let ganttSubTableSaveTimer: ReturnType<typeof window.setTimeout> | null = null
 let suppressGanttSubTableSave = false
 let ganttSubTableSaveRevision = 0
+let ganttSubTableSavingRevision = 0
+let ganttSubTableSaveRequest: Promise<unknown> | null = null
 let lastMapper: LayoutMapper | null = null
 let layoutLoadVersion = 0
 let stationSchemeLoadVersion = 0
@@ -816,11 +847,15 @@ let lastPlaybackRenderTimestamp = 0
 let playbackRuntimeSeconds = 0
 const trainCarAngleMemory = new Map<string, number>()
 const trainCarObjectMap = new Map<string, TrainCarObjectEntry>()
+const trainModelTemplates = new RollingStockTemplates()
+const preparingTrainModels = ref(false)
+let trainModelPreparationVersion = 0
 
 const selectedInstanceId = computed(() => props.selectedInstanceId || '')
 const hasScheme = computed(() => Boolean(selectedInstanceId.value && currentStationSchemeId.value.trim()))
 const hasScope = computed(() => Boolean(hasScheme.value && currentOperationPlanId.value.trim()))
 const loadingAnyData = computed(() => (
+    preparingTrainModels.value ||
     loadingData.value ||
     loadingStationSchemes.value ||
     loadingOperationPlans.value ||
@@ -901,13 +936,16 @@ const routeRuns = computed<RouteRun[]>(() => sourceRouteRuns.value.map(run => ({
 })))
 // Each operation uses its own route's complete Links, before rendering trims
 // curves/turnouts. Cache the dimensions across playback frames.
-const trainConsistSizingByRun = computed(() => {
+const trainConsistByRun = computed(() => {
     const gauge = getLayoutTrackGaugeUnits()
     const links = displayLayoutData.value.tracks
-    return new Map(routeRuns.value.map(run => [
-        run.key,
-        getEmuConsistSizing(gauge, getLongestRouteLinkLength(links, run), trainCarCount),
-    ]))
+    return new Map(routeRuns.value.map(run => {
+        const consist = getRollingStockConsistForRun(run.train.trainType, selectedTrainModel.value)
+        return [run.key, {
+            ...consist,
+            sizing: getEmuConsistSizing(gauge, getLongestRouteLinkLength(links, run), consist.carCount, getRollingStockDimensions(consist.modelId)),
+        }]
+    }))
 })
 const canPlayback = computed(() => routeRuns.value.length > 0 && simulationDurationSeconds.value > 0)
 const simulationDurationSeconds = computed(() => (
@@ -1278,6 +1316,7 @@ function formatTrainLabel(train: TrainOperationPlanTrain) {
 }
 
 async function loadStationSchemes(options: { includeCurrent?: boolean } = {}) {
+    if (isDisposed) return []
     const includeCurrent = options.includeCurrent !== false
     const instanceID = selectedInstanceId.value
     if (!instanceID) {
@@ -1295,6 +1334,7 @@ async function loadStationSchemes(options: { includeCurrent?: boolean } = {}) {
     loadingStationSchemes.value = true
     try {
         const response = await axios.get('/StationLayout/GetStationSchemes', {
+            signal: dataRequests.signal,
             params: { instanceID },
         })
         if (loadVersion !== stationSchemeLoadVersion || instanceID !== selectedInstanceId.value) return []
@@ -1978,22 +2018,25 @@ function buildSimulationTrainCars(): SimulationTrainCar[] {
 }
 
 function buildSimulationTrainCarsForRun(run: RouteRun, currentSeconds: number): SimulationTrainCar[] {
-    const sizing = trainConsistSizingByRun.value.get(run.key)
-    if (!sizing) return []
+    const consist = trainConsistByRun.value.get(run.key)
+    if (!consist?.sizing) return []
+    const { modelId, carCount, sizing } = consist
     const progress = getActiveRouteProgress(run, currentSeconds)
     const headDistance = run.path.totalLength * progress
     const fill = getTrainColor(run.train.id)
-    // Eight cars plus seven gaps equal 3/4 of this operation's longest route Link.
+    // The complete formation, including every gap, occupies 3/4 of this route's longest Link.
     const cars: SimulationTrainCar[] = []
 
-    for (let index = 0; index < trainCarCount; index++) {
+    for (let index = 0; index < carCount; index++) {
         const offset = index * sizing.carPitch
-        const key = `${run.key}-${index}`
-        const role: EmuCarRole = index === 0 ? 'head' : index === trainCarCount - 1 ? 'tail' : 'middle'
-        const bogieOffsets = getEmuBogieOffsets(role).map(value => value * sizing.longitudinalUnitsPerMeter) as [number, number]
+        // A model change retires the old meshes, labels and angle memory together.
+        const key = `${run.key}-${modelId}-${index}`
+        const role: RollingStockCarRole = index === 0 ? 'head' : index === carCount - 1 ? 'tail' : 'middle'
+        const bogieOffsets = getRollingStockBogieOffsets(role, modelId).map(value => value * sizing.longitudinalUnitsPerMeter) as [number, number]
         const position = sampleTrainPose(run.path, headDistance - offset, bogieOffsets)
         cars.push({
             key,
+            modelId,
             role,
             carIndex: index,
             frontBogie: position.frontBogie,
@@ -2003,6 +2046,7 @@ function buildSimulationTrainCarsForRun(run: RouteRun, currentSeconds: number): 
             angle: getContinuousTrainCarAngle(key, position.angle),
             length: sizing.carLength,
             width: sizing.carWidth,
+            height: sizing.carHeight,
             fill: index === 0 ? fill : lightenTrainColor(fill, index),
             stroke: '#f8fafc',
             label: index === 0 ? run.train.trainNumber || run.train.id : '',
@@ -2576,7 +2620,7 @@ function togglePlayback() {
 }
 
 function startPlayback() {
-    if (!canPlayback.value) return
+    if (isDisposed || isPlaying.value || !canPlayback.value) return
     if (playheadSeconds.value >= simulationDurationSeconds.value) {
         setPlayheadSeconds(0)
     }
@@ -2599,11 +2643,18 @@ function resetPlayback() {
     pausePlayback()
     clearTrainCarAngleMemory()
     setPlayheadSeconds(0)
-    updateTrainObjects()
 }
 
 function stepPlayback(timestamp: number) {
-    if (!isPlaying.value) return
+    playbackFrameId = null
+    if (isDisposed || !isPlaying.value) return
+    // Model changes may prepare a new fleet. Keep the clock still while the
+    // worker runs, so preparation time cannot jump playback past an arrival.
+    if (preparingTrainModels.value) {
+        lastPlaybackTimestamp = 0
+        playbackFrameId = window.requestAnimationFrame(stepPlayback)
+        return
+    }
     if (!lastPlaybackTimestamp) lastPlaybackTimestamp = timestamp
     const deltaSeconds = Math.max(0, (timestamp - lastPlaybackTimestamp) / 1000)
     lastPlaybackTimestamp = timestamp
@@ -2616,7 +2667,6 @@ function stepPlayback(timestamp: number) {
     if (shouldRender) {
         playheadSeconds.value = playbackRuntimeSeconds
         syncActiveRunIndex(playbackRuntimeSeconds)
-        updateTrainObjects()
         lastPlaybackRenderTimestamp = timestamp
     }
     if (playbackRuntimeSeconds >= simulationDurationSeconds.value) {
@@ -2646,10 +2696,10 @@ function setPlayheadSeconds(value: number) {
     playbackRuntimeSeconds = clamped
     playheadSeconds.value = clamped
     syncActiveRunIndex(clamped)
-    updateTrainObjects()
 }
 
 function scheduleScrollGanttToPlayhead() {
+    if (isDisposed) return
     if (ganttScrollFrameId !== null) {
         window.cancelAnimationFrame(ganttScrollFrameId)
     }
@@ -2984,7 +3034,7 @@ function createMaterials(): SceneMaterials {
 }
 
 function initThree() {
-    if (!canvasRef.value || !canvasWrapperRef.value || renderer) return
+    if (isDisposed || !canvasRef.value || !canvasWrapperRef.value || renderer) return
 
     const width = Math.max(1, canvasWrapperRef.value.clientWidth)
     const height = Math.max(1, canvasWrapperRef.value.clientHeight)
@@ -3319,9 +3369,49 @@ function addLabel(text: string, position: THREE.Vector3, className: string) {
     layoutGroup.add(label)
 }
 
-function createTrainCarObject(car: SimulationTrainCar): TrainCarObjectEntry {
+async function prepareTrainModels() {
+    const version = ++trainModelPreparationVersion
+    const specs = new Map<string, RollingStockTemplateSpec>()
+    for (const { modelId, carCount } of trainConsistByRun.value.values()) {
+        for (let carIndex = 0; carIndex < carCount; carIndex++) {
+            const role = carIndex === 0 ? 'head' : carIndex === carCount - 1 ? 'tail' : 'middle'
+            specs.set(`${modelId}-${role}-${carIndex}`, { modelId, role, carIndex })
+        }
+    }
+    preparingTrainModels.value = specs.size > 0
+    try {
+        await trainModelTemplates.prepare([...specs.values()])
+        if (isDisposed || version !== trainModelPreparationVersion) return
+        // Use the station's lights/environment when warming shaders, before a
+        // model's first scheduled arrival. The temporary objects share assets.
+        if (renderer && camera && scene) {
+            const warmup = new THREE.Group()
+            for (const spec of specs.values()) {
+                const model = trainModelTemplates.instantiate(spec)
+                if (model) warmup.add(model)
+            }
+            // compileAsync starts uncancellable polling that can outlive the
+            // renderer on tab exit; start compilation without a polling loop.
+            renderer.compile(warmup, camera, scene)
+            warmup.clear()
+        }
+        updateTrainObjects()
+    } catch (error) {
+        if (isDisposed || version !== trainModelPreparationVersion) return
+        pausePlayback()
+        console.error('Failed to prepare train models', error)
+        ElMessage.error(t('stationLayout3d.messages.trainModelLoadFailed'))
+    } finally {
+        if (!isDisposed && version === trainModelPreparationVersion) {
+            preparingTrainModels.value = false
+        }
+    }
+}
+
+function createTrainCarObject(car: SimulationTrainCar): TrainCarObjectEntry | undefined {
+    const model = trainModelTemplates.instantiate(car)
+    if (!model) return undefined
     const group = new THREE.Group()
-    const model = createEmuCar(car.role, car.carIndex)
     group.add(model)
     const labelElement = document.createElement('div')
     labelElement.className = 'layout3d-label layout3d-label-train'
@@ -3351,7 +3441,7 @@ function updateTrainCarObject(entry: TrainCarObjectEntry, car: SimulationTrainCa
     const gauge = getWorldTrackGauge(mapper)
     const length = mapper.mapLength(car.length)
     const width = mapper.mapLength(car.width)
-    const height = gauge * EMU_DIMENSIONS.height / EMU_DIMENSIONS.railGauge
+    const height = mapper.mapLength(car.height)
     const position = mapper.mapPoint(car)
     entry.group.position.set(position.x, getRailwayDimensions(gauge).railTop, position.z)
     entry.group.rotation.y = -normalizePathAngle(car.angle) * Math.PI / 180
@@ -3359,7 +3449,7 @@ function updateTrainCarObject(entry: TrainCarObjectEntry, car: SimulationTrainCa
     steerBogie(entry.frontBogie, car.frontBogie.angle, car.angle, entry.model.scale)
     steerBogie(entry.rearBogie, car.rearBogie.angle, car.angle, entry.model.scale)
     entry.label.position.set(0, height + gauge * 0.45, 0)
-    entry.labelElement.textContent = car.label || ''
+    if (entry.labelElement.textContent !== (car.label || '')) entry.labelElement.textContent = car.label || ''
     entry.label.visible = Boolean(car.label)
     entry.labelElement.style.borderColor = car.fill
 }
@@ -3368,7 +3458,10 @@ function removeTrainCarObject(key: string) {
     const entry = trainCarObjectMap.get(key)
     if (!entry) return
     trainGroup?.remove(entry.group)
-    disposeObject3D(entry.group)
+    // Instances own transforms and labels; geometries/materials belong to the
+    // templates and must survive departures, seeking and later arrivals.
+    entry.labelElement.remove()
+    entry.group.clear()
     trainCarObjectMap.delete(key)
 }
 
@@ -3377,6 +3470,7 @@ function clearTrainObjects() {
 }
 
 function updateTrainObjects() {
+    if (isDisposed) return
     if (!trainGroup || !lastMapper) {
         clearTrainObjects()
         return
@@ -3392,16 +3486,16 @@ function updateTrainObjects() {
         let entry = trainCarObjectMap.get(car.key)
         if (!entry) {
             entry = createTrainCarObject(car)
+            if (!entry) return
             trainCarObjectMap.set(car.key, entry)
             trainGroup?.add(entry.group)
         }
         updateTrainCarObject(entry, car, lastMapper as LayoutMapper)
     })
-    renderOnce()
 }
 
 function rebuildScene() {
-    if (!layoutGroup) return
+    if (isDisposed || !layoutGroup) return
     clearGroup(layoutGroup)
     lastMapper = null
 
@@ -3491,18 +3585,21 @@ function resetCamera() {
 }
 
 function renderOnce() {
+    if (isDisposed) return
     if (controls) controls.update()
     if (renderer && scene && camera) renderer.render(scene, camera)
     if (labelRenderer && scene && camera) labelRenderer.render(scene, camera)
 }
 
 function rafTick() {
+    rafId = null
+    if (isDisposed || !renderer) return
     renderOnce()
-    rafId = window.requestAnimationFrame(rafTick)
+    ensureRafLoop()
 }
 
 function ensureRafLoop() {
-    if (rafId === null) {
+    if (!isDisposed && renderer && rafId === null) {
         rafId = window.requestAnimationFrame(rafTick)
     }
 }
@@ -3591,6 +3688,7 @@ function clearLayout() {
 }
 
 async function loadOperationPlans() {
+    if (isDisposed) return
     const instanceID = selectedInstanceId.value
     const stationSchemeID = currentStationSchemeId.value.trim()
     if (!instanceID || !stationSchemeID) {
@@ -3603,6 +3701,7 @@ async function loadOperationPlans() {
     loadingOperationPlans.value = true
     try {
         const response = await axios.get('/OperationPlan/GetOperationPlans', {
+            signal: dataRequests.signal,
             params: { instanceID, stationSchemeID },
         })
         if (
@@ -3631,6 +3730,7 @@ async function loadOperationPlans() {
 }
 
 async function loadStationRoutes() {
+    if (isDisposed) return
     const instanceID = selectedInstanceId.value
     const stationSchemeID = currentStationSchemeId.value.trim()
     if (!instanceID || !stationSchemeID) {
@@ -3642,6 +3742,7 @@ async function loadStationRoutes() {
     loadingStationRoutes.value = true
     try {
         const response = await axios.get('/StationLayout/GetStationRoutes', {
+            signal: dataRequests.signal,
             params: { instanceID, stationSchemeID },
         })
         if (
@@ -3665,6 +3766,7 @@ async function loadStationRoutes() {
 }
 
 async function loadTrainOperationPlan() {
+    if (isDisposed) return
     const instanceID = selectedInstanceId.value
     const stationSchemeID = currentStationSchemeId.value.trim()
     const operationPlanID = currentOperationPlanId.value.trim()
@@ -3677,6 +3779,7 @@ async function loadTrainOperationPlan() {
     loadingTrainOperationPlan.value = true
     try {
         const response = await axios.get('/OperationPlan/GetTrainOperationPlan', {
+            signal: dataRequests.signal,
             params: { instanceID, stationSchemeID, operationPlanID },
         })
         if (
@@ -3716,6 +3819,7 @@ function getStationRouteTimePairs() {
 }
 
 async function loadStationRouteTimes() {
+    if (isDisposed) return
     const instanceID = selectedInstanceId.value
     const stationSchemeID = currentStationSchemeId.value.trim()
     if (!instanceID || !stationSchemeID || trainOperationPlanMovements.value.length === 0) {
@@ -3734,6 +3838,7 @@ async function loadStationRouteTimes() {
 
         const entries = await Promise.all(pairs.map(async (pair) => {
             const response = await axios.get('/StationLayout/GetStationRouteTimes', {
+                signal: dataRequests.signal,
                 params: {
                     instanceID,
                     stationSchemeID,
@@ -3771,6 +3876,7 @@ async function loadStationRouteTimes() {
 }
 
 async function loadGanttSubTableSettings() {
+    if (isDisposed) return
     const instanceID = selectedInstanceId.value
     const stationSchemeID = currentStationSchemeId.value.trim()
     const operationPlanID = currentOperationPlanId.value.trim()
@@ -3783,6 +3889,7 @@ async function loadGanttSubTableSettings() {
     loadingGanttSubTableSettings.value = true
     try {
         const response = await axios.get('/OperationPlan/GetOperationOccupationTimeSubTables', {
+            signal: dataRequests.signal,
             params: {
                 instanceID,
                 stationSchemeID,
@@ -3829,6 +3936,7 @@ async function loadGanttSubTableSettings() {
 
 async function saveGanttSubTableSettingsNow() {
     if (
+        isDisposed ||
         suppressGanttSubTableSave ||
         loadingGanttSubTableSettings.value ||
         savingGanttSubTableSettings.value
@@ -3845,15 +3953,19 @@ async function saveGanttSubTableSettingsNow() {
     if (subTables.length === 0) return
 
     const savingRevision = ganttSubTableSaveRevision
+    ganttSubTableSavingRevision = savingRevision
     savingGanttSubTableSettings.value = true
+    const request = axios.put('/OperationPlan/SaveOperationOccupationTimeSubTables', {
+        instanceID,
+        stationSchemeID,
+        operationPlanID,
+        subTables,
+    })
+    ganttSubTableSaveRequest = request
     try {
-        const response = await axios.put('/OperationPlan/SaveOperationOccupationTimeSubTables', {
-            instanceID,
-            stationSchemeID,
-            operationPlanID,
-            subTables,
-        })
+        const response = await request
         if (
+            isDisposed ||
             instanceID !== selectedInstanceId.value ||
             stationSchemeID !== currentStationSchemeId.value.trim() ||
             operationPlanID !== currentOperationPlanId.value.trim()
@@ -3868,17 +3980,40 @@ async function saveGanttSubTableSettingsNow() {
             applyGanttSubTableSettings(settings)
         }
     } catch (error) {
-        console.error('Failed to save 3D gantt sub table settings:', error)
+        if (!isDisposed) console.error('Failed to save 3D gantt sub table settings:', error)
     } finally {
-        savingGanttSubTableSettings.value = false
-        if (savingRevision !== ganttSubTableSaveRevision) {
-            scheduleSaveGanttSubTableSettings(0)
+        // An older scheme's save may finish after a new scheme started saving.
+        if (ganttSubTableSaveRequest === request) {
+            ganttSubTableSaveRequest = null
+            savingGanttSubTableSettings.value = false
+            if (!isDisposed && savingRevision !== ganttSubTableSaveRevision) {
+                scheduleSaveGanttSubTableSettings(0)
+            }
         }
     }
 }
 
+function flushPendingGanttSubTableSettings() {
+    const hasPendingChanges = ganttSubTableSaveTimer !== null ||
+        (savingGanttSubTableSettings.value && ganttSubTableSavingRevision !== ganttSubTableSaveRevision)
+    if (!hasPendingChanges || loadingGanttSubTableSettings.value || !hasScope.value) return
+    // Finish a user's pending edit before discarding this page. Only the small
+    // request payload survives; its result never updates the disposed component.
+    const payload = {
+        instanceID: selectedInstanceId.value,
+        stationSchemeID: currentStationSchemeId.value.trim(),
+        operationPlanID: currentOperationPlanId.value.trim(),
+        subTables: buildGanttSubTableSettingsPayload(),
+    }
+    if (!payload.subTables.length) return
+    void (ganttSubTableSaveRequest || Promise.resolve())
+        .catch(() => undefined)
+        .then(() => axios.put('/OperationPlan/SaveOperationOccupationTimeSubTables', payload))
+        .catch(error => console.error('Failed to save pending 3D gantt sub table settings:', error))
+}
+
 function scheduleSaveGanttSubTableSettings(delay = 500) {
-    if (suppressGanttSubTableSave || loadingGanttSubTableSettings.value) return
+    if (isDisposed || suppressGanttSubTableSave || loadingGanttSubTableSettings.value) return
 
     if (ganttSubTableSaveTimer) {
         window.clearTimeout(ganttSubTableSaveTimer)
@@ -3890,6 +4025,7 @@ function scheduleSaveGanttSubTableSettings(delay = 500) {
 }
 
 async function loadLayout() {
+    if (isDisposed) return
     const instanceID = selectedInstanceId.value
     const stationSchemeID = currentStationSchemeId.value.trim()
     loadErrorMessage.value = ''
@@ -3906,6 +4042,7 @@ async function loadLayout() {
         if (stationSchemeID) params.stationSchemeID = stationSchemeID
 
         const response = await axios.post('/StationLayout/GetJson', null, {
+            signal: dataRequests.signal,
             params,
         })
         if (loadVersion !== layoutLoadVersion) return
@@ -3918,6 +4055,7 @@ async function loadLayout() {
         layoutCells.value = getLayoutCells(response.data)
         layoutGridSpacing.value = getLayoutGridSpacing(response.data)
         await nextTick()
+        if (isDisposed || loadVersion !== layoutLoadVersion) return
         rebuildScene()
     } catch (error) {
         if (loadVersion !== layoutLoadVersion) return
@@ -3934,6 +4072,7 @@ async function loadLayout() {
 }
 
 async function refresh3DData() {
+    if (isDisposed) return
     if (!hasScope.value) {
         clearStationRoutes()
         clearTrainPlan()
@@ -3943,6 +4082,7 @@ async function refresh3DData() {
     }
     stopPlaybackForReload()
     await Promise.all([loadStationRoutes(), loadTrainOperationPlan(), loadLayout()])
+    if (isDisposed) return
     await Promise.all([loadStationRouteTimes(), loadGanttSubTableSettings()])
 }
 
@@ -3968,6 +4108,11 @@ watch(routeRuns, () => {
     updateTrainObjects()
     scheduleScrollGanttToPlayhead()
 })
+
+watch(trainConsistByRun, () => {
+    updateTrainObjects()
+    void prepareTrainModels()
+}, { immediate: true })
 
 watch(
     ganttAvailableCells,
@@ -3996,6 +4141,7 @@ watch(playheadSeconds, () => {
 
 onMounted(() => {
     nextTick(() => {
+        if (isDisposed) return
         initThree()
         if (typeof ResizeObserver !== 'undefined' && canvasWrapperRef.value) {
             resizeObserver = new ResizeObserver(() => onResize())
@@ -4008,6 +4154,19 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+    flushPendingGanttSubTableSettings()
+    isDisposed = true
+    trainModelPreparationVersion++
+    // Invalidate every in-flight result before aborting; custom adapters may
+    // still complete, and chained loaders must not recreate an unmounted scene.
+    layoutLoadVersion++
+    stationSchemeLoadVersion++
+    operationPlanLoadVersion++
+    stationRouteLoadVersion++
+    stationRouteTimeLoadVersion++
+    trainPlanLoadVersion++
+    ganttSubTableLoadVersion++
+    dataRequests.abort()
     pausePlayback()
     cancelRafLoop()
     if (ganttSubTableSaveTimer) {
@@ -4024,6 +4183,8 @@ onBeforeUnmount(() => {
     }
     window.removeEventListener('resize', onResize)
     clearTrainObjects()
+    trainModelTemplates.dispose()
+    clearTrainCarAngleMemory()
     if (trainGroup && scene) scene.remove(trainGroup)
     trainGroup = null
     clearGroup(layoutGroup)
@@ -4037,6 +4198,7 @@ onBeforeUnmount(() => {
     disposeSceneLighting = null
     if (renderer) {
         renderer.dispose()
+        renderer.forceContextLoss()
         renderer = null
     }
     if (labelRendererRoot?.parentElement) {
@@ -4044,6 +4206,7 @@ onBeforeUnmount(() => {
     }
     labelRenderer = null
     labelRendererRoot = null
+    scene?.clear()
     scene = null
     camera = null
     lastMapper = null
@@ -4164,6 +4327,10 @@ onBeforeUnmount(() => {
 
 .layout3d-train-select {
     width: 230px;
+}
+
+.layout3d-model-select {
+    width: 180px;
 }
 
 .layout3d-playback-mode :deep(.el-radio-button__inner) {
@@ -4574,6 +4741,7 @@ onBeforeUnmount(() => {
     .layout3d-scheme-select,
     .layout3d-plan-select,
     .layout3d-train-select,
+    .layout3d-model-select,
     .layout3d-speed-select {
         width: 100%;
     }

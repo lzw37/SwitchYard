@@ -356,7 +356,9 @@
                                         <template #default="{ row }">
                                             <div class="route-list-identity">
                                                 <strong :title="row.id">{{ row.id }}</strong>
-                                                <span class="route-type-badge">{{ getStationRouteTypeLabel(row.type) }}</span>
+                                                <span class="route-type-badge" :style="getStationRouteBadgeStyle(row.type)">
+                                                    {{ getStationRouteTypeLabel(row.type) }}
+                                                </span>
                                             </div>
                                             <div class="route-list-description" :title="row.description">{{ row.description || '—' }}</div>
                                         </template>
@@ -1227,6 +1229,12 @@ const routeHighlightColors = {
     locomotive: '#16a34a',
     shunting: '#facc15',
 }
+const routeBadgeStyles: Record<string, { backgroundColor: string; color: string }> = {
+    [routeHighlightColors.arrival]: { backgroundColor: '#f5e7e7', color: '#8f4e4e' },
+    [routeHighlightColors.departure]: { backgroundColor: '#e8eef7', color: '#49658c' },
+    [routeHighlightColors.locomotive]: { backgroundColor: '#e6f0e9', color: '#4b7158' },
+    [routeHighlightColors.shunting]: { backgroundColor: '#f4efda', color: '#7b672f' },
+}
 const stationRouteTypeLabelKeys: Record<string, string> = {
     arrival: 'routeDesign.stationRoute.types.arrival',
     '接车': 'routeDesign.stationRoute.types.arrival',
@@ -1674,6 +1682,10 @@ function getStationRouteHighlightColor(type: string): string {
     }
 
     return routeHighlightColors.shunting
+}
+
+function getStationRouteBadgeStyle(type: string) {
+    return routeBadgeStyles[getStationRouteHighlightColor(type)]
 }
 
 function createEmptyRouteObjectOptions(): RouteObjectOptionMap {

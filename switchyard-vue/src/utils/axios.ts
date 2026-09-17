@@ -173,6 +173,8 @@ axios.interceptors.request.use(
 axios.interceptors.response.use(
     (response: AxiosResponse) => response,
     async (error: AxiosError) => {
+        // Leaving a lazy 3D page intentionally cancels its pending data loads.
+        if (axios.isCancel(error)) return Promise.reject(error);
         const originalRequest = error.config as RetriableRequestConfig | undefined;
 
         if (error.response) {

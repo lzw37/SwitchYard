@@ -1685,6 +1685,7 @@
         "labels": {
             "showLabels": "Show labels",
             "displayRatio": "X:Y coordinate ratio",
+            "trainModel": "Train model",
             "operationPlan": "Operation plan",
             "playbackScope": "Scope",
             "train": "Train",
@@ -1702,6 +1703,10 @@
         "playbackModes": {
             "single": "Single train",
             "all": "Station"
+        },
+        "trainModels": {
+            "auto": "Auto · by train type",
+            "help": "Identify each operation's EMU or electric locomotive from its train type, falling back to CR400AF. Choose a model to preview all trains with that appearance without changing the operation plan."
         },
         "playback": {
             "selectTrain": "Select a train",
@@ -1753,7 +1758,8 @@
             "loadStationRoutesFailed": "Failed to load routes",
             "loadTrainOperationPlanFailed": "Failed to load train operation plan",
             "loadRouteTimesFailed": "Failed to load route occupation times",
-            "subTableNameRequired": "Enter a sub-table name"
+            "subTableNameRequired": "Enter a sub-table name",
+            "trainModelLoadFailed": "Train models could not be loaded. Please refresh and try again."
         }
     },
     "calculationParameters": {

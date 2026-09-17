@@ -60,13 +60,10 @@
                     <el-empty v-else :description="t('capacityMain.placeholders.selectInstance')" />
                 </el-tab-pane>
                 <el-tab-pane :label="t('capacityMain.tabs.layout3d')" name="layout3d" lazy>
-                    <div v-if="hasSelectedInstance" class="station-layout-3d-pane">
-                        <StationLayout3D
-                            :selected-instance-id="selectedInstance || ''"
-                            :activation-key="layout3DActivationKey"
-                        />
+                    <div v-if="activeTab === 'layout3d' && hasSelectedInstance" class="station-layout-3d-pane">
+                        <StationLayout3D :selected-instance-id="selectedInstance || ''" />
                     </div>
-                    <el-empty v-else :description="t('capacityMain.placeholders.selectInstance')" />
+                    <el-empty v-else-if="activeTab === 'layout3d'" :description="t('capacityMain.placeholders.selectInstance')" />
                 </el-tab-pane>
                 <el-tab-pane :label="t('capacityMain.tabs.calcParams')" name="calcParams" lazy>
                     <div v-if="hasSelectedInstance" class="calculation-parameters-pane">
@@ -116,7 +113,7 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, onMounted, computed, watch } from 'vue'
+import { ref, onMounted, computed, defineAsyncComponent } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import axios from '@/utils/axios'
@@ -124,13 +121,14 @@ import { ElMessage } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import StationLayout from './StationLayout.vue'
 import RouteDesign from './RouteDesign.vue'
-import StationLayout3D from './StationLayout3D.vue'
 import CalculationParameters from './CalculationParameters.vue'
 import OperationPlan from './OperationPlan.vue'
 import OperationSimulation from './OperationSimulation.vue'
 import ModelSolving from './ModelSolving.vue'
 import CapacityInstanceManager from './CapacityInstanceManager.vue'
 import UserManagement from '@/views/UserManagement.vue'
+
+const StationLayout3D = defineAsyncComponent(() => import('./StationLayout3D.vue'))
 
 const router = useRouter()
 const { t, locale } = useI18n()
@@ -152,7 +150,6 @@ const instances = ref<CapacityInstance[]>([])
 const showInstanceManager = ref(false)
 const showUserManagement = ref(false)
 const loadingInstances = ref(false)
-const layout3DActivationKey = ref(0)
 const activeInstances = computed(() => instances.value.filter((item) => Number(item.isActive) === 1))
 const hasSelectedInstance = computed(() => Boolean(selectedInstance.value))
 const userDisplayName = computed(() => authStore.username.trim() || t('common.userMenu.guest'))
@@ -228,17 +225,6 @@ onMounted(() => {
     void loadInstances()
 })
 
-watch(activeTab, (tab) => {
-    if (tab === 'layout3d') {
-        layout3DActivationKey.value += 1
-    }
-})
-
-watch(selectedInstance, () => {
-    if (activeTab.value === 'layout3d') {
-        layout3DActivationKey.value += 1
-    }
-})
 </script>
 
 <style scoped lang="css">

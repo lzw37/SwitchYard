@@ -126,48 +126,15 @@
                             :highlighted-route-color="highlightedRouteColor"
                             :highlighted-route-arrow-visible="highlightedRouteArrowVisible"
                         />
-                        <svg
-                            v-if="simulationOverlayVisible"
-                            class="simulation-train-overlay"
-                            :width="layoutViewportState.width"
-                            :height="layoutViewportState.height"
-                            :style="simulationOverlayStyle"
-                        >
-                            <g
-                                v-for="(car, index) in simulationTrainCars"
-                                :key="car.key"
-                                class="simulation-train-car"
-                                :transform="simulationTrainCarTransform(car)"
-                            >
-                                <rect
-                                    class="simulation-train-car-body"
-                                    :x="-simulationCarScreenLength(car) / 2"
-                                    :y="-simulationCarScreenWidth(car) / 2"
-                                    :width="simulationCarScreenLength(car)"
-                                    :height="simulationCarScreenWidth(car)"
-                                    rx="2"
-                                    ry="2"
-                                    :style="simulationTrainCarRectStyle(car)"
-                                />
-                                <line
-                                    v-if="index === 0"
-                                    class="simulation-train-car-head"
-                                    :x1="simulationCarScreenLength(car) / 2 - 4"
-                                    :y1="-simulationCarScreenWidth(car) / 2 + 2"
-                                    :x2="simulationCarScreenLength(car) / 2 - 4"
-                                    :y2="simulationCarScreenWidth(car) / 2 - 2"
-                                />
-                                <text
-                                    v-if="car.label"
-                                    class="simulation-train-car-label"
-                                    text-anchor="middle"
-                                    dominant-baseline="middle"
-                                    :transform="`rotate(${-Number(car.angle || 0)})`"
-                                >
-                                    {{ car.label }}
-                                </text>
-                            </g>
-                        </svg>
+                        <SimulationTrainOverlay
+                            :cars="simulationScreenTrainCars"
+                            :viewport-el="layoutViewportRef"
+                            :scene-width="layoutViewportState.width"
+                            :scene-height="layoutViewportState.height"
+                            :projection="layoutViewportState"
+                            :animate="isPlaying"
+                            :reset-revision="trainOverlayResetRevision"
+                        />
                     </div>
                     <div v-else class="simulation-layout-empty">
                         {{ layoutEmptyText }}
@@ -412,45 +379,15 @@
                         <h3>作业序列</h3>
                         <span>{{ routeRuns.length }} 条进路</span>
                     </div>
-                    <el-table
+                    <SimulationMovementTable
                         ref="movementTableRef"
-                        class="simulation-movement-table"
-                        :data="simulationRows"
-                        size="small"
-                        height="100%"
-                        border
-                        highlight-current-row
+                        :rows="simulationRows"
+                        :get-phase="getCachedRunPhase"
+                        :status-text="getRunStatusText"
+                        :status-type="getRunStatusType"
                         :row-class-name="getSimulationRowClassName"
                         :empty-text="movementTableEmptyText"
-                    >
-                        <el-table-column label="#" width="46" align="center">
-                            <template #default="{ row }">
-                                {{ row.index + 1 }}
-                            </template>
-                        </el-table-column>
-                        <el-table-column label="列车" width="92" show-overflow-tooltip>
-                            <template #default="{ row }">
-                                {{ row.trainName }}
-                            </template>
-                        </el-table-column>
-                        <el-table-column label="进路" min-width="150" show-overflow-tooltip>
-                            <template #default="{ row }">
-                                {{ row.routeName }}
-                            </template>
-                        </el-table-column>
-                        <el-table-column label="时间" width="136" show-overflow-tooltip>
-                            <template #default="{ row }">
-                                {{ row.timeText }}
-                            </template>
-                        </el-table-column>
-                        <el-table-column label="状态" width="82" align="center">
-                            <template #default="{ row }">
-                                <el-tag size="small" :type="row.statusType">
-                                    {{ row.statusText }}
-                                </el-tag>
-                            </template>
-                        </el-table-column>
-                    </el-table>
+                    />
                 </section>
             </aside>
         </div>
@@ -463,7 +400,10 @@ import { Edit, Plus, Refresh, RefreshLeft, VideoPause, VideoPlay } from '@elemen
 import { ElMessage } from 'element-plus'
 import axios from '@/utils/axios'
 import StationLayoutEditor from './components/StationLayoutEditor.vue'
+import { projectTrainCarToViewport } from './simulationViewport'
 import StationLayoutViewToolbar from './components/StationLayoutViewToolbar.vue'
+import SimulationMovementTable from './components/SimulationMovementTable.vue'
+import SimulationTrainOverlay from './components/SimulationTrainOverlay.vue'
 
 interface StationSchemeOption {
     id: string
@@ -621,12 +561,9 @@ interface RouteRunSource {
 interface SimulationRow {
     index: number
     key: string
-    phase: RunPhase
     trainName: string
     routeName: string
     timeText: string
-    statusText: string
-    statusType: 'success' | 'warning' | 'info' | 'primary'
 }
 
 interface GanttTick {
@@ -734,9 +671,11 @@ const showSimulationCellNames = ref(true)
 const layoutEditorRef = ref<any | null>(null)
 const simulationLeftPanelRef = ref<HTMLElement | null>(null)
 const layoutViewportRef = ref<HTMLElement | null>(null)
-const movementTableRef = ref<any | null>(null)
+const movementTableRef = ref<InstanceType<typeof SimulationMovementTable> | null>(null)
 const ganttViewportRef = ref<HTMLElement | null>(null)
-const layoutViewportState = ref<CanvasViewportState>(createEmptyCanvasViewportState())
+// Reading the editor's exposed getter in a computed tracks its scale and bounds,
+// including changes made by fit-to-view, without keeping a second stale snapshot.
+const layoutViewportState = computed<CanvasViewportState>(readLayoutViewportState)
 const loadingStationSchemes = ref(false)
 const loadingOperationPlans = ref(false)
 const loadingStationRoutes = ref(false)
@@ -744,6 +683,7 @@ const loadingStationRouteTimes = ref(false)
 const loadingTrainOperationPlan = ref(false)
 const loadingLayout = ref(false)
 const playheadSeconds = ref(0)
+const trainOverlayResetRevision = ref(0)
 const playbackSpeed = ref(60)
 const playbackMode = ref<PlaybackMode>('single')
 const isPlaying = ref(false)
@@ -908,17 +848,18 @@ const highlightedRouteRuns = computed(() => activeRunIndices.value
     .filter((run): run is RouteRun => run !== null))
 const activePhase = computed(() => activeRunPhase.value)
 const activeRouteProgress = computed(() => getActiveRouteProgress(activeRun.value, playheadSeconds.value))
-const highlightedRouteNodeIds = computed(() => normalizeUniqueStrings(highlightedRouteRuns.value.flatMap((run) => run.nodeIds)))
-const highlightedRouteLinkIds = computed(() => normalizeUniqueStrings(highlightedRouteRuns.value.flatMap((run) => run.linkIds)))
-const highlightedRouteArrowNodeIds = computed(() => normalizeUniqueStrings(highlightedRouteRuns.value.flatMap((run) => run.nodeIds)))
+// Several trains can share a route. Keep unchanged IDs stable so a new train
+// does not redraw the station's tracks, signals and other static SVG elements.
+const highlightedRouteNodeIds = computed<string[]>((previous) => normalizeUniqueStrings(highlightedRouteRuns.value.flatMap((run) => run.nodeIds), previous))
+const highlightedRouteLinkIds = computed<string[]>((previous) => normalizeUniqueStrings(highlightedRouteRuns.value.flatMap((run) => run.linkIds), previous))
+const highlightedRouteArrowNodeIds = highlightedRouteNodeIds
 const highlightedRouteColor = computed(() => isAllTrainPlayback.value ? '#fbbf24' : activeRun.value?.color || '#ffd600')
 const highlightedRouteArrowVisible = computed(() => highlightedRouteArrowNodeIds.value.length >= 2)
 const simulationTrainCars = computed<SimulationTrainCar[]>(() => buildSimulationTrainCars())
-const simulationOverlayVisible = computed(() => (
-    layoutViewportState.value.width > 0 &&
-    layoutViewportState.value.height > 0 &&
-    simulationTrainCars.value.length > 0
-))
+const simulationScreenTrainCars = computed<SimulationTrainCar[]>(() => simulationTrainCars.value.map(car => ({
+    ...car,
+    ...projectTrainCarToViewport(car, layoutViewportState.value),
+})))
 const simulationLayoutStageStyle = computed(() => {
     if (layoutViewportState.value.width <= 0 || layoutViewportState.value.height <= 0) return {}
     return {
@@ -926,10 +867,6 @@ const simulationLayoutStageStyle = computed(() => {
         height: `${layoutViewportState.value.height}px`,
     }
 })
-const simulationOverlayStyle = computed(() => ({
-    width: `${layoutViewportState.value.width}px`,
-    height: `${layoutViewportState.value.height}px`,
-}))
 const activeRouteName = computed(() => {
     if (isAllTrainPlayback.value) {
         const activeCount = activeRunIndices.value.length
@@ -991,19 +928,17 @@ const movementTableEmptyText = computed(() => {
     if (selectedTrainMovements.value.length === 0) return '当前列车没有作业计划'
     return '当前列车没有可播放的进路'
 })
-const simulationRows = computed<SimulationRow[]>(() => routeRuns.value.map((run, index) => {
-    const phase = getCachedRunPhase(index)
-    return {
-        index,
-        key: run.key,
-        phase,
-        trainName: formatTrainLabel(run.train),
-        routeName: getRouteDisplayName(run.route.id),
-        timeText: getRunTimeText(run),
-        statusText: getRunStatusText(phase),
-        statusType: getRunStatusType(phase),
-    }
-}))
+// Playback status stays outside table data so a phase change does not make
+// Element Plus reprocess and lay out every operation row.
+const simulationRows = computed<SimulationRow[]>(() => routeRuns.value.map((run, index) => ({
+    index,
+    key: run.key,
+    trainName: formatTrainLabel(run.train),
+    routeName: getRouteDisplayName(run.route.id),
+    timeText: getRunTimeText(run),
+})))
+const currentSimulationRunIndex = computed(getSimulationTableCurrentRunIndex)
+const activeSimulationRunIndices = computed(() => new Set(activeRunIndices.value))
 
 function secondsToGanttLeft(seconds: number) {
     const duration = Math.max(1, simulationDurationSeconds.value)
@@ -1698,7 +1633,7 @@ function parseRouteReferenceList(value: string) {
     return normalizeUniqueStrings(text.split(/(?:\s*->\s*)|(?:\s*[,，、\n\r]\s*)|\s+/))
 }
 
-function normalizeUniqueStrings(values: unknown[]) {
+function normalizeUniqueStrings(values: unknown[], previous?: string[]) {
     const result: string[] = []
     const seen = new Set<string>()
     values.forEach((value) => {
@@ -1707,6 +1642,9 @@ function normalizeUniqueStrings(values: unknown[]) {
         seen.add(text)
         result.push(text)
     })
+    if (previous?.length === result.length && result.every((value, index) => value === previous[index])) {
+        return previous
+    }
     return result
 }
 
@@ -2304,44 +2242,6 @@ function buildSimulationTrainCarsForRun(run: RouteRun, currentSeconds: number): 
     return cars
 }
 
-function simulationScreenX(value: number) {
-    return (Number(value || 0) - layoutViewportState.value.minX) * layoutViewportState.value.scaleX
-}
-
-function simulationScreenY(value: number) {
-    return (Number(value || 0) - layoutViewportState.value.minY) * layoutViewportState.value.scaleY
-}
-
-function formatSvgNumber(value: number) {
-    const parsed = Number(value)
-    if (!Number.isFinite(parsed)) return '0'
-    return Number(parsed.toFixed(3)).toString()
-}
-
-function simulationCarScreenLength(car: SimulationTrainCar) {
-    const length = Math.max(1, Number(car.length || 0))
-    return Math.max(8, length * layoutViewportState.value.scaleX)
-}
-
-function simulationCarScreenWidth(car: SimulationTrainCar) {
-    const width = Math.max(1, Number(car.width || 0))
-    return Math.max(4, width * layoutViewportState.value.scaleY)
-}
-
-function simulationTrainCarTransform(car: SimulationTrainCar) {
-    const x = simulationScreenX(car.x)
-    const y = simulationScreenY(car.y)
-    const angle = Number.isFinite(Number(car.angle)) ? Number(car.angle) : 0
-    return `translate(${formatSvgNumber(x)},${formatSvgNumber(y)}) rotate(${formatSvgNumber(angle)})`
-}
-
-function simulationTrainCarRectStyle(car: SimulationTrainCar) {
-    return {
-        fill: car.fill || '#2563eb',
-        stroke: car.stroke || '#eff6ff',
-    }
-}
-
 function lightenTrainColor(color: string, index: number) {
     if (index % 2 === 0) return color
     const hex = color.replace('#', '')
@@ -2370,7 +2270,7 @@ function getRunStatusText(phase: ReturnType<typeof getRunPhase>) {
     return '待办'
 }
 
-function getRunStatusType(phase: ReturnType<typeof getRunPhase>): SimulationRow['statusType'] {
+function getRunStatusType(phase: ReturnType<typeof getRunPhase>): 'success' | 'warning' | 'info' | 'primary' {
     if (phase === 'locking') return 'warning'
     if (phase === 'moving') return 'primary'
     if (phase === 'finished') return 'success'
@@ -2379,11 +2279,11 @@ function getRunStatusType(phase: ReturnType<typeof getRunPhase>): SimulationRow[
 
 function getSimulationRowClassName({ row }: { row: SimulationRow }) {
     const classes: string[] = []
-    if (row.index === getSimulationTableCurrentRunIndex()) {
+    if (row.index === currentSimulationRunIndex.value) {
         classes.push('simulation-current-row')
     }
-    const isActiveRun = activeRunIndices.value.some((index) => routeRuns.value[index]?.key === row.key)
-    if (isActiveRun && isRunProcessingPhase(row.phase)) {
+    const isActiveRun = activeSimulationRunIndices.value.has(row.index)
+    if (isActiveRun && isRunProcessingPhase(getCachedRunPhase(row.index))) {
         classes.push('simulation-active-row')
     }
     return classes.join(' ')
@@ -2414,51 +2314,9 @@ function scheduleScrollSimulationTableToCurrentRun() {
 }
 
 function scrollSimulationTableToCurrentRun() {
-    const rowIndex = getSimulationTableCurrentRunIndex()
-    const row = simulationRows.value[rowIndex]
-    if (rowIndex < 0 || !row) return
-
-    const table = movementTableRef.value
-    table?.setCurrentRow?.(row)
-
-    const tableRoot = table?.$el as HTMLElement | undefined
-    const scrollContainer = tableRoot?.querySelector('.el-scrollbar__wrap') as HTMLElement | null
-    const fallbackTop = rowIndex * 34 - 96
-    if (!tableRoot || !scrollContainer) {
-        setSimulationTableScrollTop(scrollContainer, fallbackTop)
-        return
-    }
-
-    const rowElement = tableRoot.querySelector(`.el-table__body tbody tr:nth-child(${rowIndex + 1})`) as HTMLElement | null
-    if (!rowElement) {
-        setSimulationTableScrollTop(scrollContainer, fallbackTop)
-        return
-    }
-
-    const containerRect = scrollContainer.getBoundingClientRect()
-    const rowRect = rowElement.getBoundingClientRect()
-    const rowTop = scrollContainer.scrollTop + rowRect.top - containerRect.top
-    const rowBottom = rowTop + rowRect.height
-    const viewTop = scrollContainer.scrollTop
-    const viewBottom = viewTop + scrollContainer.clientHeight
-    const margin = Math.min(96, Math.max(40, scrollContainer.clientHeight * 0.25))
-
-    if (rowTop < viewTop + margin) {
-        setSimulationTableScrollTop(scrollContainer, rowTop - margin)
-        return
-    }
-    if (rowBottom > viewBottom - margin) {
-        setSimulationTableScrollTop(scrollContainer, rowBottom - scrollContainer.clientHeight + margin)
-    }
-}
-
-function setSimulationTableScrollTop(scrollContainer: HTMLElement | null, top: number) {
-    const normalizedTop = Math.max(0, top)
-    const table = movementTableRef.value
-    table?.setScrollTop?.(normalizedTop)
-    if (scrollContainer) {
-        scrollContainer.scrollTop = normalizedTop
-    }
+    const rowIndex = currentSimulationRunIndex.value
+    if (rowIndex < 0 || !simulationRows.value[rowIndex]) return
+    movementTableRef.value?.scrollToRow(rowIndex, 'smart')
 }
 
 function scheduleScrollGanttToPlayhead() {
@@ -2617,6 +2475,7 @@ function clampPlayheadToDuration() {
 }
 
 function setPlayheadSeconds(value: number) {
+    trainOverlayResetRevision.value++
     const clamped = Math.max(0, Math.min(simulationDurationSeconds.value, Number(value || 0)))
     playbackRuntimeSeconds = clamped
     playheadSeconds.value = clamped
@@ -2678,7 +2537,6 @@ function clearLayout() {
     layoutGridSpacing.value = 20
     layoutScaleX.value = 1
     layoutScaleY.value = 1
-    layoutViewportState.value = createEmptyCanvasViewportState()
     layoutEditorRef.value?.clearElements?.()
 }
 
@@ -3065,9 +2923,10 @@ async function loadLayoutIntoEditor() {
     fitLayoutToFullView()
 }
 
-function updateLayoutViewportState() {
+function readLayoutViewportState(): CanvasViewportState {
+    if (!layoutData.value) return createEmptyCanvasViewportState()
     const state = layoutEditorRef.value?.getCanvasViewportState?.()
-    if (!state || typeof state !== 'object') return
+    if (!state || typeof state !== 'object') return createEmptyCanvasViewportState()
     const width = Number(state.width)
     const height = Number(state.height)
     const scaleX = Number(state.scaleX)
@@ -3077,12 +2936,12 @@ function updateLayoutViewportState() {
         !Number.isFinite(height) ||
         width <= 0 ||
         height <= 0 ||
-        !Number.isFinite(scaleX) ||
-        !Number.isFinite(scaleY)
+        !Number.isFinite(scaleX) || scaleX <= 0 ||
+        !Number.isFinite(scaleY) || scaleY <= 0
     ) {
-        return
+        return createEmptyCanvasViewportState()
     }
-    layoutViewportState.value = {
+    return {
         minX: Number(state.minX || 0),
         minY: Number(state.minY || 0),
         maxX: Number(state.maxX || 0),
@@ -3115,7 +2974,6 @@ function fitLayoutDataRect(
             screenMargin,
             padding: options.padding ?? 120,
         })
-        updateLayoutViewportState()
     })
 }
 
@@ -3208,7 +3066,7 @@ watch(
     { deep: true },
 )
 
-watch([activeRunIndex, activeRunIndices], () => {
+watch(currentSimulationRunIndex, () => {
     scheduleScrollSimulationTableToCurrentRun()
 }, {
     flush: 'post',
@@ -3354,40 +3212,6 @@ onBeforeUnmount(() => {
     display: inline-block;
     min-width: 100%;
     min-height: 100%;
-}
-
-.simulation-train-overlay {
-    position: absolute;
-    top: 0;
-    left: 0;
-    z-index: 3;
-    overflow: visible;
-    pointer-events: none;
-}
-
-.simulation-train-car {
-    filter: drop-shadow(0 1px 2px rgba(15, 23, 42, 0.35));
-    transition: transform 90ms linear;
-}
-
-.simulation-train-car-body {
-    stroke-width: 1.5px;
-}
-
-.simulation-train-car-head {
-    stroke: rgba(255, 255, 255, 0.88);
-    stroke-width: 2px;
-    stroke-linecap: round;
-}
-
-.simulation-train-car-label {
-    fill: #ffffff;
-    stroke: rgba(15, 23, 42, 0.72);
-    stroke-width: 3px;
-    paint-order: stroke fill;
-    font-family: Arial, "Microsoft YaHei", sans-serif;
-    font-size: 10px;
-    font-weight: 700;
 }
 
 .simulation-layout-empty {
@@ -3766,29 +3590,6 @@ onBeforeUnmount(() => {
     justify-content: space-between;
     gap: 12px;
     padding: 12px 14px 8px;
-}
-
-.simulation-movement-table {
-    flex: 1;
-    min-height: 0;
-}
-
-.simulation-movement-table :deep(.el-table__cell) {
-    font-size: 12px;
-}
-
-.simulation-movement-table :deep(.simulation-current-row) {
-    --el-table-tr-bg-color: #f8fbff;
-}
-
-.simulation-movement-table :deep(.simulation-active-row) {
-    --el-table-tr-bg-color: #dbeafe;
-    color: #1d4ed8;
-    font-weight: 600;
-}
-
-.simulation-movement-table :deep(.simulation-active-row .el-table__cell:first-child) {
-    box-shadow: inset 3px 0 0 #2563eb;
 }
 
 @media (max-width: 1100px) {

@@ -209,7 +209,11 @@ let wagonLabels: Map<string, HTMLDivElement> = new Map()
 let resizeObserver: ResizeObserver | null = null
 let rafId: number | null = null
 let animationLastTimestamp: number | null = null
+let disposed = false
+let schemeLoadVersion = 0
 let simulationLoadVersion = 0
+let schemeLoadController: AbortController | null = null
+let simulationLoadController: AbortController | null = null
 
 // ---------- normalization helpers (shared logic with HumpSim.vue) ----------
 function toFiniteNumber(value: unknown): number | null {
@@ -553,6 +557,8 @@ function cancelRafLoop() {
 }
 
 function rafTick(timestamp: number) {
+    rafId = null
+    if (disposed || !renderer || !scene || !camera) return
     // Advance simulation time when playing
     if (isPlaying.value) {
         if (animationLastTimestamp === null) {
@@ -579,17 +585,17 @@ function rafTick(timestamp: number) {
     if (renderer && scene && camera) renderer.render(scene, camera)
     if (labelRenderer && scene && camera) labelRenderer.render(scene, camera)
 
-    rafId = window.requestAnimationFrame(rafTick)
+    ensureRafLoop()
 }
 
 function ensureRafLoop() {
-    if (rafId === null) {
+    if (!disposed && renderer && rafId === null) {
         rafId = window.requestAnimationFrame(rafTick)
     }
 }
 
 function handleStart() {
-    if (!hasTrajectoryData.value) return
+    if (disposed || !hasTrajectoryData.value) return
     if (simulationTimeSec.value >= maxSimulationTime.value) simulationTimeSec.value = 0
     isPlaying.value = true
     animationLastTimestamp = null
@@ -620,7 +626,7 @@ function resetSimulationViewState() {
 
 // ---------- three.js setup ----------
 function initThree() {
-    if (!canvasRef.value || !canvasWrapperRef.value) return
+    if (disposed || !canvasRef.value || !canvasWrapperRef.value) return
     if (renderer) return
 
     const width = Math.max(1, canvasWrapperRef.value.clientWidth)
@@ -690,11 +696,17 @@ function initThree() {
     wagonsGroup = new THREE.Group()
     scene.add(wagonsGroup)
 
+    // Data can finish loading before the deferred canvas initialization.
+    buildSlopeGeometry()
     ensureRafLoop()
 }
 
-function disposeObject3D(obj: THREE.Object3D) {
-    obj.traverse(child => {
+function disposeObject3D(obj: THREE.Object3D | null, disposeShared = false) {
+    const geometries = new Set<THREE.BufferGeometry>()
+    const materials = new Set<THREE.Material>()
+    const textures = new Set<THREE.Texture>()
+    if (disposeShared) sharedRetarderMaterials.forEach(material => materials.add(material))
+    obj?.traverse(child => {
         // CSS2DObject children attach their HTML element to the labelRenderer's DOM
         // root on first render; THREE never auto-removes them when the object is
         // detached from the scene. We must remove the element ourselves to avoid
@@ -704,24 +716,50 @@ function disposeObject3D(obj: THREE.Object3D) {
             css.element.parentNode.removeChild(css.element)
         }
         const mesh = child as THREE.Mesh
-        if (mesh.geometry) mesh.geometry.dispose()
-        const mat = mesh.material
-        if (Array.isArray(mat)) mat.forEach(m => m.dispose())
-        else if (mat) (mat as THREE.Material).dispose()
+        if (mesh.geometry) geometries.add(mesh.geometry)
+        const meshMaterials = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
+        for (const material of [...meshMaterials, mesh.customDepthMaterial, mesh.customDistanceMaterial]) {
+            if (material && (disposeShared || !sharedRetarderMaterials.has(material))) materials.add(material)
+        }
+        // Shadow render targets belong to the light, not to a scene mesh.
+        const shadow = (child as THREE.DirectionalLight).shadow
+        if (shadow) {
+            shadow.dispose()
+            shadow.map = null
+            shadow.mapPass = null
+        }
     })
+    const collectTexture = (value: unknown) => {
+        if (value instanceof THREE.Texture) textures.add(value)
+        else if (Array.isArray(value)) value.forEach(item => {
+            if (item instanceof THREE.Texture) textures.add(item)
+        })
+    }
+    materials.forEach(material => {
+        Object.values(material).forEach(collectTexture)
+        const uniforms = (material as THREE.ShaderMaterial).uniforms
+        if (uniforms) Object.values(uniforms).forEach(uniform => collectTexture(uniform.value))
+    })
+    if (obj instanceof THREE.Scene) {
+        collectTexture(obj.background)
+        collectTexture(obj.environment)
+        obj.background = null
+        obj.environment = null
+    }
+    textures.forEach(texture => texture.dispose())
+    materials.forEach(material => material.dispose())
+    geometries.forEach(geometry => geometry.dispose())
 }
 
 function clearGroup(group: THREE.Group | null) {
     if (!group) return
-    while (group.children.length) {
-        const child = group.children[0]!
-        group.remove(child)
-        disposeObject3D(child)
-    }
+    // Traverse once so shared sleepers, wheels and rails are disposed once.
+    disposeObject3D(group)
+    group.clear()
 }
 
 function buildSlopeGeometry() {
-    if (!slopeGroup) return
+    if (disposed || !slopeGroup) return
     clearGroup(slopeGroup)
     clearGroup(retarderGroup)
     wagonMeshes.clear()
@@ -969,6 +1007,10 @@ const retarderEndCapMat = new THREE.MeshStandardMaterial({
     roughness: 0.5,
     metalness: 0.6
 })
+// Reused across layout rebuilds; disposed only when this component is released.
+const sharedRetarderMaterials = new Set<THREE.Material>([
+    retarderClipMat, retarderTieMat, retarderHousingMat, retarderEndCapMat
+])
 
 function buildRetarders(xCenter: number) {
     if (!retarderGroup) return
@@ -1214,7 +1256,7 @@ let lastWrapperWidth = 0
 let lastWrapperHeight = 0
 
 function onResize() {
-    if (!renderer || !camera || !canvasWrapperRef.value) return
+    if (disposed || !renderer || !camera || !canvasWrapperRef.value) return
     const rawW = canvasWrapperRef.value.clientWidth
     const rawH = canvasWrapperRef.value.clientHeight
     const w = Math.max(1, rawW)
@@ -1234,23 +1276,40 @@ function onResize() {
 }
 
 // ---------- data loading ----------
-async function ensureHumpSchemeID(scheme: HeadwayCheckSchemeOption): Promise<string> {
-    if (!props.selectedInstanceId) return ''
+function cancelSimulationLoad() {
+    simulationLoadVersion++
+    simulationLoadController?.abort()
+    simulationLoadController = null
+    loadingSimulation.value = false
+}
+
+async function ensureHumpSchemeID(scheme: HeadwayCheckSchemeOption, instanceId: string, signal: AbortSignal): Promise<string> {
+    if (disposed || signal.aborted) return ''
     if (scheme.humpSchemeID) return scheme.humpSchemeID
     const response = await axios.get('/Hump/GetHeadwayCheckSchemeById', {
-        params: { instanceID: props.selectedInstanceId, id: scheme.id }
+        params: { instanceID: instanceId, id: scheme.id },
+        signal
     })
+    if (disposed || signal.aborted) return ''
     const normalized = normalizeHeadwayCheckScheme(response.data)
     scheme.humpSchemeID = normalized?.humpSchemeID || ''
     return scheme.humpSchemeID
 }
 
 async function loadHeadwayCheckSchemes(options: { preserveSelection?: boolean, resetState?: boolean } = {}) {
+    if (disposed) return
+    schemeLoadController?.abort()
+    schemeLoadController = null
+    const loadVersion = ++schemeLoadVersion
+    const isCurrentLoad = () => !disposed && loadVersion === schemeLoadVersion
+    const instanceId = props.selectedInstanceId
     const { preserveSelection = false, resetState = true } = options
     const previousSchemeID = preserveSelection ? selectedHeadwayCheckSchemeID.value : ''
+    loadingSchemes.value = false
     loadErrorMessage.value = ''
 
     if (resetState) {
+        cancelSimulationLoad()
         headwayCheckSchemeOptions.value = []
         selectedHeadwayCheckSchemeID.value = ''
         slopePoints.value = []
@@ -1259,13 +1318,17 @@ async function loadHeadwayCheckSchemes(options: { preserveSelection?: boolean, r
         wagonSpeedProfilesBySequence.value = {}
         resetSimulationViewState()
     }
-    if (!props.selectedInstanceId) return
+    if (!instanceId) return
 
+    const controller = new AbortController()
+    schemeLoadController = controller
     loadingSchemes.value = true
     try {
         const response = await axios.get('/Hump/GetHeadwayCheckSchemes', {
-            params: { instanceID: props.selectedInstanceId }
+            params: { instanceID: instanceId },
+            signal: controller.signal
         })
+        if (!isCurrentLoad() || controller.signal.aborted) return
         const options = (Array.isArray(response.data) ? response.data : [])
             .map(item => normalizeHeadwayCheckScheme(item))
             .filter((x): x is HeadwayCheckSchemeOption => x !== null)
@@ -1275,15 +1338,25 @@ async function loadHeadwayCheckSchemes(options: { preserveSelection?: boolean, r
             : undefined
         selectedHeadwayCheckSchemeID.value = matchedScheme?.id || options[0]?.id || ''
     } catch (error) {
+        if (!isCurrentLoad() || controller.signal.aborted) return
         console.error('Failed to load headway check schemes:', error)
         ElMessage.error(t('hump.sim.messages.loadSchemesFailed'))
         loadErrorMessage.value = t('hump.sim.messages.loadSchemesFailed')
     } finally {
-        loadingSchemes.value = false
+        if (isCurrentLoad()) {
+            loadingSchemes.value = false
+            schemeLoadController = null
+        }
     }
 }
 
 async function loadSimulationData() {
+    if (disposed) return
+    cancelSimulationLoad()
+    const loadVersion = simulationLoadVersion
+    const isCurrentLoad = () => !disposed && loadVersion === simulationLoadVersion
+    const instanceId = props.selectedInstanceId
+    const headwayCheckSchemeID = selectedHeadwayCheckSchemeID.value
     resetSimulationViewState()
     slopePoints.value = []
     retarderSegments.value = []
@@ -1291,43 +1364,50 @@ async function loadSimulationData() {
     wagonSpeedProfilesBySequence.value = {}
     loadErrorMessage.value = ''
 
-    if (!props.selectedInstanceId || !selectedHeadwayCheckSchemeID.value) return
+    if (!instanceId || !headwayCheckSchemeID) return
 
-    const scheme = headwayCheckSchemeOptions.value.find(s => s.id === selectedHeadwayCheckSchemeID.value)
+    const scheme = headwayCheckSchemeOptions.value.find(s => s.id === headwayCheckSchemeID)
     if (!scheme) { loadErrorMessage.value = t('hump.sim.messages.schemeNotFound'); return }
 
-    const loadVersion = ++simulationLoadVersion
+    const controller = new AbortController()
+    simulationLoadController = controller
     loadingSimulation.value = true
 
     try {
-        const humpSchemeID = await ensureHumpSchemeID(scheme)
+        const humpSchemeID = await ensureHumpSchemeID(scheme, instanceId, controller.signal)
+        if (!isCurrentLoad() || controller.signal.aborted) return
         if (!humpSchemeID) { loadErrorMessage.value = t('hump.sim.messages.missingHumpScheme'); return }
 
         const [slopeResult, runningTimeResult, speedProfileResult, humpCalcResult, flatLayoutResult] = await Promise.allSettled([
             axios.get('/Hump/GetSlopeLayout', {
-                params: { instanceID: props.selectedInstanceId, humpSchemeID }
+                params: { instanceID: instanceId, humpSchemeID },
+                signal: controller.signal
             }),
             axios.get('/Hump/CalculateRunningTime', {
-                params: { instanceID: props.selectedInstanceId, headwayCheckSchemeID: selectedHeadwayCheckSchemeID.value }
+                params: { instanceID: instanceId, headwayCheckSchemeID },
+                signal: controller.signal
             }),
             axios.get('/Hump/CalculateSpeedProfile', {
                 params: {
-                    instanceID: props.selectedInstanceId,
-                    headwayCheckSchemeID: selectedHeadwayCheckSchemeID.value,
+                    instanceID: instanceId,
+                    headwayCheckSchemeID,
                     spaceStepSize: SPEED_PROFILE_SPACE_STEP_SIZE
-                }
+                },
+                signal: controller.signal
             }),
             axios.get('/Hump/GetHumpCalculations', {
-                params: { instanceID: props.selectedInstanceId, humpSchemeID }
+                params: { instanceID: instanceId, humpSchemeID },
+                signal: controller.signal
             }),
             scheme.slopeLineID
                 ? axios.get('/Hump/GetFlatLayout', {
-                    params: { instanceID: props.selectedInstanceId, slopeLineID: scheme.slopeLineID }
+                    params: { instanceID: instanceId, slopeLineID: scheme.slopeLineID },
+                    signal: controller.signal
                 })
                 : Promise.reject(new Error('Missing slopeLineID'))
         ])
 
-        if (loadVersion !== simulationLoadVersion) return
+        if (!isCurrentLoad() || controller.signal.aborted) return
 
         if (slopeResult.status !== 'fulfilled') {
             throw slopeResult.reason
@@ -1368,28 +1448,31 @@ async function loadSimulationData() {
             loadErrorMessage.value = t('hump.sim.messages.emptyRunningTimeResponse')
         }
     } catch (error) {
+        if (!isCurrentLoad() || controller.signal.aborted) return
         console.error('Failed to load simulation data:', error)
         const message = getHumpMissingReferenceMessage(error, 'hump.sim.messages.loadSimulationFailed')
         ElMessage.error(message)
         loadErrorMessage.value = message
     } finally {
-        if (loadVersion === simulationLoadVersion) loadingSimulation.value = false
+        if (isCurrentLoad()) {
+            loadingSimulation.value = false
+            simulationLoadController = null
+        }
     }
 }
 
 // Rebuild scene when slope/trajectories change
 watch([slopePoints, wagonTrajectories, retarderSegments], () => {
-    if (!scene) return
+    if (disposed || !scene) return
     buildSlopeGeometry()
 }, { deep: false })
 
 watch(() => props.selectedInstanceId, () => {
-    simulationLoadVersion++
     void loadHeadwayCheckSchemes()
 }, { immediate: true })
 
 watch(() => props.activationKey, () => {
-    if (!props.selectedInstanceId) {
+    if (disposed || !props.selectedInstanceId) {
         return
     }
 
@@ -1400,12 +1483,12 @@ watch(() => props.activationKey, () => {
 })
 
 watch(selectedHeadwayCheckSchemeID, () => {
-    simulationLoadVersion++
     void loadSimulationData()
 })
 
 onMounted(() => {
     nextTick(() => {
+        if (disposed) return
         initThree()
         if (typeof ResizeObserver !== 'undefined' && canvasWrapperRef.value) {
             resizeObserver = new ResizeObserver(() => onResize())
@@ -1417,23 +1500,46 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+    disposed = true
+    schemeLoadVersion++
+    schemeLoadController?.abort()
+    schemeLoadController = null
+    cancelSimulationLoad()
+    handlePause()
     cancelRafLoop()
     if (resizeObserver) { resizeObserver.disconnect(); resizeObserver = null }
     window.removeEventListener('resize', onResize)
-    if (slopeGroup) clearGroup(slopeGroup)
-    if (retarderGroup) clearGroup(retarderGroup)
-    if (wagonsGroup) clearGroup(wagonsGroup)
     if (controls) { controls.dispose(); controls = null }
-    if (renderer) { renderer.dispose(); renderer = null }
-    if (labelRenderer && label2dRootRef.value && label2dRootRef.value.parentElement) {
-        label2dRootRef.value.parentElement.removeChild(label2dRootRef.value)
+    // Include ground, lights/shadow maps and unused shared materials, not just
+    // the three dynamic groups. All resources belong to this component instance.
+    disposeObject3D(scene, true)
+    scene?.clear()
+    sharedRetarderMaterials.clear()
+    if (renderer) {
+        renderer.setAnimationLoop(null)
+        renderer.renderLists.dispose()
+        renderer.dispose()
+        renderer.forceContextLoss()
+        renderer = null
     }
+    labelRenderer?.domElement.remove()
     labelRenderer = null
     label2dRootRef.value = null
     scene = null
     camera = null
+    slopeGroup = null
+    retarderGroup = null
+    wagonsGroup = null
     wagonMeshes.clear()
     wagonLabels.clear()
+    slopePoints.value = []
+    retarderSegments.value = []
+    wagonTrajectories.value = []
+    wagonSpeedProfilesBySequence.value = {}
+    headwayCheckSchemeOptions.value = []
+    loadingSchemes.value = false
+    lastWrapperWidth = 0
+    lastWrapperHeight = 0
 })
 </script>
 

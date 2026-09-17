@@ -1673,6 +1673,7 @@
         "labels": {
             "showLabels": "显示标签",
             "displayRatio": "X:Y 坐标比例",
+            "trainModel": "车型",
             "operationPlan": "作业计划",
             "playbackScope": "范围",
             "train": "列车",
@@ -1690,6 +1691,10 @@
         "playbackModes": {
             "single": "单列车",
             "all": "全站"
+        },
+        "trainModels": {
+            "auto": "自动 · 按列车类型",
+            "help": "自动识别各作业的动车组或电力机车型号，未识别时使用 CR400AF。选择具体车型可统一预览外观，不影响作业计划。"
         },
         "playback": {
             "selectTrain": "请选择一列列车",
@@ -1741,7 +1746,8 @@
             "loadStationRoutesFailed": "加载进路失败",
             "loadTrainOperationPlanFailed": "加载列车作业计划失败",
             "loadRouteTimesFailed": "加载进路占用时间失败",
-            "subTableNameRequired": "请输入子表名称"
+            "subTableNameRequired": "请输入子表名称",
+            "trainModelLoadFailed": "列车模型加载失败，请刷新后重试"
         }
     },
     "calculationParameters": {

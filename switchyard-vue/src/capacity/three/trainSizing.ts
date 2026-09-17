@@ -3,6 +3,13 @@ import { EMU_DIMENSIONS } from './emuTrain.ts'
 type LayoutLink = { x1: number; y1: number; x2: number; y2: number }
 type RouteLayoutLink = LayoutLink & { id: string; fromNodeID: string; toNodeID: string }
 
+export interface ConsistModelDimensions {
+    length: number
+    width: number
+    height: number
+    railGauge: number
+}
+
 /** Measure each original Link before rendering trims or splits it for curves/turnouts. */
 export function getLongestLinkLength(links: readonly LayoutLink[]): number {
     let longest = 0
@@ -40,13 +47,20 @@ export function getLongestRouteLinkLength(
 }
 
 /** All distances use the same layout (or world) units as trackGauge. */
-export function getEmuConsistSizing(trackGauge: number, longestLinkLength: number, carCount: number) {
+export function getEmuConsistSizing(
+    trackGauge: number,
+    longestLinkLength: number,
+    carCount: number,
+    dimensions: ConsistModelDimensions = EMU_DIMENSIONS,
+) {
     if (!Number.isFinite(trackGauge) || trackGauge <= 0
         || !Number.isFinite(longestLinkLength) || longestLinkLength <= 0
-        || !Number.isSafeInteger(carCount) || carCount < 1) return null
+        || !Number.isSafeInteger(carCount) || carCount < 1
+        || [dimensions.length, dimensions.width, dimensions.height, dimensions.railGauge]
+            .some(value => !Number.isFinite(value) || value <= 0)) return null
 
-    const unitsPerMeter = trackGauge / EMU_DIMENSIONS.railGauge
-    const nominalCarLength = unitsPerMeter * EMU_DIMENSIONS.length
+    const unitsPerMeter = trackGauge / dimensions.railGauge
+    const nominalCarLength = unitsPerMeter * dimensions.length
     const nominalGap = unitsPerMeter * 0.4
     const nominalTotal = carCount * nominalCarLength + (carCount - 1) * nominalGap
     const targetLength = longestLinkLength * 0.75
@@ -58,7 +72,8 @@ export function getEmuConsistSizing(trackGauge: number, longestLinkLength: numbe
     const carGap = nominalGap * lengthScale
     return {
         carLength,
-        carWidth: unitsPerMeter * EMU_DIMENSIONS.width,
+        carWidth: unitsPerMeter * dimensions.width,
+        carHeight: unitsPerMeter * dimensions.height,
         carGap,
         carPitch: carLength + carGap,
         totalLength: carCount * carLength + (carCount - 1) * carGap,

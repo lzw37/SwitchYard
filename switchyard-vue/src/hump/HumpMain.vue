@@ -109,9 +109,8 @@
                     <el-empty v-else :description="t('humpMain.placeholders.selectInstance')" />
                 </el-tab-pane>
                 <el-tab-pane :label="getTabLabel('simulation3d')" name="simulation3d" lazy>
-                    <HumpSim3D v-if="hasSelectedInstance" :selectedInstanceId="selectedLine"
-                        :activation-key="tabActivationKeys.simulation3d" />
-                    <el-empty v-else :description="t('humpMain.placeholders.selectInstance')" />
+                    <HumpSim3D v-if="activeTab === 'simulation3d' && hasSelectedInstance" :selectedInstanceId="selectedLine" />
+                    <el-empty v-else-if="activeTab === 'simulation3d'" :description="t('humpMain.placeholders.selectInstance')" />
                 </el-tab-pane>
             </el-tabs>
         </div>
@@ -123,7 +122,7 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, onMounted, computed, nextTick, onBeforeUnmount, watch } from 'vue'
+import { ref, onMounted, computed, defineAsyncComponent, nextTick, onBeforeUnmount, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import axios from '@/utils/axios'
@@ -135,8 +134,9 @@ import Wagon from './Wagon.vue';
 import HumpCalculationCondition from './HumpCalculationCondition.vue';
 import HumpHeadwayCheck from './HumpHeadwayCheck.vue';
 import HumpSim from './HumpSim.vue';
-import HumpSim3D from './HumpSim3D.vue';
 import HumpInstanceManager from './HumpInstanceManager.vue';
+
+const HumpSim3D = defineAsyncComponent(() => import('./HumpSim3D.vue'))
 
 const router = useRouter()
 const { t, locale } = useI18n()
@@ -152,7 +152,7 @@ interface HumpInstance {
     isActive: number
 }
 
-type MainTabName = 'plan' | 'vehicle' | 'profile' | 'release' | 'simulation' | 'simulation3d'
+type RefreshableTabName = 'plan' | 'vehicle' | 'profile' | 'release' | 'simulation'
 
 const activeTab = ref('plan')
 const selectedLine = ref<string | null>(null)
@@ -163,13 +163,12 @@ const tabsHostRef = ref<HTMLElement | null>(null)
 const tabSlotRef = ref<HTMLElement | null>(null)
 const tabMeasureRef = ref<HTMLElement | null>(null)
 const tabsInDropdown = ref(false)
-const tabActivationKeys = ref<Record<MainTabName, number>>({
+const tabActivationKeys = ref<Record<RefreshableTabName, number>>({
     plan: 0,
     vehicle: 0,
     profile: 0,
     release: 0,
     simulation: 0,
-    simulation3d: 0,
 })
 const activeLines = computed(() => lines.value.filter((item) => Number(item.isActive) === 1))
 const hasSelectedInstance = computed(() => Boolean(selectedLine.value))
@@ -201,7 +200,7 @@ const getTabLabel = (tabName: string) => {
     return mainTabs.value.find((tab) => tab.name === tabName)?.label || tabName
 }
 
-const bumpTabActivationKey = (tabName: MainTabName) => {
+const bumpTabActivationKey = (tabName: RefreshableTabName) => {
     tabActivationKeys.value[tabName] += 1
 }
 
@@ -325,8 +324,8 @@ watch(currentLocale, () => {
 })
 
 watch(activeTab, (newTab, oldTab) => {
-    if (!newTab || newTab === oldTab) return
-    bumpTabActivationKey(newTab as MainTabName)
+    if (!newTab || newTab === oldTab || newTab === 'simulation3d') return
+    bumpTabActivationKey(newTab as RefreshableTabName)
 })
 </script>
 
