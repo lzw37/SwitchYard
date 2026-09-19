@@ -1,17 +1,11 @@
 ﻿<template>
     <div class="course-shell">
-        <header class="hero">
-            <div>
-                <p class="eyebrow">课程平台 · 线上学习</p>
-                <h1>铁路站场与枢纽课程</h1>
-                <p class="subtitle">课程平台一站式学习与练习</p>
-            </div>
-        </header>
+        <header class="course-header"><h1>{{ t('course.title') }}</h1></header>
 
-        <div class="layout">
-            <aside class="sidebar">
+        <div ref="layoutElement" class="layout" :class="{ 'is-compact': isCompact }">
+            <aside class="sidebar" :style="isCompact ? { height: sidebarHeight + 'px' } : { width: sidebarWidth + 'px' }">
                 <div class="sidebar-header">
-                    <h2>课程管理列表</h2>
+                    <h2>{{ t('course.directory') }}</h2>
                 </div>
 
                 <div class="tree">
@@ -23,7 +17,7 @@
                         </button>
 
                         <div v-if="isPartExpanded(part.id)" class="children">
-                            <div v-if="part.chapters.length === 0" class="leaf-empty">暂无章节</div>
+                            <div v-if="part.chapters.length === 0" class="leaf-empty">{{ t('course.emptyChapters') }}</div>
 
                             <div v-for="chapter in part.chapters" :key="chapter.id">
                                 <button class="tree-btn level-2"
@@ -34,13 +28,12 @@
                                 </button>
 
                                 <div v-if="isChapterExpanded(chapter.id)" class="children">
-                                    <div v-if="chapter.sections.length === 0" class="leaf-empty">暂无小节</div>
+                                    <div v-if="chapter.sections.length === 0" class="leaf-empty">{{ t('course.emptySections') }}</div>
 
                                     <button v-for="section in chapter.sections" :key="section.id"
                                         class="tree-btn level-3"
                                         :class="{ active: isSectionSelected(part.id, chapter.id, section.id) }"
                                         @click="onSectionClick(part, chapter, section)">
-                                        <span>•</span>
                                         <span>{{ section.displayName }}</span>
                                     </button>
                                 </div>
@@ -49,10 +42,11 @@
                     </div>
                 </div>
             </aside>
+            <PaneDivider v-model="sidebarSize" :direction="isCompact ? 'vertical' : 'horizontal'" :min="isCompact ? 100 : 180" :max="sidebarMax" />
 
             <main class="main">
                 <section v-if="selected.level === 'none'" class="empty">
-                    <p>当前课程板块未选择任何内容。</p>
+                    <p>{{ t('course.selectContent') }}</p>
                 </section>
 
                 <section v-else-if="selected.level === 'part' || selected.level === 'chapter'" class="focus-only">
@@ -60,27 +54,20 @@
                         <div class="focus-title-wrap">
                             <h2>{{ focusTitle }}</h2>
                         </div>
-                        <div class="tag-row">
-                            <span v-if="selected.level === 'part' && selectedPart" class="pill">{{ selectedPart.displayName }}</span>
-                            <template v-else-if="selected.level === 'chapter' && selectedPart && selectedChapter">
-                                <span class="pill">{{ selectedPart.displayName }}</span>
-                                <span class="pill ghost">{{ selectedChapter.displayName }}</span>
-                            </template>
-                        </div>
                     </header>
-                    <div v-if="focusLoading" class="muted">正在读取学习指导...</div>
+                    <div v-if="focusLoading" class="muted">{{ t('course.loadingGuide') }}</div>
                     <div v-else class="focus-content">
                         <section class="focus-block">
-                            <p class="eyebrow">重点知识</p>
-                            <div v-if="displayFocusPoints.length === 0" class="muted">未提取到重点知识。</div>
+                            <p class="eyebrow">{{ t('course.keyPoints') }}</p>
+                            <div v-if="displayFocusPoints.length === 0" class="muted">{{ t('course.emptyKeyPoints') }}</div>
                             <ul v-else class="keypoints">
                                 <li v-for="(point, idx) in displayFocusPoints" :key="`k-${idx}`">{{ idx + 1 }}. {{ point }}</li>
                             </ul>
                         </section>
 
                         <section class="focus-block">
-                            <p class="eyebrow">难点知识</p>
-                            <div v-if="displayFocusDifficultPoints.length === 0" class="muted">未提取到难点知识。</div>
+                            <p class="eyebrow">{{ t('course.difficultPoints') }}</p>
+                            <div v-if="displayFocusDifficultPoints.length === 0" class="muted">{{ t('course.emptyDifficultPoints') }}</div>
                             <ul v-else class="keypoints">
                                 <li v-for="(point, idx) in displayFocusDifficultPoints" :key="`d-${idx}`">{{ idx + 1 }}. {{ point }}</li>
                             </ul>
@@ -91,39 +78,31 @@
                 <section v-else-if="selected.level === 'section' && selectedSection" class="section-details">
                     <header class="section-head">
                         <div>
-                            <p class="eyebrow">当前课程</p>
                             <h2>{{ selectedSection.displayName }}</h2>
-                        </div>
-                        <div class="tag-row">
-                            <span class="pill">{{ selectedPartName }}</span>
-                            <span class="pill ghost">{{ selectedChapterName }}</span>
-                            <span class="pill ghost">{{ selectedSection.displayName }}</span>
                         </div>
                     </header>
 
                     <section class="player-grid">
                         <div class="panel">
                             <div class="panel-head">
-                                <h3 class="panel-title">讲解视频</h3>
-                                <span class="pill-sm">支持全屏</span>
+                                <h3 class="panel-title">{{ t('course.video') }}</h3>
                             </div>
                             <div v-if="selectedSection.videoFiles.length > 1" class="video-switch">
                                 <button v-for="(video, idx) in selectedSection.videoFiles" :key="video.url"
                                     :class="['video-tab', { active: idx === activeVideoIndex }]"
                                     @click="activeVideoIndex = idx">
-                                    视频 {{ idx + 1 }}
+                                    {{ t('course.videoNumber', { index: idx + 1 }) }}
                                 </button>
                             </div>
                             <video v-if="activeVideo?.url" class="video-player" :src="activeVideo.url" controls preload="metadata"></video>
-                            <div v-else class="video-placeholder">当前节未找到视频</div>
+                            <div v-else class="video-placeholder">{{ t('course.emptyVideo') }}</div>
                         </div>
 
                         <div class="panel">
                             <div class="panel-head">
-                                <h3 class="panel-title">PPT 浏览</h3>
-                                <span class="pill-sm">第{{ pdfPageStatus }}页</span>
+                                <h3 class="panel-title">{{ t('course.slides') }}</h3>
                             </div>
-                            <div v-if="selectedSection.pdfFiles.length === 0" class="muted">当前节未找到 PDF。</div>
+                            <div v-if="selectedSection.pdfFiles.length === 0" class="muted">{{ t('course.emptyPdf') }}</div>
                             <template v-else>
                                 <div v-if="selectedSection.pdfFiles.length > 1" class="pdf-file-switch">
                                     <button v-for="(pdf, idx) in selectedSection.pdfFiles" :key="pdf.url"
@@ -134,15 +113,15 @@
                                 </div>
                                 <div class="ppt-frame">
                                     <img v-if="activePdfPageImage" class="pdf-main-image" :src="activePdfPageImage"
-                                        :alt="`第 ${activePdfPageIndex + 1} 页`" />
-                                    <div v-else-if="pdfRendering" class="empty-frame">正在渲染 PPT 页面...</div>
-                                    <div v-else class="empty-frame">{{ pdfRenderError || "暂无可预览内容" }}</div>
+                                        :alt="t('course.page', { page: activePdfPageIndex + 1 })" />
+                                    <div v-else-if="pdfRendering" class="empty-frame">{{ t('course.renderingSlides') }}</div>
+                                    <div v-else class="empty-frame">{{ pdfRenderError || t('course.emptyPreview') }}</div>
                                 </div>
 
                                 <div class="ppt-nav">
-                                    <button class="ppt-nav-btn" :disabled="!hasPrevPdfPage" @click="goPrevPdfPage">上一页</button>
+                                    <ActionButton :label="t('course.previousPage')" :icon="actionIcons.back" :disabled="!hasPrevPdfPage" @click="goPrevPdfPage" />
                                     <span class="ppt-nav-status">{{ pdfPageStatus }}</span>
-                                    <button class="ppt-nav-btn" :disabled="!hasNextPdfPage" @click="goNextPdfPage">下一页</button>
+                                    <ActionButton :label="t('course.nextPage')" :icon="actionIcons.forward" :disabled="!hasNextPdfPage" @click="goNextPdfPage" />
                                 </div>
 
                                 <div v-if="pdfNeighborSlots.length > 0" class="ppt-thumbs">
@@ -150,7 +129,7 @@
                                         :class="['ppt-thumb', { active: slot.pageIndex === activePdfPageIndex, empty: slot.pageIndex === null }]"
                                         :disabled="slot.pageIndex === null"
                                         @click="jumpToPdfPage(slot.pageIndex)">
-                                        <img v-if="slot.image" class="ppt-thumb-preview" :src="slot.image" :alt="`缩略图 ${slot.pageText}`" />
+                                        <img v-if="slot.image" class="ppt-thumb-preview" :src="slot.image" :alt="t('course.thumbnail', { page: slot.pageText })" />
                                         <div v-else class="ppt-thumb-placeholder"></div>
                                         <span v-if="slot.pageText" class="ppt-thumb-page">{{ slot.pageText }}</span>
                                     </button>
@@ -170,11 +149,27 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, watch, onMounted } from "vue";
+import { computed, reactive, ref, watch, onMounted, onBeforeUnmount } from "vue";
 import { getDocument, GlobalWorkerOptions } from "pdfjs-dist";
 import pdfWorkerSrc from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import CourseFillBlankQuiz from "@/course/CourseFillBlankQuiz.vue";
+import { useI18n } from 'vue-i18n';
+import ActionButton from '@/components/ui/ActionButton.vue';
+import PaneDivider from '@/components/ui/PaneDivider.vue';
+import { actionIcons } from '@/components/ui/actionIcons';
 import config from "@/config";
+
+const { t } = useI18n();
+const layoutElement = ref<HTMLElement | null>(null);
+const layoutWidth = ref(1000);
+const layoutHeight = ref(700);
+const sidebarWidth = ref(260);
+const sidebarHeight = ref(200);
+const isCompact = computed(() => layoutWidth.value < 700);
+const sidebarSize = computed({ get: () => isCompact.value ? sidebarHeight.value : sidebarWidth.value, set: (value: number) => { if (isCompact.value) sidebarHeight.value = value; else sidebarWidth.value = value; } });
+const sidebarMax = computed(() => isCompact.value ? Math.max(100, layoutHeight.value - 220) : Math.max(180, Math.min(520, layoutWidth.value - 320)));
+let layoutObserver: ResizeObserver | undefined;
+onBeforeUnmount(() => layoutObserver?.disconnect());
 
 type AssetFile = { name: string; url: string };
 type TeachingManifestItem = { name: string; path: string; url: string };
@@ -239,6 +234,14 @@ const pdfPageCache = new Map<string, Promise<string[]>>();
 GlobalWorkerOptions.workerSrc = pdfWorkerSrc;
 
 onMounted(() => {
+    if (layoutElement.value) {
+        layoutObserver = new ResizeObserver(([entry]) => {
+            if (!entry) return;
+            layoutWidth.value = entry.contentRect.width;
+            layoutHeight.value = entry.contentRect.height;
+        });
+        layoutObserver.observe(layoutElement.value);
+    }
     void initializeCourseData();
 });
 
@@ -308,7 +311,7 @@ const pdfNeighborSlots = computed(() => {
         return {
             key: `slot-${slotIndex}-${pageIndex}`,
             pageIndex: valid ? pageIndex : null,
-            pageText: valid ? `第${pageIndex + 1}页` : "",
+            pageText: valid ? t('course.page', { page: pageIndex + 1 }) : "",
             image: valid ? pdfPageImages.value[pageIndex] ?? "" : ""
         };
     });
@@ -404,11 +407,11 @@ async function loadPdfPages(url: string) {
         const pages = await renderPdfToImages(url);
         if (ticket !== pdfRenderTicket.value) return;
         pdfPageImages.value = pages;
-        if (pages.length === 0) pdfRenderError.value = "PDF 解析成功，但未提取到页面。";
+        if (pages.length === 0) pdfRenderError.value = t('course.emptyPdfPages');
     } catch (error) {
         if (ticket !== pdfRenderTicket.value) return;
         pdfPageImages.value = [];
-        pdfRenderError.value = `PDF 渲染失败：${error instanceof Error ? error.message : "未知错误"}`;
+        pdfRenderError.value = t('course.pdfRenderFailed', { error: error instanceof Error ? error.message : t('common.unknownError') });
     } finally {
         if (ticket === pdfRenderTicket.value) pdfRendering.value = false;
     }
@@ -1085,706 +1088,67 @@ function jumpToPdfPage(pageIndex: number | null) {
 </script>
 
 <style scoped>
-@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap");
-
-:global(:root) {
-    --bg: #0b1021;
-    --panel: rgba(255, 255, 255, 0.04);
-    --panel-strong: rgba(255, 255, 255, 0.07);
-    --stroke: rgba(255, 255, 255, 0.12);
-    --accent: #6ee7ff;
-    --accent-strong: #22d3ee;
-    --text: #eaf4ff;
-    --muted: #9bb1d1;
-    --warn: #fbbf24;
-    --good: #34d399;
-}
-
-* {
+.course-shell {
+    --stroke: var(--sy-border, #dfe4ea);
+    --text: var(--el-text-color-primary, #303133);
+    --muted: var(--el-text-color-secondary, #909399);
+    --accent: var(--el-color-primary, #4776a8);
+    --good: var(--el-color-success, #529b64);
+    --warn: var(--el-color-warning, #b98739);
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    min-height: 360px;
+    padding: 12px;
+    color: var(--text);
+    background: var(--sy-background, #f5f7fa);
     box-sizing: border-box;
 }
-
-.course-shell {
-    font-family: "Space Grotesk", "Segoe UI", sans-serif;
-    color: var(--text);
-    background: radial-gradient(circle at 20% 20%, rgba(110, 231, 255, 0.08), transparent 32%),
-        radial-gradient(circle at 80% 0%, rgba(34, 211, 238, 0.12), transparent 38%),
-        linear-gradient(135deg, #060915, #0f1629 55%, #0b1021);
-    min-height: 100vh;
-    padding: 32px;
-}
-
-.hero {
-    display: flex;
-    align-items: flex-end;
-    justify-content: space-between;
-    gap: 16px;
-    padding: 24px;
-    border: 1px solid var(--stroke);
-    border-radius: 16px;
-    background: var(--panel);
-    backdrop-filter: blur(12px);
-    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
-    margin-bottom: 20px;
-}
-
-.hero h1 {
-    font-size: 28px;
-    margin: 6px 0 4px;
-    letter-spacing: -0.5px;
-}
-
-.subtitle {
-    color: var(--muted);
-    margin: 0;
-}
-
-.hero-actions {
-    display: flex;
-    gap: 10px;
-    align-items: center;
-}
-
-.layout {
-    display: grid;
-    grid-template-columns: 300px 1fr;
-    gap: 16px;
-}
-
-.sidebar {
-    border: 1px solid var(--stroke);
-    border-radius: 16px;
-    background: var(--panel);
-    padding: 16px;
-    height: fit-content;
-    box-shadow: 0 14px 36px rgba(0, 0, 0, 0.28);
-}
-
-.sidebar-header h2 {
-    margin: 0 0 8px;
-    font-size: 18px;
-}
-
-.search {
-    width: 100%;
-    background: var(--panel-strong);
-    border: 1px solid var(--stroke);
-    color: var(--text);
-    padding: 10px 12px;
-    border-radius: 12px;
-    outline: none;
-}
-
-.search:focus {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 3px rgba(110, 231, 255, 0.15);
-}
-
-.course-list {
-    margin-top: 12px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
-
-.course-item {
-    width: 100%;
-    text-align: left;
-    border: 1px solid var(--stroke);
-    border-radius: 14px;
-    padding: 12px;
-    background: var(--panel-strong);
-    color: var(--text);
-    cursor: pointer;
-    transition: border-color 0.2s ease, transform 0.12s ease;
-}
-
-.course-item:hover {
-    border-color: var(--accent);
-    transform: translateY(-2px);
-}
-
-.course-item.active {
-    border-color: var(--accent-strong);
-    box-shadow: 0 0 0 2px rgba(110, 231, 255, 0.18);
-}
-
-.course-item__head,
-.course-item__meta,
-.course-item__foot {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-    flex-wrap: wrap;
-    color: var(--muted);
-    font-size: 12px;
-}
-
-.course-item__title {
-    font-size: 16px;
-    margin: 6px 0;
-    color: var(--text);
-}
-
-.course-item__foot {
-    margin-top: 4px;
-}
-
-.main {
-    border: 1px solid var(--stroke);
-    border-radius: 16px;
-    background: var(--panel);
-    padding: 18px;
-    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.32);
-}
-
-.course-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 12px;
-    border-bottom: 1px solid var(--stroke);
-    padding-bottom: 12px;
-}
-
-.course-head h2 {
-    margin: 4px 0;
-}
-
-.metrics {
-    display: flex;
-    gap: 12px;
-}
-
-.metric {
-    min-width: 120px;
-    padding: 10px 12px;
-    border: 1px solid var(--stroke);
-    border-radius: 12px;
-    background: var(--panel-strong);
-    text-align: right;
-}
-
-.metric strong {
-    display: block;
-    font-size: 20px;
-}
-
-.player-grid {
-    margin-top: 16px;
-    display: grid;
-    gap: 16px;
-    grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
-}
-
-.panel {
-    border: 1px solid var(--stroke);
-    border-radius: 16px;
-    padding: 14px;
-    background: rgba(255, 255, 255, 0.03);
-    min-width: 0;
-}
-
-.panel-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    margin-bottom: 10px;
-}
-
-.panel-title {
-    margin: 0;
-    font-size: 16px;
-    line-height: 1.25;
-    color: #f1f7ff;
-    letter-spacing: 0.02em;
-    font-weight: 700;
-}
-
-.video-switch {
-    margin-bottom: 10px;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-}
-
-.video-tab {
-    border: 1px solid var(--stroke);
-    border-radius: 10px;
-    background: var(--panel-strong);
-    color: var(--text);
-    padding: 6px 10px;
-    cursor: pointer;
-}
-
-.video-tab.active {
-    border-color: var(--accent);
-}
-
-.video-player {
-    width: 100%;
-    border-radius: 12px;
-    border: 1px solid var(--stroke);
-    background: #000;
-    height: clamp(260px, 42vh, 360px);
-    display: block;
-    object-fit: cover;
-}
-
-.video-placeholder {
-    border: 1px solid var(--stroke);
-    border-radius: 12px;
-    background: #071129;
-    height: clamp(260px, 42vh, 360px);
-    width: 100%;
-    display: grid;
-    place-items: center;
-    color: var(--muted);
-}
-
-.ppt-frame {
-    border: 1px solid var(--stroke);
-    border-radius: 12px;
-    overflow: hidden;
-    background: #0a0f1f;
-    height: clamp(260px, 48vh, 420px);
-    width: 100%;
-    display: grid;
-    place-items: center;
-}
-
-.pdf-main-image {
-    width: 100%;
-    height: 100%;
-    display: block;
-    object-fit: contain;
-    background: #050a15;
-}
-
-.pdf-file-switch {
-    margin-bottom: 10px;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-}
-
-.pdf-file-tab {
-    border: 1px solid var(--stroke);
-    border-radius: 10px;
-    background: var(--panel-strong);
-    color: var(--text);
-    padding: 6px 10px;
-    cursor: pointer;
-}
-
-.pdf-file-tab.active {
-    border-color: var(--accent);
-}
-
-.empty-frame {
-    display: grid;
-    place-items: center;
-    color: var(--muted);
-}
-
-.ppt-nav {
-    margin-top: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 12px;
-}
-
-.ppt-nav-btn {
-    background: var(--panel-strong);
-    color: var(--text);
-    border: 1px solid var(--stroke);
-    padding: 10px 14px;
-    border-radius: 10px;
-    cursor: pointer;
-    min-width: 92px;
-    transition: border-color 0.2s ease, opacity 0.2s ease;
-}
-
-.ppt-nav-btn:hover {
-    border-color: var(--accent);
-}
-
-.ppt-nav-btn:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-}
-
-.ppt-nav-status {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: auto;
-    padding: 0;
-    border: none;
-    border-radius: 0;
-    background: transparent;
-    color: var(--muted);
-    font-size: 15px;
-    font-weight: 500;
-    letter-spacing: 0.02em;
-    font-variant-numeric: tabular-nums;
-}
-
-.ppt-thumbs {
-    margin-top: 14px;
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 10px;
-}
-
-.ppt-thumb {
-    border: 1px solid var(--stroke);
-    border-radius: 10px;
-    background: var(--panel-strong);
-    padding: 10px;
-    min-height: 82px;
-    display: grid;
-    gap: 8px;
-    text-align: left;
-    color: var(--text);
-    cursor: pointer;
-    transition: border-color 0.2s ease, transform 0.12s ease;
-}
-
-.ppt-thumb:hover {
-    border-color: var(--accent);
-    transform: translateY(-1px);
-}
-
-.ppt-thumb.active {
-    border-color: var(--accent-strong);
-    box-shadow: 0 0 0 2px rgba(110, 231, 255, 0.18);
-}
-
-.ppt-thumb.empty {
-    cursor: not-allowed;
-    opacity: 0.5;
-}
-
-.ppt-thumb-page {
-    font-size: 13px;
-    line-height: 1.2;
-    text-align: center;
-    color: #f2f7ff;
-}
-
-.ppt-thumb-preview {
-    width: 100%;
-    aspect-ratio: 4 / 3;
-    object-fit: cover;
-    border-radius: 8px;
-    border: 1px solid var(--stroke);
-    background: #0a0f1f;
-}
-
-.ppt-thumb-placeholder {
-    width: 100%;
-    aspect-ratio: 4 / 3;
-    display: block;
-    border-radius: 8px;
-    border: 1px solid var(--stroke);
-}
-
-.info-grid {
-    margin-top: 16px;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 16px;
-}
-
-.keypoints {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-    display: grid;
-    gap: 8px;
-}
-
-.keypoints li {
-    padding: 10px 12px;
-    border: 1px solid var(--stroke);
-    border-radius: 10px;
-    background: var(--panel-strong);
-}
-
-.empty {
-    text-align: center;
-    color: var(--muted);
-    padding: 56px 12px;
-}
-
-.eyebrow {
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    font-size: 12px;
-    color: var(--muted);
-    margin: 0;
-}
-
-.pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 10px;
-    border-radius: 20px;
-    background: rgba(110, 231, 255, 0.08);
-    border: 1px solid rgba(110, 231, 255, 0.26);
-    color: var(--text);
-    font-size: 13px;
-}
-
-.pill-sm {
-    display: inline-flex;
-    align-items: center;
-    padding: 4px 8px;
-    border-radius: 12px;
-    border: 1px solid var(--stroke);
-    background: var(--panel-strong);
-    color: var(--muted);
-    font-size: 12px;
-}
-
-.pill-sm.ghost {
-    background: transparent;
-}
-
-.pill-accent {
-    background: rgba(110, 231, 255, 0.16);
-    border-color: var(--accent);
-}
-
-.badge {
-    display: inline-flex;
-    padding: 4px 8px;
-    border-radius: 10px;
-    background: rgba(110, 231, 255, 0.14);
-    border: 1px solid rgba(110, 231, 255, 0.32);
-    font-size: 12px;
-    color: var(--text);
-}
-
-.duration {
-    color: var(--muted);
-}
-
-.tag-row {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-}
-
-.primary {
-    background: linear-gradient(120deg, #22d3ee, #6ee7ff);
-    border: none;
-    color: #03111a;
-    font-weight: 700;
-    padding: 8px 14px;
-    border-radius: 12px;
-    cursor: pointer;
-    box-shadow: 0 12px 30px rgba(110, 231, 255, 0.28);
-}
-
-.primary:hover {
-    transform: translateY(-1px);
-}
-
-.chip {
-    border-radius: 10px;
-    padding: 2px 6px;
-    font-size: 11px;
-    border: 1px solid var(--stroke);
-}
-
-.chip.good {
-    border-color: var(--good);
-    color: var(--good);
-}
-
-.chip.warn {
-    border-color: var(--warn);
-    color: var(--warn);
-}
-
-.tree {
-    margin-top: 12px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
-
-.children {
-    margin-top: 8px;
-    margin-left: 10px;
-    border-left: 1px dashed var(--stroke);
-    padding-left: 10px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.tree-btn {
-    width: 100%;
-    text-align: left;
-    border: 1px solid var(--stroke);
-    border-radius: 12px;
-    color: var(--text);
-    background: var(--panel-strong);
-    cursor: pointer;
-    transition: border-color 0.2s ease, transform 0.12s ease;
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.tree-btn:hover {
-    border-color: var(--accent);
-    transform: translateY(-1px);
-}
-
-.tree-btn.active {
-    border-color: var(--accent-strong);
-    box-shadow: 0 0 0 2px rgba(110, 231, 255, 0.18);
-}
-
-.tree-btn.level-1 {
-    padding: 10px 12px;
-    font-weight: 600;
-}
-
-.tree-btn.level-2 {
-    padding: 8px 10px;
-    font-size: 14px;
-}
-
-.tree-btn.level-3 {
-    padding: 7px 10px;
-    font-size: 13px;
-}
-
-.leaf-empty {
-    color: var(--muted);
-    font-size: 12px;
-    padding-left: 4px;
-}
-
-.muted {
-    color: var(--muted);
-}
-
-.focus-only {
-    display: grid;
-    gap: 12px;
-}
-
-.focus-content {
-    display: grid;
-    gap: 12px;
-}
-
-.focus-block {
-    display: grid;
-    gap: 8px;
-}
-
-.focus-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 12px;
-    border-bottom: 1px solid var(--stroke);
-    padding-bottom: 12px;
-}
-
-.focus-header h2 {
-    margin: 0;
-}
-
-.focus-title-wrap {
-    display: flex;
-    align-items: center;
-    min-height: 36px;
-}
-
-.focus-header .tag-row {
-    align-items: center;
-}
-
-.section-head {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: start;
-    gap: 12px;
-    border-bottom: 1px solid var(--stroke);
-    padding-bottom: 12px;
-}
-
-.section-head > div:first-child {
-    min-width: 0;
-}
-
-.section-head .tag-row {
-    justify-content: flex-end;
-    align-self: center;
-    margin-left: auto;
-}
-
-@media (max-width: 1024px) {
-    .layout {
-        grid-template-columns: 1fr;
-    }
-
-    .player-grid,
-    .info-grid {
-        grid-template-columns: 1fr;
-    }
-
-    .metrics {
-        width: 100%;
-        justify-content: flex-start;
-    }
-
-    .section-head {
-        grid-template-columns: 1fr;
-        align-items: start;
-    }
-
-    .section-head .tag-row {
-        width: 100%;
-        justify-content: flex-end;
-    }
-
-    .panel-title {
-        font-size: 16px;
-    }
-
-    .ppt-nav-status {
-        font-size: 12px;
-    }
-}
-
-@media (max-width: 1366px) {
-    .player-grid {
-        grid-template-columns: 1fr;
-    }
-}
-
-@media (max-height: 820px) {
-    .video-player,
-    .video-placeholder {
-        height: clamp(220px, 36vh, 320px);
-    }
-
-    .ppt-frame {
-        height: clamp(220px, 40vh, 360px);
-    }
-}
+.course-header { flex: 0 0 auto; padding: 4px 4px 12px; }
+.course-header h1 { margin: 0; font-size: 18px; font-weight: 600; }
+.layout { display: flex; flex: 1; min-width: 0; min-height: 0; }
+.sidebar, .main { border: 1px solid var(--stroke); border-radius: 6px; background: var(--sy-surface, #fff); box-sizing: border-box; }
+.sidebar { flex: 0 0 auto; min-width: 0; overflow: auto; padding: 12px; }
+.sidebar-header h2 { margin: 0 0 10px; font-size: 13px; font-weight: 600; }
+.main { flex: 1; min-width: 0; overflow: auto; padding: 16px; }
+.tree, .children { display: flex; flex-direction: column; gap: 4px; }
+.children { margin: 4px 0 4px 8px; padding-left: 8px; border-left: 1px solid var(--stroke); }
+.tree-btn { width: 100%; display: flex; align-items: center; gap: 6px; padding: 7px 8px; border: 0; border-radius: 4px; background: transparent; color: var(--text); text-align: left; font: inherit; cursor: pointer; }
+.tree-btn span:last-child { min-width: 0; overflow-wrap: anywhere; }
+.tree-btn:hover { background: var(--el-fill-color-light, #f5f7fa); }
+.tree-btn.active { color: var(--accent); background: var(--el-color-primary-light-9, #edf3fa); }
+.tree-btn:focus-visible, .video-tab:focus-visible, .pdf-file-tab:focus-visible, .ppt-thumb:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.level-1 { font-weight: 600; }
+.level-2, .level-3 { font-size: 13px; }
+.leaf-empty, .muted, .empty, .empty-frame { color: var(--muted); }
+.leaf-empty { font-size: 12px; padding: 4px 8px; }
+.empty { padding: 48px 12px; text-align: center; }
+.focus-only, .focus-content, .focus-block { display: grid; gap: 12px; }
+.focus-header, .section-head { padding-bottom: 12px; border-bottom: 1px solid var(--stroke); }
+.focus-header h2, .section-head h2 { margin: 0; font-size: 16px; font-weight: 600; }
+.eyebrow { margin: 0; font-size: 13px; font-weight: 600; }
+.keypoints { list-style: none; padding: 0; margin: 0; }
+.keypoints li { padding: 8px 0; border-bottom: 1px solid var(--el-border-color-lighter, #ebeef5); }
+.player-grid { margin-top: 16px; display: grid; gap: 16px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.panel { border: 1px solid var(--stroke); border-radius: 6px; padding: 12px; min-width: 0; }
+.panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.panel-title { margin: 0; font-size: 14px; font-weight: 600; }
+.video-switch, .pdf-file-switch { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.video-tab, .pdf-file-tab { background: transparent; color: var(--text); border: 1px solid var(--stroke); border-radius: 4px; padding: 4px 8px; font: inherit; cursor: pointer; }
+.video-tab.active, .pdf-file-tab.active { border-color: var(--accent); color: var(--accent); }
+.video-player, .video-placeholder { display: block; width: 100%; height: clamp(200px, 35vh, 340px); border-radius: 4px; background: #111827; object-fit: contain; }
+.video-placeholder { display: grid; place-items: center; background: var(--el-fill-color-light, #f5f7fa); color: var(--muted); }
+.ppt-frame { display: grid; place-items: center; overflow: hidden; width: 100%; height: clamp(200px, 38vh, 380px); border: 1px solid var(--stroke); border-radius: 4px; background: var(--el-fill-color-light, #f5f7fa); }
+.pdf-main-image { width: 100%; height: 100%; display: block; object-fit: contain; }
+.ppt-nav { margin-top: 10px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.ppt-nav-status { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.ppt-thumbs { margin-top: 10px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.ppt-thumb { display: grid; gap: 4px; border: 1px solid var(--stroke); border-radius: 4px; padding: 4px; background: transparent; color: var(--text); cursor: pointer; }
+.ppt-thumb.active { border-color: var(--accent); }
+.ppt-thumb.empty { opacity: .45; cursor: default; }
+.ppt-thumb-page { font-size: 11px; text-align: center; }
+.ppt-thumb-preview, .ppt-thumb-placeholder { width: 100%; aspect-ratio: 4 / 3; object-fit: contain; background: var(--el-fill-color-light, #f5f7fa); }
+.layout.is-compact { flex-direction: column; }
+.layout.is-compact .sidebar { width: 100%; }
+@media (max-width: 1300px) { .player-grid { grid-template-columns: 1fr; } }
 </style>

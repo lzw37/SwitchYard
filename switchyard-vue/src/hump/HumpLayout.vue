@@ -205,11 +205,11 @@
                                     </el-select>
                                 </template>
                             </el-table-column>
-                            <el-table-column label="道岔辙叉号码" width="150">
+                            <el-table-column :label="t('hump.frogNumber')" width="150">
                                 <template #default="scope">
                                     <el-select :model-value="getSwitchFrogNumberValue(scope.row)"
                                         @change="onSwitchFrogNumberChange(scope.row, $event)"
-                                        placeholder="请选择辙叉号码" size="small" style="width:130px">
+                                        :placeholder="t('hump.chooseFrogNumber')" size="small" style="width:130px">
                                         <el-option v-for="opt in getSwitchFrogNumberOptions()" :key="opt.value"
                                             :label="opt.label" :value="opt.value" />
                                     </el-select>

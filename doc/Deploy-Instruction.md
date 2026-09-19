@@ -1,256 +1,195 @@
-# SwitchYard.Service 生产部署说明
+# SwitchYard 部署说明
 
-此目录包含会随 API 发布包一起分发的部署文件：
+本文对应当前 Vue 前端、.NET 8 API 和可选的 .NET 10 CapacityAgent。本地启动见 [开发与配置指南](Getting-Started.md)，日常维护见 [运维说明](Operations-Recommendations.md)。
 
-- `switchyard-api.service`：用于 Ubuntu 的 `systemd` 服务单元
-- `switchyard-api.env.example`：环境变量模板
-- `install-secrets.sh`：用于安装 `/etc/switchyard/api.env` 和 `systemd` 服务单元的脚本
+## 1. 部署组成
 
-## 发布
+| 组件 | 产物 / 入口 | 运行要求 |
+| --- | --- | --- |
+| Web 前端 | `switchyard-vue/dist/` | 静态文件服务器；使用 History 路由 |
+| API | `SwitchYard.Service.dll` | ASP.NET Core 8 Runtime；可访问两个业务数据库 |
+| CapacityAgent（可选） | `SwitchYard.CapacityAgent.dll` | .NET 10 Runtime；经 HTTP/SignalR 连接 API |
+| 课程资料（可选） | 视频、PDF、Word 文件目录 | API 运行用户有读取权限 |
 
-以 Release 模式发布 API。发布产物现在会包含 `scripts/deploy/` 目录。
+仓库构建使用 .NET 10 SDK，以覆盖 Agent 和共享组件的目标框架；运行 API 仍需 ASP.NET Core 8 Runtime。前端需要 Node.js `^20.19.0 || >=22.12.0`。
+
+API 发布包包含 `Database/*.sql` 和 `scripts/deploy/`。部署脚本提供 Ubuntu 的 `systemd` 单元、环境变量模板和配置安装脚本；不会安装 .NET、MySQL、反向代理，也不会创建 MySQL 数据库或导入业务数据。
+
+## 2. 配置与数据库准备
+
+API 配置依次读取 `appsettings.json`、对应环境的 `appsettings.{Environment}.json`、环境变量和命令行参数，后者优先。嵌套键在环境变量中以 `__` 分隔。
+
+监听地址由 `WebApi:Hosts` 配置后调用 `UseUrls` 设置；不要仅修改 `launchSettings.json` 或 `ASPNETCORE_URLS`。生产配置和安装脚本默认使用 `http://127.0.0.1:7297`。配置数组逐项合并，改变监听数量时也要覆盖不用的索引。
+
+| 环境变量 | 用途 |
+| --- | --- |
+| `ASPNETCORE_ENVIRONMENT=Production` | 启用生产配置；不开放 Swagger |
+| `WebApi__Hosts__0`、`WebApi__Hosts__1` | 监听地址；第二项默认留空 |
+| `Jwt__SecretKey` | 自行生成的 JWT 签名密钥；可用 `openssl rand -base64 64` 生成 |
+| `HumpDatabase__DatabaseType` | `Mysql` / `MySQL` 或 `SQLite` / `Sqllite` |
+| `CapacityDatabase__DatabaseType` | 能力模块独立数据库，同上 |
+| `<数据库节>__MysqlConfig__Host` / `Port` / `Database` / `Username` / `Password` | 两个 MySQL 数据库分别配置连接信息 |
+| `<数据库节>__SqlliteConfig__DatabaseFile` | SQLite 文件绝对路径；键名保留代码中的 `SqlliteConfig` 拼写 |
+| `Course__VideoDir`、`Course__DocDir` | 课程资料目录；生产默认 `/data/switchyardvid` |
+| `Cors__AllowedOrigins__0` 等 | 前端跨域访问时允许的完整 origin（协议、域名、端口，不含路径） |
+
+`<数据库节>` 分别为 `HumpDatabase`、`CapacityDatabase`。用户和 Refresh Token 保存在驼峰数据库。两组数据库不要指向同一库/同一 SQLite 文件：两套业务存在名称相同、结构不同的表。
+
+使用 MySQL 时，先建立两个独立数据库，并授权应用账号访问。启动会执行建表脚本；能力库的 `stationroute`、`stationroutetime` 还可能执行 `ALTER TABLE ... CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`。账号需要相应建表、读写及必要的结构修改权限。此流程不会创建 MySQL 数据库，也不是完整的版本化迁移机制；升级已有库前应备份并核对结构差异。
+
+使用 SQLite 时，将两组 `DatabaseType` 改为 `SQLite`，分别指定 `/opt/switchyard/data/hump.db` 和 `/opt/switchyard/data/capacity.db`。目录必须提前存在且可写。
+
+**业务初始化：** 建表不生成管理员、课程内容或示例实例。注册和管理员创建用户都会复制驼峰模板实例 `001`；缺少模板或模板关联数据不完整会导致创建用户失败。首次生产部署需导入经确认的模板及账号数据，并核实管理员状态；当前没有自动创建首个管理员的命令。
+
+## 3. 发布 API 与安装服务
+
+在仓库根目录发布：
 
 ```bash
 dotnet publish SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj \
-  -c Release \
-  -o ./publish
+  -c Release -o ./publish/api
+scp -r ./publish/api user@server:/tmp/switchyard-api-publish
 ```
 
-## Ubuntu 首次安装
-
-1. 将发布产物复制到服务器。
-
-```bash
-scp -r ./publish user@server:/tmp/switchyard-publish
-```
-
-2. 将发布包安装到 `/opt/switchyard/api`。
+在 Ubuntu 服务器上安装：
 
 ```bash
 sudo mkdir -p /opt/switchyard/api
-sudo rsync -av --delete /tmp/switchyard-publish/ /opt/switchyard/api/
-```
-
-3. 在发布包目录中运行敏感配置安装脚本。
-
-```bash
-cd /opt/switchyard/api/scripts/deploy
-sudo bash install-secrets.sh
-```
-
-如果希望自动生成 JWT 签名密钥：
-
-```bash
+sudo rsync -av /tmp/switchyard-api-publish/ /opt/switchyard/api/
 cd /opt/switchyard/api/scripts/deploy
 sudo JWT_AUTOGEN=1 bash install-secrets.sh
 ```
 
-4. 启用并启动服务。
+按提示填写监听地址、MySQL 主机/端口、两个数据库名，以及访问两库的账号密码。设置 `JWT_AUTOGEN=1` 需要服务器已安装 `openssl`；不设置时脚本会提示输入签名密钥。
+
+脚本会创建 `switchyard` 系统用户、权限为 `0600` 的 `/etc/switchyard/api.env`、日志和数据目录，并安装 `/etc/systemd/system/switchyard-api.service`。再次运行会备份并重写环境文件，不会保留自行增加的课程目录、CORS 或其他配置；执行后需核对这些项。
+
+按实际部署调整环境文件并启动：
 
 ```bash
+sudoedit /etc/switchyard/api.env
 sudo systemctl enable --now switchyard-api
 sudo systemctl status switchyard-api
-sudo journalctl -u switchyard-api -f
+sudo journalctl -u switchyard-api -n 100 --no-pager
+curl -f http://127.0.0.1:7297/api/System/version
 ```
 
-## 安装脚本会执行的操作
+`version` 响应只证明 HTTP 服务能响应，不检查数据库。生产启动会检查 JWT，以及选择 MySQL 时的驼峰库账号密码；能力库配置也必须正确，不能把这项校验当作全部配置都通过的证明。
 
-- 确保 `switchyard` 系统用户存在
-- 创建权限为 `0600` 的 `/etc/switchyard/api.env`
-- 创建 `/opt/switchyard/api/logs`
-- 创建 `/opt/switchyard/data`
-- 安装 `/etc/systemd/system/switchyard-api.service`
+服务只允许写 `/opt/switchyard/api/logs` 与 `/opt/switchyard/data`。SQLite 应放在可写目录；课程文件只需可读。服务设置了 `ProtectHome=true`，不要把运行资料放在用户家目录下。
 
-## 默认运行方式
+## 4. 构建前端
 
-- Kestrel 默认绑定到 `http://127.0.0.1:7297`
-- 建议在 API 前面放置 Nginx、Caddy 或 Apache 以提供 TLS 和公网访问
-- 除非显式覆盖，否则课程资源默认位于 `/data/switchyardvid`
-
-## Vue 前端部署到 Nginx
-
-`switchyard-vue` 当前使用的是 Vue Router 的 History 模式：
-
-```ts
-createWebHistory(import.meta.env.BASE_URL)
-```
-
-这意味着如果用户直接访问或刷新 `/about`、`/hump`、`/capacity` 这类前端路由，Nginx 必须把不存在的物理文件回退到 `index.html`，否则会出现 404，看起来像“路由不生效”。
-
-### 部署在站点根路径
-
-如果前端直接部署在域名根路径，例如 `https://example.com/`：
-
-1. 在前端目录执行构建：
+构建时显式设置 API 的**根 URL**，不要追加 `/api`：业务还使用 `/Hump`、`/Capacity`、`/Course` 等路径。
 
 ```bash
 cd switchyard-vue
-npm install
-npm run build
+npm ci
+npm run type-check
+VITE_API_BASE_URL=https://api.example.com npm run build-only -- --mode production
 ```
 
-2. 将 `dist/` 内容发布到 Nginx 站点目录，例如 `/var/www/switchyard`。
+Windows PowerShell 等价命令：
 
-3. 在 Nginx 中配置 SPA 路由回退：
+```powershell
+Set-Location switchyard-vue
+npm.cmd ci
+$env:VITE_API_BASE_URL = 'https://api.example.com'
+npm.cmd run type-check
+if ($LASTEXITCODE -ne 0) { throw 'Type check failed' }
+npm.cmd run build-only -- --mode production
+```
+
+`npm run build` 同时进行类型检查和构建；如 Windows 上并行脚本启动失败，可使用上述顺序命令。`VITE_API_BASE_URL` 在开发服务器启动/构建时读取，修改服务器环境后不会改变已生成的 `dist/`。需重新构建并替换静态文件。当前配置逻辑下，`build:dev` 也会选择生产 JSON 配置，因此环境名不能代替显式 URL。
+
+保留仓库目录结构：主前端通过本地依赖引用 `../SwitchYard.StationLayout/frontend`。
+
+## 5. 反向代理与前端路由
+
+推荐将前端部署在站点根路径，将 API 放在独立子域名。例如前端 `https://app.example.com`，API `https://api.example.com`。下面是 Nginx 配置示例，需替换域名、证书路径和静态文件目录；`map` 放在 `http` 块中。若由其他入口终止 TLS，应按实际代理链传递原始协议。
 
 ```nginx
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
 server {
-  listen 80;
-  server_name example.com;
+    listen 443 ssl;
+    server_name app.example.com;
+    ssl_certificate     /etc/ssl/switchyard/fullchain.pem;
+    ssl_certificate_key /etc/ssl/switchyard/privkey.pem;
+    root /var/www/switchyard;
+    index index.html;
 
-  root /var/www/switchyard;
-  index index.html;
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}
 
-  location / {
-    try_files $uri $uri/ /index.html;
-  }
+server {
+    listen 443 ssl;
+    server_name api.example.com;
+    ssl_certificate     /etc/ssl/switchyard/fullchain.pem;
+    ssl_certificate_key /etc/ssl/switchyard/privkey.pem;
 
-  location /api/ {
-    proxy_pass http://127.0.0.1:7297/api/;
-    proxy_http_version 1.1;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-  }
+    location / {
+        proxy_pass http://127.0.0.1:7297;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_read_timeout 3600s;
+    }
 }
 ```
 
-其中最关键的是：
+API 代理保留整个原始路径，覆盖 `/api/*`、`/Hump/*`、`/Capacity/*`、`/StationLayout/*`、`/OperationPlan/*`、`/OperationProcess/*`、`/Course/*` 和 `/hubs/capacity-agent`。**只代理 `/api/` 会使业务功能失效。** WebSocket 升级头用于 Agent 长连接。
 
-```nginx
-try_files $uri $uri/ /index.html;
-```
+生产 API 的 `Cors:AllowedOrigins` 应包含 `https://app.example.com`。配置数组会合并现有生产列表；覆盖时核对全部索引，不能假定只设置第 0 项就删除其余项。课程视频与文档也经 API 返回，保留 Range 请求/响应以支持分段读取。
 
-### 部署在子路径
+前端使用 History 模式，刷新 `/hump`、`/capacity` 等路径必须回退 `index.html`。若部署到 `/switchyard/` 子路径，应同时配置 Vite 的 `base` 和静态站点回退路径，并重新构建；API 根 URL 仍是单独的服务器地址。
 
-如果前端不是放在根路径，而是放在子路径，例如 `https://example.com/switchyard/`，则除了 Nginx 回退配置，还需要同步设置 Vite 的 `base`。
+## 6. 可选 CapacityAgent
 
-可以在 `switchyard-vue/vite.config.ts` 中增加：
-
-```ts
-export default defineConfig(({ mode }) => {
-  return {
-    base: mode === "production" ? "/switchyard/" : "/",
-    // ...其余配置
-  };
-});
-```
-
-对应的 Nginx 配置示例：
-
-```nginx
-location /switchyard/ {
-  alias /var/www/switchyard/;
-  index index.html;
-  try_files $uri $uri/ /switchyard/index.html;
-}
-```
-
-注意：
-
-- 前端构建产物里的静态资源路径会跟随 `base` 变化。
-- `createWebHistory(import.meta.env.BASE_URL)` 已经会读取这个 `base`，所以路由前缀要和 Nginx 保持一致。
-- 如果 `base` 还是默认的 `/`，但你把站点发布到了 `/switchyard/`，就会出现资源 404 或路由跳转异常。
-
-### 不想配 Nginx 回退时的替代方案
-
-如果不想使用 History 模式，也可以改成 Hash 模式：
-
-```ts
-import { createRouter, createWebHashHistory } from "vue-router";
-
-const router = createRouter({
-  history: createWebHashHistory(import.meta.env.BASE_URL),
-  routes: [
-    // ...
-  ],
-});
-```
-```
-
-这样 URL 会变成 `/#/about`，Nginx 通常不需要额外做路由回退，但 URL 不如 History 模式干净。
-
-### 排查顺序
-
-1. 直接访问首页是否正常加载静态资源。
-2. 刷新 `/about`、`/hump` 等地址时，Nginx 是否返回了 `index.html`。
-3. 如果站点部署在子路径，检查 `vite.config.ts` 的 `base` 是否与 Nginx 路径一致。
-4. 打开浏览器网络面板，确认 JS/CSS 资源是否请求到了错误路径。
-
-## 手动调试启动
-
-如果你想不通过 `systemd`，直接在工作目录中手动启动服务，可以这样做：
-
-1. 进入发布目录。
+模型求解需要至少一个当前用户可使用的在线 Agent。API 服务本身不运行 OR-Tools 求解器。
 
 ```bash
-cd /opt/switchyard/api
+dotnet publish SwitchYard.WebApi/SwitchYard.CapacityAgent/SwitchYard.CapacityAgent.csproj \
+  -c Release -o ./publish/capacity-agent
+cd publish/capacity-agent
+dotnet SwitchYard.CapacityAgent.dll
 ```
 
-2. 如果正式服务正在运行，先停掉它，避免占用默认端口。
+按提示输入 API 根 URL、已激活账号和密码；账号如要求首次改密，应先在 Web 页面完成。Agent 使用专用令牌连接 `/hubs/capacity-agent`。默认同时运行 2 个任务，每任务 2 核、2048 MB；通过发布目录中的 `capacity-agent.json` 或 `--config <路径>` 调整。
 
-```bash
-sudo systemctl stop switchyard-api
-```
+管理员可配置共享范围，普通用户 Agent 只允许本人使用。当前任务和求解结果保存在 Service 进程内存中；重启前下载需要保留的结果。完整说明见 [CapacityAgent README](../SwitchYard.WebApi/SwitchYard.CapacityAgent/README.md)。
 
-3. 加载生产环境变量，然后手动启动应用。
+## 7. 更新与回滚
 
-```bash
-set -a
-source /etc/switchyard/api.env
-set +a
-dotnet SwitchYard.Service.dll
-```
+1. 备份两个业务数据库、课程资料、环境配置和旧发布包；安排当前求解任务结束或取消。
+2. 生成新 API 发布包及前端 `dist/`，检查数据库脚本与所需运行时。
+3. 在服务器停止服务，再同步发布包。同步时保留日志：
 
-如果你只是想临时调试，但不想停掉正式服务，可以改用其他端口：
+   ```bash
+   sudo systemctl stop switchyard-api
+   sudo rsync -av --delete --exclude logs/ /tmp/switchyard-api-publish/ /opt/switchyard/api/
+   sudo systemctl start switchyard-api
+   ```
 
-```bash
-cd /opt/switchyard/api
-set -a
-source /etc/switchyard/api.env
-set +a
-export WebApi__Hosts__0=http://127.0.0.1:5033
-export WebApi__Hosts__1=
-dotnet SwitchYard.Service.dll
-```
+4. 核对启动日志、版本响应、登录、实例读取/保存、课程及 Agent 连接，再发布前端静态资源。
+5. 若回滚，恢复旧程序和与其兼容的数据。仅恢复 DLL 不能撤销已执行的数据库结构变更。
 
-调试结束后，如果需要恢复托管方式，可以重新启动服务：
+只修改配置时编辑 `/etc/switchyard/api.env` 并重启即可，无需反复运行安装脚本。另一端口的调试进程也应使用独立配置和数据；启动即会连接数据库并执行初始化，不能当作只读检查。
 
-```bash
-sudo systemctl start switchyard-api
-```
-
-## 更新已有部署
-
-```bash
-dotnet publish SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj \
-  -c Release \
-  -o ./publish
-
-scp -r ./publish user@server:/tmp/switchyard-publish
-sudo rsync -av --delete /tmp/switchyard-publish/ /opt/switchyard/api/
-sudo systemctl restart switchyard-api
-```
-
-如果敏感配置发生变化，请在重启前重新运行安装脚本：
-
-```bash
-cd /opt/switchyard/api/scripts/deploy
-sudo bash install-secrets.sh
-sudo systemctl restart switchyard-api
-```
-
-## 卸载服务单元和环境变量文件
+卸载服务单元：
 
 ```bash
 cd /opt/switchyard/api/scripts/deploy
 sudo bash install-secrets.sh --uninstall
 ```
 
-## 运维检查清单
-
-1. 使用专用的 MySQL 账号，不要使用 `root`。
-2. 如果需要课程文件，请确认 `/data/switchyardvid` 已存在。
-3. 对所有曾经提交到 Git 历史中的数据库密码或 JWT 密钥进行轮换。
-4. 确保 `/etc/switchyard/api.env` 不进入版本控制，并保持 `0600` 权限。
+脚本停止/禁用服务并移除单元，将环境文件改名保留；运行目录和数据库不会自动删除。

@@ -78,12 +78,13 @@ export default defineConfig(({ mode }) => {
         server: {
             host: "0.0.0.0",
             port: 5173,
+            strictPort: true,
             // 开发环境下的代理配置（如果需要）
             proxy:
                 mode === "development"
                     ? {
                           "/api": {
-                              target: "https://localhost:7297",
+                              target: "http://127.0.0.1:7297",
                               changeOrigin: true,
                               secure: false,
                           },

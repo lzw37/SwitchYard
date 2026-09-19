@@ -25,6 +25,7 @@ const props = defineProps({
     cells: { type: Array, default: () => [] },
     showCellNames: { type: Boolean, default: false },
     routePickTarget: { type: String, default: "" },
+    highlightedRoutes: { type: Array, default: () => [] },
     highlightedRouteLinkIds: { type: Array, default: () => [] },
     highlightedRouteNodeIds: { type: Array, default: () => [] },
     highlightedRouteArrowNodeIds: { type: Array, default: () => [] },
@@ -48,6 +49,7 @@ const defaultEditorDisplayStyles = {
     platformName: { fontSize: 10, fontFamily: "Arial", fontWeight: "normal", fontStyle: "normal", color: "#ffffff" },
     signalName: { fontSize: 8, fontFamily: "Arial", fontWeight: "normal", fontStyle: "normal", color: "#ffffff" },
     lineName: { fontSize: 10, fontFamily: "Arial", fontWeight: "normal", fontStyle: "normal", color: "#ffffff" },
+    cellName: { fontSize: 13, fontFamily: "Arial", fontWeight: "bold", fontStyle: "normal", color: "#ffd600" },
     track: { strokeWidth: 2, color: "#fefded" },
     curve: { strokeWidth: 4, color: "#ffb347" },
     platform: { strokeWidth: 1, color: "#87ceeb" },
@@ -121,73 +123,79 @@ const svgStyle = computed(() => ({
 }));
 const editorDisplayStyles = computed(() => normalizeDisplayStyles(props.displayStyles));
 const isCellEditingState = computed(() => props.editorState === "cell_editing");
-const highlightedRouteLinkIdSet = computed(() => new Set(
-    (Array.isArray(props.highlightedRouteLinkIds) ? props.highlightedRouteLinkIds : [])
-        .map((id) => String(id))
-        .filter((id) => id !== "")
-));
-const highlightedRouteNodeIdSet = computed(() => new Set(
-    (Array.isArray(props.highlightedRouteNodeIds) ? props.highlightedRouteNodeIds : [])
-        .map((id) => String(id))
-        .filter((id) => id !== "")
-));
-const highlightedRouteTransitionKeySet = computed(() => {
-    const ids = (Array.isArray(props.highlightedRouteLinkIds) ? props.highlightedRouteLinkIds : [])
-        .map((id) => String(id))
-        .filter((id) => id !== "");
-    const transitionKeys = new Set();
-
-    for (let index = 0; index < ids.length - 1; index++) {
-        transitionKeys.add(buildRouteTransitionKey(ids[index], ids[index + 1]));
-    }
-
-    return transitionKeys;
+const highlightedRouteGroups = computed(() => {
+    const routes = Array.isArray(props.highlightedRoutes) && props.highlightedRoutes.length > 0
+        ? props.highlightedRoutes
+        : [{
+            key: "single-route",
+            nodeIds: props.highlightedRouteNodeIds,
+            linkIds: props.highlightedRouteLinkIds,
+            arrowNodeIds: props.highlightedRouteArrowNodeIds,
+            color: props.highlightedRouteColor,
+            arrowVisible: props.highlightedRouteArrowVisible,
+        }];
+    return routes.map((route, index) => {
+        const nodeIds = (Array.isArray(route.nodeIds) ? route.nodeIds : []).map(String).filter(Boolean);
+        const linkIds = (Array.isArray(route.linkIds) ? route.linkIds : []).map(String).filter(Boolean);
+        const arrowNodeIds = Array.isArray(route.arrowNodeIds) && route.arrowNodeIds.length > 0
+            ? route.arrowNodeIds : nodeIds;
+        const transitionKeySet = new Set();
+        for (let index = 0; index < linkIds.length - 1; index++) {
+            transitionKeySet.add(buildRouteTransitionKey(linkIds[index], linkIds[index + 1]));
+        }
+        return {
+            key: String(route.key ?? index),
+            color: String(route.color || "#ffd600").trim() || "#ffd600",
+            nodeIds, linkIds, arrowNodeIds,
+            arrowVisible: route.arrowVisible !== false,
+            nodeIdSet: new Set(nodeIds),
+            linkIdSet: new Set(linkIds),
+            transitionKeySet,
+        };
+    });
 });
-const highlightedRouteSegments = computed(() => {
-    if (highlightedRouteLinkIdSet.value.size === 0) return [];
-    return renderedTrackSegments.value.filter((segment) => highlightedRouteLinkIdSet.value.has(String(segment.line?.id ?? "")));
-});
-const highlightedRouteCurves = computed(() => {
-    if (highlightedRouteTransitionKeySet.value.size === 0) return [];
-    return displayedCurves.value.filter((curve) => isRouteCurveHighlighted(curve));
-});
-const highlightedRouteNodes = computed(() => {
-    if (highlightedRouteNodeIdSet.value.size === 0) return [];
-
-    return mapRouteNodesByIds(props.highlightedRouteNodeIds);
-});
-const highlightedRouteArrowNodes = computed(() => {
-    const arrowNodeIds = Array.isArray(props.highlightedRouteArrowNodeIds) ? props.highlightedRouteArrowNodeIds : [];
-    const sourceNodeIds = arrowNodeIds.length > 0 ? arrowNodeIds : props.highlightedRouteNodeIds;
-    return mapRouteNodesByIds(sourceNodeIds);
-});
-const highlightedRouteLayerVisible = computed(() =>
-    highlightedRouteSegments.value.length > 0 ||
-    highlightedRouteCurves.value.length > 0 ||
-    highlightedRouteNodes.value.length > 0
-);
-const routeHighlightColor = computed(() => String(props.highlightedRouteColor || "#ffd600").trim() || "#ffd600");
 const routeHighlightStrokeWidth = computed(() => Math.max(
     editorDisplayStyles.value.track.strokeWidth + 4,
     editorDisplayStyles.value.curve.strokeWidth + 2,
     7
 ));
-const routeHighlightStyle = computed(() => ({
-    stroke: routeHighlightColor.value,
-    strokeWidth: routeHighlightStrokeWidth.value,
-}));
-const routeHighlightNodeStyle = computed(() => ({
-    fill: routeHighlightColor.value,
-}));
-const routeHighlightArrowStyle = computed(() => ({
-    fill: routeHighlightColor.value,
-    stroke: "#111827",
-}));
 const routeHighlightNodeRadius = computed(() => Math.max(editorDisplayStyles.value.node.radius + 2, 6));
-const highlightedRouteArrowView = computed(() => {
-    if (!props.highlightedRouteArrowVisible) return null;
+const highlightedRouteViews = computed(() => highlightedRouteGroups.value.map((route) => ({
+    key: route.key,
+    segments: renderedTrackSegments.value.filter((segment) => route.linkIdSet.has(String(segment.line?.id ?? ""))),
+    curves: displayedCurves.value.filter((curve) => isRouteCurveHighlighted(curve, route)),
+    nodes: mapRouteNodesByIds(route.nodeIds),
+    arrowView: buildRouteHighlightArrow(mapRouteNodesByIds(route.arrowNodeIds), route.arrowVisible),
+    strokeStyle: { stroke: route.color, strokeWidth: routeHighlightStrokeWidth.value },
+    nodeStyle: { fill: route.color },
+    arrowStyle: { fill: route.color, stroke: "#111827" },
+})));
+const highlightedRouteLayerVisible = computed(() => highlightedRouteViews.value.some((route) =>
+    route.segments.length > 0 || route.curves.length > 0 || route.nodes.length > 0
+));
+const highlightedRouteEquipmentColors = computed(() => {
+    // Keep the legacy single-route interface unchanged. In multi-route mode,
+    // the last route also owns a shared device, matching the SVG layer order.
+    const colors = new Map();
+    if (!Array.isArray(props.highlightedRoutes) || props.highlightedRoutes.length === 0) return colors;
+    const nodeColors = new Map();
+    for (const route of highlightedRouteGroups.value) {
+        for (const nodeId of route.nodeIds) nodeColors.set(nodeId, route.color);
+    }
+    for (const [kind, equipment] of [
+        ["signal", signals.value], ["switch", switches.value],
+        ["insulationJoint", insulationJoints.value], ["bufferStop", bufferStops.value],
+    ]) {
+        for (const item of equipment) {
+            const color = nodeColors.get(getEquipmentBindingNodeId(item));
+            if (color) colors.set(`${kind}:${String(item.id)}`, color);
+        }
+    }
+    return colors;
+});
 
-    const routeNodes = highlightedRouteArrowNodes.value.filter((node) => node != null);
+function buildRouteHighlightArrow(routeNodes, visible = true) {
+    if (!visible) return null;
     if (routeNodes.length < 2) return null;
 
     const endNode = routeNodes[routeNodes.length - 1];
@@ -228,7 +236,7 @@ const highlightedRouteArrowView = computed(() => {
     return {
         points: `${tipX},${tipY} ${leftX},${leftY} ${rightX},${rightY}`,
     };
-});
+}
 
 const latestElementID = ref(0);
 const layoutMetadata = ref({});
@@ -321,6 +329,7 @@ function normalizeDisplayStyles(source) {
         platformName: normalizeDisplayTextStyle(styles.platformName, defaultEditorDisplayStyles.platformName),
         signalName: normalizeDisplayTextStyle(styles.signalName, defaultEditorDisplayStyles.signalName),
         lineName: normalizeDisplayTextStyle(styles.lineName, defaultEditorDisplayStyles.lineName),
+        cellName: normalizeDisplayTextStyle(styles.cellName, defaultEditorDisplayStyles.cellName),
         track: {
             strokeWidth: clampDisplayNumber(styles.track?.strokeWidth, defaultEditorDisplayStyles.track.strokeWidth, 0.5, 24),
             color: String(styles.track?.color || defaultEditorDisplayStyles.track.color),
@@ -754,7 +763,11 @@ function isElementSelected(kind, id) {
 function elementHighlightColor(kind, id) {
     if (isElementSelected(kind, id)) return selectedHighlightColor;
     if (isElementHovered(kind, id)) return hoverHighlightColor;
-    return "";
+    return routeEquipmentHighlightColor(kind, id);
+}
+
+function routeEquipmentHighlightColor(kind, id) {
+    return highlightedRouteEquipmentColors.value.get(`${kind}:${String(id)}`) || "";
 }
 
 function elementOutlineColor(kind, id) {
@@ -4327,7 +4340,7 @@ function isSignalSelected(id) {
 }
 
 function isSignalHighlighted(id) {
-    return isSignalSelected(id) || isElementHovered("signal", id);
+    return isSignalSelected(id) || isElementHovered("signal", id) || Boolean(routeEquipmentHighlightColor("signal", id));
 }
 
 function isLineSelected(id) {
@@ -4359,15 +4372,15 @@ function mapRouteNodesByIds(nodeIds) {
         .filter((node) => node != null);
 }
 
-function isRouteCurveHighlighted(curve) {
+function isRouteCurveHighlighted(curve, route) {
     const firstLinkID = String(curve?.tangentLinkID1 ?? "");
     const secondLinkID = String(curve?.tangentLinkID2 ?? "");
     if (!firstLinkID || !secondLinkID) return false;
 
     const nodeID = String(curve?.nodeID ?? "");
-    if (nodeID && !highlightedRouteNodeIdSet.value.has(nodeID)) return false;
+    if (nodeID && !route.nodeIdSet.has(nodeID)) return false;
 
-    return highlightedRouteTransitionKeySet.value.has(buildRouteTransitionKey(firstLinkID, secondLinkID));
+    return route.transitionKeySet.has(buildRouteTransitionKey(firstLinkID, secondLinkID));
 }
 
 function isInsulationJointSelected(id) {
@@ -4375,7 +4388,7 @@ function isInsulationJointSelected(id) {
 }
 
 function isInsulationJointHighlighted(id) {
-    return isInsulationJointSelected(id) || isElementHovered("insulationJoint", id);
+    return isInsulationJointSelected(id) || isElementHovered("insulationJoint", id) || Boolean(routeEquipmentHighlightColor("insulationJoint", id));
 }
 
 function isBufferStopSelected(id) {
@@ -4583,11 +4596,12 @@ function bufferStopShapeTransform(bufferStop) {
     return `translate(0,${bufferStopAssetY(bufferStop)})`;
 }
 
-function bufferStopLineStyle() {
+function bufferStopLineStyle(bufferStop) {
     const style = editorDisplayStyles.value.track;
+    const routeColor = bufferStop && routeEquipmentHighlightColor("bufferStop", bufferStop.id);
     return {
         fill: "none",
-        stroke: style.color,
+        stroke: routeColor ? elementHighlightColor("bufferStop", bufferStop.id) : style.color,
         strokeWidth: style.strokeWidth,
     };
 }
@@ -5188,21 +5202,24 @@ defineExpose({
         </g>
 
         <g v-if="highlightedRouteLayerVisible" id="route-highlight-layer" class="route-highlight-layer">
-            <line v-for="segment in highlightedRouteSegments" :key="`route-line-${segment.id}`"
-                class="route-highlight-line" :x1="screenX(segment.x1)" :y1="screenY(segment.y1)"
-                :x2="screenX(segment.x2)" :y2="screenY(segment.y2)" :style="routeHighlightStyle" />
-            <path v-for="curve in highlightedRouteCurves" :key="`route-curve-${curve.id}`"
-                class="route-highlight-curve" :d="curvePath(curve)" :style="routeHighlightStyle" />
-            <circle v-for="node in highlightedRouteNodes" :key="`route-node-${node.id}`"
-                class="route-highlight-node" :cx="screenX(node.x)" :cy="screenY(node.y)"
-                :r="routeHighlightNodeRadius" :style="routeHighlightNodeStyle" />
-            <polygon v-if="highlightedRouteArrowView" class="route-highlight-arrow"
-                :points="highlightedRouteArrowView.points" :style="routeHighlightArrowStyle" />
+            <g v-for="route in highlightedRouteViews" :key="route.key" :data-route-key="route.key">
+                <line v-for="segment in route.segments" :key="`route-line-${segment.id}`"
+                    class="route-highlight-line" :x1="screenX(segment.x1)" :y1="screenY(segment.y1)"
+                    :x2="screenX(segment.x2)" :y2="screenY(segment.y2)" :style="route.strokeStyle" />
+                <path v-for="curve in route.curves" :key="`route-curve-${curve.id}`"
+                    class="route-highlight-curve" :d="curvePath(curve)" :style="route.strokeStyle" />
+                <circle v-for="node in route.nodes" :key="`route-node-${node.id}`"
+                    class="route-highlight-node" :cx="screenX(node.x)" :cy="screenY(node.y)"
+                    :r="routeHighlightNodeRadius" :style="route.nodeStyle" />
+                <polygon v-if="route.arrowView" class="route-highlight-arrow"
+                    :points="route.arrowView.points" :style="route.arrowStyle" />
+            </g>
         </g>
 
         <g v-if="props.showCellNames && cellNameViews.length > 0" id="cell-name-layer" class="cell-name-layer">
             <text v-for="cellName in cellNameViews" :key="`cell-name-${cellName.key}`" class="cell-name"
                 :class="{ 'cell-name-hovered': isElementHovered('cellName', cellName.key) }"
+                :style="textDisplayStyle('cellName', isElementHovered('cellName', cellName.key), hoverHighlightColor)"
                 :x="screenX(cellName.x)" :y="screenY(cellName.y)"
                 @mouseenter="setHoveredElement('cellName', cellName.key)"
                 @mouseleave="clearHoveredElement('cellName', cellName.key)"
@@ -5266,7 +5283,7 @@ defineExpose({
                 @mouseenter="setHoveredElement('bufferStop', bufferStop.id)"
                 @mouseleave="clearHoveredElement('bufferStop', bufferStop.id)"
                 @mousedown="handleBufferStopClick($event, bufferStop.id)">
-                <g class="bufferstop-shape" :style="bufferStopLineStyle()"
+                <g class="bufferstop-shape" :style="bufferStopLineStyle(bufferStop)"
                     :transform="bufferStopShapeTransform(bufferStop)">
                     <component :is="element.tag" v-for="(element, index) in bufferStopStyleElements(bufferStop)"
                         :key="`buffer-stop-element-${bufferStop.id}-${index}`" v-bind="element.attrs" />

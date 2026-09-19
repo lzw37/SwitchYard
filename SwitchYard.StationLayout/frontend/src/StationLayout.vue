@@ -4,8 +4,8 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import {
     DEFAULT_BUFFER_STOP_DIRECTION,
     DEFAULT_BUFFER_STOP_TYPE,
-    bufferStopDirectionOptions,
-    bufferStopTypeOptions,
+    bufferStopDirectionOptions as baseBufferStopDirectionOptions,
+    bufferStopTypeOptions as baseBufferStopTypeOptions,
 } from "./assets/stationLayoutBufferStopStyles";
 import { DEFAULT_SIGNAL_TYPE, signalTypeMenuOptions } from "./assets/stationLayoutSignalStyles";
 import StationLayoutEditor from "./components/StationLayoutEditor.vue";
@@ -255,6 +255,23 @@ const highlightedEditorLinkIds = computed(() => {
     }
     return [...ids];
 });
+const bufferStopDirectionOptions = computed(() => baseBufferStopDirectionOptions.map(option => ({
+    ...option,
+    label: t(`stationLayout.bufferStop.directions.${option.value}`),
+})));
+const bufferStopTypeOptions = computed(() => baseBufferStopTypeOptions.map(option => ({
+    ...option,
+    label: t(`stationLayout.bufferStop.types.${option.value}`),
+})));
+function signalOptionLabel(option) {
+    const match = String(option.value || '').match(/^(DepartureSignal|HomeSignal|ShuntingSignal|HumpSignal)(?:(\d+)Aspect)?(High|Low)?$/);
+    if (!match) return option.label;
+    return [
+        t(`stationLayout.signal.types.${match[1]}`),
+        match[2] ? t('stationLayout.signal.aspects', { count: match[2] }) : '',
+        match[3] ? t(`stationLayout.signal.poles.${match[3]}`) : '',
+    ].filter(Boolean).join(' ');
+}
 const selectedDrawingBufferStopDirection = ref(DEFAULT_BUFFER_STOP_DIRECTION);
 const selectedDrawingBufferStopType = ref(DEFAULT_BUFFER_STOP_TYPE);
 const selectedDrawingSignalType = ref(DEFAULT_SIGNAL_TYPE);
@@ -266,11 +283,11 @@ const drawingSignalMenuGroups = computed(() => signalTypeMenuOptions.map((option
         : [{ label: option.label, value: option.value }];
 
     return {
-        label: option.label,
+        label: signalOptionLabel(option),
         value: option.value,
         showLabel: children.length > 1,
         options: children.map((child) => ({
-            label: child.label,
+            label: signalOptionLabel(child),
             value: child.value,
         })),
     };
@@ -281,16 +298,16 @@ const selectedDrawingSignalTypeLabel = computed(() => {
         const option = group.options.find((item) => item.value === selectedValue);
         if (option) return option.label;
     }
-    return selectedValue || t("stationLayout.draw.signal");
+    return signalOptionLabel({ value: selectedValue, label: selectedValue || t("stationLayout.draw.signal") });
 });
 const selectedDrawingBufferStopTypeLabel = computed(() =>
-    getOptionLabel(bufferStopTypeOptions, selectedDrawingBufferStopType.value, t("stationLayout.draw.buffer"))
+    getOptionLabel(bufferStopTypeOptions.value, selectedDrawingBufferStopType.value, t("stationLayout.draw.buffer"))
 );
 const selectedDrawingBufferStopDirectionLabel = computed(() =>
-    getOptionLabel(bufferStopDirectionOptions, selectedDrawingBufferStopDirection.value, "")
+    getOptionLabel(bufferStopDirectionOptions.value, selectedDrawingBufferStopDirection.value, "")
 );
 const drawingSignalButtonLabel = computed(() =>
-    `${t("stationLayout.draw.signal")} ${selectedDrawingSignalTypeLabel.value}`
+    selectedDrawingSignalTypeLabel.value
 );
 const drawingBufferStopButtonLabel = computed(() =>
     `${t("stationLayout.draw.buffer")} ${selectedDrawingBufferStopTypeLabel.value}/${selectedDrawingBufferStopDirectionLabel.value}`
@@ -319,12 +336,14 @@ const layoutTextStyleRows = [
     { key: "platformName", label: "站台名称" },
     { key: "signalName", label: "信号机名称" },
     { key: "lineName", label: "线路名称" },
+    { key: "cellName", label: "轨道电路名称" },
 ];
 const defaultLayoutDisplayStyles = {
     switchName: { fontSize: 8, fontFamily: "Arial", fontWeight: "normal", fontStyle: "normal", color: "#ffffff" },
     platformName: { fontSize: 10, fontFamily: "Arial", fontWeight: "normal", fontStyle: "normal", color: "#ffffff" },
     signalName: { fontSize: 8, fontFamily: "Arial", fontWeight: "normal", fontStyle: "normal", color: "#ffffff" },
     lineName: { fontSize: 10, fontFamily: "Arial", fontWeight: "normal", fontStyle: "normal", color: "#ffffff" },
+    cellName: { fontSize: 13, fontFamily: "Arial", fontWeight: "bold", fontStyle: "normal", color: "#ffd600" },
     track: { strokeWidth: 2, color: "#fefded" },
     curve: { strokeWidth: 4, color: "#ffb347" },
     platform: { strokeWidth: 1, color: "#87ceeb" },
@@ -350,19 +369,19 @@ const linkArrowTypeOptions = [
     { label: "机车出入段（左出右入）", value: "LORI" },
     { label: "超限货物列车进路", value: "OF" },
 ];
-const equipmentKindLabels = {
-    link: "Link",
-    signal: "信号机",
-    switch: "道岔",
-    platform: "站台",
-    insulationJoint: "钢轨绝缘",
-    bufferStop: "车挡",
-};
+const equipmentKindLabels = computed(() => ({
+    link: t('stationLayout.draw.line'),
+    signal: t('stationLayout.draw.signal'),
+    switch: t('stationLayout.draw.switch'),
+    platform: t('stationLayout.draw.platform'),
+    insulationJoint: t('stationLayout.draw.insulation'),
+    bufferStop: t('stationLayout.draw.buffer'),
+}));
 const equipmentDrawerTitle = computed(() => {
-    if (!selectedEquipment.value) return "设备信息";
-    const label = equipmentKindLabels[selectedEquipment.value.kind] || "设备";
+    if (!selectedEquipment.value) return t('stationLayout.panels.equipment');
+    const label = equipmentKindLabels.value[selectedEquipment.value.kind] || t('stationLayout.equipment.generic');
     if (isEquipmentBatchMode.value) {
-        return `${label} 批处理（${selectedEquipment.value.count || 0} 个）`;
+        return t('stationLayout.equipment.batch', { type: label, count: selectedEquipment.value.count || 0 });
     }
     return `${label} ${selectedEquipment.value.id || ""}`;
 });
@@ -2550,9 +2569,9 @@ watch(
                     <template #dropdown>
                         <el-dropdown-menu>
                             <el-dropdown-item command="load">{{ t('stationLayout.menu.loadData') }}</el-dropdown-item>
-                            <el-dropdown-item command="importJson" :disabled="props.readonly">导入 JSON</el-dropdown-item>
-                            <el-dropdown-item command="exportJson">导出 JSON</el-dropdown-item>
-                            <el-dropdown-item command="extractDwg" :disabled="props.readonly">提取 DWG</el-dropdown-item>
+                            <el-dropdown-item command="importJson" :disabled="props.readonly">{{ t('stationLayout.menu.importJson') }}</el-dropdown-item>
+                            <el-dropdown-item command="exportJson">{{ t('stationLayout.menu.exportJson') }}</el-dropdown-item>
+                            <el-dropdown-item command="extractDwg" :disabled="props.readonly">{{ t('stationLayout.menu.extractDwg') }}</el-dropdown-item>
                         </el-dropdown-menu>
                     </template>
                 </el-dropdown>
@@ -2622,7 +2641,7 @@ watch(
                     </el-button-group>
                 </div>
                 <div class="station-toolbar-group">
-                    <span class="station-toolbar-group__label">选择</span>
+                    <span class="station-toolbar-group__label">{{ t('stationLayout.group.selection') }}</span>
                     <el-button-group>
                         <el-button size="small" :icon="CircleClose" @click="clearSelection">
                             {{ t('stationLayout.menu.clearSelection') }}
@@ -2634,25 +2653,25 @@ watch(
                     </el-button-group>
                 </div>
                 <div class="station-toolbar-group">
-                    <span class="station-toolbar-group__label">显示</span>
+                    <span class="station-toolbar-group__label">{{ t('stationLayout.group.display') }}</span>
                     <div class="station-toolbar-switch-control">
                         <span class="station-toolbar-switch-control__label">{{ t('stationLayout.menu.showGrid') }}</span>
                         <el-switch v-model="showGrid" size="small" />
                     </div>
                     <div class="station-toolbar-switch-control">
-                        <span class="station-toolbar-switch-control__label">节点</span>
+                        <span class="station-toolbar-switch-control__label">{{ t('stationLayout.draw.node') }}</span>
                         <el-switch v-model="showNodes" size="small" />
                     </div>
                 </div>
                 <div class="station-toolbar-group">
-                    <span class="station-toolbar-group__label">辅助面板</span>
+                    <span class="station-toolbar-group__label">{{ t('stationLayout.group.panels') }}</span>
                     <el-button size="small" :icon="Magnet" :type="cellPanelVisible ? 'primary' : 'default'"
                         :aria-pressed="cellPanelVisible" @click="toggleCellPanel">
-                        轨道电路区段
+                        {{ t('stationLayout.panels.trackCircuits') }}
                     </el-button>
                     <el-button size="small" :icon="SetUp" :type="equipmentDrawerVisible ? 'primary' : 'default'"
                         :aria-pressed="equipmentDrawerVisible" @click="equipmentDrawerVisible = !equipmentDrawerVisible">
-                        设备信息
+                        {{ t('stationLayout.panels.equipment') }}
                     </el-button>
                 </div>
                 <div class="station-toolbar-group scale-toolbar-group">
@@ -2672,18 +2691,18 @@ watch(
 
             <template #advanced>
                 <div class="station-toolbar-group">
-                    <span class="station-toolbar-group__label">文件</span>
+                    <span class="station-toolbar-group__label">{{ t('stationLayout.menu.file') }}</span>
                     <el-button-group>
                         <el-button size="small" :icon="Download" @click="getData">{{ t('stationLayout.menu.loadData') }}</el-button>
                         <el-button size="small" :icon="Upload" :disabled="props.readonly"
-                            @click="openImportJsonFile">导入 JSON</el-button>
-                        <el-button size="small" :icon="Download" @click="exportJsonFile">导出 JSON</el-button>
+                            @click="openImportJsonFile">{{ t('stationLayout.menu.importJson') }}</el-button>
+                        <el-button size="small" :icon="Download" @click="exportJsonFile">{{ t('stationLayout.menu.exportJson') }}</el-button>
                         <el-button size="small" :icon="Download" :disabled="props.readonly"
-                            @click="openExtractDwgDialog">提取 DWG</el-button>
+                            @click="openExtractDwgDialog">{{ t('stationLayout.menu.extractDwg') }}</el-button>
                     </el-button-group>
                 </div>
                 <div class="station-toolbar-group">
-                    <span class="station-toolbar-group__label">捕捉与网格</span>
+                    <span class="station-toolbar-group__label">{{ t('stationLayout.group.snapping') }}</span>
                     <div class="station-toolbar-switch-control">
                         <span class="station-toolbar-switch-control__label">{{ t('stationLayout.menu.gridSnap') }}</span>
                         <el-switch v-model="mouseSnap" size="small" @change="mouseGridSnapChange" />
@@ -2704,10 +2723,10 @@ watch(
                     </div>
                 </div>
                 <div class="station-toolbar-group">
-                    <span class="station-toolbar-group__label">拓扑</span>
+                    <span class="station-toolbar-group__label">{{ t('stationLayout.group.topology') }}</span>
                     <el-radio-group v-model="topologyGenerationMode" size="small" :disabled="props.readonly">
-                        <el-radio-button value="auto">自动</el-radio-button>
-                        <el-radio-button value="manual">手动</el-radio-button>
+                        <el-radio-button value="auto">{{ t('stationLayout.topology.auto') }}</el-radio-button>
+                        <el-radio-button value="manual">{{ t('stationLayout.topology.manual') }}</el-radio-button>
                     </el-radio-group>
                     <el-button-group>
                         <el-button size="small" :icon="Aim" :disabled="props.readonly" @click="showCrossPoint">{{ t('stationLayout.tools.showCrossPoint') }}</el-button>
@@ -2715,19 +2734,19 @@ watch(
                         <el-button size="small" :icon="Connection" :disabled="props.readonly" @click="snapLine">{{ t('stationLayout.tools.snapLine') }}</el-button>
                         <el-button size="small" :icon="Scissor" :disabled="props.readonly" @click="autoSeparateLine">{{ t('stationLayout.tools.separateLine') }}</el-button>
                         <el-button size="small" :icon="Share" :disabled="props.readonly" @click="autoGenerateNode">{{ t('stationLayout.tools.generateNode') }}</el-button>
-                        <el-button size="small" :icon="Share" :disabled="props.readonly" @click="autoMergeNode">节点合并</el-button>
+                        <el-button size="small" :icon="Share" :disabled="props.readonly" @click="autoMergeNode">{{ t('stationLayout.tools.mergeNodes') }}</el-button>
                         <el-button size="small" :icon="SetUp" :disabled="props.readonly" @click="autoGenerateSwitch">{{ t('stationLayout.tools.generateSwitch') }}</el-button>
                         <el-button size="small" :icon="Connection" :disabled="props.readonly" @click="autoGenerateCurve">{{ t('stationLayout.tools.generateCurve') }}</el-button>
                         <el-button size="small" :icon="Connection" :disabled="props.readonly"
-                            @click="openEquipmentBindingCorrectionDialog">修正设备绑定</el-button>
+                            @click="openEquipmentBindingCorrectionDialog">{{ t('stationLayout.tools.correctBindings') }}</el-button>
                     </el-button-group>
                 </div>
                 <div class="station-toolbar-group">
-                    <span class="station-toolbar-group__label">路径测试</span>
-                    <el-button size="small" :icon="Guide" :type="routeTesterVisible ? 'primary' : 'default'" @click="toggleRouteTester">路径搜索</el-button>
+                    <span class="station-toolbar-group__label">{{ t('stationLayout.group.pathTest') }}</span>
+                    <el-button size="small" :icon="Guide" :type="routeTesterVisible ? 'primary' : 'default'" @click="toggleRouteTester">{{ t('stationLayout.tools.searchPath') }}</el-button>
                 </div>
                 <div class="station-toolbar-group">
-                    <span class="station-toolbar-group__label">显示</span>
+                    <span class="station-toolbar-group__label">{{ t('stationLayout.group.display') }}</span>
                     <div class="station-toolbar-switch-control">
                         <span class="station-toolbar-switch-control__label">{{ t('stationLayout.group.curveDisplay') }}</span>
                         <el-switch v-model="showCurveArc" size="small" />
@@ -2736,10 +2755,10 @@ watch(
                         </span>
                     </div>
                     <div class="station-toolbar-switch-control">
-                        <span class="station-toolbar-switch-control__label">Cell Name</span>
+                        <span class="station-toolbar-switch-control__label">{{ t('stationLayout.menu.showCellNames') }}</span>
                         <el-switch v-model="showCellNames" size="small" />
                     </div>
-                    <el-button size="small" :icon="SetUp" @click="layoutStyleDialogVisible = true">显示样式</el-button>
+                    <el-button size="small" :icon="SetUp" @click="layoutStyleDialogVisible = true">{{ t('stationLayout.tools.displayStyle') }}</el-button>
                 </div>
             </template>
         </StationLayoutEditToolbar>
@@ -2817,8 +2836,8 @@ watch(
                 <el-table ref="bindingCorrectionTableRef" :data="bindingCorrectionRows" row-key="key" size="small"
                     height="360" @selection-change="handleBindingCorrectionSelectionChange">
                     <el-table-column type="selection" width="48" />
-                    <el-table-column prop="kindLabel" label="设备类型" width="110" />
-                    <el-table-column label="设备" min-width="160" show-overflow-tooltip>
+                    <el-table-column prop="kindLabel" :label="t('stationLayout.equipment.type')" width="110" />
+                    <el-table-column :label="t('stationLayout.equipment.generic')" min-width="160" show-overflow-tooltip>
                         <template #default="{ row }">
                             <span>{{ row.equipmentName || row.equipmentId }}</span>
                         </template>
@@ -2938,7 +2957,7 @@ watch(
                             </div>
                         </section>
                         <section class="layout-style-section">
-                            <h4>节点</h4>
+                            <h4>{{ t('stationLayout.draw.node') }}</h4>
                             <div class="layout-style-field">
                                 <span>大小</span>
                                 <el-input-number v-model="layoutDisplayStyles.node.radius" size="small" :min="1"
@@ -2958,7 +2977,7 @@ watch(
                     @click="ensureWritable() && resetLayoutDisplayStyles()">恢复默认</el-button>
                 <el-button type="primary" :loading="savingData" :disabled="props.readonly"
                     @click="saveLayoutDisplayStyles">保存</el-button>
-                <el-button @click="layoutStyleDialogVisible = false">关闭</el-button>
+                <el-button @click="layoutStyleDialogVisible = false">{{ t('stationLayout.schemeManager.close') }}</el-button>
             </template>
         </el-dialog>
 
@@ -3030,7 +3049,7 @@ watch(
                         <div class="cell-side-panel-title">轨道电路区段（Cell）</div>
                         <div class="cell-side-panel-subtitle">{{ currentStationSchemeId || "当前方案" }}</div>
                     </div>
-                    <el-button text size="small" @click="toggleCellPanel">关闭</el-button>
+                    <el-button text size="small" @click="toggleCellPanel">{{ t('stationLayout.schemeManager.close') }}</el-button>
                 </div>
                 <div class="cell-side-panel-body">
                     <section class="cell-panel-section">
@@ -3137,15 +3156,15 @@ watch(
                 <div class="equipment-side-panel-header">
                     <div>
                         <div class="equipment-side-panel-title">{{ equipmentDrawerTitle }}</div>
-                        <div class="equipment-side-panel-subtitle">设备信息</div>
+                        <div class="equipment-side-panel-subtitle">{{ t('stationLayout.panels.equipment') }}</div>
                     </div>
-                    <el-button text size="small" @click="equipmentDrawerVisible = false">关闭</el-button>
+                    <el-button text size="small" @click="equipmentDrawerVisible = false">{{ t('stationLayout.schemeManager.close') }}</el-button>
                 </div>
                 <div class="equipment-side-panel-body">
                     <el-form v-if="selectedEquipment" label-position="top" class="equipment-form"
                         :disabled="props.readonly">
-                        <el-form-item label="设备类型">
-                            <el-tag type="info">{{ equipmentKindLabels[equipmentForm.kind] || "设备" }}</el-tag>
+                        <el-form-item :label="t('stationLayout.equipment.type')">
+                            <el-tag type="info">{{ equipmentKindLabels[equipmentForm.kind] || t('stationLayout.equipment.generic') }}</el-tag>
                         </el-form-item>
                         <el-form-item label="ID">
                             <el-input v-model="equipmentForm.id" :disabled="isEquipmentBatchMode" />
@@ -3243,10 +3262,10 @@ watch(
                             <el-input v-model="equipmentForm.branchVectorListText" type="textarea" :rows="8" />
                         </el-form-item>
                     </el-form>
-                    <el-empty v-else class="equipment-empty" description="请选择单个设备" />
+                    <el-empty v-else class="equipment-empty" :description="t('stationLayout.equipment.selectOne')" />
                 </div>
                 <div class="equipment-side-panel-footer">
-                    <el-button @click="equipmentDrawerVisible = false">关闭</el-button>
+                    <el-button @click="equipmentDrawerVisible = false">{{ t('stationLayout.schemeManager.close') }}</el-button>
                     <el-button type="primary" :disabled="props.readonly || !selectedEquipment"
                         :loading="equipmentSaving || savingData"
                         @click="saveEquipmentForm">
@@ -3260,7 +3279,7 @@ watch(
                         <div class="route-search-panel-title">路径搜索测试</div>
                         <div class="route-search-panel-subtitle">{{ currentStationSchemeId || "当前方案" }}</div>
                     </div>
-                    <el-button text size="small" @click="toggleRouteTester">关闭</el-button>
+                    <el-button text size="small" @click="toggleRouteTester">{{ t('stationLayout.schemeManager.close') }}</el-button>
                 </div>
                 <div class="route-search-panel-body">
                     <div class="route-search-form">

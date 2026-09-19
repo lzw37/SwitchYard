@@ -33,40 +33,35 @@
                 </div>
             </template>
             <template #primary>
-                <el-button-group class="route-design-panel-toggle">
-                    <el-button
-                        size="small"
+                <div class="route-design-panel-toggle">
+                    <ActionButton
+                        :label="t('routeDesign.toolbar.stationRoute')"
                         :type="showStationRouteCard ? 'primary' : 'default'"
-                        :aria-pressed="showStationRouteCard"
+                        :active="showStationRouteCard"
                         @click="toggleRouteDataPanel('stationRoute')"
-                    >
-                        {{ t('routeDesign.toolbar.stationRoute') }}
-                    </el-button>
-                    <el-button
-                        size="small"
+                        :icon="Guide"
+                    />
+                    <ActionButton
+                        :label="t('routeDesign.toolbar.routeEnd')"
                         :type="showRouteEndCard ? 'primary' : 'default'"
-                        :aria-pressed="showRouteEndCard"
+                        :active="showRouteEndCard"
                         @click="toggleRouteDataPanel('routeEnd')"
-                    >
-                        {{ t('routeDesign.toolbar.routeEnd') }}
-                    </el-button>
-                </el-button-group>
-                <el-button
+                        :icon="Location"
+                    />
+                </div>
+                <ActionButton
+                    :label="t('routeDesign.toolbar.generateInterruptCells')"
                     :icon="MagicStick"
-                    size="small"
                     :loading="generatingInterruptCells"
                     :disabled="!canGenerateInterruptCells"
                     @click="generateStationRouteInterruptCells"
-                >
-                    {{ t('routeDesign.toolbar.generateInterruptCells') }}
-                </el-button>
+                />
             </template>
         </StationLayoutViewToolbar>
 
         <div
             ref="splitContainerRef"
             class="route-design-body"
-            :class="{ 'is-resizing': isResizing }"
         >
             <div class="route-design-editor-pane" :style="leftPaneStyle">
                 <div ref="layoutViewportRef" class="route-design-editor-scroll">
@@ -101,7 +96,11 @@
                             <h3>{{ t('routeDesign.stationRoute.searchDialog.title') }}</h3>
                             <span>{{ routeSearchDialogSubtitle }}</span>
                         </div>
-                        <el-button :icon="Close" circle size="small" @click="closeRouteSearchDialog" />
+                        <ActionButton
+                            :label="t('common.actions.close')"
+                            :icon="Close"
+                            @click="closeRouteSearchDialog"
+                        />
                     </header>
                     <el-table
                         :data="routeSearchCandidates"
@@ -164,27 +163,29 @@
                         </el-table-column>
                     </el-table>
                     <footer class="route-search-result-actions">
-                        <el-button size="small" @click="closeRouteSearchDialog">
-                            {{ t('routeDesign.stationRoute.actions.cancel') }}
-                        </el-button>
-                        <el-button
+                        <ActionButton
+                            :label="t('routeDesign.stationRoute.actions.cancel')"
+                            @click="closeRouteSearchDialog"
+                            :icon="Close"
+                        />
+                        <ActionButton
+                            :label="t('routeDesign.stationRoute.searchDialog.useRoute')"
                             type="primary"
-                            size="small"
                             :disabled="!selectedRouteCandidate"
                             @click="applySelectedRouteCandidate"
-                        >
-                            {{ t('routeDesign.stationRoute.searchDialog.useRoute') }}
-                        </el-button>
+                            :icon="Check"
+                        />
                     </footer>
                 </section>
             </div>
-            <div
-                v-if="isRouteDataPaneVisible"
-                class="route-design-resizer"
-                role="separator"
-                aria-orientation="vertical"
-                @mousedown="startResize"
-                @dblclick="resetSplit"
+            <PaneDivider
+                v-if="isRouteDataPaneVisible && leftPaneWidth > 0"
+                :model-value="leftPaneWidth"
+                :min="getPaneLimits(splitContainerWidth).minLeft"
+                :max="clampLeftPaneWidth(splitContainerWidth)"
+                :reset-value="clampLeftPaneWidth(splitContainerWidth * 0.64)"
+                :label="t('common.resize.horizontal')"
+                @update:model-value="leftPaneWidth = clampLeftPaneWidth($event)"
             />
             <aside
                 v-if="isRouteDataPaneVisible"
@@ -199,65 +200,49 @@
                 >
                     <header class="station-route-card-header">
                         <div class="station-route-title-group">
-                            <h2>{{ t('routeDesign.stationRoute.title') }}</h2>
-                            <span class="station-route-subtitle">
-                                {{ stationRouteHeaderText }}
-                            </span>
+                            <h2 :title="stationRouteHeaderText">{{ t('routeDesign.stationRoute.title') }}</h2>
                         </div>
                         <div class="station-route-card-actions">
-                            <el-tooltip :content="t('routeDesign.stationRoute.actions.autoGenerate')" placement="top">
-                                <el-button
-                                    :icon="MagicStick"
-                                    size="small"
-                                    :type="showAutoRouteGenerateCard ? 'primary' : 'default'"
-                                    :disabled="!canEditRoutes"
-                                    @click="toggleAutoRouteGenerateCard"
-                                >{{ t('routeDesign.autoRoute.actions.generate') }}</el-button>
-                            </el-tooltip>
-                            <el-tooltip :content="t('routeDesign.stationRoute.actions.refresh')" placement="top">
-                                <el-button
-                                    :icon="Refresh"
-                                    circle
-                                    size="small"
-                                    :aria-label="t('routeDesign.stationRoute.actions.refresh')"
-                                    :disabled="!canLoadRoutes"
-                                    @click="loadStationRoutes"
-                                />
-                            </el-tooltip>
-                            <el-tooltip :content="t('routeDesign.stationRoute.actions.add')" placement="top">
-                                <el-button
-                                    :icon="Plus"
-                                    size="small"
-                                    type="primary"
-                                    :disabled="!canEditRoutes"
-                                    @click="startCreateStationRoute"
-                                >{{ t('routeDesign.stationRoute.actions.add') }}</el-button>
-                            </el-tooltip>
+                            <ActionButton
+                                :label="t('routeDesign.autoRoute.actions.generate')"
+                                :icon="MagicStick"
+                                :type="showAutoRouteGenerateCard ? 'primary' : 'default'"
+                                :active="showAutoRouteGenerateCard"
+                                :disabled="!canEditRoutes"
+                                @click="toggleAutoRouteGenerateCard"
+                            />
+                            <ActionButton
+                                :label="t('routeDesign.stationRoute.actions.refresh')"
+                                :icon="Refresh"
+                                :disabled="!canLoadRoutes"
+                                @click="loadStationRoutes"
+                            />
+                            <ActionButton
+                                :label="t('routeDesign.stationRoute.actions.add')"
+                                :icon="Plus"
+                                type="primary"
+                                :disabled="!canEditRoutes"
+                                @click="startCreateStationRoute"
+                            />
                         </div>
                     </header>
 
                     <div
                         ref="stationRouteContentRef"
                         class="station-route-content"
-                        :class="{ 'is-stack-resizing': isStationRouteStackResizing }"
                         :style="stationRouteContentStyle"
                     >
                         <div class="station-route-list-panel">
                             <div class="station-route-list-toolbar">
                                 <span class="station-route-list-summary">{{ stationRouteListSummary }}</span>
                                 <div class="station-route-list-actions">
-                                    <el-tooltip :content="t('routeDesign.stationRoute.actions.batchDelete')" placement="top">
-                                        <el-button
-                                            :icon="Delete"
-                                            circle
-                                            size="small"
-                                            :aria-label="t('routeDesign.stationRoute.actions.batchDelete')"
-                                            type="danger"
-                                            plain
-                                            :disabled="!canBatchDeleteRoutes"
-                                            @click="deleteSelectedStationRoutes"
-                                        />
-                                    </el-tooltip>
+                                    <ActionButton
+                                        :label="t('routeDesign.stationRoute.actions.batchDelete')"
+                                        :icon="Delete"
+                                        type="danger"
+                                        :disabled="!canBatchDeleteRoutes"
+                                        @click="deleteSelectedStationRoutes"
+                                    />
                                     <el-popover
                                         placement="bottom-start"
                                         trigger="click"
@@ -265,13 +250,11 @@
                                         popper-class="station-route-filter-popover"
                                     >
                                         <template #reference>
-                                            <el-button
+                                            <ActionButton
+                                                :label="t('routeDesign.stationRoute.actions.filter')"
                                                 :icon="Filter"
-                                                circle
-                                                size="small"
                                                 :type="routeFiltersActive ? 'primary' : 'default'"
-                                                :title="t('routeDesign.stationRoute.actions.filter')"
-                                                :aria-label="t('routeDesign.stationRoute.actions.filter')"
+                                                :active="routeFiltersActive"
                                             />
                                         </template>
                                         <div class="station-route-filter-panel">
@@ -325,15 +308,13 @@
                                                     </div>
                                                 </el-option>
                                             </el-select>
-                                            <el-button
+                                            <ActionButton
+                                                :label="t('routeDesign.stationRoute.actions.clearFilters')"
                                                 :icon="Close"
-                                                size="small"
                                                 class="station-route-filter-clear"
                                                 :disabled="!routeFiltersActive"
                                                 @click="clearRouteFilters"
-                                            >
-                                                {{ t('routeDesign.stationRoute.actions.clearFilters') }}
-                                            </el-button>
+                                            />
                                         </div>
                                     </el-popover>
                                 </div>
@@ -366,10 +347,10 @@
                                     <el-table-column :label="t('routeDesign.sidebar.endpoints')" width="110">
                                         <template #default="{ row }">
                                             <div class="route-list-endpoint" :title="getRouteEndpointDisplay(row.startNodeID)">
-                                                <span class="route-endpoint-dot" />{{ getRouteEndpointDisplay(row.startNodeID) }}
+                                                {{ getRouteEndpointDisplay(row.startNodeID) }}
                                             </div>
                                             <div class="route-list-endpoint" :title="getRouteEndpointDisplay(row.endNodeID)">
-                                                <span class="route-endpoint-dot is-destination" />{{ getRouteEndpointDisplay(row.endNodeID) }}
+                                                {{ getRouteEndpointDisplay(row.endNodeID) }}
                                             </div>
                                         </template>
                                     </el-table-column>
@@ -377,12 +358,16 @@
                             </div>
                         </div>
 
-                        <div
-                            class="station-route-stack-resizer"
-                            role="separator"
-                            aria-orientation="horizontal"
-                            @mousedown="startStationRouteStackResize"
-                            @dblclick="resetStationRouteStackResize"
+                        <PaneDivider
+                            class="station-route-divider"
+                            direction="vertical"
+                            :model-value="clampStationRouteStackListHeight(stationRouteStackListHeight || stationRouteContentHeight * 0.34)"
+                            :min="120"
+                            :max="Math.max(120, stationRouteContentHeight - 188)"
+                            :reset-value="stationRouteContentHeight * 0.34"
+                            :label="t('common.resize.vertical')"
+                            @update:model-value="stationRouteStackListHeight = clampStationRouteStackListHeight($event)"
+                            @reset="stationRouteStackListHeight = 0"
                         />
 
                         <div class="station-route-form-panel">
@@ -433,15 +418,13 @@
                                                     :autosize="{ minRows: 2, maxRows: 4 }"
                                                     :disabled="!canEditRoutes || savingRoute || generatingRouteDescription"
                                                 />
-                                                <el-tooltip :content="t('routeDesign.stationRoute.actions.generateDescription')" placement="top">
-                                                    <el-button
-                                                        :icon="MagicStick"
-                                                        :aria-label="t('routeDesign.stationRoute.actions.generateDescription')"
-                                                        :loading="generatingRouteDescription"
-                                                        :disabled="!canEditRoutes || savingRoute"
-                                                        @click="generateStationRouteDescription"
-                                                    />
-                                                </el-tooltip>
+                                                <ActionButton
+                                                    :label="t('routeDesign.stationRoute.actions.generateDescription')"
+                                                    :icon="MagicStick"
+                                                    :loading="generatingRouteDescription"
+                                                    :disabled="!canEditRoutes || savingRoute"
+                                                    @click="generateStationRouteDescription"
+                                                />
                                             </div>
                                         </el-form-item>
                                     </div>
@@ -455,15 +438,14 @@
                                                     v-model="routeForm.startNodeID"
                                                     disabled
                                                 />
-                                                <el-tooltip :content="t('routeDesign.stationRoute.actions.pickStart')" placement="top">
-                                                    <el-button
-                                                        :icon="Aim"
-                                                        :aria-label="t('routeDesign.stationRoute.actions.pickStart')"
-                                                        :type="routeNodePickStage === 'start' ? 'primary' : 'default'"
-                                                        :disabled="!canEditRoutes || savingRoute"
-                                                        @click="startStationRouteNodePick('start')"
-                                                    />
-                                                </el-tooltip>
+                                                <ActionButton
+                                                    :label="t('routeDesign.stationRoute.actions.pickStart')"
+                                                    :icon="Aim"
+                                                    :type="routeNodePickStage === 'start' ? 'primary' : 'default'"
+                                                    :active="routeNodePickStage === 'start'"
+                                                    :disabled="!canEditRoutes || savingRoute"
+                                                    @click="startStationRouteNodePick('start')"
+                                                />
                                             </div>
                                         </el-form-item>
                                         <el-form-item :label="t('routeDesign.stationRoute.fields.endNodeID')" required>
@@ -472,15 +454,14 @@
                                                     v-model="routeForm.endNodeID"
                                                     disabled
                                                 />
-                                                <el-tooltip :content="t('routeDesign.stationRoute.actions.pickEnd')" placement="top">
-                                                    <el-button
-                                                        :icon="Aim"
-                                                        :aria-label="t('routeDesign.stationRoute.actions.pickEnd')"
-                                                        :type="routeNodePickStage === 'end' ? 'primary' : 'default'"
-                                                        :disabled="!canEditRoutes || savingRoute"
-                                                        @click="startStationRouteNodePick('end')"
-                                                    />
-                                                </el-tooltip>
+                                                <ActionButton
+                                                    :label="t('routeDesign.stationRoute.actions.pickEnd')"
+                                                    :icon="Aim"
+                                                    :type="routeNodePickStage === 'end' ? 'primary' : 'default'"
+                                                    :active="routeNodePickStage === 'end'"
+                                                    :disabled="!canEditRoutes || savingRoute"
+                                                    @click="startStationRouteNodePick('end')"
+                                                />
                                             </div>
                                         </el-form-item>
                                     </div>
@@ -538,33 +519,27 @@
                             </el-form>
 
                             <div class="station-route-form-actions">
-                                <el-button class="route-action-delete"
+                                <ActionButton
+                                    :label="t('routeDesign.stationRoute.actions.delete')"
+                                    class="route-action-delete"
                                     :icon="Delete"
                                     type="danger"
-                                    size="small"
-                                    plain
                                     :disabled="!selectedRouteId || savingRoute"
                                     @click="deleteSelectedStationRoute"
-                                >
-                                    {{ t('routeDesign.stationRoute.actions.delete') }}
-                                </el-button>
-                                <el-button
+                                />
+                                <ActionButton
+                                    :label="t('routeDesign.stationRoute.actions.cancel')"
                                     :icon="Close"
-                                    size="small"
                                     :disabled="savingRoute"
                                     @click="cancelStationRouteEdit"
-                                >
-                                    {{ t('routeDesign.stationRoute.actions.cancel') }}
-                                </el-button>
-                                <el-button
+                                />
+                                <ActionButton
+                                    :label="t('routeDesign.stationRoute.actions.save')"
                                     :icon="Check"
                                     type="primary"
-                                    size="small"
                                     :disabled="!canSaveRoute"
                                     @click="saveStationRoute"
-                                >
-                                    {{ t('routeDesign.stationRoute.actions.save') }}
-                                </el-button>
+                                />
                             </div>
                         </div>
                     </div>
@@ -577,17 +552,12 @@
                 >
                     <header class="auto-route-card-header">
                         <div class="auto-route-title-group">
-                            <h2>{{ t('routeDesign.autoRoute.title') }}</h2>
-                            <span class="auto-route-subtitle">
-                                {{ autoRouteGenerateHeaderText }}
-                            </span>
+                            <h2 :title="autoRouteGenerateHeaderText">{{ t('routeDesign.autoRoute.title') }}</h2>
                         </div>
                         <div class="auto-route-card-actions">
-                            <el-button
+                            <ActionButton
+                                :label="t('routeDesign.sidebar.closeAutoGenerate')"
                                 :icon="Close"
-                                circle
-                                size="small"
-                                :aria-label="t('routeDesign.sidebar.closeAutoGenerate')"
                                 :disabled="autoRouteGenerationLoading"
                                 @click="closeAutoRouteGenerateCard"
                             />
@@ -627,15 +597,14 @@
                                             </div>
                                         </el-option>
                                     </el-select>
-                                    <el-tooltip :content="t('routeDesign.autoRoute.actions.pickStart')" placement="top">
-                                        <el-button
-                                            :icon="Aim"
-                                            :type="autoRoutePickStage === 'start' ? 'primary' : 'default'"
-                                            :disabled="!canEditRoutes || autoRouteGenerationLoading"
-                                            :aria-label="t('routeDesign.autoRoute.actions.pickStart')"
-                                            @click="startAutoRouteNodePick('start')"
-                                        />
-                                    </el-tooltip>
+                                    <ActionButton
+                                        :label="t('routeDesign.autoRoute.actions.pickStart')"
+                                        :icon="Aim"
+                                        :type="autoRoutePickStage === 'start' ? 'primary' : 'default'"
+                                        :active="autoRoutePickStage === 'start'"
+                                        :disabled="!canEditRoutes || autoRouteGenerationLoading"
+                                        @click="startAutoRouteNodePick('start')"
+                                    />
                                 </div>
                             </el-form-item>
                             <el-form-item :label="t('routeDesign.autoRoute.fields.endNodes')" required>
@@ -669,15 +638,14 @@
                                             </div>
                                         </el-option>
                                     </el-select>
-                                    <el-tooltip :content="t('routeDesign.autoRoute.actions.pickEnd')" placement="top">
-                                        <el-button
-                                            :icon="Aim"
-                                            :type="autoRoutePickStage === 'end' ? 'primary' : 'default'"
-                                            :disabled="!canEditRoutes || autoRouteGenerationLoading"
-                                            :aria-label="t('routeDesign.autoRoute.actions.pickEnd')"
-                                            @click="startAutoRouteNodePick('end')"
-                                        />
-                                    </el-tooltip>
+                                    <ActionButton
+                                        :label="t('routeDesign.autoRoute.actions.pickEnd')"
+                                        :icon="Aim"
+                                        :type="autoRoutePickStage === 'end' ? 'primary' : 'default'"
+                                        :active="autoRoutePickStage === 'end'"
+                                        :disabled="!canEditRoutes || autoRouteGenerationLoading"
+                                        @click="startAutoRouteNodePick('end')"
+                                    />
                                 </div>
                             </el-form-item>
                         </el-form>
@@ -694,24 +662,20 @@
                         </div>
 
                         <div class="auto-route-form-actions">
-                            <el-button
+                            <ActionButton
+                                :label="t('routeDesign.autoRoute.actions.generate')"
                                 :icon="Check"
                                 type="primary"
-                                size="small"
                                 :disabled="!canAutoGenerateRoutes"
                                 :loading="autoRouteGenerationLoading"
                                 @click="autoGenerateStationRoutes"
-                            >
-                                {{ t('routeDesign.autoRoute.actions.generate') }}
-                            </el-button>
-                            <el-button
+                            />
+                            <ActionButton
+                                :label="t('routeDesign.autoRoute.actions.clear')"
                                 :icon="Close"
-                                size="small"
                                 :disabled="autoRouteGenerationLoading"
                                 @click="clearAutoRouteGenerateForm"
-                            >
-                                {{ t('routeDesign.autoRoute.actions.clear') }}
-                            </el-button>
+                            />
                         </div>
                     </div>
                 </section>
@@ -723,24 +687,16 @@
                 >
                     <header class="route-end-card-header">
                         <div class="route-end-title-group">
-                            <h2>{{ t('routeDesign.routeEnd.title') }}</h2>
-                            <span class="route-end-subtitle">
-                                {{ routeEndHeaderText }}
-                            </span>
+                            <h2 :title="routeEndHeaderText">{{ t('routeDesign.routeEnd.title') }}</h2>
                         </div>
                         <div class="route-end-card-actions">
-                            <el-tooltip :content="t('routeDesign.routeEnd.actions.batchDelete')" placement="top">
-                                <el-button
-                                    :icon="Delete"
-                                    circle
-                                    size="small"
-                                    :aria-label="t('routeDesign.routeEnd.actions.batchDelete')"
-                                    type="danger"
-                                    plain
-                                    :disabled="!canBatchDeleteRouteEnds"
-                                    @click="deleteSelectedRouteEnds"
-                                />
-                            </el-tooltip>
+                            <ActionButton
+                                :label="t('routeDesign.routeEnd.actions.batchDelete')"
+                                :icon="Delete"
+                                type="danger"
+                                :disabled="!canBatchDeleteRouteEnds"
+                                @click="deleteSelectedRouteEnds"
+                            />
                             <el-popover
                                 placement="bottom-end"
                                 trigger="click"
@@ -748,13 +704,11 @@
                                 popper-class="route-end-filter-popover"
                             >
                                 <template #reference>
-                                    <el-button
+                                    <ActionButton
+                                        :label="t('routeDesign.routeEnd.actions.filter')"
                                         :icon="Filter"
-                                        circle
-                                        size="small"
                                         :type="routeEndFiltersActive ? 'primary' : 'default'"
-                                        :title="t('routeDesign.routeEnd.actions.filter')"
-                                        :aria-label="t('routeDesign.routeEnd.actions.filter')"
+                                        :active="routeEndFiltersActive"
                                     />
                                 </template>
                                 <div class="route-end-filter-panel">
@@ -777,53 +731,40 @@
                                             :value="option.id"
                                         />
                                     </el-select>
-                                    <el-button
+                                    <ActionButton
+                                        :label="t('routeDesign.routeEnd.actions.clearFilters')"
                                         :icon="Close"
-                                        size="small"
                                         class="route-end-filter-clear"
                                         :disabled="!routeEndFiltersActive"
                                         @click="clearRouteEndFilters"
-                                    >
-                                        {{ t('routeDesign.routeEnd.actions.clearFilters') }}
-                                    </el-button>
+                                    />
                                 </div>
                             </el-popover>
-                            <el-tooltip :content="t('routeDesign.routeEnd.actions.autoConfigure')" placement="top">
-                                <el-button
-                                    :icon="MagicStick"
-                                    circle
-                                    size="small"
-                                    :aria-label="t('routeDesign.routeEnd.actions.autoConfigure')"
-                                    :disabled="!canEditRouteEnds || loadingRouteEnds || savingRouteEnd"
-                                    @click="autoConfigureRouteEnds"
-                                />
-                            </el-tooltip>
-                            <el-tooltip :content="t('routeDesign.routeEnd.actions.refresh')" placement="top">
-                                <el-button
-                                    :icon="Refresh"
-                                    circle
-                                    size="small"
-                                    :aria-label="t('routeDesign.routeEnd.actions.refresh')"
-                                    :disabled="!canLoadRouteEnds"
-                                    @click="loadRouteEnds"
-                                />
-                            </el-tooltip>
-                            <el-tooltip :content="t('routeDesign.routeEnd.actions.add')" placement="top">
-                                <el-button
-                                    :icon="Plus"
-                                    size="small"
-                                    type="primary"
-                                    :disabled="!canEditRouteEnds"
-                                    @click="startCreateRouteEnd"
-                                >{{ t('routeDesign.routeEnd.actions.add') }}</el-button>
-                            </el-tooltip>
+                            <ActionButton
+                                :label="t('routeDesign.routeEnd.actions.autoConfigure')"
+                                :icon="MagicStick"
+                                :disabled="!canEditRouteEnds || loadingRouteEnds || savingRouteEnd"
+                                @click="autoConfigureRouteEnds"
+                            />
+                            <ActionButton
+                                :label="t('routeDesign.routeEnd.actions.refresh')"
+                                :icon="Refresh"
+                                :disabled="!canLoadRouteEnds"
+                                @click="loadRouteEnds"
+                            />
+                            <ActionButton
+                                :label="t('routeDesign.routeEnd.actions.add')"
+                                :icon="Plus"
+                                type="primary"
+                                :disabled="!canEditRouteEnds"
+                                @click="startCreateRouteEnd"
+                            />
                         </div>
                     </header>
 
                     <div
                         ref="routeEndContentRef"
                         class="route-end-content"
-                        :class="{ 'is-stack-resizing': isRouteEndStackResizing }"
                         :style="routeEndContentStyle"
                     >
                         <div class="route-end-table-wrap">
@@ -855,12 +796,16 @@
                             </el-table>
                         </div>
 
-                        <div
-                            class="route-end-stack-resizer"
-                            role="separator"
-                            aria-orientation="horizontal"
-                            @mousedown="startRouteEndStackResize"
-                            @dblclick="resetRouteEndStackResize"
+                        <PaneDivider
+                            class="route-end-divider"
+                            direction="vertical"
+                            :model-value="clampRouteEndStackListHeight(routeEndStackListHeight || routeEndContentHeight * 0.34)"
+                            :min="120"
+                            :max="Math.max(120, routeEndContentHeight - 188)"
+                            :reset-value="routeEndContentHeight * 0.34"
+                            :label="t('common.resize.vertical')"
+                            @update:model-value="routeEndStackListHeight = clampRouteEndStackListHeight($event)"
+                            @reset="routeEndStackListHeight = 0"
                         />
 
                         <div class="route-end-form-panel">
@@ -891,15 +836,14 @@
                                                     v-model="routeEndForm.bindingNodeID"
                                                     disabled
                                                 />
-                                                <el-tooltip :content="t('routeDesign.routeEnd.actions.pickNode')" placement="top">
-                                                    <el-button
-                                                        :icon="Aim"
-                                                        :aria-label="t('routeDesign.routeEnd.actions.pickNode')"
-                                                        :type="routeEndPickingNode ? 'primary' : 'default'"
-                                                        :disabled="!canEditRouteEnds || savingRouteEnd"
-                                                        @click="startRouteEndNodePick"
-                                                    />
-                                                </el-tooltip>
+                                                <ActionButton
+                                                    :label="t('routeDesign.routeEnd.actions.pickNode')"
+                                                    :icon="Aim"
+                                                    :type="routeEndPickingNode ? 'primary' : 'default'"
+                                                    :active="routeEndPickingNode"
+                                                    :disabled="!canEditRouteEnds || savingRouteEnd"
+                                                    @click="startRouteEndNodePick"
+                                                />
                                             </div>
                                         </el-form-item>
                                         <el-form-item :label="t('routeDesign.routeEnd.fields.type')" class="is-wide">
@@ -941,33 +885,27 @@
                             </el-form>
 
                             <div class="route-end-form-actions">
-                                <el-button class="route-action-delete"
+                                <ActionButton
+                                    :label="t('routeDesign.routeEnd.actions.delete')"
+                                    class="route-action-delete"
                                     :icon="Delete"
                                     type="danger"
-                                    size="small"
-                                    plain
                                     :disabled="!selectedRouteEndId || savingRouteEnd"
                                     @click="deleteSelectedRouteEnd"
-                                >
-                                    {{ t('routeDesign.routeEnd.actions.delete') }}
-                                </el-button>
-                                <el-button
+                                />
+                                <ActionButton
+                                    :label="t('routeDesign.routeEnd.actions.cancel')"
                                     :icon="Close"
-                                    size="small"
                                     :disabled="savingRouteEnd"
                                     @click="cancelRouteEndEdit"
-                                >
-                                    {{ t('routeDesign.routeEnd.actions.cancel') }}
-                                </el-button>
-                                <el-button
+                                />
+                                <ActionButton
+                                    :label="t('routeDesign.routeEnd.actions.save')"
                                     :icon="Check"
                                     type="primary"
-                                    size="small"
                                     :disabled="!canSaveRouteEnd"
                                     @click="saveRouteEnd"
-                                >
-                                    {{ t('routeDesign.routeEnd.actions.save') }}
-                                </el-button>
+                                />
                             </div>
                         </div>
                     </div>
@@ -978,13 +916,16 @@
 </template>
 
 <script setup lang="ts">
+import ActionButton from '@/components/ui/ActionButton.vue'
+import PaneDivider from '@/components/ui/PaneDivider.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Aim, Check, Close, Delete, Filter, MagicStick, Plus, Refresh } from '@element-plus/icons-vue'
+import { Aim, Check, Close, Delete, Filter, Guide, Location, MagicStick, Plus, Refresh } from '@element-plus/icons-vue'
 import axios from '@/utils/axios'
 import StationLayoutEditor from './components/StationLayoutEditor.vue'
 import StationLayoutViewToolbar from './components/StationLayoutViewToolbar.vue'
+import { getStationRouteHighlightColor, routeHighlightColors } from './routeColors'
 
 interface StationSchemeOption {
     id: string
@@ -1145,11 +1086,11 @@ const showLayoutCellNames = ref(false)
 const routeObjectOptions = ref<RouteObjectOptionMap>(createEmptyRouteObjectOptions())
 const routeListFilterQueries = ref<RouteListFilterQueryMap>(createEmptyRouteListFilterQueries())
 const leftPaneWidth = ref(0)
-const isResizing = ref(false)
+const splitContainerWidth = ref(0)
+const stationRouteContentHeight = ref(0)
+const routeEndContentHeight = ref(0)
 const stationRouteStackListHeight = ref(0)
-const isStationRouteStackResizing = ref(false)
 const routeEndStackListHeight = ref(0)
-const isRouteEndStackResizing = ref(false)
 const showStationRouteCard = ref(true)
 const showRouteEndCard = ref(false)
 const showAutoRouteGenerateCard = ref(false)
@@ -1223,12 +1164,6 @@ const routeTypeOptions = [
     'Shunting',
     'Locomotive',
 ]
-const routeHighlightColors = {
-    arrival: '#ef4444',
-    departure: '#2563eb',
-    locomotive: '#16a34a',
-    shunting: '#facc15',
-}
 const routeBadgeStyles: Record<string, { backgroundColor: string; color: string }> = {
     [routeHighlightColors.arrival]: { backgroundColor: '#f5e7e7', color: '#8f4e4e' },
     [routeHighlightColors.departure]: { backgroundColor: '#e8eef7', color: '#49658c' },
@@ -1631,12 +1566,6 @@ let layoutLoadVersion = 0
 let routeLoadVersion = 0
 let routeEndLoadVersion = 0
 let resizeObserver: ResizeObserver | null = null
-let previousBodyCursor = ''
-let previousBodyUserSelect = ''
-let previousStationRouteStackBodyCursor = ''
-let previousStationRouteStackBodyUserSelect = ''
-let previousRouteEndStackBodyCursor = ''
-let previousRouteEndStackBodyUserSelect = ''
 
 function readString(source: any, ...keys: string[]): string {
     if (!source || typeof source !== 'object') return ''
@@ -1659,29 +1588,6 @@ function getStationRouteTypeLabel(type: string): string {
 
     const labelKey = stationRouteTypeLabelKeys[normalizeStationRouteType(routeType)]
     return labelKey ? t(labelKey) : routeType
-}
-
-function getStationRouteHighlightColor(type: string): string {
-    const normalizedType = normalizeStationRouteType(type)
-    if (normalizedType === 'arrival' || normalizedType === '接车' || normalizedType === '接车进路') {
-        return routeHighlightColors.arrival
-    }
-    if (normalizedType === 'departure' || normalizedType === '发车' || normalizedType === '发车进路') {
-        return routeHighlightColors.departure
-    }
-    if (
-        normalizedType === 'locomotive' ||
-        normalizedType === '机车出入段' ||
-        normalizedType === '机车出入段进路' ||
-        normalizedType === '机车走行'
-    ) {
-        return routeHighlightColors.locomotive
-    }
-    if (normalizedType === 'shunting' || normalizedType === '调车' || normalizedType === '调车进路') {
-        return routeHighlightColors.shunting
-    }
-
-    return routeHighlightColors.shunting
 }
 
 function getStationRouteBadgeStyle(type: string) {
@@ -3729,7 +3635,7 @@ function getPaneLimits(containerWidth: number) {
 }
 
 function clampLeftPaneWidth(width: number) {
-    const containerWidth = splitContainerRef.value?.clientWidth || 0
+    const containerWidth = splitContainerWidth.value
     if (containerWidth <= 0) return Math.max(240, width)
 
     const { minLeft, minRight, resizerWidth } = getPaneLimits(containerWidth)
@@ -3740,54 +3646,19 @@ function clampLeftPaneWidth(width: number) {
 function ensureSplitWidth() {
     const containerWidth = splitContainerRef.value?.clientWidth || 0
     if (containerWidth <= 0) return
-
+    splitContainerWidth.value = containerWidth
+    stationRouteContentHeight.value = stationRouteContentRef.value?.clientHeight || 0
+    routeEndContentHeight.value = routeEndContentRef.value?.clientHeight || 0
     const targetWidth = leftPaneWidth.value > 0
         ? leftPaneWidth.value
         : Math.round(containerWidth * 0.64)
     leftPaneWidth.value = clampLeftPaneWidth(targetWidth)
-    if (stationRouteStackListHeight.value > 0) {
+    if (stationRouteStackListHeight.value > 0 && stationRouteContentHeight.value > 0) {
         stationRouteStackListHeight.value = clampStationRouteStackListHeight(stationRouteStackListHeight.value)
     }
-    if (routeEndStackListHeight.value > 0) {
+    if (routeEndStackListHeight.value > 0 && routeEndContentHeight.value > 0) {
         routeEndStackListHeight.value = clampRouteEndStackListHeight(routeEndStackListHeight.value)
     }
-}
-
-function onResizeMouseMove(event: MouseEvent) {
-    if (!isResizing.value) return
-
-    const rect = splitContainerRef.value?.getBoundingClientRect()
-    if (!rect) return
-
-    leftPaneWidth.value = clampLeftPaneWidth(event.clientX - rect.left)
-}
-
-function finishResize() {
-    if (!isResizing.value) return
-
-    isResizing.value = false
-    window.removeEventListener('mousemove', onResizeMouseMove)
-    window.removeEventListener('mouseup', finishResize)
-    document.body.style.cursor = previousBodyCursor
-    document.body.style.userSelect = previousBodyUserSelect
-}
-
-function startResize(event: MouseEvent) {
-    event.preventDefault()
-    isResizing.value = true
-    previousBodyCursor = document.body.style.cursor
-    previousBodyUserSelect = document.body.style.userSelect
-    document.body.style.cursor = 'col-resize'
-    document.body.style.userSelect = 'none'
-    window.addEventListener('mousemove', onResizeMouseMove)
-    window.addEventListener('mouseup', finishResize)
-}
-
-function resetSplit() {
-    const containerWidth = splitContainerRef.value?.clientWidth || 0
-    if (containerWidth <= 0) return
-
-    leftPaneWidth.value = clampLeftPaneWidth(Math.round(containerWidth * 0.64))
 }
 
 function getStationRouteStackLimits(containerHeight: number) {
@@ -3800,46 +3671,12 @@ function getStationRouteStackLimits(containerHeight: number) {
 }
 
 function clampStationRouteStackListHeight(height: number) {
-    const containerHeight = stationRouteContentRef.value?.clientHeight || 0
+    const containerHeight = stationRouteContentHeight.value
     const { minList, minForm, resizerHeight } = getStationRouteStackLimits(containerHeight)
     if (containerHeight <= 0) return Math.max(minList, height)
 
     const maxList = Math.max(minList, containerHeight - minForm - resizerHeight)
-    return Math.min(maxList, Math.max(minList, height))
-}
-
-function onStationRouteStackResizeMouseMove(event: MouseEvent) {
-    if (!isStationRouteStackResizing.value) return
-
-    const rect = stationRouteContentRef.value?.getBoundingClientRect()
-    if (!rect) return
-
-    stationRouteStackListHeight.value = clampStationRouteStackListHeight(event.clientY - rect.top)
-}
-
-function finishStationRouteStackResize() {
-    if (!isStationRouteStackResizing.value) return
-
-    isStationRouteStackResizing.value = false
-    window.removeEventListener('mousemove', onStationRouteStackResizeMouseMove)
-    window.removeEventListener('mouseup', finishStationRouteStackResize)
-    document.body.style.cursor = previousStationRouteStackBodyCursor
-    document.body.style.userSelect = previousStationRouteStackBodyUserSelect
-}
-
-function startStationRouteStackResize(event: MouseEvent) {
-    event.preventDefault()
-    isStationRouteStackResizing.value = true
-    previousStationRouteStackBodyCursor = document.body.style.cursor
-    previousStationRouteStackBodyUserSelect = document.body.style.userSelect
-    document.body.style.cursor = 'row-resize'
-    document.body.style.userSelect = 'none'
-    window.addEventListener('mousemove', onStationRouteStackResizeMouseMove)
-    window.addEventListener('mouseup', finishStationRouteStackResize)
-}
-
-function resetStationRouteStackResize() {
-    stationRouteStackListHeight.value = 0
+    return Math.round(Math.min(maxList, Math.max(minList, height)))
 }
 
 function getRouteEndStackLimits(containerHeight: number) {
@@ -3852,46 +3689,12 @@ function getRouteEndStackLimits(containerHeight: number) {
 }
 
 function clampRouteEndStackListHeight(height: number) {
-    const containerHeight = routeEndContentRef.value?.clientHeight || 0
+    const containerHeight = routeEndContentHeight.value
     const { minList, minForm, resizerHeight } = getRouteEndStackLimits(containerHeight)
     if (containerHeight <= 0) return Math.max(minList, height)
 
     const maxList = Math.max(minList, containerHeight - minForm - resizerHeight)
-    return Math.min(maxList, Math.max(minList, height))
-}
-
-function onRouteEndStackResizeMouseMove(event: MouseEvent) {
-    if (!isRouteEndStackResizing.value) return
-
-    const rect = routeEndContentRef.value?.getBoundingClientRect()
-    if (!rect) return
-
-    routeEndStackListHeight.value = clampRouteEndStackListHeight(event.clientY - rect.top)
-}
-
-function finishRouteEndStackResize() {
-    if (!isRouteEndStackResizing.value) return
-
-    isRouteEndStackResizing.value = false
-    window.removeEventListener('mousemove', onRouteEndStackResizeMouseMove)
-    window.removeEventListener('mouseup', finishRouteEndStackResize)
-    document.body.style.cursor = previousRouteEndStackBodyCursor
-    document.body.style.userSelect = previousRouteEndStackBodyUserSelect
-}
-
-function startRouteEndStackResize(event: MouseEvent) {
-    event.preventDefault()
-    isRouteEndStackResizing.value = true
-    previousRouteEndStackBodyCursor = document.body.style.cursor
-    previousRouteEndStackBodyUserSelect = document.body.style.userSelect
-    document.body.style.cursor = 'row-resize'
-    document.body.style.userSelect = 'none'
-    window.addEventListener('mousemove', onRouteEndStackResizeMouseMove)
-    window.addEventListener('mouseup', finishRouteEndStackResize)
-}
-
-function resetRouteEndStackResize() {
-    routeEndStackListHeight.value = 0
+    return Math.round(Math.min(maxList, Math.max(minList, height)))
 }
 
 watch(() => props.selectedInstanceId, () => {
@@ -3905,7 +3708,6 @@ watch(() => props.selectedInstanceId, () => {
 watch(showStationRouteCard, (visible) => {
     if (visible) return
 
-    finishStationRouteStackResize()
     routeNodePickStage.value = 'none'
     routeSearchDialogVisible.value = false
     showAutoRouteGenerateCard.value = false
@@ -3915,7 +3717,6 @@ watch(showStationRouteCard, (visible) => {
 watch(showRouteEndCard, (visible) => {
     if (visible) return
 
-    finishRouteEndStackResize()
     routeEndPickingNode.value = false
 })
 
@@ -3931,22 +3732,28 @@ onMounted(() => {
         if (typeof ResizeObserver !== 'undefined' && splitContainerRef.value) {
             resizeObserver = new ResizeObserver(() => ensureSplitWidth())
             resizeObserver.observe(splitContainerRef.value)
+            if (stationRouteContentRef.value) resizeObserver.observe(stationRouteContentRef.value)
+            if (routeEndContentRef.value) resizeObserver.observe(routeEndContentRef.value)
         } else {
             window.addEventListener('resize', ensureSplitWidth)
         }
     })
 })
 
+watch([stationRouteContentRef, routeEndContentRef], (current, previous) => {
+    previous.forEach(element => { if (element) resizeObserver?.unobserve(element) })
+    current.forEach(element => { if (element) resizeObserver?.observe(element) })
+    ensureSplitWidth()
+}, { flush: 'post' })
+
 onBeforeUnmount(() => {
-    finishResize()
-    finishStationRouteStackResize()
-    finishRouteEndStackResize()
     resizeObserver?.disconnect()
     window.removeEventListener('resize', ensureSplitWidth)
 })
 </script>
 
 <style scoped>
+.route-design-panel-toggle { display: inline-flex; gap: 6px; }
 .route-design-page {
     display: flex;
     flex-direction: column;
@@ -4076,38 +3883,16 @@ onBeforeUnmount(() => {
     background: #31363f;
 }
 
-.route-design-resizer {
-    position: relative;
-    flex: 0 0 8px;
-    width: 8px;
-    background: #dbe5f0;
-    cursor: col-resize;
-}
-
-.route-design-resizer::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    left: 3px;
-    width: 2px;
-    background: #a9b8ca;
-}
-
-.route-design-resizer:hover,
-.route-design-body.is-resizing .route-design-resizer {
-    background: #c7d8ea;
-}
 
 .route-design-data-pane {
     display: flex;
     flex-direction: row;
-    gap: 10px;
+    gap: 0;
     flex: 1 1 auto;
     min-width: 220px;
     min-height: 0;
-    padding: 10px;
-    background: #f1f5fa;
+    padding: 0;
+    background: var(--el-bg-color);
     overflow: hidden;
 }
 
@@ -4138,8 +3923,8 @@ onBeforeUnmount(() => {
     gap: 10px;
     flex: 0 0 auto;
     padding: 9px 10px;
-    border-bottom: 1px solid #e1e8f0;
-    background: #fbfdff;
+    border-bottom: 1px solid var(--sy-border);
+    background: var(--el-bg-color);
 }
 
 .route-search-result-header h3 {
@@ -4164,7 +3949,7 @@ onBeforeUnmount(() => {
     gap: 8px;
     flex: 0 0 auto;
     padding: 8px 10px;
-    border-top: 1px solid #e1e8f0;
+    border-top: 1px solid var(--sy-border);
     background: #ffffff;
 }
 
@@ -4184,9 +3969,9 @@ onBeforeUnmount(() => {
     flex: 1 1 0;
     min-height: 0;
     min-width: 0;
-    border: 1px solid #d7e2ee;
-    border-radius: 10px;
-    box-shadow: 0 2px 8px rgba(31, 56, 88, 0.04);
+    border: 1px solid var(--sy-border);
+    border-radius: 0;
+    box-shadow: none;
     background: #ffffff;
     overflow: hidden;
 }
@@ -4197,11 +3982,11 @@ onBeforeUnmount(() => {
     justify-content: space-between;
     gap: 8px;
     flex: 0 0 auto;
-    min-height: 58px;
-    padding: 12px;
+    min-height: 40px;
+    padding: 8px 10px;
     flex-wrap: wrap;
-    border-bottom: 1px solid #e1e8f0;
-    background: #fbfdff;
+    border-bottom: 1px solid var(--sy-border);
+    background: var(--el-bg-color);
 }
 
 .station-route-title-group {
@@ -4214,7 +3999,7 @@ onBeforeUnmount(() => {
 .station-route-title-group h2 {
     margin: 0;
     color: #1f2d3d;
-    font-size: 15px;
+    font-size: 13px;
     font-weight: 650;
     line-height: 1.2;
 }
@@ -4237,7 +4022,8 @@ onBeforeUnmount(() => {
 
 .station-route-content {
     display: grid;
-    grid-template-columns: minmax(310px, 0.92fr) minmax(320px, 1.08fr);
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: clamp(120px, var(--station-route-list-height, 34%), calc(100% - 188px)) 8px minmax(0, 1fr);
     flex: 1 1 auto;
     min-width: 0;
     min-height: 0;
@@ -4248,11 +4034,11 @@ onBeforeUnmount(() => {
     flex-direction: column;
     min-width: 0;
     min-height: 0;
-    border-right: 1px solid #e1e8f0;
+    border-right: 1px solid var(--sy-border);
 }
 
-.station-route-stack-resizer {
-    display: none;
+.station-route-divider {
+    display: flex;
 }
 
 .station-route-list-toolbar {
@@ -4263,8 +4049,8 @@ onBeforeUnmount(() => {
     flex: 0 0 auto;
     min-height: 38px;
     padding: 6px 8px;
-    border-bottom: 1px solid #e1e8f0;
-    background: #fbfdff;
+    border-bottom: 1px solid var(--sy-border);
+    background: var(--el-bg-color);
 }
 
 .station-route-list-summary {
@@ -4346,7 +4132,7 @@ onBeforeUnmount(() => {
     gap: 8px;
     flex: 0 0 auto;
     min-height: 42px;
-    padding: 10px 14px;
+    padding: 8px 10px;
     border-bottom: 1px solid #e8edf4;
     background: #f8fafd;
 }
@@ -4458,10 +4244,10 @@ onBeforeUnmount(() => {
     align-items: center;
     gap: 8px;
     flex: 0 0 auto;
-    min-height: 54px;
-    padding: 10px 14px;
-    border-top: 1px solid #e1e8f0;
-    background: #fbfcfe;
+    min-height: 46px;
+    padding: 8px 10px;
+    border-top: 1px solid var(--sy-border);
+    background: var(--sy-surface-muted);
     flex-wrap: wrap;
 }
 
@@ -4472,7 +4258,7 @@ onBeforeUnmount(() => {
     min-height: 0;
     min-width: 0;
     max-width: none;
-    border: 1px solid #d7e2ee;
+    border: 1px solid var(--sy-border);
     border-radius: 8px;
     background: #ffffff;
     overflow: hidden;
@@ -4490,9 +4276,9 @@ onBeforeUnmount(() => {
     gap: 8px;
     flex: 0 0 auto;
     min-height: 48px;
-    padding: 12px;
-    border-bottom: 1px solid #e1e8f0;
-    background: #fbfdff;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--sy-border);
+    background: var(--el-bg-color);
 }
 
 .auto-route-title-group {
@@ -4505,7 +4291,7 @@ onBeforeUnmount(() => {
 .auto-route-title-group h2 {
     margin: 0;
     color: #1f2d3d;
-    font-size: 15px;
+    font-size: 13px;
     font-weight: 650;
     line-height: 1.2;
 }
@@ -4529,7 +4315,7 @@ onBeforeUnmount(() => {
 .auto-route-form-panel {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 0;
     flex: 1 1 auto;
     min-height: 0;
     padding: 0;
@@ -4604,7 +4390,7 @@ onBeforeUnmount(() => {
     padding: 7px 8px;
     border: 1px solid #dbe5f0;
     border-radius: 6px;
-    background: #f8fbff;
+    background: var(--sy-surface-muted);
 }
 
 .auto-route-form-actions {
@@ -4627,9 +4413,9 @@ onBeforeUnmount(() => {
     height: auto;
     min-height: 0;
     min-width: 0;
-    border: 1px solid #d7e2ee;
-    border-radius: 10px;
-    box-shadow: 0 2px 8px rgba(31, 56, 88, 0.04);
+    border: 1px solid var(--sy-border);
+    border-radius: 0;
+    box-shadow: none;
     background: #ffffff;
     overflow: hidden;
 }
@@ -4640,11 +4426,11 @@ onBeforeUnmount(() => {
     justify-content: space-between;
     gap: 8px;
     flex: 0 0 auto;
-    min-height: 58px;
-    padding: 12px;
+    min-height: 40px;
+    padding: 8px 10px;
     flex-wrap: wrap;
-    border-bottom: 1px solid #e1e8f0;
-    background: #fbfdff;
+    border-bottom: 1px solid var(--sy-border);
+    background: var(--el-bg-color);
 }
 
 .route-end-title-group {
@@ -4657,7 +4443,7 @@ onBeforeUnmount(() => {
 .route-end-title-group h2 {
     margin: 0;
     color: #1f2d3d;
-    font-size: 15px;
+    font-size: 13px;
     font-weight: 650;
     line-height: 1.2;
 }
@@ -4727,28 +4513,6 @@ onBeforeUnmount(() => {
     font-size: 12px;
 }
 
-.route-end-stack-resizer {
-    position: relative;
-    flex: 0 0 8px;
-    min-height: 8px;
-    background: #dbe5f0;
-    cursor: row-resize;
-}
-
-.route-end-stack-resizer::before {
-    content: "";
-    position: absolute;
-    top: 3px;
-    right: 0;
-    left: 0;
-    height: 2px;
-    background: #a9b8ca;
-}
-
-.route-end-stack-resizer:hover,
-.route-end-content.is-stack-resizing .route-end-stack-resizer {
-    background: #c7d8ea;
-}
 
 .route-end-form-panel {
     container-type: inline-size;
@@ -4769,7 +4533,7 @@ onBeforeUnmount(() => {
     gap: 8px;
     flex: 0 0 auto;
     min-height: 42px;
-    padding: 10px 14px;
+    padding: 8px 10px;
     border-bottom: 1px solid #e8edf4;
     background: #f8fafd;
 }
@@ -4821,10 +4585,10 @@ onBeforeUnmount(() => {
     align-items: center;
     gap: 8px;
     flex: 0 0 auto;
-    min-height: 54px;
-    padding: 10px 14px;
-    border-top: 1px solid #e1e8f0;
-    background: #fbfcfe;
+    min-height: 46px;
+    padding: 8px 10px;
+    border-top: 1px solid var(--sy-border);
+    background: var(--sy-surface-muted);
     flex-wrap: wrap;
 }
 
@@ -4844,13 +4608,6 @@ onBeforeUnmount(() => {
     line-height: 1.5;
 }
 
-.route-field-section h3::before {
-    content: '';
-    width: 3px;
-    height: 12px;
-    border-radius: 2px;
-    background: #6d98d3;
-}
 
 .route-field-section + .route-field-section {
     padding-top: 16px;
@@ -4977,19 +4734,7 @@ onBeforeUnmount(() => {
     color: #536579;
 }
 
-.route-endpoint-dot {
-    display: inline-block;
-    width: 6px;
-    height: 6px;
-    margin-right: 6px;
-    border: 1.5px solid #729bcf;
-    border-radius: 50%;
-    vertical-align: 1px;
-}
 
-.route-endpoint-dot.is-destination {
-    background: #729bcf;
-}
 
 .station-route-table-wrap :deep(.el-table__cell),
 .route-end-table-wrap :deep(.el-table__cell) {
@@ -5025,28 +4770,7 @@ onBeforeUnmount(() => {
         border-right: 0;
     }
 
-    .station-route-stack-resizer {
-        position: relative;
-        display: block;
-        min-height: 8px;
-        background: #dbe5f0;
-        cursor: row-resize;
-    }
-
-    .station-route-stack-resizer::before {
-        content: "";
-        position: absolute;
-        top: 3px;
-        right: 0;
-        left: 0;
-        height: 2px;
-        background: #a9b8ca;
-    }
-
-    .station-route-stack-resizer:hover,
-    .station-route-content.is-stack-resizing .station-route-stack-resizer {
-        background: #c7d8ea;
-    }
+    .station-route-divider { display: flex; }
 
     .station-route-filter-panel {
         grid-template-columns: minmax(0, 1fr);

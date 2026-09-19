@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>两级页签布局回归 · 纯内存数据</title>
+    <style>
+        html, body, #app { width: 100%; height: 100%; margin: 0; }
+        body { overflow: hidden; }
+    </style>
+</head>
+<body>
+    <div id="app">正在加载真实 CapacityMain 布局……</div>
+    <script type="module">
+        import { createApp, h } from 'vue'
+        import { createRouter, createMemoryHistory, RouterView } from 'vue-router'
+        import ElementPlus from 'element-plus'
+        import en from 'element-plus/es/locale/lang/en.mjs'
+        import zhCn from 'element-plus/es/locale/lang/zh-cn.mjs'
+        import 'element-plus/dist/index.css'
+        import '../src/assets/main.css'
+        import '../src/assets/workspace.css'
+        import axios from 'axios'
+        import pinia from '../src/stores/index.ts'
+        import { useAuthStore } from '../src/stores/auth.ts'
+        import i18n from '../src/i18n.ts'
+        import { createExampleTemplate, demoCatalog, syncEventNodeLists, validateTemplate } from '../src/capacity/operationProcess.ts'
+
+        const scope = { instanceID: 'layout-fixture', stationSchemeID: 'layout-station', operationPlanID: 'default' }
+        const catalog = structuredClone(demoCatalog)
+        const template = createExampleTemplate(scope, catalog)
+        template.name = '三栏布局示例：接车—停留—发车'
+        template.revision = 1
+        syncEventNodeLists(template, catalog)
+        let templates = [template]
+        const plans = [{ ...scope, name: '默认作业计划', description: '本页内存示例', sortOrder: 0 }]
+        const schemes = [{ id: scope.stationSchemeID, name: '布局回归站场', revision: 1 }]
+        const trainTemplates = [{ ...scope, trainTemplateID: 'sample-train', name: '示例客车模板', type: '客车', number: 1, isFixedOperation: false }]
+        const movementTemplates = new Map([['sample-train', [{ ...scope, trainTemplateID: 'sample-train', movementID: 'sample-arrival', name: '示例接车作业', routeIDList: 'R1', minDuration: 240, sortOrder: 0 }]]])
+        const actualTrains = [{ ...scope, id: 'existing-train', trainTemplateID: '', trainNumber: '1', name: '原有列车（应保留）', trainType: '', isFixedOperation: false }]
+        const actualMovements = []
+        const processConstraints = []
+        const fixtureOptions = new URLSearchParams(location.search)
+        if (fixtureOptions.has('batchTrains')) {
+            actualTrains[0].trainNumber = 'G101'
+            actualTrains[0].trainType = 'EMU'
+            actualTrains.push({ ...scope, id: 'existing-freight', trainTemplateID: '', trainNumber: 'F202', name: '货运甲班', trainType: 'Freight', isFixedOperation: false })
+        }
+        let nextActualTrainSequence = actualTrains.length + 1
+        if (fixtureOptions.has('emptyProcesses')) templates = []
+        let failProcessListOnce = fixtureOptions.has('failProcessListOnce')
+        const layout = {
+            metadata: { ...scope, revision: 1, latestElementID: 1 },
+            nodes: [], tracks: [], curves: [], signals: [], insulationJoints: [], bufferStops: [],
+            platforms: [], switches: [], cells: [], annotations: [],
+        }
+        const routes = catalog.routes.map(route => ({ ...scope, ...route, description: route.name,
+            nodeList: [route.startNodeID, route.endNodeID].join(','), linkList: route.trackIDs.join(',') }))
+        const transient = new Map()
+        const requestLog = []
+
+        // Install before importing CapacityMain: even axios clients created by its imports
+        // inherit this adapter. No request from this page reaches a business API.
+        axios.defaults.adapter = async config => {
+            const path = new URL(config.url || '/', 'http://memory.invalid').pathname
+            const method = (config.method || 'get').toLowerCase()
+            const body = typeof config.data === 'string' ? JSON.parse(config.data) : config.data
+            requestLog.push({ method, path })
+            let data
+            if (path === '/Capacity/GetInstances') data = [{ id: scope.instanceID, name: '本地布局示例', owner: 'layout-preview', isActive: 1 }]
+            else if (path === '/StationLayout/GetStationSchemes') data = schemes
+            else if (path === '/StationLayout/GetJson') data = layout
+            else if (path === '/StationLayout/GetStationRoutes') data = routes
+            else if (path === '/OperationPlan/GetOperationPlans') data = plans
+            else if (path === '/OperationPlan/GetTrainTemplates') data = trainTemplates
+            else if (path === '/OperationPlan/GetMovementTemplates') data = movementTemplates.get(config.params?.trainTemplateID) || []
+            else if (path === '/OperationPlan/GenerateTrainTemplateFromProcess' && method === 'post') {
+                const source = templates.find(item => item.id === body.processTemplateID)
+                if (!source || source.revision !== body.revision) {
+                    const error = new Error('源作业过程已更新，请重新选择。')
+                    error.response = { status: 409, data: { message: error.message } }
+                    throw error
+                }
+                // UI fixture only; the real converter and its transaction are verified by HTTP/SQLite tests.
+                const train = { ...scope, trainTemplateID: `from-process-${trainTemplates.length}`, name: source.name, type: '', number: 1, isFixedOperation: false }
+                const movements = source.activities.map((activity, index) => ({ ...scope, trainTemplateID: train.trainTemplateID,
+                    movementID: `generated-${index + 1}`, name: activity.name, routeIDList: activity.routeList.join(','),
+                    minDuration: Math.ceil(activity.minDuration * 60), sortOrder: index }))
+                trainTemplates.push(train)
+                movementTemplates.set(train.trainTemplateID, movements)
+                data = { trainTemplate: train, movementCount: movements.length, warnings: [
+                    '最大时长、事件时刻、次序间隔和锚等约束保留在原作业过程中，生成的列车模板仅采用顺序作业。',
+                    ...source.activities.filter(activity => !activity.routeList.length).map(activity => `${activity.name}尚未匹配进路，请补充进路后再用于计划生成或求解。`),
+                ] }
+            }
+            else if (path === '/OperationPlan/GetTrainOperationPlan') data = { trains: actualTrains, movements: actualMovements, processConstraints }
+            else if (path === '/OperationPlan/DeleteTrains' && method === 'post') {
+                const ids = [...new Set(body.trainIDs || [])]
+                if (fixtureOptions.has('failBatchDelete') || ids.some(id => !actualTrains.some(train => train.id === id))) {
+                    const error = new Error('示例：列车列表已变化，本批列车未删除，请刷新后重试。')
+                    error.response = { status: 409, data: { message: error.message } }
+                    throw error
+                }
+                for (const [rows, key] of [[actualTrains, 'id'], [actualMovements, 'trainID'], [processConstraints, 'trainID']])
+                    for (let index = rows.length - 1; index >= 0; index--)
+                        if (ids.includes(rows[index][key])) rows.splice(index, 1)
+                data = { deletedTrainIDs: ids, deletedCount: ids.length }
+            }
+            else if (path === '/OperationPlan/GenerateTrainOperationPlanFromProcess' && method === 'post') {
+                const source = templates.find(item => item.id === body.processTemplateID)
+                if (fixtureOptions.has('failPlanGeneration') || !source || source.revision !== body.revision) {
+                    const error = new Error('示例：作业过程版本已更新，请重新加载来源后再生成。')
+                    error.response = { status: 409, data: { message: error.message } }
+                    throw error
+                }
+                // UI fixture only: simple offsets exercise rendering, never the production scheduler.
+                const parseSeconds = value => value.split(':').reduce((total, part) => total * 60 + Number(part), 0) * 60
+                const start = parseSeconds(body.startTime || '00:00')
+                let end = parseSeconds(body.endTime || '24:00')
+                while (end <= start) end += 86400
+                const generatedTrainIDs = []
+                const count = Math.max(1, Math.min(1000, Math.trunc(body.trainCount)))
+                for (let index = 0; index < count; index++) {
+                    const sequence = nextActualTrainSequence++
+                    const trainID = `process-plan-${sequence}`
+                    const originSeconds = start + index * Math.max(0, end - start - 3600) / Math.max(1, count - 1)
+                    const snapshot = { ...scope, trainID, sourceTemplateID: source.id, sourceRevision: source.revision, sourceName: source.name,
+                        originSeconds, process: structuredClone(source), activityMovementMap: {}, eventTimes: {}, selectedTrackIDs: {} }
+                    source.events.forEach((event, eventIndex) => { snapshot.eventTimes[event.id] = originSeconds + (event.time ?? eventIndex * 5) * 60 })
+                    actualTrains.push({ ...scope, id: trainID, trainTemplateID: '', trainNumber: String(sequence), name: `${source.name} ${index + 1}`, trainType: '', isFixedOperation: false })
+                    source.activities.forEach((activity, activityIndex) => {
+                        const movementID = `${trainID}-m${activityIndex + 1}`
+                        snapshot.activityMovementMap[activity.id] = movementID
+                        if (activity.type === 'Dwelling') snapshot.selectedTrackIDs[activity.id] = activity.selectedTrack || activity.trackList[0] || ''
+                        const formatTime = seconds => `${String(Math.floor(seconds / 3600)).padStart(2, '0')}:${String(Math.floor(seconds / 60) % 60).padStart(2, '0')}:${String(Math.round(seconds) % 60).padStart(2, '0')}`
+                        actualMovements.push({ ...scope, trainID, trainTemplateID: '', movementID, name: activity.name,
+                            routeIDList: activity.routeList.join(','), route: activity.selectedRoute || activity.routeList[index % Math.max(1, activity.routeList.length)] || '',
+                            minDuration: Math.ceil(activity.minDuration * 60), earliestStartTime: formatTime(snapshot.eventTimes[activity.startEvent]),
+                            latestEndTime: formatTime(snapshot.eventTimes[activity.endEvent]), tag: activity.name, sortOrder: activityIndex })
+                    })
+                    generatedTrainIDs.push(trainID)
+                    processConstraints.push(snapshot)
+                }
+                data = { trains: actualTrains, movements: actualMovements, processConstraints, generatedTrainIDs,
+                    warnings: ['此内存示例仅验证界面，使用简化时间偏移；真实约束排布由服务端测试验证。'] }
+            }
+            else if (path === '/OperationPlan/GetOperationAnalysisResult') data = null
+            else if (path === '/OperationProcess/GetCatalog') data = catalog
+            else if (path === '/OperationProcess/GetTemplates') {
+                if (failProcessListOnce) {
+                    failProcessListOnce = false
+                    const error = new Error('示例：加载失败，请重试。')
+                    error.response = { status: 503, data: { message: error.message } }
+                    throw error
+                }
+                data = templates
+            }
+            else if (path === '/OperationProcess/GetTemplate') data = templates.find(item => item.id === config.params?.templateID) || null
+            else if (['/OperationProcess/CreateTemplate', '/OperationProcess/UpdateTemplate'].includes(path)) {
+                const draft = structuredClone(body)
+                syncEventNodeLists(draft, catalog)
+                const errors = validateTemplate(draft, catalog)
+                if (errors.length) throw new Error(errors.join('；'))
+                draft.revision = (draft.revision || 0) + 1
+                templates = [...templates.filter(item => item.id !== draft.id), draft]
+                data = draft
+            } else if (path === '/OperationProcess/DeleteTemplate') {
+                templates = templates.filter(item => item.id !== config.params?.templateID)
+                data = null
+            } else if (method === 'get' || path.split('/').at(-1)?.startsWith('Get')) {
+                data = transient.get(path) || []
+            } else {
+                // Legacy tabs may autosave settings. Keep those changes in this page only.
+                transient.set(path.replace('/Save', '/Get'), structuredClone(body))
+                data = body || { message: '仅保存于本页内存' }
+            }
+            return { data: structuredClone(data), status: 200, statusText: 'OK', headers: {}, config }
+        }
+        axios.defaults.baseURL = ''
+
+        // Use the application's Pinia instance, without touching persisted account state.
+        const auth = useAuthStore(pinia)
+        const previewIdentity = { token: '', refreshToken: '', username: 'layout-preview', role: 'User', mustChangePassword: false }
+        auth.hydrateFromStorage = () => {}
+        auth.clearAuth = () => auth.$patch(previewIdentity)
+        auth.setAuth = payload => auth.$patch(payload)
+        auth.updateProfile = payload => auth.$patch(payload)
+        auth.setMustChangePassword = required => auth.$patch({ mustChangePassword: required })
+        auth.$patch(previewIdentity)
+        const previewLanguage = new URLSearchParams(location.search).get('lang') === 'en' ? 'en' : 'zh'
+        i18n.global.locale.value = previewLanguage
+        document.documentElement.lang = previewLanguage === 'en' ? 'en' : 'zh-CN'
+
+        const { default: CapacityMain } = await import('../src/capacity/CapacityMain.vue')
+        const router = createRouter({ history: createMemoryHistory(), routes: [
+            { path: '/capacity', component: CapacityMain },
+            { path: '/:pathMatch(.*)*', redirect: '/capacity' },
+        ] })
+        const app = createApp({ render: () => h(RouterView) })
+        app.use(pinia).use(router).use(ElementPlus, { locale: previewLanguage === 'en' ? en : zhCn }).use(i18n)
+        await router.push('/capacity')
+        await router.isReady()
+        app.mount('#app')
+        window.operationProcessLayoutFixture = { scope, requestLog }
+    </script>
+</body>
+</html>

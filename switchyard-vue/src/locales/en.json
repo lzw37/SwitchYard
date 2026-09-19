@@ -47,32 +47,44 @@
             "emailInvalid": "Please enter a valid email address",
             "roleRequired": "Please select a role",
             "confirmRequired": "Please enter password again",
-            "confirmMismatch": "The two passwords do not match"
+            "confirmMismatch": "Passwords do not match"
         },
-        "success": "User created successfully",
+        "success": "User created",
         "adminPendingApproval": "Administrator account created. Another administrator must activate it in user management before login.",
         "failed": "Failed to create user, please try again later",
         "networkError": "Network error, please try again later"
     },
     "userManager": {
-        "searchPlaceholder": "Search username or email",
+        "searchPlaceholder": "Search ID, username, email or role",
         "refresh": "Refresh",
         "columns": {
             "username": "Username",
             "email": "Email",
             "role": "Role",
-            "active": "Active",
-            "actions": "Actions"
+            "active": "Activation",
+            "actions": "Actions",
+            "createdAt": "Created At",
+            "row": "Row",
+            "status": "Status",
+            "error": "Error",
+            "userId": "User ID"
         },
         "actions": {
             "edit": "Edit",
             "setRole": "Set Role",
-            "delete": "Delete"
+            "delete": "Delete",
+            "create": "Add User",
+            "import": "Import Users",
+            "downloadTemplate": "Download Import Template",
+            "resetPassword": "Reset Password",
+            "confirmReset": "Confirm Reset"
         },
         "dialogs": {
             "editTitle": "Edit User",
             "setRoleTitle": "Set Role",
-            "rolePlaceholder": "Select role"
+            "rolePlaceholder": "Select role",
+            "importResults": "Import Results",
+            "deleteTitle": "Delete User"
         },
         "buttons": {
             "cancel": "Cancel",
@@ -80,19 +92,37 @@
         },
         "messages": {
             "loadFailed": "Failed to load users",
-            "saveSuccess": "User info saved",
-            "saveFailed": "Save failed",
+            "saveSuccess": "User details saved",
+            "saveFailed": "Failed to save user",
             "roleUpdated": "Role updated",
             "roleUpdateFailed": "Failed to set role",
             "statusUpdated": "Status updated",
             "statusUpdateFailed": "Failed to update status",
-            "deleteConfirm": "Are you sure to delete user {username}? This action cannot be undone.",
+            "deleteConfirm": "Delete user {username}? This action cannot be undone.",
             "deleted": "User deleted",
-            "deleteFailed": "Delete failed"
+            "deleteFailed": "Failed to delete user",
+            "credentialsRequired": "Username and password are required",
+            "createFailed": "Failed to create user",
+            "requiredFields": "ID, username and role are required",
+            "cannotDeleteSelf": "You cannot delete your signed-in account",
+            "newPasswordRequired": "Enter a new password",
+            "passwordReset": "Password reset. The user must change it at their next sign-in.",
+            "passwordResetFailed": "Failed to reset password",
+            "importFailed": "Failed to import users",
+            "downloadFailed": "Failed to download the template",
+            "importSummary": "Import complete: {success} succeeded, {failed} failed, {total} total"
+        },
+        "states": {
+            "active": "Active",
+            "inactive": "Inactive",
+            "activeOption": "Active",
+            "inactiveOption": "Inactive",
+            "success": "Success",
+            "failed": "Failed"
         }
     },
     "userInfo": {
-        "title": "User Info",
+        "title": "User Profile",
         "labels": {
             "username": "Username",
             "email": "Email",
@@ -109,10 +139,12 @@
             "failed": "Failed to change password"
         },
         "messages": {
-            "saveSuccess": "User info saved",
+            "saveSuccess": "User details saved",
             "saveFailed": "Save failed",
-            "passwordIncomplete": "Please provide complete password information",
-            "passwordMismatch": "The two entered passwords do not match"
+            "passwordIncomplete": "Complete all password fields",
+            "passwordMismatch": "The two entered passwords do not match",
+            "passwordChangeRequired": "Change your password after your first sign-in or a password reset",
+            "passwordChangeFirst": "Change your password before continuing"
         }
     },
     "common": {
@@ -141,7 +173,32 @@
             "zh": "中文",
             "en": "EN"
         },
-        "networkError": "Network error, please try again later"
+        "networkError": "Network error, please try again later",
+        "actions": {
+            "add": "Add",
+            "edit": "Edit",
+            "delete": "Delete",
+            "save": "Save",
+            "cancel": "Cancel",
+            "close": "Close",
+            "refresh": "Refresh",
+            "copy": "Copy",
+            "reset": "Reset",
+            "expand": "Expand",
+            "collapse": "Collapse",
+            "more": "More",
+            "create": "Create",
+            "back": "Back",
+            "download": "Download",
+            "upload": "Upload",
+            "confirm": "Confirm"
+        },
+        "resize": {
+            "horizontal": "Resize panel width",
+            "vertical": "Resize panel height",
+            "reset": "Reset panel size"
+        },
+        "unknownError": "Unknown error"
     },
     "axios": {
         "noPermission": "No permission to access this resource",
@@ -237,12 +294,12 @@
         "curveRadius": "Curve Angle",
         "switchDirectionLabel": "Switch Direction",
         "retarder": {
-            "addParam": "Add param",
+            "addParam": "Add Parameter",
             "confirm": "Confirm",
             "cancel": "Cancel",
             "add": "+",
             "index": "#",
-            "params": "Params"
+            "params": "Parameters"
         },
         "id": "ID",
         "side": "Side",
@@ -295,7 +352,8 @@
             "deleteRetarderConfirm": "Are you sure you want to delete this retarder?",
             "deleteRetarderConfirmTitle": "Delete Confirmation",
             "duplicatePositionID": "Control point ID must be unique. Please modify the duplicate ID ({id}) before updating the segments.",
-            "duplicatePositionIDTitle": "Warning"
+            "duplicatePositionIDTitle": "Warning",
+            "saveFlatLayoutError": "Failed to save the plan layout"
         },
         "calcCondition": {
             "new": "New",
@@ -304,7 +362,7 @@
             "reset": "Reset",
             "delete": "Delete",
             "warning": "Warning",
-            "confirmDelete": "Are you sure you want to delete this operation condition? This action cannot be undone.",
+            "confirmDelete": "Are you sure you want to delete this operating condition? This action cannot be undone.",
             "sections": {
                 "overview": "Overview",
                 "wagonInfo": "Wagon Info",
@@ -316,7 +374,7 @@
             },
             "labels": {
                 "instance": "Instance",
-                "condition": "Operation Condition",
+                "condition": "Operating Condition",
                 "conditionName": "Condition Name",
                 "wagonType": "Wagon Type",
                 "peakVelocity": "Peak Velocity",
@@ -324,7 +382,7 @@
                 "yardAvgVelocity": "Yard Avg Velocity",
                 "windVelocity": "Wind Velocity",
                 "windDirection": "Wind Direction",
-                "airDensity": "Airflow Density",
+                "airDensity": "Air Density",
                 "temperature": "Temperature",
                 "gravity": "Gravity Acceleration",
                 "retarderActivation": "Retarder Activation",
@@ -332,7 +390,7 @@
             },
             "placeholders": {
                 "chooseInstance": "Please choose instance",
-                "chooseCondition": "Please choose operation condition",
+                "chooseCondition": "Please choose operating condition",
                 "conditionName": "e.g. Standard Condition",
                 "chooseWagon": "Please choose wagon type",
                 "jsonExample": "JSON, e.g.: {}"
@@ -346,19 +404,19 @@
                 "retarderActivationFormatError": "Retarder activation format error, please enter valid JSON",
                 "retarderOutputFormatError": "Retarder output format error, please enter valid JSON",
                 "saved": "Calculation condition saved",
-                "created": "Operation condition created successfully",
-                "updated": "Operation condition updated",
+                "created": "Operating condition created successfully",
+                "updated": "Operating condition updated",
                 "loaded": "Calculation condition loaded",
                 "deleted": "Calculation condition deleted",
                 "newCondition": "Please fill in new condition information"
             },
             "errors": {
                 "loadInstances": "Failed to load instances",
-                "loadConditions": "Failed to load operation conditions",
+                "loadConditions": "Failed to load operating conditions",
                 "noInstance": "Please select an instance first",
-                "noCondition": "Please select an operation condition to delete first",
-                "save": "Failed to save operation condition",
-                "delete": "Failed to delete operation condition"
+                "noCondition": "Please select an operating condition to delete first",
+                "save": "Failed to save operating condition",
+                "delete": "Failed to delete operating condition"
             },
             "defaults": {
                 "conditionName": "Standard Condition"
@@ -510,7 +568,12 @@
             "buttons": {
                 "resetView": "Reset view"
             }
-        }
+        },
+        "chooseType": "Select a type",
+        "chooseDirection": "Select a direction",
+        "chooseSide": "Select a side",
+        "frogNumber": "Frog Number",
+        "chooseFrogNumber": "Select a frog number"
     },
     "humpChart": {
         "velocityTitle": "Velocity-Distance Curve",
@@ -586,7 +649,7 @@
             "instanceManager": "Instance Management"
         },
         "menu": {
-            "instanceManagement": "Instance Management Page"
+            "instanceManagement": "Instance Management"
         },
         "placeholders": {
             "selectInstance": "Select Instance"
@@ -601,7 +664,9 @@
             "1": "Line 1",
             "2": "Line 2",
             "3": "Line 3"
-        }
+        },
+        "title": "Hump Profile Design",
+        "tutorial": "Tutorial"
     },
     "home": {
         "brand": "SwitchYard",
@@ -613,9 +678,9 @@
             "contact": "Contact"
         },
         "lang": {
-            "en": "EN/英文",
-            "zh": "CN/中文",
-            "switchToZh": "Switch to 中文",
+            "en": "English",
+            "zh": "中文",
+            "switchToZh": "Switch to Chinese",
             "switchToEn": "Switch to English"
         },
         "hero": {
@@ -687,9 +752,9 @@
             "title": "Security Features",
             "cards": {
                 "password": {
-                    "title": "Double-hash Password",
-                    "p1": "Front-end SHA-256 hashing in transit",
-                    "p2": "Back-end Argon2 encrypted storage"
+                    "title": "Password Hashing",
+                    "p1": "SHA-256 hashing before transmission",
+                    "p2": "Argon2 password hashes stored on the server"
                 },
                 "jwt": {
                     "title": "JWT Authentication",
@@ -734,6 +799,11 @@
         "footer": {
             "copy": "© 2026 SwitchYard. All rights reserved.",
             "tagline": "Rail yard & hub teaching toolkit"
+        },
+        "stats": {
+            "features": "Core Features",
+            "technology": "Technologies",
+            "openSource": "Open Source"
         }
     },
     "humpLayoutCtrl": {
@@ -789,9 +859,9 @@
         "slopeVelocity": "Slope Velocity:",
         "yardVelocity": "Yard Velocity:",
         "windSpeed": "Wind Speed:",
-        "headWind": "Head Wind",
-        "tailWind": "Tail Wind",
-        "airDensity": "Airflow Density:",
+        "headWind": "Headwind",
+        "tailWind": "Tailwind",
+        "airDensity": "Air Density:",
         "temperature": "Temperature:",
         "positionPoints": "Position Points",
         "positionSegments": "Position Segments",
@@ -809,7 +879,7 @@
         "slopePart": "Slope Part",
         "yard": "Yard:",
         "windSpeedLabel": "Wind Speed:",
-        "airDensityLabel": "Airflow Density:",
+        "airDensityLabel": "Air Density:",
         "temperatureLabel": "Temperature:",
         "dialog": {
             "schemeManagement": "Scheme Management",
@@ -832,16 +902,17 @@
         },
         "table": {
             "positionID": "Position ID",
-            "calculationConditionID": "Op. Condition ID",
+            "calculationConditionID": "Calculation Condition ID",
             "schemeId": "Scheme ID",
             "schemeName": "Scheme Name",
             "instanceId": "Instance ID",
             "operation": "Operation",
             "wagonType": "Wagon Type",
-            "operationCondition": "Operation Condition",
+            "operationCondition": "Operating Condition",
             "slopeLine": "Slope Line",
             "humpScheme": "Hump Scheme",
-            "retarderStatus": "Retarder Status"
+            "retarderStatus": "Retarder Status",
+            "operationConditionID": "Operating Condition ID"
         },
         "energyHeightTable": {
             "positionID": "Position ID",
@@ -853,7 +924,7 @@
         },
         "placeholder": {
             "selectWagonType": "Select Wagon Type",
-            "selectOperationCondition": "Select Operation Condition",
+            "selectOperationCondition": "Select Operating Condition",
             "selectSlopeLine": "Select Slope Line",
             "selectHumpScheme": "Select Hump Scheme"
         },
@@ -929,7 +1000,8 @@
                 "selectFirst": "Please select instance, scheme and calculation condition first",
                 "loadDetailFailed": "Failed to load resistance energy height detail"
             }
-        }
+        },
+        "createCondition": "Create a calculation condition"
     },
     "humpInstance": {
         "buttons": {
@@ -994,11 +1066,11 @@
             "source": "Source Instance",
             "newName": "New Instance Name",
             "defaultName": "{name} Copy",
-            "generatedIdHint": "The new instance ID will be generated automatically"
+            "generatedIdHint": "The new instance ID is generated automatically"
         },
         "placeholder": {
             "owner": "Select owner",
-            "newName": "Please enter a new instance name"
+            "newName": "Enter a new instance name"
         },
         "validation": {
             "ownerRequired": "Please select an owner before saving"
@@ -1008,7 +1080,7 @@
         },
         "messages": {
             "userLoadError": "Failed to load user list",
-            "copySuccess": "Instance copied successfully. New ID: {id}",
+            "copySuccess": "Instance copied. New ID: {id}",
             "copyError": "Failed to copy instance"
         },
         "empty": "No instances yet. Create one to get started."
@@ -1093,7 +1165,7 @@
             "stationLayout": "Station Layout",
             "routeDesign": "Route Design",
             "layout3d": "3D",
-            "calcParams": "Calc Params",
+            "calcParams": "Parameters",
             "operationPlan": "Operation Plan",
             "modelSolving": "Model Solving",
             "resultAnalysis": "Result Analysis",
@@ -1242,6 +1314,51 @@
             "collapse": "Collapse",
             "confirm": "OK"
         },
+        "cellOccupancyImport": {
+            "action": "Import CellOccupancy",
+            "title": "Import CellOccupancy train operation plan",
+            "description": "Match routes using Cells and create routes when no existing route matches. Dw movements remain stationary on their tracks. Review the preview before importing.",
+            "defaultPlanName": "CellOccupancy import",
+            "file": "CellOccupancy CSV file",
+            "selectFile": "Select CSV file",
+            "noFile": "No file selected",
+            "fileHint": "UTF-8, up to 5 MB and 50,000 occupancy records",
+            "destination": "Import destination",
+            "newPlan": "Create operation plan",
+            "appendPlan": "Append to current plan",
+            "appendHint": "Append trains and movements to “{plan}”, preserving existing data.",
+            "preview": "Refresh preview",
+            "previewing": "Matching Cells and routes…",
+            "previewStale": "Import settings changed. Review the updated matches when the new preview is ready.",
+            "confirmImport": "Confirm import",
+            "trains": "Trains",
+            "movements": "Movements",
+            "occupancies": "Occupancy records",
+            "reusedRoutes": "Reused routes",
+            "newRoutes": "New routes",
+            "errors": "Resolve these issues and refresh the preview",
+            "warnings": "Import notes",
+            "cellMatches": "Cell matches",
+            "sourceCell": "Cell in CSV",
+            "matchedCell": "Station Cell",
+            "selectCell": "Select the corresponding existing Cell",
+            "matchStatus": "Match status",
+            "needsSelection": "Selection needed",
+            "matched": "Matched",
+            "routeMatches": "Route matching preview",
+            "movementType": "Movement type",
+            "route": "Route",
+            "routeAction": "Import action",
+            "createRoute": "Create route",
+            "reuseRoute": "Reuse route",
+            "csvRequired": "Select a .csv file.",
+            "fileTooLarge": "The file exceeds 5 MB. Split it before importing.",
+            "emptyFile": "The file is empty. Select a CSV containing occupancy records.",
+            "readFailed": "Could not read the file. Make sure it is a UTF-8 CSV.",
+            "previewFailed": "Preview failed. Please refresh the preview.",
+            "importFailed": "Import did not complete. Check the plan data and refresh the preview before retrying.",
+            "success": "Imported into “{plan}”: {trains} trains, {movements} movements and {routes} new routes."
+        },
         "saturatedPlan": {
             "actions": {
                 "generate": "Generate Saturated Plan",
@@ -1263,9 +1380,10 @@
         },
         "tabs": {
             "trainTemplate": "Train Templates",
+            "operationProcess": "Operation Process",
             "trainOperationPlan": "Train Operation Plan",
             "trainOperationChart": "Operation Plan Chart",
-            "operationOccupationTimeTable": "Operation Occupation Time Table",
+            "operationOccupationTimeTable": "Operation Occupancy Time Table",
             "operationBottleneckAnalysis": "Operation Bottleneck Analysis",
             "operationThroughputSummary": "Capacity Category Summary"
         },
@@ -1321,6 +1439,22 @@
             "title": "Train Templates",
             "count": "{count} train templates",
             "empty": "No train templates",
+            "fromProcess": {
+                "action": "Generate from Process",
+                "title": "Generate Train Template from Operation Process",
+                "description": "Choose a saved operation process in the current instance, station scheme, and operation plan. A new train template will use its name. Unsaved drafts are not listed.",
+                "sourceLabel": "Operation process template",
+                "placeholder": "Select a saved operation process template",
+                "empty": "No saved operation process templates. Save one in the process editor first.",
+                "mapping": "All activities become operation templates, with minimum durations converted to seconds. Maximum durations, parallel and interval constraints, and anchors remain in the source process. The result identifies activities that need routes.",
+                "reload": "Reload",
+                "generate": "Generate Train Template",
+                "loadFailed": "Failed to load operation process templates. Please reload.",
+                "generateFailed": "Failed to generate the train template. Review the error and try again.",
+                "invalidResponse": "The server did not return a valid train template. Refresh the train template list to check the result.",
+                "success": "Created train template \"{name}\" with {count} operation templates.",
+                "refreshDeferred": "Your unsaved inline edits have been preserved. Refresh the list after finishing them to view the generated template."
+            },
             "fields": {
                 "trainTemplateID": "Template ID",
                 "name": "Name",
@@ -1396,6 +1530,43 @@
             }
         },
         "trainOperationPlan": {
+            "fromProcess": {
+                "title": "Generate train operation plan from process",
+                "appendHint": "Copy a saved process into multiple trains and all their movements. Append them to the current plan and keep existing trains.",
+                "trainCount": "Train count (1–1000)",
+                "distributionHint": "Position train starts using evenly spaced time slots. Within each train, schedule all events as early as the full set of constraints allows. Zero-interval precedences connect directly unless another constraint requires a gap. Fixed event times, minimum intervals and duration bounds still apply. Infeasible constraints or a schedule outside the time range reject the entire batch. Times support 24:00 and multiple days.",
+                "generate": "Generate and append",
+                "generateFailed": "Could not generate the train operation plan. Check the error and retry.",
+                "invalidResponse": "The server did not return a complete result. Refresh the plan to check before generating again.",
+                "success": "Appended {trains} trains and {movements} movements. Existing trains were retained.",
+                "constraints": "Process constraints",
+                "lockedHint": "Generated from a process with all process constraints retained. Movements are read-only; edit the source process and generate again to change them.",
+                "catalogFailed": "Station names could not be loaded. Object IDs are shown instead.",
+                "revision": "Source revision",
+                "origin": "Process time origin",
+                "activities": "Activities",
+                "events": "Events",
+                "precedences": "Precedences",
+                "anchors": "Anchors",
+                "duration": "Min / max duration (min)",
+                "candidates": "Candidate routes / tracks",
+                "selected": "Selected route / track",
+                "endpoints": "Start → end event",
+                "relativeTime": "Source time (min)",
+                "actualTime": "Scheduled time",
+                "nodes": "Candidate nodes",
+                "legacyNode": "Legacy node",
+                "anchorCandidates": "Candidate anchors",
+                "selectedAnchor": "Selected anchor",
+                "leading": "Leading event",
+                "following": "Following event",
+                "interval": "Minimum interval (min)",
+                "track": "Track",
+                "routeAnchors": "Route endpoint anchors",
+                "startAnchor": "Start anchor",
+                "endAnchor": "End anchor",
+                "types": { "Arrival": "Arrival", "Departure": "Departure", "Shunting": "Shunting", "Locomotive": "Locomotive", "Dwelling": "Dwelling" }
+            },
             "empty": "No train operation plan",
             "timeRange": "Total time range",
             "startTime": "Start time",
@@ -1406,6 +1577,9 @@
             },
             "train": {
                 "title": "Trains",
+                "searchPlaceholder": "Search train number, name or type",
+                "searchEmpty": "No matching trains",
+                "batchDelete": "Delete selected ({count})",
                 "count": "{count} trains",
                 "fields": {
                     "id": "Train ID",
@@ -1414,7 +1588,8 @@
                     "isFixedOperation": "Fixed Operation"
                 },
                 "dialogs": {
-                    "deleteTitle": "Delete Train"
+                    "deleteTitle": "Delete Train",
+                    "batchDeleteTitle": "Delete selected trains"
                 },
                 "messages": {
                     "createSuccess": "Train created",
@@ -1423,7 +1598,11 @@
                     "updateFailed": "Failed to update train",
                     "deleteConfirm": "Delete train {id}? Its movements will also be deleted.",
                     "deleteSuccess": "Train deleted",
-                    "deleteFailed": "Failed to delete train"
+                    "deleteFailed": "Failed to delete train",
+                    "batchDeleteConfirm": "Delete the {count} selected trains? All their movements and process constraints will also be deleted.",
+                    "batchDeleteSuccess": "Deleted {count} trains and their movements and process constraints.",
+                    "batchDeleteFailed": "Bulk deletion failed. The trains and selection were retained; check the error and retry.",
+                    "batchDeleteInvalidResponse": "The server did not return a complete deletion result. Refresh the list to check before trying again."
                 }
             },
             "movement": {
@@ -1462,20 +1641,20 @@
         },
         "trainOperationChart": {
             "title": "Operation Plan Chart",
-            "count": "{cellCount} track circuit sections, {barCount} occupations",
+            "count": "{cellCount} track circuit sections, {barCount} occupancy records",
             "cellAxis": "Track Circuit Section",
             "timeAxis": "Time",
             "emptyPlan": "No train operation plan",
             "emptyCells": "No track circuit sections",
-            "emptyOccupations": "No occupation records",
+            "emptyOccupations": "No occupancy records",
             "messages": {
                 "loadFailed": "Failed to load operation plan chart"
             }
         },
         "operationOccupationTimeTable": {
-            "title": "Operation Occupation Time Table",
+            "title": "Operation Occupancy Time Table",
             "count": "{routeCount} routes, {operationCount} operations",
-            "empty": "No operation occupation time statistics",
+            "empty": "No operation occupancy time statistics",
             "emptyPlan": "No train operation plan",
             "totalTime": "Total Time (sec)",
             "totalTimePlaceholder": "Enter value",
@@ -1490,8 +1669,8 @@
                 "label": "Table {index}",
                 "add": "Add Table",
                 "edit": "Edit Table",
-                "createTitle": "Create Operation Occupation Time Table",
-                "editTitle": "Edit Operation Occupation Time Table",
+                "createTitle": "Create Operation Occupancy Time Table",
+                "editTitle": "Edit Operation Occupancy Time Table",
                 "name": "Table Name",
                 "namePlaceholder": "Enter table name",
                 "nameRequired": "Please enter a table name",
@@ -1512,8 +1691,8 @@
                 "nonFixedOperation": "Non-fixed Operations"
             },
             "summary": {
-                "fixedOccupationTime": "Fixed Occupation Time Subtotal",
-                "totalOccupationTime": "Total Occupation Time",
+                "fixedOccupationTime": "Fixed Occupancy Time Subtotal",
+                "totalOccupationTime": "Total Occupancy Time",
                 "utilizationK": "Utilization K"
             }
         },
@@ -1592,7 +1771,11 @@
             "undo": "Undo",
             "redo": "Redo",
             "clearSelection": "Clear Sel",
-            "deleteSelection": "Delete Sel"
+            "deleteSelection": "Delete Sel",
+            "importJson": "Import JSON",
+            "exportJson": "Export JSON",
+            "extractDwg": "Extract DWG",
+            "showCellNames": "Section Names"
         },
         "placeholders": {
             "selectInstance": "Please select a station",
@@ -1628,7 +1811,13 @@
             "drawingObject": "Drawing Object",
             "tools": "Tools",
             "curveDisplay": "Curve View",
-            "displayScale": "Display Scale"
+            "displayScale": "Display Scale",
+            "selection": "Selection",
+            "display": "Display",
+            "panels": "Panels",
+            "snapping": "Snapping and Grid",
+            "topology": "Topology",
+            "pathTest": "Path Test"
         },
         "scale": {
             "x": "X",
@@ -1657,7 +1846,11 @@
             "generateNode": "Gen Node",
             "generateSwitch": "Gen Switch",
             "generateCurve": "Gen Curve",
-            "fitFullView": "Fit All"
+            "fitFullView": "Fit All",
+            "mergeNodes": "Merge Nodes",
+            "correctBindings": "Correct Bindings",
+            "searchPath": "Search Path",
+            "displayStyle": "Display Style"
         },
         "curveDisplay": {
             "arc": "Arc",
@@ -1669,6 +1862,43 @@
             "loadFailed": "Load failed: ",
             "loadSchemesFailed": "Failed to load station schemes",
             "readonly": "Read-only mode does not allow write operations"
+        },
+        "panels": {
+            "trackCircuits": "Track Circuits",
+            "equipment": "Equipment"
+        },
+        "bufferStop": {
+            "types": {
+                "normal": "Standard",
+                "ext": "Extended"
+            },
+            "directions": {
+                "left": "Left",
+                "right": "Right"
+            }
+        },
+        "signal": {
+            "types": {
+                "DepartureSignal": "Departure Signal",
+                "HomeSignal": "Home Signal",
+                "ShuntingSignal": "Shunting Signal",
+                "HumpSignal": "Hump Signal"
+            },
+            "aspects": "{count} Aspects",
+            "poles": {
+                "High": "High",
+                "Low": "Low"
+            }
+        },
+        "topology": {
+            "auto": "Auto",
+            "manual": "Manual"
+        },
+        "equipment": {
+            "type": "Equipment Type",
+            "generic": "Equipment",
+            "batch": "{type}: Batch Edit ({count})",
+            "selectOne": "Select one item"
         }
     },
     "stationLayout3d": {
@@ -1721,21 +1951,23 @@
         },
         "phase": {
             "waiting": "Waiting",
-            "selecting": "Select",
+            "selecting": "Select a train",
             "locking": "Locking route",
+            "dwelling": "Dwelling on track",
+            "allActiveWithDwelling": "Locking {locking} / Moving {moving} / Dwelling {dwelling}",
             "movingWithProgress": "Train moving {progress}%",
             "finishedWithCount": "Finished {finished}/{total}",
             "allActive": "Locking {locking} / Moving {moving}"
         },
         "gantt": {
-            "title": "Plan Gantt",
+            "title": "Plan Gantt Chart",
             "cellAxis": "Track circuit section",
-            "summary": "{laneCount} sections · {blockCount} occupations",
+            "summary": "{laneCount} sections · {blockCount} occupancy records",
             "subTableSummary": "{selected}/{total} track circuit sections",
             "subTableFallbackName": "Sub-table {index}",
-            "noPlayableWork": "No playable work",
+            "noPlayableWork": "No operations to play",
             "emptySubTable": "No track circuit sections are selected in this sub-table",
-            "emptyOccupation": "The current plan has no displayable track circuit occupation",
+            "emptyOccupation": "The current plan has no displayable track circuit occupancy",
             "emptyAllPlan": "The current operation plan has no playable route with parseable start/end times",
             "emptyTrainPlan": "The current train has no operation plan",
             "emptyRoute": "The current train has no playable route"
@@ -1757,7 +1989,7 @@
             "loadOperationPlansFailed": "Failed to load operation plans",
             "loadStationRoutesFailed": "Failed to load routes",
             "loadTrainOperationPlanFailed": "Failed to load train operation plan",
-            "loadRouteTimesFailed": "Failed to load route occupation times",
+            "loadRouteTimesFailed": "Failed to load route occupancy times",
             "subTableNameRequired": "Enter a sub-table name",
             "trainModelLoadFailed": "Train models could not be loaded. Please refresh and try again."
         }
@@ -2123,6 +2355,75 @@
         },
         "messages": {
             "loadFailed": "Failed to load route design layout"
+        }
+    },
+    "operationSimulation": {
+        "playbackTitle": "Playback",
+        "movementSequence": "Movement Sequence",
+        "currentRoute": "Current Route",
+        "phase": "Phase",
+        "progress": "Progress",
+        "formation": "Formation",
+        "carCount": "{count} cars",
+        "routeCount": "{count} routes",
+        "activeRoutes": "{count} active routes",
+        "waitingNext": "Waiting for the next route",
+        "moving": "Moving",
+        "completed": "Completed",
+        "pending": "Pending",
+        "loadingLayout": "Loading layout…",
+        "emptyLayout": "No layout data",
+        "loadLayoutFailed": "Failed to load the layout",
+        "loadSchemesFailed": "Failed to load station schemes",
+        "train": "Train",
+        "route": "Route",
+        "time": "Time",
+        "status": "Status",
+        "trainOverlay": "Simulation trains: {count} active"
+    },
+    "noPermission": {
+        "message": "You do not have access to this page",
+        "home": "Back to Home",
+        "signIn": "Sign In"
+    },
+    "course": {
+        "title": "Railway Yards and Hubs",
+        "directory": "Course Contents",
+        "emptyChapters": "No chapters",
+        "emptySections": "No sections",
+        "selectContent": "Select course content",
+        "loadingGuide": "Loading study guide…",
+        "keyPoints": "Key Topics",
+        "emptyKeyPoints": "No key topics available",
+        "difficultPoints": "Challenging Topics",
+        "emptyDifficultPoints": "No challenging topics available",
+        "video": "Lecture Video",
+        "videoNumber": "Video {index}",
+        "emptyVideo": "No video for this section",
+        "slides": "Slides",
+        "page": "Page {page}",
+        "emptyPdf": "No PDF for this section",
+        "renderingSlides": "Rendering slides…",
+        "emptyPreview": "No preview available",
+        "previousPage": "Previous Page",
+        "nextPage": "Next Page",
+        "thumbnail": "Thumbnail {page}",
+        "emptyPdfPages": "No pages to display in this PDF",
+        "pdfRenderFailed": "Failed to render PDF: {error}",
+        "quiz": {
+            "title": "Exercises",
+            "loading": "Loading exercises…",
+            "answered": "Answered {answered}/{total}",
+            "score": "Score {correct}/{total}",
+            "grade": "Grade and View Answers",
+            "empty": "No exercises available",
+            "answerPlaceholder": "Enter your answer",
+            "similarity": "Similarity: {percent}%",
+            "answer": "Model Answer",
+            "loadFailed": "Failed to load exercises: {error}",
+            "correct": "Correct",
+            "partial": "Partly Correct",
+            "wrong": "Incorrect"
         }
     }
 }

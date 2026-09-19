@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace SwitchYard.Capacity
 {
     public sealed class OperationPlanRow
@@ -240,6 +242,12 @@ namespace SwitchYard.Capacity
         public List<TrainRow> Trains { get; set; } = new();
 
         public List<MovementRow> Movements { get; set; } = new();
+
+        public List<JsonElement> ProcessConstraints { get; set; } = new();
+
+        public List<string> GeneratedTrainIDs { get; set; } = new();
+
+        public List<string> Warnings { get; set; } = new();
     }
 
     public sealed class OperationBottleneckSummaryCategoryRow

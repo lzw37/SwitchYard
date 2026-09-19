@@ -182,6 +182,8 @@ public sealed class StationCapacitySolveInput
     public string InstanceId { get; set; } = string.Empty;
     public string StationSchemeId { get; set; } = string.Empty;
     public string OperationPlanId { get; set; } = string.Empty;
+    public double HorizonSeconds { get; set; } = 86_400;
+    public string MinimumModelVersion { get; set; } = string.Empty;
     public StationCapacitySolveSettings Settings { get; set; } = new();
     public List<StationCapacityRouteInput> Routes { get; set; } = new();
     public List<StationCapacityRouteOccupationInput> RouteOccupations { get; set; } = new();
@@ -202,6 +204,8 @@ public sealed class StationCapacityRouteInput
     public string Id { get; set; } = string.Empty;
     public List<string> CellIds { get; set; } = new();
     public List<string> Tags { get; set; } = new();
+    /// <summary>Only set for an input-only dwelling resource; never a persisted station route.</summary>
+    public string? TrackId { get; set; }
 }
 
 public sealed class StationCapacityRouteOccupationInput
@@ -218,6 +222,29 @@ public sealed class StationCapacityTrainInput
     public string Id { get; set; } = string.Empty;
     public string TrainType { get; set; } = string.Empty;
     public List<StationCapacityMovementInput> Movements { get; set; } = new();
+    public StationCapacityProcessInput? ProcessConstraints { get; set; }
+}
+
+public sealed class StationCapacityProcessInput
+{
+    public double OriginSeconds { get; set; }
+    public List<StationCapacityEventInput> Events { get; set; } = new();
+    public List<StationCapacityPrecedenceInput> Precedences { get; set; } = new();
+}
+
+public sealed class StationCapacityEventInput
+{
+    public string Id { get; set; } = string.Empty;
+    public double? FixedTimeSeconds { get; set; }
+    public double OriginalTimeSeconds { get; set; }
+    public List<string> LocationIds { get; set; } = new();
+}
+
+public sealed class StationCapacityPrecedenceInput
+{
+    public string LeadingEventId { get; set; } = string.Empty;
+    public string FollowingEventId { get; set; } = string.Empty;
+    public double IntervalSeconds { get; set; }
 }
 
 public sealed class StationCapacityMovementInput
@@ -227,10 +254,14 @@ public sealed class StationCapacityMovementInput
     public int Sequence { get; set; }
     public List<string> CandidateRouteIds { get; set; } = new();
     public List<string> RequiredRouteTags { get; set; } = new();
-    public int OriginalStartSeconds { get; set; }
-    public int OriginalEndSeconds { get; set; }
-    public int MinDurationSeconds { get; set; }
-    public int MaxDurationSeconds { get; set; } = 86_400;
+    public double OriginalStartSeconds { get; set; }
+    public double OriginalEndSeconds { get; set; }
+    public double MinDurationSeconds { get; set; }
+    public double MaxDurationSeconds { get; set; } = 86_400;
+    public string? StartEventId { get; set; }
+    public string? EndEventId { get; set; }
+    public Dictionary<string, List<string>> StartLocationIdsByRoute { get; set; } = new(StringComparer.Ordinal);
+    public Dictionary<string, List<string>> EndLocationIdsByRoute { get; set; } = new(StringComparer.Ordinal);
 }
 
 public sealed class StationCapacitySolveResult
@@ -255,6 +286,7 @@ public sealed class StationCapacityTrainResult
     public string Id { get; set; } = string.Empty;
     public string TrainType { get; set; } = string.Empty;
     public List<StationCapacityMovementResult> Movements { get; set; } = new();
+    public Dictionary<string, double> EventTimes { get; set; } = new(StringComparer.Ordinal);
 }
 
 public sealed class StationCapacityMovementResult
@@ -262,8 +294,9 @@ public sealed class StationCapacityMovementResult
     public string Id { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public string RouteId { get; set; } = string.Empty;
-    public int StartSeconds { get; set; }
-    public int EndSeconds { get; set; }
+    public string? TrackId { get; set; }
+    public double StartSeconds { get; set; }
+    public double EndSeconds { get; set; }
     public string StartTime { get; set; } = string.Empty;
     public string EndTime { get; set; } = string.Empty;
     public List<StationCapacityCellOccupationResult> CellOccupations { get; set; } = new();
@@ -272,8 +305,8 @@ public sealed class StationCapacityMovementResult
 public sealed class StationCapacityCellOccupationResult
 {
     public string CellId { get; set; } = string.Empty;
-    public int StartSeconds { get; set; }
-    public int EndSeconds { get; set; }
+    public double StartSeconds { get; set; }
+    public double EndSeconds { get; set; }
     public string StartTime { get; set; } = string.Empty;
     public string EndTime { get; set; } = string.Empty;
 }

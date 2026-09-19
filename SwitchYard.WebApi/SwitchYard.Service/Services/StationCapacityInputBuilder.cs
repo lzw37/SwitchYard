@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using SwitchYard.Capacity;
+using SwitchYard.Service.Models;
 
 namespace SwitchYard.Service.Services;
 
@@ -132,10 +133,16 @@ public sealed class StationCapacityInputBuilder
             input.Trains.Add(train);
         }
 
+        StationCapacityProcessInputBuilder.Apply(dbConnector, new ProcessScope
+        {
+            InstanceID = instanceId,
+            StationSchemeID = stationSchemeId,
+            OperationPlanID = operationPlanId
+        }, input);
         return input;
     }
 
-    private static List<string> ParseList(string? value)
+    internal static List<string> ParseList(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
         {
@@ -167,16 +174,42 @@ public sealed class StationCapacityInputBuilder
             .ToList();
     }
 
-    private static int ParseTimeSeconds(string? value)
+    private static double ParseTimeSeconds(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
         {
             return 0;
         }
 
-        if (TimeSpan.TryParse(value.Trim(), CultureInfo.InvariantCulture, out var time))
+        var text = value.Trim();
+        var dayOffset = 0;
+        if (text.StartsWith("D+", StringComparison.OrdinalIgnoreCase))
         {
-            return (int)Math.Clamp(Math.Round(time.TotalSeconds), 0, 86_400);
+            var parts = text.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length != 2 || !int.TryParse(parts[0][2..], out dayOffset) || dayOffset < 0)
+                throw new InvalidOperationException($"无法解析作业时间：{value}");
+            text = parts[1];
+        }
+        var clock = text.Split(':');
+        if (clock.Length is 2 or 3 &&
+            int.TryParse(clock[0], out var hours) && hours >= 0 &&
+            int.TryParse(clock[1], out var minutes) && minutes is >= 0 and < 60 &&
+            (clock.Length == 2 || double.TryParse(clock[2], NumberStyles.AllowDecimalPoint,
+                CultureInfo.InvariantCulture, out _)))
+        {
+            var seconds = clock.Length == 3 ? double.Parse(clock[2], CultureInfo.InvariantCulture) : 0;
+            if (seconds is >= 0 and < 60)
+            {
+                var total = dayOffset * 86_400d + hours * 3600d + minutes * 60d + seconds;
+                if (total <= 604_800) return total;
+            }
+            throw new InvalidOperationException($"作业时间必须在七天内：{value}");
+        }
+        if (dayOffset > 0) throw new InvalidOperationException($"无法解析作业时间：{value}");
+        if (TimeSpan.TryParse(text, CultureInfo.InvariantCulture, out var time))
+        {
+            if (time.TotalSeconds is >= 0 and <= 604_800) return time.TotalSeconds;
+            throw new InvalidOperationException($"作业时间必须在七天内：{value}");
         }
 
         if (DateTime.TryParse(value.Trim(), CultureInfo.InvariantCulture, DateTimeStyles.None, out var dateTime))

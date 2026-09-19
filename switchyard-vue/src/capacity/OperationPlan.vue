@@ -1,5 +1,5 @@
 <template>
-    <section class="operation-plan-page">
+    <section class="operation-plan-page" :class="{ 'is-process-tab': activeOperationPlanTab === 'operationProcess' }">
         <div class="operation-plan-toolbar">
             <div class="operation-plan-scheme-control">
                 <span class="operation-plan-control-label">{{ t('stationLayout.menu.stationScheme') }}</span>
@@ -9,7 +9,7 @@
                     filterable
                     class="operation-plan-scheme-select"
                     :loading="loadingStationSchemes"
-                    :disabled="!selectedInstanceId || loadingStationSchemes || loadingTrainTemplates"
+                    :disabled="!selectedInstanceId || loadingStationSchemes || loadingTrainTemplates || cellOccupancyImportBusy || refreshingCellOccupancyImport"
                     :placeholder="t('stationLayout.placeholders.selectStationScheme')"
                     @change="handleStationSchemeChange"
                 >
@@ -29,7 +29,7 @@
                     filterable
                     class="operation-plan-object-select"
                     :loading="loadingOperationPlans"
-                    :disabled="!currentStationSchemeId || loadingOperationPlans || operationPlanInlineActive"
+                    :disabled="!currentStationSchemeId || loadingOperationPlans || operationPlanInlineActive || cellOccupancyImportBusy || refreshingCellOccupancyImport"
                     :placeholder="t('operationPlan.planObject.placeholders.select')"
                     @change="handleOperationPlanChange"
                 >
@@ -58,34 +58,34 @@
                         :value="preset.presetId"
                     />
                 </el-select>
-                <el-button
+                <ActionButton
                     :icon="MagicStick"
                     type="success"
-                    size="small"
                     :loading="generatingSaturatedPlan"
                     :disabled="!canGenerateSaturatedPlan"
-                    @click="generateSaturatedPlan"
-                >
-                    {{ saturatedPlanButtonText }}
-                </el-button>
-                <el-button
+                    @click="generateSaturatedPlan" :label="saturatedPlanButtonText" />
+                <ActionButton
                     :icon="Setting"
-                    size="small"
                     :disabled="!selectedInstanceId || !currentStationSchemeId"
-                    @click="openOperationPlanManager"
-                >
-                    {{ t('operationPlan.planObject.actions.manage') }}
-                </el-button>
-                <el-button
+                    @click="openOperationPlanManager" :label="t('operationPlan.planObject.actions.manage')" />
+                <ActionButton
                     :icon="Refresh"
-                    size="small"
                     :disabled="!canLoadTemplates || operationPlanInlineActive"
-                    @click="refreshOperationPlanData"
-                >
-                    {{ t('operationPlan.actions.refresh') }}
-                </el-button>
+                    @click="refreshOperationPlanData" :label="t('operationPlan.actions.refresh')" />
             </div>
         </div>
+
+        <CellOccupancyImportDialog
+            v-model="cellOccupancyImportVisible"
+            :instance-id="selectedInstanceId"
+            :station-scheme-id="currentStationSchemeId"
+            :operation-plan-id="currentOperationPlanId"
+            :station-scheme-name="stationSchemeOptions.find(item => item.id === currentStationSchemeId)?.name || ''"
+            :operation-plan-name="operationPlanOptions.find(item => item.operationPlanID === currentOperationPlanId)?.name || ''"
+            :disabled="!canImportCellOccupancy"
+            @busy-change="cellOccupancyImportBusy = $event"
+            @imported="handleCellOccupancyImported"
+        />
 
         <el-dialog
             v-model="operationPlanManagerVisible"
@@ -95,23 +95,15 @@
         >
             <div class="operation-plan-object-manager" v-loading="loadingOperationPlans || savingOperationPlanObject">
                 <div class="operation-plan-object-manager-toolbar">
-                    <el-button
+                    <ActionButton
                         :icon="Plus"
                         type="primary"
-                        size="small"
                         :disabled="operationPlanObjectInlineActive || savingOperationPlanObject"
-                        @click="startCreateOperationPlanObjectInline"
-                    >
-                        {{ t('operationPlan.actions.add') }}
-                    </el-button>
-                    <el-button
+                        @click="startCreateOperationPlanObjectInline" :label="t('operationPlan.actions.add')" />
+                    <ActionButton
                         :icon="Refresh"
-                        size="small"
                         :disabled="operationPlanObjectInlineActive || savingOperationPlanObject"
-                        @click="loadOperationPlans"
-                    >
-                        {{ t('operationPlan.actions.refresh') }}
-                    </el-button>
+                        @click="loadOperationPlans" :label="t('operationPlan.actions.refresh')" />
                 </div>
 
                 <el-table
@@ -193,95 +185,208 @@
                     >
                         <template #default="{ row }">
                             <template v-if="isOperationPlanObjectInlineEditing(row)">
-                                <el-button
+                                <ActionButton
                                     :icon="Check"
-                                    link
                                     type="primary"
                                     :loading="savingOperationPlanObject"
-                                    @click="saveOperationPlanObject"
-                                >
-                                    {{ t('operationPlan.actions.save') }}
-                                </el-button>
-                                <el-button
+                                    @click="saveOperationPlanObject" :label="t('operationPlan.actions.save')" />
+                                <ActionButton
                                     :icon="Close"
-                                    link
                                     :disabled="savingOperationPlanObject"
-                                    @click="cancelOperationPlanObjectEdit"
-                                >
-                                    {{ t('operationPlan.actions.cancel') }}
-                                </el-button>
+                                    @click="cancelOperationPlanObjectEdit" :label="t('operationPlan.actions.cancel')" />
                             </template>
-                            <el-button
+                            <ActionButton
                                 v-else
                                 :icon="Edit"
-                                link
                                 type="primary"
                                 :disabled="operationPlanObjectInlineActive"
-                                @click="startEditOperationPlanObject(row)"
-                            >
-                                {{ t('operationPlan.actions.edit') }}
-                            </el-button>
-                            <el-button
+                                @click="startEditOperationPlanObject(row)" :label="t('operationPlan.actions.edit')" />
+                            <ActionButton
                                 v-if="!isOperationPlanObjectInlineEditing(row)"
                                 :icon="CopyDocument"
-                                link
                                 type="success"
                                 :disabled="operationPlanObjectInlineActive"
-                                @click="copyOperationPlanObject(row)"
-                            >
-                                {{ t('operationPlan.actions.copy') }}
-                            </el-button>
-                            <el-button
+                                @click="copyOperationPlanObject(row)" :label="t('operationPlan.actions.copy')" />
+                            <ActionButton
                                 v-if="!isOperationPlanObjectInlineEditing(row)"
                                 :icon="Delete"
-                                link
                                 type="danger"
                                 :disabled="operationPlanObjectInlineActive || row.operationPlanID === defaultOperationPlanID"
-                                @click="confirmDeleteOperationPlanObject(row)"
-                            >
-                                {{ t('operationPlan.actions.delete') }}
-                            </el-button>
+                                @click="confirmDeleteOperationPlanObject(row)" :label="t('operationPlan.actions.delete')" />
                         </template>
                     </el-table-column>
                 </el-table>
             </div>
         </el-dialog>
 
+        <el-dialog
+            v-model="processTrainDialogVisible"
+            :title="t('operationPlan.train.fromProcess.title')"
+            width="600px"
+            :close-on-click-modal="false"
+            :close-on-press-escape="!generatingTrainFromProcess"
+            :show-close="!generatingTrainFromProcess"
+        >
+            <div class="operation-process-generation-dialog">
+                <p class="operation-process-generation-help">{{ t('operationPlan.train.fromProcess.description') }}</p>
+                <el-alert v-if="processTrainLoadError" :title="processTrainLoadError" type="error" show-icon :closable="false" />
+                <el-alert v-if="processTrainGenerateError" :title="processTrainGenerateError" type="error" show-icon :closable="false" />
+                <el-form label-position="top" size="small" :disabled="loadingProcessTrainSources || generatingTrainFromProcess">
+                    <el-form-item :label="t('operationPlan.train.fromProcess.sourceLabel')">
+                        <el-select v-model="processTrainSourceID" filterable :loading="loadingProcessTrainSources" :placeholder="t('operationPlan.train.fromProcess.placeholder')" class="operation-process-generation-select">
+                            <el-option v-for="source in processTrainSources" :key="source.id" :value="source.id" :label="source.name" />
+                        </el-select>
+                    </el-form-item>
+                </el-form>
+                <p v-if="selectedProcessTrainSource?.description" class="operation-process-generation-help">{{ selectedProcessTrainSource.description }}</p>
+                <el-empty v-if="!loadingProcessTrainSources && !processTrainLoadError && processTrainSources.length === 0" :image-size="64" :description="t('operationPlan.train.fromProcess.empty')" />
+                <el-alert :title="t('operationPlan.train.fromProcess.mapping')" type="info" show-icon :closable="false" />
+            </div>
+            <template #footer>
+                <ActionButton :icon="Refresh" :disabled="loadingProcessTrainSources || generatingTrainFromProcess" @click="loadProcessTrainSources" :label="t('operationPlan.train.fromProcess.reload')" />
+                <ActionButton :disabled="generatingTrainFromProcess" @click="processTrainDialogVisible = false" :icon="Close" :label="t('operationPlan.actions.cancel')" />
+                <ActionButton type="primary" :icon="MagicStick" :loading="generatingTrainFromProcess" :disabled="!selectedProcessTrainSource || loadingProcessTrainSources || !canGenerateTrainFromProcess" @click="generateTrainFromProcess" :label="t('operationPlan.train.fromProcess.generate')" />
+            </template>
+        </el-dialog>
+
+        <el-dialog v-model="processPlanDialogVisible" :title="t('operationPlan.trainOperationPlan.fromProcess.title')" width="620px" :close-on-click-modal="false" :close-on-press-escape="!generatingPlanFromProcess" :show-close="!generatingPlanFromProcess">
+            <div class="operation-process-generation-dialog">
+                <el-alert :title="t('operationPlan.trainOperationPlan.fromProcess.appendHint')" type="info" show-icon :closable="false" />
+                <el-alert v-if="processPlanLoadError" :title="processPlanLoadError" type="error" show-icon :closable="false" />
+                <el-alert v-if="processPlanGenerateError" :title="processPlanGenerateError" type="error" show-icon :closable="false" />
+                <el-form label-position="top" size="small" :disabled="loadingProcessPlanSources || generatingPlanFromProcess">
+                    <el-form-item :label="t('operationPlan.train.fromProcess.sourceLabel')">
+                        <el-select v-model="processPlanSourceID" filterable :loading="loadingProcessPlanSources" :placeholder="t('operationPlan.train.fromProcess.placeholder')" class="operation-process-generation-select">
+                            <el-option v-for="source in processPlanSources" :key="source.id" :value="source.id" :label="source.name" />
+                        </el-select>
+                    </el-form-item>
+                    <div class="operation-process-plan-parameters">
+                        <el-form-item :label="t('operationPlan.trainOperationPlan.fromProcess.trainCount')"><el-input-number v-model="processPlanTrainCount" :min="1" :max="1000" :precision="0" controls-position="right" /></el-form-item>
+                        <el-form-item :label="t('operationPlan.trainOperationPlan.startTime')"><el-input v-model="processPlanStartTime" placeholder="00:00" /></el-form-item>
+                        <el-form-item :label="t('operationPlan.trainOperationPlan.endTime')"><el-input v-model="processPlanEndTime" placeholder="24:00" /></el-form-item>
+                    </div>
+                </el-form>
+                <p v-if="selectedProcessPlanSource?.description" class="operation-process-generation-help">{{ selectedProcessPlanSource.description }}</p>
+                <el-empty v-if="!loadingProcessPlanSources && !processPlanLoadError && processPlanSources.length === 0" :description="t('operationPlan.train.fromProcess.empty')" :image-size="60" />
+                <p class="operation-process-generation-help">{{ t('operationPlan.trainOperationPlan.fromProcess.distributionHint') }}</p>
+            </div>
+            <template #footer>
+                <ActionButton :icon="Refresh" :disabled="loadingProcessPlanSources || generatingPlanFromProcess" @click="loadProcessPlanSources" :label="t('operationPlan.train.fromProcess.reload')" />
+                <ActionButton :disabled="generatingPlanFromProcess" @click="processPlanDialogVisible = false" :icon="Close" :label="t('operationPlan.actions.cancel')" />
+                <ActionButton type="primary" :icon="MagicStick" :loading="generatingPlanFromProcess" :disabled="!selectedProcessPlanSource || !validProcessPlanParameters || !canGeneratePlanFromProcess" @click="generatePlanFromProcess" :label="t('operationPlan.trainOperationPlan.fromProcess.generate')" />
+            </template>
+        </el-dialog>
+
+        <el-drawer v-model="processConstraintDrawerVisible" :title="t('operationPlan.trainOperationPlan.fromProcess.constraints')" size="min(1120px, 94vw)" append-to-body>
+            <div v-if="selectedTrainProcessConstraints" class="operation-process-constraints">
+                <el-descriptions :column="2" border size="small">
+                    <el-descriptions-item :label="t('operationPlan.train.fromProcess.sourceLabel')">{{ selectedTrainProcessConstraints.sourceName }} · {{ selectedTrainProcessConstraints.sourceTemplateID }}</el-descriptions-item>
+                    <el-descriptions-item :label="t('operationPlan.trainOperationPlan.fromProcess.revision')">{{ selectedTrainProcessConstraints.sourceRevision }}</el-descriptions-item>
+                    <el-descriptions-item :label="t('operationPlan.trainOperationPlan.train.fields.trainNumber')">{{ selectedTrainOperationPlanTrain?.trainNumber }}</el-descriptions-item>
+                    <el-descriptions-item :label="t('operationPlan.trainOperationPlan.fromProcess.origin')">{{ formatProcessSeconds(selectedTrainProcessConstraints.originSeconds) }}</el-descriptions-item>
+                </el-descriptions>
+                <el-alert :title="t('operationPlan.trainOperationPlan.fromProcess.lockedHint')" type="info" :closable="false" show-icon />
+                <p v-if="selectedTrainProcessConstraints.process.description" class="operation-process-generation-help">{{ selectedTrainProcessConstraints.process.description }}</p>
+                <div v-if="processConstraintCatalogError" class="operation-process-catalog-error"><span>{{ processConstraintCatalogError }}</span><ActionButton :loading="loadingProcessConstraintCatalog" @click="loadProcessConstraintCatalog" :icon="Refresh" :label="t('operationPlan.actions.refresh')" /></div>
+                <el-tabs v-loading="loadingProcessConstraintCatalog">
+                    <el-tab-pane :label="t('operationPlan.trainOperationPlan.fromProcess.activities')">
+                        <el-table :data="selectedTrainProcessConstraints.process.activities" size="small" border max-height="560">
+                            <el-table-column prop="name" :label="t('operationPlan.train.fields.name')" min-width="145" show-overflow-tooltip />
+                            <el-table-column :label="t('operationPlan.train.fields.type')" width="100"><template #default="{ row }">{{ processActivityTypeName(row.type) }}</template></el-table-column>
+                            <el-table-column :label="t('operationPlan.trainOperationPlan.fromProcess.duration')" width="135"><template #default="{ row }">{{ row.minDuration }} – {{ row.maxDuration }}</template></el-table-column>
+                            <el-table-column :label="t('operationPlan.trainOperationPlan.fromProcess.candidates')" min-width="180"><template #default="{ row }">{{ processCandidateNames(row) }}</template></el-table-column>
+                            <el-table-column :label="t('operationPlan.trainOperationPlan.fromProcess.selected')" min-width="150"><template #default="{ row }">{{ processActivitySelection(row, selectedTrainProcessConstraints) }}</template></el-table-column>
+                            <el-table-column :label="t('operationPlan.trainOperationPlan.fromProcess.endpoints')" min-width="190"><template #default="{ row }">{{ processEventName(row.startEvent) }} → {{ processEventName(row.endEvent) }}</template></el-table-column>
+                            <el-table-column :label="t('operationPlan.movement.fields.movementID')" min-width="160" show-overflow-tooltip><template #default="{ row }">{{ selectedTrainProcessConstraints.activityMovementMap[row.id] || '—' }}</template></el-table-column>
+                        </el-table>
+                    </el-tab-pane>
+                    <el-tab-pane :label="t('operationPlan.trainOperationPlan.fromProcess.events')">
+                        <el-table :data="selectedTrainProcessConstraints.process.events" size="small" border max-height="560">
+                            <el-table-column prop="name" :label="t('operationPlan.train.fields.name')" min-width="155" />
+                            <el-table-column :label="t('operationPlan.trainOperationPlan.fromProcess.relativeTime')" width="135"><template #default="{ row }">{{ row.time ?? '—' }}</template></el-table-column>
+                            <el-table-column :label="t('operationPlan.trainOperationPlan.fromProcess.actualTime')" width="150"><template #default="{ row }">{{ formatProcessSeconds(selectedTrainProcessConstraints.eventTimes[row.id]) }}</template></el-table-column>
+                            <el-table-column :label="t('operationPlan.trainOperationPlan.fromProcess.nodes')" min-width="170"><template #default="{ row }">{{ processReferenceNames(row.nodeList || [], 'nodes') }}</template></el-table-column>
+                            <el-table-column :label="t('operationPlan.trainOperationPlan.fromProcess.legacyNode')" min-width="140"><template #default="{ row }">{{ processReferenceNames(row.nodeID ? [row.nodeID] : [], 'nodes') }}</template></el-table-column>
+                            <el-table-column :label="t('operationPlan.trainOperationPlan.fromProcess.anchorCandidates')" min-width="170"><template #default="{ row }">{{ row.anchorList.map(processAnchorName).join('、') || '—' }}</template></el-table-column>
+                            <el-table-column :label="t('operationPlan.trainOperationPlan.fromProcess.selectedAnchor')" min-width="140"><template #default="{ row }">{{ processAnchorName(row.selectedAnchor) }}</template></el-table-column>
+                        </el-table>
+                    </el-tab-pane>
+                    <el-tab-pane :label="t('operationPlan.trainOperationPlan.fromProcess.precedences')">
+                        <el-table :data="selectedTrainProcessConstraints.process.precedences" size="small" border max-height="560">
+                            <el-table-column :label="t('operationPlan.trainOperationPlan.fromProcess.leading')" min-width="200"><template #default="{ row }">{{ processEventName(row.leadingEvent) }}</template></el-table-column>
+                            <el-table-column :label="t('operationPlan.trainOperationPlan.fromProcess.following')" min-width="200"><template #default="{ row }">{{ processEventName(row.followingEvent) }}</template></el-table-column>
+                            <el-table-column prop="interval" :label="t('operationPlan.trainOperationPlan.fromProcess.interval')" width="175" />
+                        </el-table>
+                    </el-tab-pane>
+                    <el-tab-pane :label="t('operationPlan.trainOperationPlan.fromProcess.anchors')">
+                        <el-table :data="selectedTrainProcessConstraints.process.anchors" size="small" border max-height="270">
+                            <el-table-column prop="name" :label="t('operationPlan.train.fields.name')" min-width="200" />
+                            <el-table-column :label="t('operationPlan.trainOperationPlan.fromProcess.track')" min-width="250"><template #default="{ row }">{{ processReferenceNames([row.trackID], 'tracks') }}</template></el-table-column>
+                        </el-table>
+                        <p class="operation-process-section-label">{{ t('operationPlan.trainOperationPlan.fromProcess.routeAnchors') }}</p>
+                        <el-table :data="selectedTrainProcessConstraints.process.routeAnchors" size="small" border max-height="270">
+                            <el-table-column :label="t('operationPlan.trainOperationPlan.movement.fields.route')" min-width="240"><template #default="{ row }">{{ processReferenceNames([row.routeID], 'routes') }}</template></el-table-column>
+                            <el-table-column :label="t('operationPlan.trainOperationPlan.fromProcess.startAnchor')" min-width="180"><template #default="{ row }">{{ processAnchorName(row.startAnchor) }}</template></el-table-column>
+                            <el-table-column :label="t('operationPlan.trainOperationPlan.fromProcess.endAnchor')" min-width="180"><template #default="{ row }">{{ processAnchorName(row.endAnchor) }}</template></el-table-column>
+                        </el-table>
+                    </el-tab-pane>
+                </el-tabs>
+            </div>
+        </el-drawer>
+
         <el-tabs v-model="activeOperationPlanTab" class="operation-plan-sub-tabs">
+            <el-tab-pane
+                :label="t('operationPlan.tabs.operationProcess')"
+                name="operationProcess"
+                class="operation-plan-sub-tab-pane operation-process-tab-pane"
+                lazy
+            >
+                <OperationProcessEditor
+                    class="operation-process-editor-host"
+                    :instance-i-d="selectedInstanceId || ''"
+                    :station-scheme-i-d="currentStationSchemeId"
+                    :operation-plan-i-d="currentOperationPlanId"
+                />
+            </el-tab-pane>
             <el-tab-pane
                 :label="t('operationPlan.tabs.trainTemplate')"
                 name="trainTemplate"
                 class="operation-plan-sub-tab-pane"
             >
                 <div
-                    class="operation-plan-grid"
+                    class="operation-plan-grid" :style="{ '--list-width': `${templateListWidth}px` }"
                     :class="{ 'is-expanded': selectedTrainTemplate !== null }"
                 >
                     <section class="operation-plan-card train-template-card" v-loading="loadingTrainTemplates || savingTrainTemplate">
                 <header class="operation-plan-card-header">
-                    <div>
-                        <h2>{{ t('operationPlan.train.title') }}</h2>
-                        <span>{{ trainTemplateCountText }}</span>
-                    </div>
+                    <span class="operation-plan-panel-summary" :title="trainTemplateCountText">{{ trainTemplateCountText }}</span>
                     <div class="operation-plan-card-actions">
-                        <el-button
+                        <ActionButton
+                            :icon="MagicStick"
+                            :disabled="!canGenerateTrainFromProcess"
+                            @click="openProcessTrainDialog" :label="t('operationPlan.train.fromProcess.action')" />
+                        <ActionButton
                             :icon="Refresh"
-                            circle
-                            size="small"
                             :disabled="!canLoadTemplates || operationPlanInlineActive"
-                            @click="loadTrainTemplates"
-                        />
-                        <el-button
+                            @click="loadTrainTemplates" :label="t('operationPlan.actions.refresh')" />
+                        <ActionButton
                             :icon="Plus"
                             type="primary"
-                            size="small"
                             :disabled="!canEditTrainTemplates || operationPlanInlineActive"
-                            @click="startCreateTrainTemplateInline"
-                        >
-                            {{ t('operationPlan.actions.add') }}
-                        </el-button>
+                            @click="startCreateTrainTemplateInline" :label="t('operationPlan.actions.add')" />
                     </div>
                 </header>
+
+                <el-alert
+                    v-if="processTrainResult"
+                    :title="t('operationPlan.train.fromProcess.success', { name: processTrainResult.name, count: processTrainResult.movementCount })"
+                    :type="processTrainResult.warnings.length ? 'warning' : 'success'"
+                    show-icon
+                    class="operation-process-generation-result"
+                    @close="processTrainResult = null"
+                >
+                    <ul v-if="processTrainResult.warnings.length"><li v-for="(warning, index) in processTrainResult.warnings" :key="index">{{ warning }}</li></ul>
+                </el-alert>
 
                 <el-table
                     :data="visibleTrainTemplates"
@@ -302,15 +407,11 @@
                             <el-tag v-else-if="isTrainTemplateEditing(row)" size="small" type="warning">
                                 {{ t('operationPlan.states.editing') }}
                             </el-tag>
-                            <el-button
+                            <ActionButton
                                 v-else
                                 :icon="isTrainTemplateExpanded(row) ? ArrowDown : ArrowRight"
-                                size="small"
-                                text
                                 type="primary"
-                                :title="isTrainTemplateExpanded(row) ? t('operationPlan.actions.collapse') : t('operationPlan.actions.expand')"
-                                @click.stop="toggleTrainTemplateExpansion(row)"
-                            />
+                                @click.stop="toggleTrainTemplateExpansion(row)" :label="isTrainTemplateExpanded(row) ? t('operationPlan.actions.collapse') : t('operationPlan.actions.expand')" />
                         </template>
                     </el-table-column>
                     <el-table-column
@@ -414,43 +515,32 @@
                     >
                         <template #default="{ row }">
                             <div v-if="isTrainTemplateInlineEditing(row)" class="operation-plan-row-actions">
-                                <el-button
+                                <ActionButton
                                     :icon="Check"
-                                    circle
-                                    size="small"
                                     type="primary"
                                     :loading="savingTrainTemplate"
-                                    @click.stop="saveTrainTemplate"
-                                />
-                                <el-button
+                                    @click.stop="saveTrainTemplate" :label="t('operationPlan.actions.save')" />
+                                <ActionButton
                                     :icon="Close"
-                                    circle
-                                    size="small"
-                                    @click.stop="cancelTrainTemplateInline(row)"
-                                />
+                                    @click.stop="cancelTrainTemplateInline(row)" :label="t('operationPlan.actions.cancel')" />
                             </div>
                             <div v-else class="operation-plan-row-actions">
-                                <el-button
+                                <ActionButton
                                     :icon="Edit"
-                                    circle
-                                    size="small"
                                     :disabled="!canEditTrainTemplates || operationPlanInlineActive"
-                                    @click.stop="startEditTrainTemplateInline(row)"
-                                />
-                                <el-button
+                                    @click.stop="startEditTrainTemplateInline(row)" :label="t('operationPlan.actions.edit')" />
+                                <ActionButton
                                     :icon="Delete"
-                                    circle
-                                    size="small"
                                     type="danger"
                                     :disabled="!canEditTrainTemplates || operationPlanInlineActive"
-                                    @click.stop="confirmDeleteTrainTemplate(row)"
-                                />
+                                    @click.stop="confirmDeleteTrainTemplate(row)" :label="t('operationPlan.actions.delete')" />
                             </div>
                         </template>
                     </el-table-column>
                 </el-table>
                     </section>
 
+                    <PaneDivider v-if="selectedTrainTemplate" v-model="templateListWidth" class="plan-pane-divider" :min="320" :max="840" :label="t('operationPlan.train.title')" />
                     <section
                         v-if="selectedTrainTemplate"
                         class="operation-plan-card movement-template-card"
@@ -462,22 +552,15 @@
                         <span>{{ movementTemplateCountText }}</span>
                     </div>
                     <div class="operation-plan-card-actions">
-                        <el-button
+                        <ActionButton
                             :icon="Refresh"
-                            circle
-                            size="small"
                             :disabled="!canLoadMovementTemplates || movementTemplateInlineActive"
-                            @click="loadMovementTemplates"
-                        />
-                        <el-button
+                            @click="loadMovementTemplates" :label="t('operationPlan.actions.refresh')" />
+                        <ActionButton
                             :icon="Plus"
                             type="primary"
-                            size="small"
                             :disabled="!canEditMovementTemplates || movementTemplateInlineActive"
-                            @click="startCreateMovementTemplateInline"
-                        >
-                            {{ t('operationPlan.actions.add') }}
-                        </el-button>
+                            @click="startCreateMovementTemplateInline" :label="t('operationPlan.actions.add')" />
                     </div>
                 </header>
 
@@ -561,14 +644,10 @@
                                         {{ t('operationPlan.movement.placeholders.routeIDList') }}
                                     </span>
                                 </div>
-                                <el-button
+                                <ActionButton
                                     :icon="Filter"
-                                    size="small"
                                     :loading="loadingStationRoutes"
-                                    @click.stop="openRoutePicker"
-                                >
-                                    {{ t('operationPlan.movement.routePicker.openButton') }}
-                                </el-button>
+                                    @click.stop="openRoutePicker()" :label="t('operationPlan.movement.routePicker.openButton')" />
                             </div>
                             <div v-else class="operation-plan-route-tags">
                                 <template v-if="parseRouteIDList(row.routeIDList).length > 0">
@@ -614,53 +693,33 @@
                     >
                         <template #default="{ row }">
                             <div v-if="isMovementTemplateInlineEditing(row)" class="operation-plan-row-actions">
-                                <el-button
+                                <ActionButton
                                     :icon="Check"
-                                    circle
-                                    size="small"
                                     type="primary"
                                     :loading="savingMovementTemplate"
-                                    @click.stop="saveMovementTemplate"
-                                />
-                                <el-button
+                                    @click.stop="saveMovementTemplate" :label="t('operationPlan.actions.save')" />
+                                <ActionButton
                                     :icon="Close"
-                                    circle
-                                    size="small"
-                                    @click.stop="cancelMovementTemplateInline(row)"
-                                />
+                                    @click.stop="cancelMovementTemplateInline(row)" :label="t('operationPlan.actions.cancel')" />
                             </div>
                             <div v-else class="operation-plan-row-actions">
-                                <el-button
+                                <ActionButton
                                     :icon="ArrowUp"
-                                    circle
-                                    size="small"
-                                    :title="t('operationPlan.actions.moveUp')"
                                     :disabled="!canMoveMovementTemplate(row, -1)"
-                                    @click.stop="moveMovementTemplate(row, -1)"
-                                />
-                                <el-button
+                                    @click.stop="moveMovementTemplate(row, -1)" :label="t('operationPlan.actions.moveUp')" />
+                                <ActionButton
                                     :icon="ArrowDown"
-                                    circle
-                                    size="small"
-                                    :title="t('operationPlan.actions.moveDown')"
                                     :disabled="!canMoveMovementTemplate(row, 1)"
-                                    @click.stop="moveMovementTemplate(row, 1)"
-                                />
-                                <el-button
+                                    @click.stop="moveMovementTemplate(row, 1)" :label="t('operationPlan.actions.moveDown')" />
+                                <ActionButton
                                     :icon="Edit"
-                                    circle
-                                    size="small"
                                     :disabled="!canEditMovementTemplates || movementTemplateInlineActive"
-                                    @click.stop="startEditMovementTemplateInline(row)"
-                                />
-                                <el-button
+                                    @click.stop="startEditMovementTemplateInline(row)" :label="t('operationPlan.actions.edit')" />
+                                <ActionButton
                                     :icon="Delete"
-                                    circle
-                                    size="small"
                                     type="danger"
                                     :disabled="!canEditMovementTemplates || movementTemplateInlineActive"
-                                    @click.stop="confirmDeleteMovementTemplate(row)"
-                                />
+                                    @click.stop="confirmDeleteMovementTemplate(row)" :label="t('operationPlan.actions.delete')" />
                             </div>
                         </template>
                     </el-table-column>
@@ -682,7 +741,7 @@
                                 size="small"
                                 class="train-operation-plan-time-input"
                                 :placeholder="t('operationPlan.trainOperationPlan.startTime')"
-                                :disabled="generatingTrainOperationPlan"
+                                :disabled="generatingTrainOperationPlan || generatingPlanFromProcess"
                             />
                             <span>{{ t('operationPlan.trainOperationPlan.to') }}</span>
                             <el-input
@@ -690,65 +749,62 @@
                                 size="small"
                                 class="train-operation-plan-time-input"
                                 :placeholder="t('operationPlan.trainOperationPlan.endTime')"
-                                :disabled="generatingTrainOperationPlan"
+                                :disabled="generatingTrainOperationPlan || generatingPlanFromProcess"
                             />
                         </div>
                         <div class="operation-plan-card-actions">
-                            <el-button
+                            <ActionButton
                                 :icon="Refresh"
-                                size="small"
                                 :disabled="!canLoadTrainOperationPlan || generatingTrainOperationPlan || operationPlanInlineActive"
-                                @click="loadTrainOperationPlan"
-                            >
-                                {{ t('operationPlan.actions.refresh') }}
-                            </el-button>
-                            <el-button
+                                @click="loadTrainOperationPlan" :label="t('operationPlan.actions.refresh')" />
+                            <ActionButton
                                 :icon="MagicStick"
                                 type="primary"
-                                size="small"
                                 :loading="generatingTrainOperationPlan"
                                 :disabled="!canGenerateTrainOperationPlan"
-                                @click="generateTrainOperationPlan"
-                            >
-                                {{ t('operationPlan.trainOperationPlan.actions.autoGenerate') }}
-                            </el-button>
+                                @click="generateTrainOperationPlan" :label="t('operationPlan.trainOperationPlan.actions.autoGenerate')" />
+                            <ActionButton :icon="MagicStick" :disabled="!canGeneratePlanFromProcess" :loading="generatingPlanFromProcess" @click="openProcessPlanDialog" :label="t('operationPlan.train.fromProcess.action')" />
+                            <ActionButton :icon="UploadFilled" :disabled="!canImportCellOccupancy" :loading="cellOccupancyImportBusy || refreshingCellOccupancyImport" @click="cellOccupancyImportVisible = true" :label="t('operationPlan.cellOccupancyImport.action')" />
                         </div>
                     </div>
 
+                    <el-alert v-if="processPlanResult" :title="t('operationPlan.trainOperationPlan.fromProcess.success', { trains: processPlanResult.trainCount, movements: processPlanResult.movementCount })" :type="processPlanResult.warnings.length ? 'warning' : 'success'" show-icon class="operation-process-generation-result" @close="processPlanResult = null">
+                        <ul v-if="processPlanResult.warnings.length"><li v-for="(warning, index) in processPlanResult.warnings" :key="index">{{ warning }}</li></ul>
+                    </el-alert>
                     <div
-                        class="train-operation-plan-grid"
+                        class="train-operation-plan-grid" :style="{ '--list-width': `${planListWidth}px` }"
                         :class="{ 'is-expanded': selectedTrainOperationPlanTrain !== null }"
                         v-loading="loadingTrainOperationPlan"
                     >
                         <section class="operation-plan-card train-operation-plan-train-card">
                             <header class="operation-plan-card-header">
-                                <div>
-                                    <h2>{{ t('operationPlan.trainOperationPlan.train.title') }}</h2>
-                                    <span>{{ trainOperationPlanTrainCountText }}</span>
-                                </div>
+                                <span class="operation-plan-panel-summary" :title="trainOperationPlanTrainCountText">{{ trainOperationPlanTrainCountText }}</span>
                                 <div class="operation-plan-card-actions">
-                                    <el-button
+                                    <ActionButton
                                         :icon="Plus"
                                         type="primary"
-                                        size="small"
                                         :disabled="!canEditTrainOperationPlan || operationPlanInlineActive"
-                                        @click="startCreateTrainOperationPlanTrainInline"
-                                    >
-                                        {{ t('operationPlan.actions.add') }}
-                                    </el-button>
+                                        @click="startCreateTrainOperationPlanTrainInline" :label="t('operationPlan.actions.add')" />
                                 </div>
                             </header>
+                            <div class="train-operation-plan-list-tools">
+                                <el-input v-model="trainOperationPlanTrainSearch" size="small" clearable :prefix-icon="Search" :placeholder="t('operationPlan.trainOperationPlan.train.searchPlaceholder')" :aria-label="t('operationPlan.trainOperationPlan.train.searchPlaceholder')" :disabled="operationPlanInlineActive || deletingTrainOperationPlanTrains" />
+                                <ActionButton type="danger" :icon="Delete" :loading="deletingTrainOperationPlanTrains" :disabled="!selectedTrainOperationPlanTrainIDs.length || !canDeleteSelectedTrainOperationPlanTrains || confirmingTrainBatchDelete" @click="confirmDeleteSelectedTrainOperationPlanTrains" :label="t('operationPlan.trainOperationPlan.train.batchDelete', { count: selectedTrainOperationPlanTrainIDs.length })" />
+                            </div>
                             <el-table
+                                ref="trainOperationPlanTrainTable"
                                 :data="visibleTrainOperationPlanTrains"
                                 class="operation-plan-table"
                                 size="small"
                                 height="100%"
                                 :row-key="getTrainOperationPlanTrainRowKey"
                                 :row-class-name="getTrainOperationPlanTrainRowClassName"
-                                :empty-text="trainOperationPlanEmptyText"
+                                :empty-text="trainOperationPlanFilteredEmptyText"
                                 highlight-current-row
-                                @row-click="toggleTrainOperationPlanTrainExpansion"
+                                @row-click="handleTrainOperationPlanTrainRowClick"
+                                @selection-change="handleTrainOperationPlanTrainSelection"
                             >
+                                <el-table-column type="selection" width="42" align="center" :selectable="isTrainOperationPlanTrainSelectable" />
                                 <el-table-column width="56" align="center">
                                     <template #default="{ row }">
                                         <el-tag v-if="row.isDraft" size="small" type="success">
@@ -757,15 +813,11 @@
                                         <el-tag v-else-if="isTrainOperationPlanTrainEditing(row)" size="small" type="warning">
                                             {{ t('operationPlan.states.editing') }}
                                         </el-tag>
-                                        <el-button
+                                        <ActionButton
                                             v-else
                                             :icon="isTrainOperationPlanTrainExpanded(row) ? ArrowDown : ArrowRight"
-                                            size="small"
-                                            text
                                             type="primary"
-                                            :title="isTrainOperationPlanTrainExpanded(row) ? t('operationPlan.actions.collapse') : t('operationPlan.actions.expand')"
-                                            @click.stop="toggleTrainOperationPlanTrainExpansion(row)"
-                                        />
+                                            @click.stop="toggleTrainOperationPlanTrainExpansion(row)" :label="isTrainOperationPlanTrainExpanded(row) ? t('operationPlan.actions.collapse') : t('operationPlan.actions.expand')" />
                                     </template>
                                 </el-table-column>
                                 <el-table-column prop="trainNumber" :label="t('operationPlan.trainOperationPlan.train.fields.trainNumber')" min-width="110" show-overflow-tooltip>
@@ -833,43 +885,32 @@
                                 <el-table-column :label="t('operationPlan.fields.operation')" width="116" fixed="right" align="center">
                                     <template #default="{ row }">
                                         <div v-if="isTrainOperationPlanTrainInlineEditing(row)" class="operation-plan-row-actions">
-                                            <el-button
+                                            <ActionButton
                                                 :icon="Check"
-                                                circle
-                                                size="small"
                                                 type="primary"
                                                 :loading="savingTrainOperationPlanTrain"
-                                                @click.stop="saveTrainOperationPlanTrain"
-                                            />
-                                            <el-button
+                                                @click.stop="saveTrainOperationPlanTrain" :label="t('operationPlan.actions.save')" />
+                                            <ActionButton
                                                 :icon="Close"
-                                                circle
-                                                size="small"
-                                                @click.stop="cancelTrainOperationPlanTrainInline(row)"
-                                            />
+                                                @click.stop="cancelTrainOperationPlanTrainInline(row)" :label="t('operationPlan.actions.cancel')" />
                                         </div>
                                         <div v-else class="operation-plan-row-actions">
-                                            <el-button
+                                            <ActionButton
                                                 :icon="Edit"
-                                                circle
-                                                size="small"
                                                 :disabled="!canEditTrainOperationPlan || operationPlanInlineActive"
-                                                @click.stop="startEditTrainOperationPlanTrainInline(row)"
-                                            />
-                                            <el-button
+                                                @click.stop="startEditTrainOperationPlanTrainInline(row)" :label="t('operationPlan.actions.edit')" />
+                                            <ActionButton
                                                 :icon="Delete"
-                                                circle
-                                                size="small"
                                                 type="danger"
                                                 :disabled="!canEditTrainOperationPlan || operationPlanInlineActive"
-                                                @click.stop="confirmDeleteTrainOperationPlanTrain(row)"
-                                            />
+                                                @click.stop="confirmDeleteTrainOperationPlanTrain(row)" :label="t('operationPlan.actions.delete')" />
                                         </div>
                                     </template>
                                 </el-table-column>
                             </el-table>
                         </section>
 
+                        <PaneDivider v-if="selectedTrainOperationPlanTrain" v-model="planListWidth" class="plan-pane-divider" :min="320" :max="840" :label="t('operationPlan.trainOperationPlan.train.title')" />
                         <section
                             v-if="selectedTrainOperationPlanTrain"
                             class="operation-plan-card train-operation-plan-movement-card"
@@ -880,15 +921,12 @@
                                     <span>{{ trainOperationPlanMovementCountText }}</span>
                                 </div>
                                 <div class="operation-plan-card-actions">
-                                    <el-button
+                                    <ActionButton v-if="selectedTrainProcessConstraints" @click="openProcessConstraintDrawer" :icon="Setting" :label="t('operationPlan.trainOperationPlan.fromProcess.constraints')" />
+                                    <ActionButton
                                         :icon="Plus"
                                         type="primary"
-                                        size="small"
-                                        :disabled="!canEditTrainOperationPlan || operationPlanInlineActive || !selectedTrainOperationPlanTrain"
-                                        @click="startCreateTrainOperationPlanMovementInline"
-                                    >
-                                        {{ t('operationPlan.actions.add') }}
-                                    </el-button>
+                                        :disabled="!canEditTrainOperationPlan || operationPlanInlineActive || !selectedTrainOperationPlanTrain || !!selectedTrainProcessConstraints"
+                                        @click="startCreateTrainOperationPlanMovementInline" :label="t('operationPlan.actions.add')" />
                                 </div>
                             </header>
                             <div class="movement-template-context">
@@ -900,6 +938,7 @@
                                     <span class="operation-plan-hover-name">{{ selectedTrainOperationPlanTrain.name || selectedTrainOperationPlanTrain.id }}</span>
                                 </el-tooltip>
                             </div>
+                            <el-alert v-if="selectedTrainProcessConstraints" :title="t('operationPlan.trainOperationPlan.fromProcess.lockedHint')" type="info" :closable="false" class="operation-process-locked-hint" />
                             <el-table
                                 :data="visibleTrainOperationPlanMovements"
                                 class="operation-plan-table"
@@ -981,15 +1020,12 @@
                                                     {{ t('operationPlan.trainOperationPlan.movement.placeholders.route') }}
                                                 </span>
                                             </div>
-                                            <el-button
-                                                size="small"
+                                            <ActionButton
                                                 :loading="loadingStationRoutes"
                                                 @click.stop="openRoutePicker('trainOperationPlanMovementRoute')"
-                                            >
-                                                {{ t('operationPlan.movement.routePicker.openButton') }}
-                                            </el-button>
+                                             :icon="List" :label="t('operationPlan.movement.routePicker.openButton')" />
                                         </div>
-                                        <span v-else>{{ getRouteDisplayName(row.route) }}</span>
+                                        <span v-else>{{ processMovementLocation(row) }}</span>
                                     </template>
                                 </el-table-column>
                                 <el-table-column prop="tag" :label="t('operationPlan.trainOperationPlan.movement.fields.tag')" min-width="140" show-overflow-tooltip>
@@ -1006,53 +1042,33 @@
                                 <el-table-column :label="t('operationPlan.fields.operation')" width="168" fixed="right" align="center">
                                     <template #default="{ row }">
                                         <div v-if="isTrainOperationPlanMovementInlineEditing(row)" class="operation-plan-row-actions">
-                                            <el-button
+                                            <ActionButton
                                                 :icon="Check"
-                                                circle
-                                                size="small"
                                                 type="primary"
                                                 :loading="savingTrainOperationPlanMovement"
-                                                @click.stop="saveTrainOperationPlanMovement"
-                                            />
-                                            <el-button
+                                                @click.stop="saveTrainOperationPlanMovement" :label="t('operationPlan.actions.save')" />
+                                            <ActionButton
                                                 :icon="Close"
-                                                circle
-                                                size="small"
-                                                @click.stop="cancelTrainOperationPlanMovementInline(row)"
-                                            />
+                                                @click.stop="cancelTrainOperationPlanMovementInline(row)" :label="t('operationPlan.actions.cancel')" />
                                         </div>
                                         <div v-else class="operation-plan-row-actions">
-                                            <el-button
+                                            <ActionButton
                                                 :icon="ArrowUp"
-                                                circle
-                                                size="small"
-                                                :title="t('operationPlan.actions.moveUp')"
                                                 :disabled="!canMoveTrainOperationPlanMovement(row, -1)"
-                                                @click.stop="moveTrainOperationPlanMovement(row, -1)"
-                                            />
-                                            <el-button
+                                                @click.stop="moveTrainOperationPlanMovement(row, -1)" :label="t('operationPlan.actions.moveUp')" />
+                                            <ActionButton
                                                 :icon="ArrowDown"
-                                                circle
-                                                size="small"
-                                                :title="t('operationPlan.actions.moveDown')"
                                                 :disabled="!canMoveTrainOperationPlanMovement(row, 1)"
-                                                @click.stop="moveTrainOperationPlanMovement(row, 1)"
-                                            />
-                                            <el-button
+                                                @click.stop="moveTrainOperationPlanMovement(row, 1)" :label="t('operationPlan.actions.moveDown')" />
+                                            <ActionButton
                                                 :icon="Edit"
-                                                circle
-                                                size="small"
-                                                :disabled="!canEditTrainOperationPlan || operationPlanInlineActive"
-                                                @click.stop="startEditTrainOperationPlanMovementInline(row)"
-                                            />
-                                            <el-button
+                                                :disabled="!canEditTrainOperationPlan || operationPlanInlineActive || processConstraintsByTrain.has(row.trainID)"
+                                                @click.stop="startEditTrainOperationPlanMovementInline(row)" :label="t('operationPlan.actions.edit')" />
+                                            <ActionButton
                                                 :icon="Delete"
-                                                circle
-                                                size="small"
                                                 type="danger"
-                                                :disabled="!canEditTrainOperationPlan || operationPlanInlineActive"
-                                                @click.stop="confirmDeleteTrainOperationPlanMovement(row)"
-                                            />
+                                                :disabled="!canEditTrainOperationPlan || operationPlanInlineActive || processConstraintsByTrain.has(row.trainID)"
+                                                @click.stop="confirmDeleteTrainOperationPlanMovement(row)" :label="t('operationPlan.actions.delete')" />
                                         </div>
                                     </template>
                                 </el-table-column>
@@ -1072,19 +1088,12 @@
                     v-loading="loadingOperationPlanChart || loadingTrainOperationPlan || loadingStationRoutes || loadingStationRouteEnds"
                 >
                     <header class="operation-plan-card-header">
-                        <div>
-                            <h2>{{ t('operationPlan.trainOperationChart.title') }}</h2>
-                            <span>{{ operationPlanChartCountText }}</span>
-                        </div>
+                        <span class="operation-plan-panel-summary" :title="operationPlanChartCountText">{{ operationPlanChartCountText }}</span>
                         <div class="operation-plan-card-actions">
-                            <el-button
+                            <ActionButton
                                 :icon="Refresh"
-                                size="small"
                                 :disabled="!canLoadOperationPlanChart || operationPlanInlineActive"
-                                @click="loadOperationPlanChartData"
-                            >
-                                {{ t('operationPlan.actions.refresh') }}
-                            </el-button>
+                                @click="loadOperationPlanChartData" :label="t('operationPlan.actions.refresh')" />
                         </div>
                     </header>
 
@@ -1147,10 +1156,7 @@
                     v-loading="loadingOperationPlanChart || loadingTrainOperationPlan || loadingStationRoutes || loadingStationRouteEnds"
                 >
                     <header class="operation-plan-card-header">
-                        <div>
-                            <h2>{{ t('operationPlan.operationOccupationTimeTable.title') }}</h2>
-                            <span>{{ operationOccupationTimeTableCountText }}</span>
-                        </div>
+                        <span class="operation-plan-panel-summary" :title="operationOccupationTimeTableCountText">{{ operationOccupationTimeTableCountText }}</span>
                         <div class="operation-plan-card-actions">
                             <label class="operation-occupation-time-total-control">
                                 <span>{{ t('operationPlan.operationOccupationTimeTable.totalTime') }}</span>
@@ -1188,14 +1194,10 @@
                                     </el-radio-button>
                                 </el-radio-group>
                             </label>
-                            <el-button
+                            <ActionButton
                                 :icon="Refresh"
-                                size="small"
                                 :disabled="!canLoadOperationPlanChart || operationPlanInlineActive"
-                                @click="loadOperationPlanChartData"
-                            >
-                                {{ t('operationPlan.actions.refresh') }}
-                            </el-button>
+                                @click="loadOperationPlanChartData" :label="t('operationPlan.actions.refresh')" />
                         </div>
                     </header>
 
@@ -1215,21 +1217,13 @@
                                     :closable="operationOccupationTimeSubTables.length > 1"
                                 />
                             </el-tabs>
-                            <el-button
+                            <ActionButton
                                 :icon="Edit"
-                                circle
-                                size="small"
                                 :disabled="!activeOperationOccupationTimeSubTable"
-                                :title="t('operationPlan.operationOccupationTimeTable.subTables.edit')"
-                                @click="openEditOperationOccupationTimeSubTableDialog"
-                            />
-                            <el-button
+                                @click="openEditOperationOccupationTimeSubTableDialog" :label="t('operationPlan.operationOccupationTimeTable.subTables.edit')" />
+                            <ActionButton
                                 :icon="Plus"
-                                circle
-                                size="small"
-                                :title="t('operationPlan.operationOccupationTimeTable.subTables.add')"
-                                @click="openCreateOperationOccupationTimeSubTableDialog"
-                            />
+                                @click="openCreateOperationOccupationTimeSubTableDialog" :label="t('operationPlan.operationOccupationTimeTable.subTables.add')" />
                         </div>
 
                         <div class="operation-occupation-time-subtable-controls">
@@ -1329,15 +1323,11 @@
                             </el-form-item>
                         </el-form>
                         <template #footer>
-                            <el-button @click="operationOccupationTimeSubTableDialogVisible = false">
-                                {{ t('operationPlan.actions.cancel') }}
-                            </el-button>
-                            <el-button
+                            <ActionButton @click="operationOccupationTimeSubTableDialogVisible = false" :icon="Close" :label="t('operationPlan.actions.cancel')" />
+                            <ActionButton
                                 type="primary"
                                 @click="confirmOperationOccupationTimeSubTableDialog"
-                            >
-                                {{ t('operationPlan.actions.confirm') }}
-                            </el-button>
+                             :icon="Check" :label="t('operationPlan.actions.confirm')" />
                         </template>
                     </el-dialog>
                 </section>
@@ -1353,10 +1343,7 @@
                     v-loading="loadingOperationPlanChart || loadingTrainOperationPlan || loadingStationRoutes || loadingStationRouteEnds"
                 >
                     <header class="operation-plan-card-header">
-                        <div>
-                            <h2>{{ t('operationPlan.operationBottleneckAnalysis.title') }}</h2>
-                            <span>{{ operationBottleneckAnalysisCountText }}</span>
-                        </div>
+                        <span class="operation-plan-panel-summary" :title="operationBottleneckAnalysisCountText">{{ operationBottleneckAnalysisCountText }}</span>
                         <div class="operation-plan-card-actions">
                             <label class="operation-occupation-time-total-control">
                                 <span>{{ t('operationPlan.operationOccupationTimeTable.totalTime') }}</span>
@@ -1383,14 +1370,10 @@
                                     :placeholder="t('operationPlan.operationOccupationTimeTable.emptyWasteFactorPlaceholder')"
                                 />
                             </label>
-                            <el-button
+                            <ActionButton
                                 :icon="Refresh"
-                                size="small"
                                 :disabled="!canLoadOperationPlanChart || operationPlanInlineActive"
-                                @click="loadOperationPlanChartData"
-                            >
-                                {{ t('operationPlan.actions.refresh') }}
-                            </el-button>
+                                @click="loadOperationPlanChartData" :label="t('operationPlan.actions.refresh')" />
                         </div>
                     </header>
 
@@ -1457,29 +1440,18 @@
                     v-loading="loadingOperationPlanChart || loadingTrainOperationPlan || loadingStationRoutes || loadingStationRouteEnds || loadingOperationBottleneckSummaryCategories"
                 >
                     <header class="operation-plan-card-header">
-                        <div>
-                            <h2>{{ t('operationPlan.operationBottleneckAnalysis.summary.title') }}</h2>
-                            <span>{{ operationBottleneckSummaryCountText }}</span>
-                        </div>
+                        <span class="operation-plan-panel-summary" :title="operationBottleneckSummaryCountText">{{ operationBottleneckSummaryCountText }}</span>
                         <div class="operation-bottleneck-summary-actions">
-                            <el-button
+                            <ActionButton
                                 :icon="Refresh"
-                                size="small"
                                 :loading="savingOperationBottleneckSummaryCategories"
                                 :disabled="!hasScope || loadingOperationBottleneckSummaryCategories || savingOperationBottleneckSummaryCategories"
-                                @click="calculateOperationBottleneckSummary"
-                            >
-                                {{ t('operationPlan.operationBottleneckAnalysis.summary.actions.calculate') }}
-                            </el-button>
-                            <el-button
+                                @click="calculateOperationBottleneckSummary" :label="t('operationPlan.operationBottleneckAnalysis.summary.actions.calculate')" />
+                            <ActionButton
                                 :icon="Plus"
-                                size="small"
                                 type="primary"
                                 :disabled="!hasScope || loadingOperationBottleneckSummaryCategories || savingOperationBottleneckSummaryCategories"
-                                @click="addOperationBottleneckSummaryCategory"
-                            >
-                                {{ t('operationPlan.operationBottleneckAnalysis.summary.actions.addCategory') }}
-                            </el-button>
+                                @click="addOperationBottleneckSummaryCategory" :label="t('operationPlan.operationBottleneckAnalysis.summary.actions.addCategory')" />
                         </div>
                     </header>
                     <el-table
@@ -1508,9 +1480,7 @@
                             show-overflow-tooltip
                         >
                             <template #default="{ row }">
-                                <el-button size="small" @click="openOperationBottleneckRoutePicker(row.categoryID)">
-                                    {{ getOperationBottleneckSummarySelectionText(row) }}
-                                </el-button>
+                                <ActionButton @click="openOperationBottleneckRoutePicker(row.categoryID)" :icon="List" :label="getOperationBottleneckSummarySelectionText(row)" />
                             </template>
                         </el-table-column>
                         <el-table-column
@@ -1550,13 +1520,10 @@
                             align="center"
                         >
                             <template #default="{ row }">
-                                <el-button
+                                <ActionButton
                                     :icon="Delete"
-                                    circle
-                                    size="small"
                                     type="danger"
-                                    @click="deleteOperationBottleneckSummaryCategory(row.categoryID)"
-                                />
+                                    @click="deleteOperationBottleneckSummaryCategory(row.categoryID)" :label="t('operationPlan.actions.delete')" />
                             </template>
                         </el-table-column>
                     </el-table>
@@ -1596,13 +1563,9 @@
                         popper-class="operation-plan-route-filter-popover"
                     >
                         <template #reference>
-                            <el-button
+                            <ActionButton
                                 :icon="Filter"
-                                circle
-                                size="small"
-                                :type="routePickerFiltersActive ? 'primary' : 'default'"
-                                :title="t('routeDesign.stationRoute.actions.filter')"
-                            />
+                                :type="routePickerFiltersActive ? 'primary' : 'default'" :label="t('routeDesign.stationRoute.actions.filter')" />
                         </template>
                         <div class="operation-plan-route-filter-panel">
                             <el-select
@@ -1650,15 +1613,10 @@
                                     </div>
                                 </el-option>
                             </el-select>
-                            <el-button
-                                :icon="Close"
-                                size="small"
-                                class="operation-plan-route-filter-clear"
-                                :disabled="!routePickerFiltersActive"
-                                @click="clearRoutePickerFilters"
-                            >
-                                {{ t('routeDesign.stationRoute.actions.clearFilters') }}
-                            </el-button>
+                            <div class="operation-plan-route-filter-clear">
+                                <ActionButton :icon="Close" :disabled="!routePickerFiltersActive"
+                                    @click="clearRoutePickerFilters" :label="t('routeDesign.stationRoute.actions.clearFilters')" />
+                            </div>
                         </div>
                     </el-popover>
                     </template>
@@ -1708,6 +1666,7 @@
 
                     <div
                         class="operation-plan-route-picker-splitter"
+                        :aria-label="t('common.resize.vertical')"
                         role="separator"
                         tabindex="0"
                         aria-orientation="horizontal"
@@ -1737,15 +1696,10 @@
                                 >
                                     {{ routePickerEndNodeFilterText }}
                                 </el-tag>
-                                <el-button
+                                <ActionButton
                                     v-if="routePickerNodeFiltersActive"
                                     :icon="Close"
-                                    circle
-                                    text
-                                    size="small"
-                                    :title="t('routeDesign.stationRoute.actions.clearFilters')"
-                                    @click="clearRoutePickerNodeFilters"
-                                />
+                                    @click="clearRoutePickerNodeFilters" :label="t('routeDesign.stationRoute.actions.clearFilters')" />
                             </div>
                         </div>
                         <div
@@ -1783,12 +1737,8 @@
             </div>
 
             <template #footer>
-                <el-button :icon="Close" @click="closeRoutePicker">
-                    {{ t('operationPlan.actions.cancel') }}
-                </el-button>
-                <el-button :icon="Check" type="primary" @click="confirmRoutePicker">
-                    {{ t('operationPlan.actions.confirm') }}
-                </el-button>
+                <ActionButton :icon="Close" @click="closeRoutePicker" :label="t('operationPlan.actions.cancel')" />
+                <ActionButton :icon="Check" type="primary" @click="confirmRoutePicker" :label="t('operationPlan.actions.confirm')" />
             </template>
         </el-dialog>
 
@@ -1842,9 +1792,7 @@
                                 :value="option.id"
                             />
                         </el-select>
-                        <el-button size="small" :disabled="!operationBottleneckRoutePickerFiltersActive" @click="clearOperationBottleneckRoutePickerFilters">
-                            {{ t('routeDesign.stationRoute.actions.clearFilters') }}
-                        </el-button>
+                        <ActionButton :disabled="!operationBottleneckRoutePickerFiltersActive" @click="clearOperationBottleneckRoutePickerFilters" :icon="Close" :label="t('routeDesign.stationRoute.actions.clearFilters')" />
                     </div>
                 </div>
 
@@ -1886,12 +1834,8 @@
             </div>
 
             <template #footer>
-                <el-button :icon="Close" @click="closeOperationBottleneckRoutePicker">
-                    {{ t('operationPlan.actions.cancel') }}
-                </el-button>
-                <el-button :icon="Check" type="primary" @click="confirmOperationBottleneckRoutePicker">
-                    {{ t('operationPlan.actions.confirm') }}
-                </el-button>
+                <ActionButton :icon="Close" @click="closeOperationBottleneckRoutePicker" :label="t('operationPlan.actions.cancel')" />
+                <ActionButton :icon="Check" type="primary" @click="confirmOperationBottleneckRoutePicker" :label="t('operationPlan.actions.confirm')" />
             </template>
         </el-dialog>
 
@@ -1899,13 +1843,21 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+const templateListWidth = ref(460)
+const planListWidth = ref(460)
+import ActionButton from '@/components/ui/ActionButton.vue'
+import PaneDivider from '@/components/ui/PaneDivider.vue'
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowDown, ArrowRight, ArrowUp, Check, Close, CopyDocument, Delete, Edit, Filter, MagicStick, Plus, Refresh, Setting } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox, type TableInstance } from 'element-plus'
+import { ArrowDown, ArrowRight, ArrowUp, Check, Close, CopyDocument, Delete, Edit, Filter, List, MagicStick, Plus, Refresh, Search, Setting, UploadFilled } from '@element-plus/icons-vue'
 import axios from '@/utils/axios'
 import StationLayoutEditor from './components/StationLayoutEditor.vue'
 import StationLayoutViewToolbar from './components/StationLayoutViewToolbar.vue'
+import CellOccupancyImportDialog, { type CellOccupancyImportResult, type CellOccupancyImportScope } from './components/CellOccupancyImportDialog.vue'
+import { api as processTemplateAPI, type ProcessScope, type ProcessTemplate, type ProcessCatalog, type ProcessActivity } from './operationProcess'
+
+const OperationProcessEditor = defineAsyncComponent(() => import('./components/OperationProcessEditor.vue'))
 
 interface StationSchemeOption {
     id: string
@@ -1978,6 +1930,32 @@ interface TrainTemplate {
     isDraft?: boolean
 }
 
+interface ProcessTrainGenerationResponse {
+    trainTemplate: unknown
+    movementCount: number
+    warnings: string[]
+}
+
+interface TrainProcessConstraints {
+    trainID: string
+    sourceTemplateID: string
+    sourceRevision: number
+    sourceName: string
+    originSeconds: number
+    process: ProcessTemplate
+    activityMovementMap: Record<string, string>
+    eventTimes: Record<string, number>
+    selectedTrackIDs: Record<string, string>
+}
+
+interface ProcessPlanGenerationResponse {
+    trains: unknown[]
+    movements: unknown[]
+    processConstraints: TrainProcessConstraints[]
+    generatedTrainIDs: string[]
+    warnings: string[]
+}
+
 interface MovementTemplate {
     instanceID: string
     stationSchemeID: string
@@ -2023,7 +2001,7 @@ interface TrainOperationPlanMovement {
 }
 
 type TemplateEditMode = 'create' | 'edit'
-type OperationPlanSubTab = 'trainTemplate' | 'trainOperationPlan' | 'trainOperationChart' | 'operationOccupationTimeTable' | 'operationBottleneckAnalysis' | 'operationThroughputSummary'
+type OperationPlanSubTab = 'operationProcess' | 'trainTemplate' | 'trainOperationPlan' | 'trainOperationChart' | 'operationOccupationTimeTable' | 'operationBottleneckAnalysis' | 'operationThroughputSummary'
 type OperationOccupationTimeUnit = 'seconds' | 'minutes'
 type RoutePickerTarget = 'movementTemplate' | 'trainOperationPlanMovement' | 'trainOperationPlanMovementRoute'
 type RoutePickerFilterField = 'types' | 'startNodeIds' | 'endNodeIds' | 'nodeIds' | 'linkIds' | 'cellIds' | 'switchIds' | 'signalIds'
@@ -2225,6 +2203,11 @@ const trainOperationPlanMovements = ref<TrainOperationPlanMovement[]>([])
 const stationRouteTimesByKey = ref<Record<string, StationRouteTimeOption[]>>({})
 const selectedTrainTemplateId = ref('')
 const selectedTrainOperationPlanTrainId = ref('')
+const trainOperationPlanTrainTable = ref<TableInstance>()
+const trainOperationPlanTrainSearch = ref('')
+const selectedTrainOperationPlanTrainIDs = ref<string[]>([])
+const confirmingTrainBatchDelete = ref(false)
+const deletingTrainOperationPlanTrains = ref(false)
 const operationOccupationTotalTimeSeconds = ref<number | null>(86400)
 const operationOccupationEmptyWasteFactor = ref(0.2)
 const operationOccupationTimeUnit = ref<OperationOccupationTimeUnit>('seconds')
@@ -2274,6 +2257,34 @@ const savingTrainOperationPlanMovement = ref(false)
 const savingOperationBottleneckSummaryCategories = ref(false)
 const generatingTrainOperationPlan = ref(false)
 const generatingSaturatedPlan = ref(false)
+const cellOccupancyImportVisible = ref(false)
+const cellOccupancyImportBusy = ref(false)
+const refreshingCellOccupancyImport = ref(false)
+const processTrainDialogVisible = ref(false)
+const loadingProcessTrainSources = ref(false)
+const generatingTrainFromProcess = ref(false)
+const processTrainSources = ref<ProcessTemplate[]>([])
+const processTrainSourceID = ref('')
+const processTrainLoadError = ref('')
+const processTrainGenerateError = ref('')
+const processTrainResult = ref<{ name: string; movementCount: number; warnings: string[] } | null>(null)
+const processPlanDialogVisible = ref(false)
+const processPlanSources = ref<ProcessTemplate[]>([])
+const processPlanSourceID = ref('')
+const processPlanTrainCount = ref(1)
+const processPlanStartTime = ref('00:00')
+const processPlanEndTime = ref('24:00')
+const loadingProcessPlanSources = ref(false)
+const generatingPlanFromProcess = ref(false)
+const processPlanLoadError = ref('')
+const processPlanGenerateError = ref('')
+const processPlanResult = ref<{ trainCount: number; movementCount: number; warnings: string[] } | null>(null)
+const trainProcessConstraints = ref<TrainProcessConstraints[]>([])
+const processConstraintDrawerVisible = ref(false)
+const processConstraintCatalog = ref<ProcessCatalog>({ nodes: [], tracks: [], routes: [] })
+const loadingProcessConstraintCatalog = ref(false)
+const processConstraintCatalogError = ref('')
+const processConstraintCatalogScopeKey = ref('')
 const trainTemplateCreating = ref(false)
 const movementTemplateCreating = ref(false)
 const trainOperationPlanTrainCreating = ref(false)
@@ -2333,8 +2344,15 @@ let stationRouteEndLoadVersion = 0
 let trainTemplateLoadVersion = 0
 let movementTemplateLoadVersion = 0
 let trainOperationPlanLoadVersion = 0
+let trainSelectionVersion = 0
+let trainBatchDeleteVersion = 0
 let operationPlanChartLoadVersion = 0
 let saturatedPlanRunVersion = 0
+let processTrainSourceRequestVersion = 0
+let processTrainGenerationVersion = 0
+let processPlanSourceRequestVersion = 0
+let processPlanGenerationVersion = 0
+let processConstraintCatalogVersion = 0
 let routePickerLayoutLoadVersion = 0
 let routePickerResizeState: RoutePickerResizeState | null = null
 let operationAnalysisSnapshotSaveTimer: ReturnType<typeof window.setTimeout> | null = null
@@ -2366,13 +2384,36 @@ const operationPlanObjectInlineActive = computed(() => (
     operationPlanOptions.value.some((item) => item.isDraft) ||
     Boolean(operationPlanObjectOriginalId.value)
 ))
-const canLoadTemplates = computed(() => hasScope.value && !loadingTrainTemplates.value)
-const canEditTrainTemplates = computed(() => hasScope.value && !savingTrainTemplate.value)
-const canLoadMovementTemplates = computed(() => hasScope.value && selectedTrainTemplate.value !== null && !loadingMovementTemplates.value)
+const canLoadTemplates = computed(() => hasScope.value && !loadingTrainTemplates.value && !deletingTrainOperationPlanTrains.value)
+const canEditTrainTemplates = computed(() => hasScope.value && !savingTrainTemplate.value && !deletingTrainOperationPlanTrains.value)
+const processTrainScopeKey = computed(() => JSON.stringify(getOperationPlanScope()))
+const selectedProcessTrainSource = computed(() => processTrainSources.value.find(source => source.id === processTrainSourceID.value) || null)
+const selectedProcessPlanSource = computed(() => processPlanSources.value.find(source => source.id === processPlanSourceID.value) || null)
+const processConstraintsByTrain = computed(() => new Map(trainProcessConstraints.value.map(snapshot => [snapshot.trainID, snapshot])))
+const selectedTrainProcessConstraints = computed(() => processConstraintsByTrain.value.get(selectedTrainOperationPlanTrainId.value) || null)
+const canGeneratePlanFromProcess = computed(() => (
+    !deletingTrainOperationPlanTrains.value &&
+    hasScope.value && !operationPlanInlineActive.value && !operationPlanObjectInlineActive.value &&
+    !loadingTrainOperationPlan.value && !savingTrainOperationPlanTrain.value && !savingTrainOperationPlanMovement.value &&
+    !generatingTrainOperationPlan.value && !generatingPlanFromProcess.value && !generatingTrainFromProcess.value &&
+    !generatingSaturatedPlan.value && !loadingProcessPlanSources.value
+))
+const validProcessPlanParameters = computed(() => (
+    Number.isInteger(processPlanTrainCount.value) && processPlanTrainCount.value >= 1 && processPlanTrainCount.value <= 1000 &&
+    parseOperationPlanTime(processPlanStartTime.value) !== null && parseOperationPlanTime(processPlanEndTime.value) !== null
+))
+const canGenerateTrainFromProcess = computed(() => (
+    canEditTrainTemplates.value && !operationPlanInlineActive.value &&
+    !loadingTrainTemplates.value && !loadingMovementTemplates.value && !savingMovementTemplate.value &&
+    !loadingProcessTrainSources.value && !generatingTrainFromProcess.value &&
+    !generatingTrainOperationPlan.value && !generatingSaturatedPlan.value && !generatingPlanFromProcess.value
+))
+const canLoadMovementTemplates = computed(() => hasScope.value && selectedTrainTemplate.value !== null && !loadingMovementTemplates.value && !deletingTrainOperationPlanTrains.value)
 const canEditMovementTemplates = computed(() => canLoadMovementTemplates.value && !savingMovementTemplate.value && !trainTemplateInlineActive.value)
-const canLoadTrainOperationPlan = computed(() => hasScope.value && !loadingTrainOperationPlan.value)
+const canLoadTrainOperationPlan = computed(() => hasScope.value && !loadingTrainOperationPlan.value && !generatingPlanFromProcess.value && !deletingTrainOperationPlanTrains.value)
 const canLoadOperationPlanChart = computed(() => (
     hasScope.value &&
+    !deletingTrainOperationPlanTrains.value &&
     !loadingOperationPlanChart.value &&
     !loadingTrainOperationPlan.value &&
     !loadingStationRoutes.value &&
@@ -2380,12 +2421,16 @@ const canLoadOperationPlanChart = computed(() => (
 ))
 const canGenerateTrainOperationPlan = computed(() => (
     hasScope.value &&
+    !deletingTrainOperationPlanTrains.value &&
+    !generatingPlanFromProcess.value &&
     !generatingTrainOperationPlan.value &&
     !loadingTrainOperationPlan.value &&
     !operationPlanInlineActive.value
 ))
 const canGenerateSaturatedPlan = computed(() => (
     hasScope.value &&
+    !deletingTrainOperationPlanTrains.value &&
+    !generatingPlanFromProcess.value &&
     Boolean(selectedSaturatedPresetId.value) &&
     !loadingSolvePresets.value &&
     !generatingSaturatedPlan.value &&
@@ -2398,10 +2443,25 @@ const saturatedPlanButtonText = computed(() => (
 ))
 const canEditTrainOperationPlan = computed(() => (
     hasScope.value &&
+    !deletingTrainOperationPlanTrains.value &&
+    !generatingPlanFromProcess.value &&
     !loadingTrainOperationPlan.value &&
     !generatingTrainOperationPlan.value &&
     !savingTrainOperationPlanTrain.value &&
     !savingTrainOperationPlanMovement.value
+))
+const canDeleteSelectedTrainOperationPlanTrains = computed(() => (
+    canEditTrainOperationPlan.value && !operationPlanInlineActive.value && !operationPlanObjectInlineActive.value &&
+    !loadingStationSchemes.value && !loadingOperationPlans.value && !loadingOperationPlanChart.value &&
+    !loadingTrainTemplates.value && !loadingMovementTemplates.value &&
+    !savingTrainTemplate.value && !savingMovementTemplate.value && !savingOperationPlanObject.value &&
+    !generatingTrainFromProcess.value && !generatingSaturatedPlan.value
+))
+const canImportCellOccupancy = computed(() => (
+    canDeleteSelectedTrainOperationPlanTrains.value && !confirmingTrainBatchDelete.value &&
+    !cellOccupancyImportBusy.value && !refreshingCellOccupancyImport.value &&
+    !loadingStationRoutes.value && !loadingStationRouteEnds.value &&
+    !loadingProcessTrainSources.value && !loadingProcessPlanSources.value
 ))
 const trainTemplateCountText = computed(() => t('operationPlan.train.count', { count: trainTemplates.value.length }))
 const movementTemplateCountText = computed(() => {
@@ -2477,11 +2537,21 @@ const visibleMovementTemplates = computed<MovementTemplate[]>(() => (
         ? [{ ...movementTemplateForm.value, isDraft: true }, ...movementTemplates.value]
         : movementTemplates.value
 ))
+const filteredTrainOperationPlanTrains = computed(() => {
+    const terms = trainOperationPlanTrainSearch.value.toLocaleLowerCase().trim().split(/\s+/).filter(Boolean)
+    return trainOperationPlanTrains.value.filter(row => {
+        if (row.id === trainOperationPlanTrainEditingId.value) return true
+        const fields = [row.trainNumber, row.name, row.trainType, row.id].map(value => value.toLocaleLowerCase())
+        return terms.every(term => fields.some(value => value.includes(term)))
+    })
+})
 const visibleTrainOperationPlanTrains = computed<TrainOperationPlanTrain[]>(() => (
     trainOperationPlanTrainCreating.value
-        ? [{ ...trainOperationPlanTrainForm.value, isDraft: true }, ...trainOperationPlanTrains.value]
-        : trainOperationPlanTrains.value
+        ? [{ ...trainOperationPlanTrainForm.value, isDraft: true }, ...filteredTrainOperationPlanTrains.value]
+        : filteredTrainOperationPlanTrains.value
 ))
+const trainOperationPlanFilteredEmptyText = computed(() => hasScope.value && trainOperationPlanTrainSearch.value.trim()
+    ? t('operationPlan.trainOperationPlan.train.searchEmpty') : trainOperationPlanEmptyText.value)
 const selectedTrainOperationPlanMovements = computed<TrainOperationPlanMovement[]>(() => {
     const trainID = selectedTrainOperationPlanTrain.value?.id || ''
     if (!trainID) return []
@@ -3545,6 +3615,7 @@ function normalizeOperationAnalysisSnapshot(data: any): OperationAnalysisSnapsho
 }
 
 function normalizeTrainOperationPlanResponse(data: any) {
+    clearTrainOperationPlanSelection()
     const trainRows: any[] = Array.isArray(data?.trains) ? data.trains : Array.isArray(data?.Trains) ? data.Trains : []
     const movementRows: any[] = Array.isArray(data?.movements) ? data.movements : Array.isArray(data?.Movements) ? data.Movements : []
     const previousSelectedTrainId = selectedTrainOperationPlanTrainId.value
@@ -3554,6 +3625,10 @@ function normalizeTrainOperationPlanResponse(data: any) {
     trainOperationPlanMovements.value = movementRows
         .map(normalizeTrainOperationPlanMovement)
         .filter((item): item is TrainOperationPlanMovement => item !== null)
+    const constraints = data?.processConstraints ?? data?.ProcessConstraints
+    const trainIDs = new Set(trainOperationPlanTrains.value.map(train => train.id))
+    trainProcessConstraints.value = Array.isArray(constraints) ? constraints.filter(isTrainProcessConstraints).filter(snapshot => trainIDs.has(snapshot.trainID)) : []
+    if (trainProcessConstraints.value.length > 0) void loadProcessConstraintCatalog()
     selectedTrainOperationPlanTrainId.value = trainOperationPlanTrains.value.some((train) => train.id === previousSelectedTrainId)
         ? previousSelectedTrainId
         : ''
@@ -5183,7 +5258,7 @@ function getTrainOperationPlanMovementOrderIndex(row: TrainOperationPlanMovement
 }
 
 function canMoveTrainOperationPlanMovement(row: TrainOperationPlanMovement, direction: -1 | 1) {
-    if (row.isDraft || !canEditTrainOperationPlan.value || operationPlanInlineActive.value || savingTrainOperationPlanMovement.value) return false
+    if (row.isDraft || !canEditTrainOperationPlan.value || operationPlanInlineActive.value || savingTrainOperationPlanMovement.value || processConstraintsByTrain.value.has(row.trainID)) return false
     const index = getTrainOperationPlanMovementOrderIndex(row)
     return index >= 0 && index + direction >= 0 && index + direction < selectedTrainOperationPlanMovements.value.length
 }
@@ -5294,6 +5369,7 @@ function clearOperationPlans() {
 }
 
 function clearTrainTemplates() {
+    clearTrainOperationPlanSelection()
     trainTemplateLoadVersion++
     movementTemplateLoadVersion++
     trainOperationPlanLoadVersion++
@@ -5317,6 +5393,7 @@ function clearTrainTemplates() {
     trainOperationPlanMovementRouteIds.value = []
     trainOperationPlanTrains.value = []
     trainOperationPlanMovements.value = []
+    trainProcessConstraints.value = []
     selectedTrainOperationPlanTrainId.value = ''
     loadingTrainOperationPlan.value = false
     loadingOperationPlanChart.value = false
@@ -5373,6 +5450,84 @@ async function loadOperationPlans() {
         if (loadVersion === operationPlanObjectLoadVersion) {
             loadingOperationPlans.value = false
         }
+    }
+}
+
+function isTrainProcessConstraints(value: any): value is TrainProcessConstraints {
+    return typeof value?.trainID === 'string' && typeof value?.sourceTemplateID === 'string' &&
+        value.process && ['activities', 'events', 'precedences', 'anchors', 'routeAnchors'].every(key => Array.isArray(value.process[key])) &&
+        value.activityMovementMap && value.eventTimes && value.selectedTrackIDs
+}
+
+function processActivityTypeName(type: string) {
+    return t(`operationPlan.trainOperationPlan.fromProcess.types.${type}`)
+}
+
+function processReferenceNames(ids: string[], kind: 'nodes' | 'tracks' | 'routes') {
+    return ids.map(id => processConstraintCatalog.value[kind].find(item => item.id === id)?.name ||
+        (kind === 'routes' ? stationRouteOptions.value.find(route => route.id === id)?.name : '') || id).join('、') || '—'
+}
+
+function processCandidateNames(activity: ProcessActivity) {
+    return activity.type === 'Dwelling' ? processReferenceNames(activity.trackList, 'tracks') : processReferenceNames(activity.routeList, 'routes')
+}
+
+function processActivitySelection(activity: ProcessActivity, snapshot: TrainProcessConstraints | null) {
+    if (!snapshot) return '—'
+    const movementID = snapshot.activityMovementMap[activity.id]
+    const movement = trainOperationPlanMovements.value.find(row => row.trainID === snapshot.trainID && row.movementID === movementID)
+    const id = activity.type === 'Dwelling' ? snapshot.selectedTrackIDs[activity.id] || activity.selectedTrack : movement?.route || activity.selectedRoute
+    return processReferenceNames(id ? [id] : [], activity.type === 'Dwelling' ? 'tracks' : 'routes')
+}
+
+function processEventName(id: string) {
+    return selectedTrainProcessConstraints.value?.process.events.find(event => event.id === id)?.name || id || '—'
+}
+
+function processAnchorName(id: string | null) {
+    return selectedTrainProcessConstraints.value?.process.anchors.find(anchor => anchor.id === id)?.name || id || '—'
+}
+
+function formatProcessSeconds(seconds: number | undefined) {
+    if (seconds === undefined || !Number.isFinite(seconds)) return '—'
+    const wholeSeconds = Math.round(seconds)
+    const sign = wholeSeconds < 0 ? '-' : ''
+    const value = Math.abs(wholeSeconds)
+    return `${sign}${String(Math.floor(value / 3600)).padStart(2, '0')}:${String(Math.floor(value / 60) % 60).padStart(2, '0')}:${String(value % 60).padStart(2, '0')}`
+}
+
+function processMovementLocation(row: TrainOperationPlanMovement) {
+    const snapshot = processConstraintsByTrain.value.get(row.trainID)
+    const activity = snapshot?.process.activities.find(item => snapshot.activityMovementMap[item.id] === row.movementID)
+    if (snapshot && activity?.type === 'Dwelling') {
+        const selectedTrackID = snapshot.selectedTrackIDs[activity.id] || activity.selectedTrack
+        return `${processActivityTypeName('Dwelling')} · ${processReferenceNames(selectedTrackID ? [selectedTrackID] : activity.trackList, 'tracks')}`
+    }
+    return getRouteDisplayName(row.route)
+}
+
+function openProcessConstraintDrawer() {
+    if (!selectedTrainProcessConstraints.value) return
+    processConstraintDrawerVisible.value = true
+    void loadProcessConstraintCatalog()
+}
+
+async function loadProcessConstraintCatalog() {
+    if (!hasScope.value || loadingProcessConstraintCatalog.value || processConstraintCatalogScopeKey.value === processTrainScopeKey.value) return
+    const scope = getOperationPlanScope()
+    const requestVersion = ++processConstraintCatalogVersion
+    loadingProcessConstraintCatalog.value = true
+    processConstraintCatalogError.value = ''
+    try {
+        const catalog = await processTemplateAPI.catalog(scope)
+        if (requestVersion !== processConstraintCatalogVersion || !matchesProcessTrainScope(scope)) return
+        processConstraintCatalog.value = catalog
+        processConstraintCatalogScopeKey.value = JSON.stringify(scope)
+    } catch (error) {
+        if (requestVersion !== processConstraintCatalogVersion || !matchesProcessTrainScope(scope)) return
+        processConstraintCatalogError.value = getApiErrorMessage(error, t('operationPlan.trainOperationPlan.fromProcess.catalogFailed'))
+    } finally {
+        if (requestVersion === processConstraintCatalogVersion) loadingProcessConstraintCatalog.value = false
     }
 }
 
@@ -5688,6 +5843,7 @@ function clearMovementTemplates() {
 }
 
 function clearTrainOperationPlan() {
+    clearTrainOperationPlanSelection()
     trainOperationPlanLoadVersion++
     operationPlanChartLoadVersion++
     trainOperationPlanTrainCreating.value = false
@@ -5699,6 +5855,7 @@ function clearTrainOperationPlan() {
     trainOperationPlanMovementRouteIds.value = []
     trainOperationPlanTrains.value = []
     trainOperationPlanMovements.value = []
+    trainProcessConstraints.value = []
     selectedTrainOperationPlanTrainId.value = ''
     loadingTrainOperationPlan.value = false
     loadingOperationPlanChart.value = false
@@ -5854,6 +6011,175 @@ async function loadStationRouteEnds() {
     }
 }
 
+function openProcessPlanDialog() {
+    if (!canGeneratePlanFromProcess.value) return
+    processPlanSources.value = []
+    processPlanSourceID.value = ''
+    processPlanTrainCount.value = 1
+    processPlanStartTime.value = trainOperationPlanStartTime.value
+    processPlanEndTime.value = trainOperationPlanEndTime.value
+    processPlanLoadError.value = ''
+    processPlanGenerateError.value = ''
+    processPlanDialogVisible.value = true
+    void loadProcessPlanSources()
+}
+
+async function loadProcessPlanSources() {
+    if (!processPlanDialogVisible.value || !hasScope.value || generatingPlanFromProcess.value) return
+    const scope = getOperationPlanScope()
+    const requestVersion = ++processPlanSourceRequestVersion
+    loadingProcessPlanSources.value = true
+    processPlanLoadError.value = ''
+    processPlanGenerateError.value = ''
+    try {
+        const sources = await processTemplateAPI.list(scope)
+        if (requestVersion !== processPlanSourceRequestVersion || !processPlanDialogVisible.value || !matchesProcessTrainScope(scope)) return
+        processPlanSources.value = sources.filter(source => source.instanceID === scope.instanceID && source.stationSchemeID === scope.stationSchemeID && source.operationPlanID === scope.operationPlanID)
+        if (!processPlanSources.value.some(source => source.id === processPlanSourceID.value)) processPlanSourceID.value = ''
+    } catch (error) {
+        if (requestVersion !== processPlanSourceRequestVersion || !processPlanDialogVisible.value || !matchesProcessTrainScope(scope)) return
+        processPlanSources.value = []
+        processPlanSourceID.value = ''
+        processPlanLoadError.value = getApiErrorMessage(error, t('operationPlan.train.fromProcess.loadFailed'))
+    } finally {
+        if (requestVersion === processPlanSourceRequestVersion) loadingProcessPlanSources.value = false
+    }
+}
+
+async function generatePlanFromProcess() {
+    const source = selectedProcessPlanSource.value
+    if (!source || !processPlanDialogVisible.value || !canGeneratePlanFromProcess.value || !validProcessPlanParameters.value) return
+    const scope = getOperationPlanScope()
+    const runVersion = ++processPlanGenerationVersion
+    const isCurrentRun = () => runVersion === processPlanGenerationVersion && matchesProcessTrainScope(scope)
+    const startTime = processPlanStartTime.value.trim()
+    const endTime = processPlanEndTime.value.trim()
+    generatingPlanFromProcess.value = true
+    processPlanGenerateError.value = ''
+    processPlanResult.value = null
+    try {
+        const response = await axios.post<ProcessPlanGenerationResponse>('/OperationPlan/GenerateTrainOperationPlanFromProcess', {
+            ...scope, processTemplateID: source.id, revision: source.revision,
+            trainCount: processPlanTrainCount.value, startTime, endTime,
+        })
+        if (!isCurrentRun()) return
+        const data = response.data
+        if (!Array.isArray(data?.trains) || !Array.isArray(data?.movements) || !Array.isArray(data?.processConstraints) ||
+            !Array.isArray(data?.generatedTrainIDs) || data.generatedTrainIDs.length === 0 ||
+            !data.processConstraints.every(isTrainProcessConstraints) ||
+            !data.generatedTrainIDs.every(id => typeof id === 'string' && data.trains.some(row => normalizeTrainOperationPlanTrain(row)?.id === id) &&
+                data.processConstraints.some(snapshot => snapshot.trainID === id))) {
+            throw new Error(t('operationPlan.trainOperationPlan.fromProcess.invalidResponse'))
+        }
+        const generatedIDs = new Set(data.generatedTrainIDs)
+        const warnings = Array.isArray(data.warnings) ? data.warnings.filter((warning): warning is string => typeof warning === 'string') : []
+        // The endpoint returns the complete committed plan; applying it avoids a second GET race.
+        if (!operationPlanInlineActive.value) {
+            trainOperationPlanLoadVersion++
+            normalizeTrainOperationPlanResponse(data)
+            selectedTrainOperationPlanTrainId.value = data.generatedTrainIDs[0] || ''
+            trainOperationPlanStartTime.value = startTime
+            trainOperationPlanEndTime.value = endTime
+        } else {
+            warnings.push(t('operationPlan.train.fromProcess.refreshDeferred'))
+        }
+        processPlanResult.value = {
+            trainCount: generatedIDs.size,
+            movementCount: data.movements.filter((row: any) => generatedIDs.has(readString(row, 'trainID', 'TrainID'))).length,
+            warnings,
+        }
+        processPlanDialogVisible.value = false
+    } catch (error) {
+        if (!isCurrentRun()) return
+        processPlanGenerateError.value = getApiErrorMessage(error, error instanceof Error && error.message === t('operationPlan.trainOperationPlan.fromProcess.invalidResponse')
+            ? error.message : t('operationPlan.trainOperationPlan.fromProcess.generateFailed'))
+        const errors: unknown = (error as any)?.response?.data?.errors
+        if (Array.isArray(errors)) processPlanGenerateError.value += '\n' + errors.filter(item => typeof item === 'string').join('\n')
+    } finally {
+        if (runVersion === processPlanGenerationVersion) generatingPlanFromProcess.value = false
+    }
+}
+
+function matchesProcessTrainScope(scope: ProcessScope) {
+    return JSON.stringify(scope) === processTrainScopeKey.value
+}
+
+function openProcessTrainDialog() {
+    if (!canGenerateTrainFromProcess.value) return
+    processTrainSources.value = []
+    processTrainSourceID.value = ''
+    processTrainLoadError.value = ''
+    processTrainGenerateError.value = ''
+    processTrainDialogVisible.value = true
+    void loadProcessTrainSources()
+}
+
+async function loadProcessTrainSources() {
+    if (!processTrainDialogVisible.value || !hasScope.value || generatingTrainFromProcess.value) return
+    const scope = getOperationPlanScope()
+    const requestVersion = ++processTrainSourceRequestVersion
+    loadingProcessTrainSources.value = true
+    processTrainLoadError.value = ''
+    processTrainGenerateError.value = ''
+    try {
+        const sources = await processTemplateAPI.list(scope)
+        if (requestVersion !== processTrainSourceRequestVersion || !processTrainDialogVisible.value || !matchesProcessTrainScope(scope)) return
+        processTrainSources.value = sources.filter(source => source.instanceID === scope.instanceID && source.stationSchemeID === scope.stationSchemeID && source.operationPlanID === scope.operationPlanID)
+        if (!processTrainSources.value.some(source => source.id === processTrainSourceID.value)) processTrainSourceID.value = ''
+    } catch (error) {
+        if (requestVersion !== processTrainSourceRequestVersion || !processTrainDialogVisible.value || !matchesProcessTrainScope(scope)) return
+        processTrainSources.value = []
+        processTrainSourceID.value = ''
+        processTrainLoadError.value = getApiErrorMessage(error, t('operationPlan.train.fromProcess.loadFailed'))
+    } finally {
+        if (requestVersion === processTrainSourceRequestVersion) loadingProcessTrainSources.value = false
+    }
+}
+
+async function generateTrainFromProcess() {
+    const source = selectedProcessTrainSource.value
+    if (!source || !processTrainDialogVisible.value || !canGenerateTrainFromProcess.value) return
+    const scope = getOperationPlanScope()
+    const runVersion = ++processTrainGenerationVersion
+    const isCurrentRun = () => runVersion === processTrainGenerationVersion && matchesProcessTrainScope(scope)
+    generatingTrainFromProcess.value = true
+    processTrainResult.value = null
+    processTrainGenerateError.value = ''
+    try {
+        const response = await axios.post<ProcessTrainGenerationResponse>('/OperationPlan/GenerateTrainTemplateFromProcess', {
+            ...scope,
+            processTemplateID: source.id,
+            revision: source.revision,
+        })
+        if (!isCurrentRun()) return
+        const generated = normalizeTrainTemplate(response.data.trainTemplate)
+        if (!generated) throw new Error(t('operationPlan.train.fromProcess.invalidResponse'))
+        const warnings = Array.isArray(response.data.warnings) ? response.data.warnings.filter((warning): warning is string => typeof warning === 'string') : []
+        processTrainResult.value = { name: generated.name, movementCount: response.data.movementCount, warnings }
+        if (operationPlanInlineActive.value) {
+            processTrainResult.value.warnings.push(t('operationPlan.train.fromProcess.refreshDeferred'))
+            processTrainDialogVisible.value = false
+            return
+        }
+        await loadTrainTemplates()
+        if (!isCurrentRun()) return
+        if (!operationPlanInlineActive.value) {
+            // Keep the returned row visible even if the follow-up list request failed.
+            if (!trainTemplates.value.some(item => item.trainTemplateID === generated.trainTemplateID)) trainTemplates.value.push(generated)
+            selectedTrainTemplateId.value = generated.trainTemplateID
+            await loadMovementTemplates()
+        } else {
+            processTrainResult.value?.warnings.push(t('operationPlan.train.fromProcess.refreshDeferred'))
+        }
+        if (isCurrentRun()) processTrainDialogVisible.value = false
+    } catch (error) {
+        if (!isCurrentRun()) return
+        processTrainGenerateError.value = getApiErrorMessage(error, error instanceof Error && error.message === t('operationPlan.train.fromProcess.invalidResponse') ? error.message : t('operationPlan.train.fromProcess.generateFailed'))
+    } finally {
+        if (runVersion === processTrainGenerationVersion) generatingTrainFromProcess.value = false
+    }
+}
+
 async function loadTrainTemplates() {
     const { instanceID, stationSchemeID, operationPlanID } = getOperationPlanScope()
     if (!instanceID || !stationSchemeID || !operationPlanID) {
@@ -5956,6 +6282,7 @@ async function loadMovementTemplates() {
 }
 
 async function loadTrainOperationPlan() {
+    clearTrainOperationPlanSelection()
     const { instanceID, stationSchemeID, operationPlanID } = getOperationPlanScope()
     if (!instanceID || !stationSchemeID || !operationPlanID) {
         clearTrainOperationPlan()
@@ -5994,6 +6321,7 @@ async function loadTrainOperationPlan() {
         console.error('Failed to load train operation plan:', error)
         trainOperationPlanTrains.value = []
         trainOperationPlanMovements.value = []
+        trainProcessConstraints.value = []
         if (isOperationPlanChartDataTab(activeOperationPlanTab.value)) {
             const fallbackVersion = ++operationPlanChartLoadVersion
             loadingOperationPlanChart.value = true
@@ -6302,6 +6630,7 @@ async function loadOperationPlanChartData() {
 }
 
 async function generateTrainOperationPlan() {
+    if (generatingPlanFromProcess.value || deletingTrainOperationPlanTrains.value) return
     const { instanceID, stationSchemeID, operationPlanID } = getOperationPlanScope()
     if (!instanceID || !stationSchemeID || !operationPlanID) {
         ElMessage.warning(t('operationPlan.empty.selectScheme'))
@@ -6309,6 +6638,7 @@ async function generateTrainOperationPlan() {
     }
     if (operationPlanInlineActive.value) return
 
+    processPlanResult.value = null
     generatingTrainOperationPlan.value = true
     loadingTrainOperationPlan.value = true
     try {
@@ -6342,6 +6672,7 @@ async function generateTrainOperationPlan() {
 }
 
 function startCreateTrainOperationPlanTrainInline() {
+    if (deletingTrainOperationPlanTrains.value) return
     if (!hasScope.value) {
         ElMessage.warning(t('operationPlan.empty.selectScheme'))
         return
@@ -6427,6 +6758,76 @@ async function updateTrainOperationPlanTrainFixedOperation(row: TrainOperationPl
     }
 }
 
+function clearTrainOperationPlanSelection() {
+    trainSelectionVersion++
+    selectedTrainOperationPlanTrainIDs.value = []
+    trainOperationPlanTrainTable.value?.clearSelection()
+}
+
+function isTrainOperationPlanTrainSelectable(row: TrainOperationPlanTrain) {
+    return !row.isDraft && Boolean(row.id) && canDeleteSelectedTrainOperationPlanTrains.value && !confirmingTrainBatchDelete.value
+}
+
+function handleTrainOperationPlanTrainSelection(rows: TrainOperationPlanTrain[]) {
+    const visibleIDs = new Set(filteredTrainOperationPlanTrains.value.map(row => row.id))
+    selectedTrainOperationPlanTrainIDs.value = [...new Set(rows.filter(row => !row.isDraft && visibleIDs.has(row.id)).map(row => row.id))]
+    trainSelectionVersion++
+}
+
+async function confirmDeleteSelectedTrainOperationPlanTrains() {
+    if (!canDeleteSelectedTrainOperationPlanTrains.value || confirmingTrainBatchDelete.value || !selectedTrainOperationPlanTrainIDs.value.length) return
+    const scope = getOperationPlanScope()
+    const trainIDs = [...selectedTrainOperationPlanTrainIDs.value]
+    const selectionVersion = trainSelectionVersion
+    const runVersion = ++trainBatchDeleteVersion
+    const isCurrentRun = () => runVersion === trainBatchDeleteVersion && matchesProcessTrainScope(scope)
+    confirmingTrainBatchDelete.value = true
+    try {
+        await ElMessageBox.confirm(
+            t('operationPlan.trainOperationPlan.train.messages.batchDeleteConfirm', { count: trainIDs.length }),
+            t('operationPlan.trainOperationPlan.train.dialogs.batchDeleteTitle'),
+            { confirmButtonText: t('operationPlan.actions.delete'), cancelButtonText: t('operationPlan.actions.cancel'), type: 'warning' },
+        )
+    } catch {
+        return
+    } finally {
+        if (isCurrentRun()) confirmingTrainBatchDelete.value = false
+    }
+    // Confirmation may remain open while the scope, list, selection or inline draft changes.
+    if (!isCurrentRun() || selectionVersion !== trainSelectionVersion || !canDeleteSelectedTrainOperationPlanTrains.value ||
+        !trainIDs.every(id => filteredTrainOperationPlanTrains.value.some(row => row.id === id))) return
+
+    deletingTrainOperationPlanTrains.value = true
+    try {
+        const response = await axios.post<{ deletedTrainIDs: string[]; deletedCount: number }>('/OperationPlan/DeleteTrains', { ...scope, trainIDs })
+        if (!isCurrentRun()) return
+        const deletedIDs = response.data?.deletedTrainIDs
+        if (!Array.isArray(deletedIDs) || deletedIDs.length !== trainIDs.length || new Set(deletedIDs).size !== trainIDs.length ||
+            response.data.deletedCount !== trainIDs.length || !deletedIDs.every(id => trainIDs.includes(id))) {
+            throw new Error(t('operationPlan.trainOperationPlan.train.messages.batchDeleteInvalidResponse'))
+        }
+        const deleted = new Set(deletedIDs)
+        trainOperationPlanTrains.value = trainOperationPlanTrains.value.filter(row => !deleted.has(row.id))
+        trainOperationPlanMovements.value = trainOperationPlanMovements.value.filter(row => !deleted.has(row.trainID))
+        trainProcessConstraints.value = trainProcessConstraints.value.filter(snapshot => !deleted.has(snapshot.trainID))
+        if (deleted.has(selectedTrainOperationPlanTrainId.value)) {
+            selectedTrainOperationPlanTrainId.value = ''
+            processConstraintDrawerVisible.value = false
+        }
+        clearTrainOperationPlanSelection()
+        clearOperationAnalysisSnapshotState()
+        processPlanResult.value = null
+        ElMessage.success(t('operationPlan.trainOperationPlan.train.messages.batchDeleteSuccess', { count: deletedIDs.length }))
+        await loadTrainOperationPlan()
+    } catch (error) {
+        if (!isCurrentRun()) return
+        ElMessage.error(getApiErrorMessage(error, error instanceof Error && error.message === t('operationPlan.trainOperationPlan.train.messages.batchDeleteInvalidResponse')
+            ? error.message : t('operationPlan.trainOperationPlan.train.messages.batchDeleteFailed')))
+    } finally {
+        if (isCurrentRun()) deletingTrainOperationPlanTrains.value = false
+    }
+}
+
 function confirmDeleteTrainOperationPlanTrain(row: TrainOperationPlanTrain) {
     ElMessageBox.confirm(
         t('operationPlan.trainOperationPlan.train.messages.deleteConfirm', { id: row.id }),
@@ -6444,6 +6845,7 @@ function confirmDeleteTrainOperationPlanTrain(row: TrainOperationPlanTrain) {
 }
 
 async function deleteTrainOperationPlanTrain(row: TrainOperationPlanTrain) {
+    if (deletingTrainOperationPlanTrains.value) return
     loadingTrainOperationPlan.value = true
     try {
         await axios.delete('/OperationPlan/DeleteTrain', {
@@ -6465,6 +6867,7 @@ async function deleteTrainOperationPlanTrain(row: TrainOperationPlanTrain) {
 }
 
 function startCreateTrainOperationPlanMovementInline() {
+    if (selectedTrainProcessConstraints.value || !canEditTrainOperationPlan.value) return
     if (!hasScope.value) {
         ElMessage.warning(t('operationPlan.empty.selectScheme'))
         return
@@ -6486,7 +6889,7 @@ function startCreateTrainOperationPlanMovementInline() {
 }
 
 function startEditTrainOperationPlanMovementInline(row: TrainOperationPlanMovement) {
-    if (row.isDraft || !canEditTrainOperationPlan.value || operationPlanInlineActive.value) return
+    if (row.isDraft || !canEditTrainOperationPlan.value || operationPlanInlineActive.value || processConstraintsByTrain.value.has(row.trainID)) return
 
     trainOperationPlanMovementMode.value = 'edit'
     trainOperationPlanMovementEditingKey.value = getTrainOperationPlanMovementIdentityKey(row)
@@ -6506,6 +6909,7 @@ function cancelTrainOperationPlanMovementInline(row: TrainOperationPlanMovement)
 }
 
 async function saveTrainOperationPlanMovement() {
+    if (processConstraintsByTrain.value.has(trainOperationPlanMovementForm.value.trainID)) return
     syncTrainOperationPlanScope()
     if (!trainOperationPlanMovementForm.value.trainID.trim()) {
         ElMessage.warning(t('operationPlan.trainOperationPlan.movement.messages.trainRequired'))
@@ -6540,6 +6944,7 @@ async function saveTrainOperationPlanMovement() {
 }
 
 function confirmDeleteTrainOperationPlanMovement(row: TrainOperationPlanMovement) {
+    if (processConstraintsByTrain.value.has(row.trainID) || !canEditTrainOperationPlan.value) return
     ElMessageBox.confirm(
         t('operationPlan.trainOperationPlan.movement.messages.deleteConfirm', { id: row.movementID }),
         t('operationPlan.trainOperationPlan.movement.dialogs.deleteTitle'),
@@ -6556,6 +6961,7 @@ function confirmDeleteTrainOperationPlanMovement(row: TrainOperationPlanMovement
 }
 
 async function deleteTrainOperationPlanMovement(row: TrainOperationPlanMovement) {
+    if (processConstraintsByTrain.value.has(row.trainID) || generatingPlanFromProcess.value) return
     loadingTrainOperationPlan.value = true
     try {
         await axios.delete('/OperationPlan/DeleteMovement', {
@@ -6574,6 +6980,30 @@ async function deleteTrainOperationPlanMovement(row: TrainOperationPlanMovement)
         ElMessage.error(t('operationPlan.trainOperationPlan.movement.messages.deleteFailed'))
     } finally {
         loadingTrainOperationPlan.value = false
+    }
+}
+
+async function handleCellOccupancyImported(result: CellOccupancyImportResult, sourceScope: CellOccupancyImportScope) {
+    const isCurrentScope = () => props.selectedInstanceId === sourceScope.instanceID &&
+        currentStationSchemeId.value.trim() === sourceScope.stationSchemeID &&
+        (currentOperationPlanId.value === sourceScope.operationPlanID || currentOperationPlanId.value === result.operationPlanID)
+    if (!isCurrentScope()) return
+    refreshingCellOccupancyImport.value = true
+    try {
+        await loadOperationPlans()
+        if (!isCurrentScope()) return
+        currentOperationPlanId.value = result.operationPlanID
+        activeOperationPlanTab.value = 'trainOperationPlan'
+        trainOperationPlanTrainSearch.value = ''
+        selectedTrainTemplateId.value = ''
+        clearMovementTemplates()
+        clearTrainOperationPlan()
+        clearRoutePickerLayoutPreview()
+        await refreshOperationPlanData()
+        if (!isCurrentScope()) return
+        await loadOperationPlanChartData()
+    } finally {
+        refreshingCellOccupancyImport.value = false
     }
 }
 
@@ -6617,8 +7047,13 @@ async function toggleTrainTemplateExpansion(row: TrainTemplate) {
     await loadMovementTemplates()
 }
 
+function handleTrainOperationPlanTrainRowClick(row: TrainOperationPlanTrain, column: { type?: string }, event: Event) {
+    if (column?.type === 'selection' || (event.target instanceof Element && event.target.closest('.el-checkbox'))) return
+    toggleTrainOperationPlanTrainExpansion(row)
+}
+
 function toggleTrainOperationPlanTrainExpansion(row: TrainOperationPlanTrain) {
-    if (operationPlanInlineActive.value || isTrainOperationPlanTrainInlineEditing(row)) return
+    if (operationPlanInlineActive.value || isTrainOperationPlanTrainInlineEditing(row) || deletingTrainOperationPlanTrains.value) return
 
     selectedTrainOperationPlanTrainId.value = selectedTrainOperationPlanTrainId.value === row.id
         ? ''
@@ -6950,6 +7385,71 @@ watch(activeOperationPlanTab, (tab) => {
     }
 })
 
+watch(processTrainDialogVisible, visible => {
+    if (!visible) {
+        processTrainSourceRequestVersion++
+        loadingProcessTrainSources.value = false
+    }
+})
+
+watch(trainOperationPlanTrainSearch, () => {
+    clearTrainOperationPlanSelection()
+}, { flush: 'sync' })
+
+watch(filteredTrainOperationPlanTrains, rows => {
+    if (!operationPlanInlineActive.value && selectedTrainOperationPlanTrainId.value &&
+        !rows.some(row => row.id === selectedTrainOperationPlanTrainId.value)) {
+        selectedTrainOperationPlanTrainId.value = ''
+        processConstraintDrawerVisible.value = false
+    }
+})
+
+watch(processPlanDialogVisible, visible => {
+    if (!visible) {
+        processPlanSourceRequestVersion++
+        loadingProcessPlanSources.value = false
+    }
+})
+
+watch(selectedTrainProcessConstraints, snapshot => {
+    if (!snapshot) processConstraintDrawerVisible.value = false
+})
+
+watch(processTrainScopeKey, () => {
+    trainBatchDeleteVersion++
+    confirmingTrainBatchDelete.value = false
+    deletingTrainOperationPlanTrains.value = false
+    clearTrainOperationPlanSelection()
+    trainOperationPlanTrainSearch.value = ''
+    processPlanSourceRequestVersion++
+    processPlanGenerationVersion++
+    processConstraintCatalogVersion++
+    processPlanDialogVisible.value = false
+    processPlanSources.value = []
+    processPlanSourceID.value = ''
+    loadingProcessPlanSources.value = false
+    generatingPlanFromProcess.value = false
+    processPlanLoadError.value = ''
+    processPlanGenerateError.value = ''
+    processPlanResult.value = null
+    trainProcessConstraints.value = []
+    processConstraintDrawerVisible.value = false
+    processConstraintCatalog.value = { nodes: [], tracks: [], routes: [] }
+    loadingProcessConstraintCatalog.value = false
+    processConstraintCatalogError.value = ''
+    processConstraintCatalogScopeKey.value = ''
+    processTrainSourceRequestVersion++
+    processTrainGenerationVersion++
+    processTrainDialogVisible.value = false
+    loadingProcessTrainSources.value = false
+    generatingTrainFromProcess.value = false
+    processTrainSources.value = []
+    processTrainSourceID.value = ''
+    processTrainLoadError.value = ''
+    processTrainGenerateError.value = ''
+    processTrainResult.value = null
+}, { flush: 'sync' })
+
 watch([operationOccupationTotalTimeSeconds, operationOccupationEmptyWasteFactor], () => {
     if (
         usingOperationAnalysisSnapshot.value ||
@@ -6996,7 +7496,13 @@ watch(
 )
 
 onBeforeUnmount(() => {
+    trainBatchDeleteVersion++
+    processPlanSourceRequestVersion++
+    processPlanGenerationVersion++
+    processConstraintCatalogVersion++
     saturatedPlanRunVersion += 1
+    processTrainSourceRequestVersion++
+    processTrainGenerationVersion++
     if (operationAnalysisSnapshotSaveTimer) {
         window.clearTimeout(operationAnalysisSnapshotSaveTimer)
         operationAnalysisSnapshotSaveTimer = null
@@ -7095,18 +7601,18 @@ onBeforeUnmount(() => {
     overflow: hidden;
 }
 
-.operation-plan-sub-tabs :deep(.el-tabs__header) {
+.operation-plan-sub-tabs :deep(> .el-tabs__header) {
     flex: 0 0 auto;
     margin: 0 0 10px;
 }
 
-.operation-plan-sub-tabs :deep(.el-tabs__content) {
+.operation-plan-sub-tabs :deep(> .el-tabs__content) {
     flex: 1;
     min-height: 0;
     overflow: hidden;
 }
 
-.operation-plan-sub-tabs :deep(.el-tab-pane) {
+.operation-plan-sub-tabs :deep(> .el-tabs__content > .el-tab-pane) {
     display: flex;
     height: 100%;
     min-height: 0;
@@ -7114,6 +7620,29 @@ onBeforeUnmount(() => {
 
 .operation-plan-sub-tab-pane {
     height: 100%;
+    min-height: 0;
+}
+
+.operation-plan-page.is-process-tab,
+.operation-plan-page.is-process-tab > .operation-plan-sub-tabs {
+    min-width: 0;
+}
+
+.operation-plan-page.is-process-tab > .operation-plan-toolbar {
+    flex: 0 0 auto;
+}
+
+.operation-process-tab-pane {
+    width: 100%;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.operation-process-editor-host {
+    flex: 1 1 0;
+    width: 100%;
+    height: 100%;
+    min-width: 0;
     min-height: 0;
 }
 
@@ -7148,6 +7677,17 @@ onBeforeUnmount(() => {
     min-height: 32px;
 }
 
+.train-operation-plan-list-tools {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    border-bottom: 1px solid #edf2f7;
+}
+
+.train-operation-plan-list-tools .el-input { flex: 1; min-width: 0; }
+.train-operation-plan-list-tools .el-button { flex: 0 0 auto; margin-left: 0; }
+
 .train-operation-plan-time-range {
     display: flex;
     align-items: center;
@@ -7176,11 +7716,13 @@ onBeforeUnmount(() => {
 }
 
 .train-operation-plan-grid.is-expanded {
-    grid-template-columns: minmax(320px, 0.8fr) minmax(520px, 1.4fr);
+    grid-template-columns: minmax(320px, var(--list-width)) 8px minmax(320px, 1fr);
+    gap: 0;
 }
 
 .operation-plan-grid.is-expanded {
-    grid-template-columns: minmax(360px, 0.9fr) minmax(440px, 1.2fr);
+    grid-template-columns: minmax(320px, var(--list-width)) 8px minmax(320px, 1fr);
+    gap: 0;
 }
 
 .operation-plan-card {
@@ -7189,7 +7731,7 @@ onBeforeUnmount(() => {
     min-width: 0;
     min-height: 0;
     border: 1px solid #d8e3ef;
-    border-radius: 8px;
+    border-radius: 6px;
     background: #ffffff;
     overflow: hidden;
 }
@@ -7199,15 +7741,29 @@ onBeforeUnmount(() => {
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    padding: 12px 14px;
+    padding: 8px 12px;
     border-bottom: 1px solid #e4edf6;
-    background: #f8fbff;
+    background: #f8fafc;
+}
+
+.operation-plan-card-header > :first-child {
+    min-width: 0;
+}
+
+.operation-plan-panel-summary {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.operation-plan-card-actions {
+    flex: 0 0 auto;
 }
 
 .operation-plan-card-header h2 {
     margin: 0;
     color: #21354f;
-    font-size: 16px;
+    font-size: 13px;
     font-weight: 700;
     line-height: 1.4;
 }
@@ -7216,6 +7772,21 @@ onBeforeUnmount(() => {
     color: #65758a;
     font-size: 12px;
 }
+
+.operation-process-generation-dialog { display: flex; flex-direction: column; gap: 14px; }
+.operation-process-plan-parameters { display: grid; grid-template-columns: 1.15fr 1fr 1fr; gap: 16px; margin-top: 18px; }
+.operation-process-plan-parameters :deep(.el-input-number) { width: 100%; }
+.operation-process-generation-dialog :deep(.el-alert__title) { white-space: pre-line; }
+.operation-process-constraints { display: flex; flex-direction: column; gap: 16px; }
+.operation-process-constraints :deep(.el-tabs__content) { overflow: visible; }
+.operation-process-section-label { margin: 20px 0 10px; font-weight: 600; }
+.operation-process-catalog-error { display: flex; justify-content: space-between; align-items: center; gap: 12px; color: #a66d16; font-size: 13px; }
+.operation-process-locked-hint { flex: 0 0 auto; border-radius: 0; }
+.operation-process-generation-dialog :deep(.el-form-item) { margin-bottom: 0; }
+.operation-process-generation-help { margin: 0; color: #65758a; font-size: 13px; line-height: 1.7; }
+.operation-process-generation-select { width: 100%; }
+.operation-process-generation-result { flex: 0 0 auto; max-height: 170px; overflow: auto; border-radius: 0; }
+.operation-process-generation-result ul { margin: 6px 0 0; padding-left: 18px; line-height: 1.7; }
 
 .movement-template-context {
     display: flex;
@@ -7378,6 +7949,8 @@ onBeforeUnmount(() => {
 }
 
 .operation-plan-route-filter-clear {
+    display: flex;
+    justify-content: flex-end;
     grid-column: 1 / -1;
 }
 
@@ -7409,6 +7982,8 @@ onBeforeUnmount(() => {
     justify-content: center;
     height: 10px;
     cursor: row-resize;
+    touch-action: none;
+    user-select: none;
     outline: none;
 }
 
@@ -7419,15 +7994,15 @@ onBeforeUnmount(() => {
 }
 
 .operation-plan-route-picker-splitter span {
-    width: 72px;
-    height: 3px;
-    border-radius: 999px;
-    background: #9fb2c8;
+    width: 100%;
+    height: 2px;
+    border-radius: 2px;
+    background: var(--sy-border, #dfe4ea);
 }
 
 .operation-plan-route-picker-splitter:focus-visible span,
 .operation-plan-route-picker-splitter:hover span {
-    background: #3b82f6;
+    background: var(--el-color-primary);
 }
 
 .operation-plan-route-picker-layout {
@@ -7545,7 +8120,7 @@ onBeforeUnmount(() => {
     z-index: 3;
     height: 44px;
     border-bottom: 1px solid #d8e3ef;
-    background: #f8fbff;
+    background: #f8fafc;
 }
 
 .operation-plan-chart-corner {
@@ -7811,7 +8386,7 @@ onBeforeUnmount(() => {
     min-height: 220px;
     overflow: hidden;
     border: 1px solid #d8e3ef;
-    border-radius: 8px;
+    border-radius: 6px;
     background: #ffffff;
 }
 
@@ -7820,9 +8395,9 @@ onBeforeUnmount(() => {
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    padding: 12px 14px;
+    padding: 8px 12px;
     border-bottom: 1px solid #e4edf6;
-    background: #f8fbff;
+    background: #f8fafc;
 }
 
 .operation-bottleneck-summary-header h3 {
@@ -7895,6 +8470,7 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 960px) {
+    .plan-pane-divider { display: none; }
     .operation-plan-grid,
     .operation-plan-grid.is-expanded,
     .train-operation-plan-grid,

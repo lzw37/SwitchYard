@@ -1,360 +1,80 @@
-# SwitchYard 运维建议
+# SwitchYard 运维说明
 
-## 1. 当前程序的运行画像
+本文区分当前行为和后续改进项。安装步骤见 [部署说明](Deploy-Instruction.md)，本地配置见 [开发与配置指南](Getting-Started.md)。
 
-结合当前代码与部署脚本，这套程序的生产运行方式大致如下：
+## 当前运行行为
 
-- 应用主体是 .NET 8 Web API，使用 `systemd` 托管，服务名为 `switchyard-api`。
-- API 默认通过 Kestrel 监听 `http://127.0.0.1:7297`，设计上期望前面再放 Nginx/Caddy/Apache 做公网入口和 TLS 终止。
-- 生产敏感配置通过 `/etc/switchyard/api.env` 注入，部署脚本会创建独立用户 `switchyard` 并下发 `systemd` 单元。
-- 日志使用 Serilog，同时输出到控制台和 `/opt/switchyard/api/logs`。
-- 默认数据库是 MySQL，也兼容 SQLite；应用启动时会自动执行 SQL 脚本确保表存在。
-- 鉴权使用 JWT + Refresh Token；Refresh Token 会持久化到数据库。
-- 课程视频/文档通过本地目录直接对外提供下载与流式访问，默认目录是 `/data/switchyardvid`。
+| 项目 | 当前实现 |
+| --- | --- |
+| API | .NET 8；生产默认监听 `http://127.0.0.1:7297`；Ubuntu 服务名 `switchyard-api` |
+| 配置 | `/etc/switchyard/api.env` 经 systemd 注入；`WebApi:Hosts` 决定监听地址 |
+| 数据 | 驼峰与能力模块使用两个独立数据库；支持 MySQL 和 SQLite |
+| 初始化 | 启动执行两套 schema；能力库可自动调整部分表的 MySQL 排序规则 |
+| 认证 | JWT + 数据库持久化 Refresh Token；Agent 使用专用 JWT |
+| 求解 | 独立 .NET 10 CapacityAgent 执行 OR-Tools/SCIP；API 通过 SignalR 分派 |
+| 课程 | 本地目录；清单和流式文件接口允许匿名访问，支持 Range 请求 |
+| 探测 | `/api/System/version` 返回应用版本；尚无专门的存活/就绪健康检查端点 |
 
-## 2. 优先级最高的运维事项
+## 日常检查
 
-### P0：立即处理
+```bash
+sudo systemctl status switchyard-api
+sudo journalctl -u switchyard-api -n 100 --no-pager
+curl -f http://127.0.0.1:7297/api/System/version
+```
 
-#### 2.1 立刻轮换已经出现在仓库中的密钥和数据库口令
+API 文件日志位于输出目录下的 `logs/switchyard-*.log`，部署后为 `/opt/switchyard/api/logs/`。按日滚动，单文件 10 MB 后继续分卷，保留最近 30 个文件。日志级别和输出目前在 `Program.cs` 中直接配置；不要假定调整 `appsettings` 的 `Serilog` 节一定改变这套输出。
 
-当前开发配置里仍然存在明文密钥和数据库账号：
+CapacityAgent 在自身输出目录 `logs/` 写日志，单文件上限 50 MB，保留最近 30 个文件。检查 Agent 在线状态、可用槽位、CPU/内存，以及任务失败或取消原因。保留文件数不是保留天数，高日志量时会更快轮换。
 
-- `Jwt:SecretKey` 明文存在于 [appsettings.json](/d:/SwitchYard/SwitchYard.WebApi/SwitchYard.Service/appsettings.json:29)
-- MySQL 用户名和密码明文存在于 [appsettings.json](/d:/SwitchYard/SwitchYard.WebApi/SwitchYard.Service/appsettings.json:36)
+版本探测不验证数据库读写、模板实例或 Agent。日常应另核对真实账号登录、实例读取、一次代表性的求解，以及课程文件播放/下载。关注数据库备份、两套日志目录、数据目录与课程目录的空间。
 
-建议：
+## 数据与重启
 
-- 立即更换 JWT 签名密钥。
-- 立即更换数据库密码。
-- 如果生产库还在使用 `root`，改为专用业务账号，只授予当前库的最小权限。
-- 后续仅通过 `/etc/switchyard/api.env` 或密钥管理系统注入，不再在任何 `appsettings*.json` 中保留真实密钥。
+- 同时备份驼峰库和能力库；用户、Refresh Token 位于驼峰库，站场、进路和作业计划位于能力库。
+- 模板实例 `001` 及其关联记录属于必要业务数据。缺少模板会导致新用户创建失败；schema 不提供模板或默认管理员。
+- API 启动会执行建表及部分排序规则调整。升级前检查 SQL 差异并备份，旧表缺少新列时不能靠 `CREATE TABLE IF NOT EXISTS` 自动补齐。
+- Agent 注册状态、求解任务、进度日志和结果由 Service 内存持有。重启 API 会丢失这些状态；重启前先下载结果并处理正在运行的任务。求解预设单独保存在能力库的 `capacitysolvepreset` 表中，应随能力库备份。
+- SQLite 备份应使用数据库备份机制或停止写入后复制；不要在服务写入中直接复制主文件。恢复演练应在独立目录/数据库进行。
 
-#### 2.2 生产环境只暴露反向代理，不直接暴露 Kestrel
+恢复验证包括：服务启动、原有账号登录、实例/方案打开、进路与作业计划一致、新用户模板复制、课程读取及 Agent 重新连接。
 
-当前部署设计本身是合理的，生产配置也默认只监听回环地址：
+## 连接与权限排查
 
-- 生产默认监听 `127.0.0.1:7297`，见 [appsettings.Production.json](/d:/SwitchYard/SwitchYard.WebApi/SwitchYard.Service/appsettings.Production.json:27)
-- 安装脚本默认写入 `WebApi__Hosts__0=http://127.0.0.1:7297`，见 [install-secrets.sh](/d:/SwitchYard/scripts/deploy/install-secrets.sh:125)
+| 症状 | 优先检查 |
+| --- | --- |
+| 服务无法绑定 / 找不到地址 | `WebApi__Hosts__*` 是否仍含其他机器的 IP；查看最终绑定日志 |
+| 启动时报数据库错误 | 两组连接配置、MySQL 数据库是否存在、SQL 脚本是否随包发布、建表/改表权限 |
+| SQLite 无法写入 | 父目录和服务用户权限；systemd 仅允许写 `logs` 与 `/opt/switchyard/data` |
+| 登录正常但能力页失败 | `CapacityDatabase` 是否独立配置；是否遗漏其账号/密码或初始化脚本 |
+| 首页正常，刷新页面 404 | 静态服务器的 History 路由回退 |
+| 登录正常，业务接口 404 | 反向代理是否只覆盖 `/api/`；业务还使用多个根路径 |
+| 前端访问旧服务器 | 构建时的 `VITE_API_BASE_URL`、旧静态资源缓存；需重新构建 |
+| 浏览器 CORS 错误 | 前端完整 origin 是否在生产允许列表；协议、端口及配置数组合并结果 |
+| Agent 无法登录/上线 | 账号激活和强制改密状态、API URL、WebSocket 升级头与代理超时 |
+| 没有可用求解资源 | Agent 在线、共享权限、模型类型与空闲槽位 |
+| 课程列表为空 | 目录是否存在、可读、扩展名受支持，是否使用预期的子目录 |
 
-建议：
+数据库连接层现会抛出包含操作和 SQL 摘要的异常；旧文档中“查询失败只打印日志并返回 null/0”的描述已不适用。不同业务服务仍可能捕获异常并转成通用错误，应结合 API 日志查看根因。
 
-- 服务器安全组、防火墙仅开放 `80/443` 给公网。
-- `7297` 仅本机访问，不对公网开放。
-- 反向代理必须传递 `X-Forwarded-For` 和 `X-Forwarded-Proto`，否则 `UseHttpsRedirection()` 和真实 IP 识别会失真。
+## 配置维护
 
-#### 2.3 收紧受信任代理范围，不要直接信任整个内网段
+生产使用独立的 JWT 密钥和数据库账号，不复用仓库开发配置里的值。环境文件及备份包含敏感配置，应保持私有权限。轮换 JWT 密钥会使现有签名令牌失效，安排客户端重新认证和 Agent 重连。
 
-当前程序在生产环境会信任 RFC1918 私网段：
+安装脚本再次执行会备份并重写 `api.env`，课程、CORS 等手动添加项需重新核对。它默认让两个 MySQL 数据库共用一个账号；若使用不同账号，可直接编辑两组环境变量。
 
-- 见 [Program.cs](/d:/SwitchYard/SwitchYard.WebApi/SwitchYard.Service/Program.cs:167)
+API 生产 CORS 由配置列表控制；开发环境允许任意 origin。当前生产转发头策略信任回环地址及 RFC1918 私网段，最多两层转发；该范围在 `Program.cs` 中设置，没有配置项。改变代理拓扑时应核对该边界，尤其是按客户端 IP 进行的认证限流。
 
-这意味着只要请求来源落在这些网段内，转发头就可能被接受。对单机反向代理场景来说，这个范围偏大，容易影响：
+登录及 Agent 认证共用按 IP 每分钟 5 次的 `auth` 限流；注册为每 10 分钟 3 次，超出返回 429。反向代理必须正确传递客户端 IP，避免全部用户被归为同一来源。
 
-- 登录限流的真实 IP 识别
-- 审计日志中的客户端 IP
-- 未来接入其他内网代理时的边界控制
+## 后续改进项
 
-建议：
+以下尚非当前已具备的功能，可根据实际运行需要推进：
 
-- 明确写死反向代理所在主机 IP，优先使用 `KnownProxies`。
-- 如果必须信任网段，也尽量缩小到实际网段，而不是整个 `10/8`、`172.16/12`、`192.168/16`。
+1. 增加分别检查进程与依赖的健康检查端点，补齐关键错误和磁盘告警。
+2. 将 schema 变更纳入版本化迁移，按业务唯一性补充约束和索引；变更前检查历史数据重复情况。
+3. 为过期 Refresh Token 设置定期清理。当前有清理方法，尚无配套周期任务。
+4. 为需要跨重启保留的求解任务和结果引入持久化。
+5. 根据课程资源规模增加清单缓存和内容缓存；若资料需授权访问，需额外实现权限控制。
 
-#### 2.4 建立数据库备份与恢复演练
-
-当前应用会在启动时“补齐表”，但这不是正式迁移体系：
-
-- 启动时自动执行 schema 脚本，见 [Program.cs](/d:/SwitchYard/SwitchYard.WebApi/SwitchYard.Service/Program.cs:436)
-- 实现方式见 [DatabaseSchemaInitializer.cs](/d:/SwitchYard/SwitchYard.WebApi/SwitchYard.Service/Services/DatabaseSchemaInitializer.cs:18)
-
-这说明数据库结构管理目前更偏“初始化”而不是“变更迁移”。因此备份与回滚的重要性更高。
-
-建议：
-
-- 至少每日一次 `mysqldump --single-transaction` 逻辑备份。
-- 备份保留建议采用 `7 天日备 + 4 周周备 + 3 个月月备`。
-- 每月至少做一次恢复演练，验证能否在新实例成功恢复并启动服务。
-- 如果课程目录 `/data/switchyardvid` 也是业务资产，也要纳入单独备份策略。
-
-### P1：一周内补齐
-
-#### 2.5 增加健康检查与可观测性入口
-
-目前程序有较完整的启动日志，但没有标准健康检查端点：
-
-- 代码里有 `MapControllers()`，但未见 `AddHealthChecks/MapHealthChecks`，见 [Program.cs](/d:/SwitchYard/SwitchYard.WebApi/SwitchYard.Service/Program.cs:431)
-
-建议：
-
-- 增加 `/health/live` 和 `/health/ready`。
-- `ready` 至少检查：
-  - 数据库连通性
-  - `/data/switchyardvid` 是否存在且可读
-  - JWT 配置是否已注入
-- 反向代理和外部监控统一探测 `/health/ready`。
-
-#### 2.6 为 MySQL 表补齐主键、唯一约束和索引
-
-当前建表脚本大多只有字段，没有主键和索引：
-
-- `user` 表没有主键和唯一用户名约束，见 [mysql-schema.sql](/d:/SwitchYard/SwitchYard.WebApi/SwitchYard.Service/Database/mysql-schema.sql:1)
-- `refreshtoken` 表没有主键或索引，见 [mysql-schema.sql](/d:/SwitchYard/SwitchYard.WebApi/SwitchYard.Service/Database/mysql-schema.sql:12)
-
-而实际查询又大量依赖这些字段：
-
-- 按 `user.name` 登录查询，见 [UserService.cs](/d:/SwitchYard/SwitchYard.WebApi/SwitchYard.Service/Services/UserService.cs:80)
-- 按 `user.id` 查询用户，见 [UserService.cs](/d:/SwitchYard/SwitchYard.WebApi/SwitchYard.Service/Services/UserService.cs:117)
-- 按 `refreshtoken.token` 查询 token，见 [RefreshTokenService.cs](/d:/SwitchYard/SwitchYard.WebApi/SwitchYard.Service/Services/RefreshTokenService.cs:91)
-
-建议最低补齐：
-
-- `user(id)` 主键
-- `user(name)` 唯一索引
-- `refreshtoken(token)` 主键或唯一索引
-- `refreshtoken(userid, isrevoked)` 组合索引
-- `humpinstance(ID)` 索引
-- 所有高频查询表上的 `InstanceID`、`SlopeLineID`、`HumpSchemeID`、`HeadwayCheckID` 组合索引
-
-否则随着实例数据增长，查询延迟和锁竞争会越来越明显。
-
-#### 2.7 建立正式的数据库变更流程
-
-当前 schema 通过 SQL 文件在启动时执行，适合初始化，不适合长期变更。
-
-建议：
-
-- 从现在开始给数据库变更编号，例如 `V001__init.sql`、`V002__add_indexes.sql`。
-- 发布前先执行变更，再重启应用。
-- 不建议依赖应用启动时自动“顺手改库”作为正式变更机制。
-
-#### 2.8 为 Refresh Token 建立清理任务
-
-代码里已经提供了清理过期 token 的方法：
-
-- 见 [RefreshTokenService.cs](/d:/SwitchYard/SwitchYard.WebApi/SwitchYard.Service/Services/RefreshTokenService.cs:167)
-
-但目前没有发现定时调用逻辑。长时间运行后，`refreshtoken` 表会持续增长。
-
-建议：
-
-- 每天执行一次清理任务。
-- 如果暂时不想改代码，可以先通过数据库计划任务或运维脚本清理过期数据。
-- 清理前先给 `expires` 和 `userid` 建索引，否则删除效率会变差。
-
-#### 2.9 课程文件服务要单独考虑带宽、缓存和磁盘
-
-课程接口当前是匿名开放的，并支持范围请求：
-
-- 匿名访问见 [CourseController.cs](/d:/SwitchYard/SwitchYard.WebApi/SwitchYard.Service/Controllers/CourseController.cs:41)
-- 流式文件下载见 [CourseController.cs](/d:/SwitchYard/SwitchYard.WebApi/SwitchYard.Service/Controllers/CourseController.cs:107)
-
-另外，清单接口每次都会递归扫描目录：
-
-- 见 [CourseController.cs](/d:/SwitchYard/SwitchYard.WebApi/SwitchYard.Service/Controllers/CourseController.cs:132)
-
-建议：
-
-- 用 Nginx 代理课程内容，并开启静态缓存、带宽限制和访问日志。
-- 如果文件量会上千，建议对 manifest 做缓存，避免每次请求都递归扫盘。
-- 为 `/data/switchyardvid` 设置独立磁盘告警阈值。
-- 如果课程资料不适合匿名公开，后续应增加鉴权或防盗链。
-
-## 3. 生产部署建议
-
-### 3.1 推荐拓扑
-
-建议采用：
-
-- `Internet -> Nginx/Caddy -> Kestrel(127.0.0.1:7297) -> MySQL`
-
-这样可以把以下职责放到反向代理层：
-
-- TLS 证书管理
-- HTTP 到 HTTPS 跳转
-- 静态资源缓存
-- 请求体大小限制
-- WAF / 黑白名单 / 基础限流
-
-### 3.2 保持现有 systemd 最小权限设计，同时补资源限制
-
-当前 `systemd` 已经做了不少加固，方向是对的：
-
-- 独立用户运行，见 [switchyard-api.service](/d:/SwitchYard/scripts/deploy/switchyard-api.service:11)
-- `NoNewPrivileges=true`，见 [switchyard-api.service](/d:/SwitchYard/scripts/deploy/switchyard-api.service:22)
-- `ProtectSystem=strict`，见 [switchyard-api.service](/d:/SwitchYard/scripts/deploy/switchyard-api.service:25)
-
-建议继续补：
-
-- `LimitNOFILE=65535`
-- `MemoryMax=` 根据服务器规格设置上限
-- `TasksMax=` 防止异常线程膨胀
-- `StartLimitIntervalSec` 与 `StartLimitBurst`，避免异常反复重启
-
-### 3.3 发布流程从“直接覆盖”逐步演进到“可回滚”
-
-当前 README 描述的流程是 `rsync` 覆盖发布后直接重启，适合早期，但回滚成本偏高。
-
-建议：
-
-- 发布目录改为版本化，例如 `/opt/switchyard/releases/20260502-01/`
-- `current` 软链接指向当前版本
-- 启动脚本始终指向 `current`
-- 新版本发布后先做：
-  - 配置文件检查
-  - 数据库连通性检查
-  - 本地 smoke test
-- 验证通过再切换软链接并重启
-- 保留最近 3 到 5 个版本，支持快速回滚
-
-## 4. 安全建议
-
-### 4.1 数据库连接安全
-
-当前安装脚本默认写入：
-
-- `HumpDatabase__MysqlConfig__SslMode=Preferred`，见 [install-secrets.sh](/d:/SwitchYard/scripts/deploy/install-secrets.sh:135)
-
-`Preferred` 表示“能加密就加密，不能加密也照连”。如果数据库是远程实例，这个级别偏弱。
-
-建议：
-
-- 单机本地 MySQL 可以接受本地回环连接。
-- 如果数据库跨主机，改成 `Required`，更理想是启用服务端证书校验。
-- 数据库只允许应用服务器访问，禁止公网暴露 `3306`。
-
-### 4.2 保持 Swagger 只在开发环境开启
-
-这点当前实现是好的：
-
-- Swagger 仅在开发环境启用，见 [Program.cs](/d:/SwitchYard/SwitchYard.WebApi/SwitchYard.Service/Program.cs:408)
-
-建议继续保持，不要在生产直接开放调试文档。
-
-### 4.3 注册与登录限流还需要外围补充
-
-应用层已经对登录和注册做了基础限流：
-
-- `auth` 每分钟 5 次，见 [Program.cs](/d:/SwitchYard/SwitchYard.WebApi/SwitchYard.Service/Program.cs:280)
-- `register` 每 10 分钟 3 次，见 [Program.cs](/d:/SwitchYard/SwitchYard.WebApi/SwitchYard.Service/Program.cs:292)
-
-建议：
-
-- 在 Nginx/Caddy 再做一层限流。
-- 对异常 IP 增加封禁策略，例如连续失败后暂时拉黑。
-- 对管理接口额外做访问源限制。
-
-## 5. 日志、监控与告警
-
-### 5.1 日志现状
-
-当前日志会同时写控制台和文件：
-
-- 见 [Program.cs](/d:/SwitchYard/SwitchYard.WebApi/SwitchYard.Service/Program.cs:90)
-
-优点是方便排查，缺点是如果不做监控，日志只是“能看”，还不是“可运维”。
-
-建议：
-
-- 统一监控 `systemd` 服务状态、重启次数和最近错误日志。
-- 监控 `/opt/switchyard/api/logs` 的磁盘占用。
-- 采集关键指标：
-  - 5xx 数量
-  - 登录失败数量
-  - 请求耗时 P95/P99
-  - MySQL 连接失败数
-  - 课程目录可用空间
-
-### 5.2 数据库错误要避免“只打印控制台”
-
-当前数据库基础层在异常时直接 `Console.WriteLine` 并返回 `null/0`：
-
-- 查询见 [DBConnector.cs](/d:/SwitchYard/SwitchYard.WebApi/SwitchYard.Service/DBConnector.cs:47)
-- 写入见 [DBConnector.cs](/d:/SwitchYard/SwitchYard.WebApi/SwitchYard.Service/DBConnector.cs:82)
-
-这会带来两个问题：
-
-- 上层可能只看到“操作失败”，但缺少结构化错误上下文
-- 监控系统难以稳定提取数据库异常指标
-
-建议：
-
-- 后续把数据库层错误接入 `ILogger`。
-- 对关键写操作失败增加告警条件。
-
-## 6. 业务数据与初始化检查
-
-### 6.1 新用户注册依赖模板实例 `001`
-
-当前注册新用户时会自动复制模板实例：
-
-- 模板实例常量见 [AuthController.cs](/d:/SwitchYard/SwitchYard.WebApi/SwitchYard.Service/Controllers/AuthController.cs:22)
-- 注册逻辑见 [AuthController.cs](/d:/SwitchYard/SwitchYard.WebApi/SwitchYard.Service/Controllers/AuthController.cs:237)
-
-这意味着：
-
-- 新库初始化后如果缺少模板实例 `001`，注册流程会失败。
-- 数据库迁移、恢复、测试环境初始化都要把这份种子数据纳入检查项。
-
-建议：
-
-- 把“模板实例存在性检查”加入上线前 smoke test。
-- 最好提供一份标准种子数据初始化脚本。
-
-## 7. 建议的日常运维检查清单
-
-建议每天至少检查一次：
-
-- `systemctl status switchyard-api`
-- `journalctl -u switchyard-api -n 200 --no-pager`
-- `/opt/switchyard/api/logs` 磁盘占用
-- `/data/switchyardvid` 是否可读、容量是否接近阈值
-- MySQL 主从状态或实例健康状态
-- 当日备份是否成功生成
-
-建议每周至少检查一次：
-
-- 访问日志中的高频来源 IP
-- 登录失败和 429 次数
-- 慢查询日志
-- `refreshtoken` 表记录数
-- TLS 证书剩余有效期
-
-建议每月至少执行一次：
-
-- 备份恢复演练
-- 漏洞修复和系统补丁升级
-- JWT 密钥与数据库账户使用情况复核
-
-## 8. 分阶段落地建议
-
-### 第一阶段：现在就做
-
-- 轮换仓库中暴露过的 JWT 和数据库密码
-- 改用最小权限数据库账号
-- 确认公网只开放反向代理端口
-- 收紧受信任代理 IP
-- 建立数据库与课程目录备份
-
-### 第二阶段：本周完成
-
-- 增加健康检查端点
-- 给 MySQL 补主键、唯一约束和索引
-- 补齐 Refresh Token 清理机制
-- 给课程资源访问加缓存与带宽控制
-
-### 第三阶段：后续优化
-
-- 引入正式数据库迁移机制
-- 发布目录版本化，支持快速回滚
-- 接入统一监控与告警平台
-- 评估课程文件是否需要对象存储或 CDN
-
-## 9. 总结
-
-这套程序已经具备了不错的生产雏形：有 `systemd` 托管、独立服务用户、环境变量注入、JWT、限流、日志和反向代理意识。当前真正需要优先补的，不是“能不能跑”，而是三件事：
-
-- 把密钥与数据库账号彻底从代码仓库中剥离并轮换
-- 把数据库从“能用”提升到“可维护”，也就是索引、备份、恢复、迁移
-- 把服务从“可启动”提升到“可观测”，也就是健康检查、告警、日常巡检
-
-如果这三块补齐，这套系统就会从开发可用状态，比较稳地迈到可持续运维状态。
+以上建议不代表本次文档更新已修改服务行为。

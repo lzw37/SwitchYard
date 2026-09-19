@@ -3,16 +3,16 @@
         <div class="toolbar">
             <el-input
                 v-model="keyword"
-                placeholder="搜索 ID、用户名、邮箱或角色"
+                :placeholder="t('userManager.searchPlaceholder')"
                 clearable
-                style="width: 320px"
+                style="width: 320px; max-width: 100%"
                 @clear="handleSearch"
                 @keyup.enter="handleSearch"
             />
-            <el-button type="primary" :loading="loading" @click="loadUsers">刷新</el-button>
-            <el-button type="success" @click="openCreate">新增用户</el-button>
-            <el-button type="warning" :loading="importing" @click="triggerImport">导入用户</el-button>
-            <el-button type="info" plain @click="downloadTemplate">下载导入模板</el-button>
+            <ActionButton type="primary" :loading="loading" @click="loadUsers()" :label="t('common.actions.refresh')" :icon="actionIcons.refresh" />
+            <ActionButton type="success" @click="openCreate" :label="t('userManager.actions.create')" :icon="actionIcons.add" />
+            <ActionButton type="warning" :loading="importing" @click="triggerImport" :label="t('userManager.actions.import')" :icon="actionIcons.upload" />
+            <ActionButton type="info" @click="downloadTemplate" :label="t('userManager.actions.downloadTemplate')" :icon="actionIcons.download" />
             <input
                 ref="importFileInput"
                 type="file"
@@ -24,34 +24,31 @@
 
         <el-table :data="users" v-loading="loading" stripe style="width: 100%">
             <el-table-column prop="id" label="ID" min-width="170" />
-            <el-table-column prop="name" label="用户名" min-width="130" />
-            <el-table-column prop="role" label="角色" width="100" />
-            <el-table-column prop="email" label="邮箱" min-width="180" />
-            <el-table-column label="创建时间" min-width="180">
+            <el-table-column prop="name" :label="t('userManager.columns.username')" min-width="130" />
+            <el-table-column prop="role" :label="t('userManager.columns.role')" min-width="120"><template #default="{ row }">{{ row.role === 'Admin' ? t('createUser.roles.admin') : row.role === 'User' ? t('createUser.roles.user') : row.role }}</template></el-table-column>
+            <el-table-column prop="email" :label="t('userManager.columns.email')" min-width="180" />
+            <el-table-column :label="t('userManager.columns.createdAt')" min-width="180">
                 <template #default="{ row }">
                     {{ formatCreateAt(row.createAt) }}
                 </template>
             </el-table-column>
-            <el-table-column label="激活状态" width="120">
+            <el-table-column :label="t('userManager.columns.active')" width="120">
                 <template #default="{ row }">
                     <el-tag :type="row.isActive === 1 ? 'success' : 'info'">
-                        {{ row.isActive === 1 ? '已激活' : '未激活' }}
+                        {{ row.isActive === 1 ? t('userManager.states.active') : t('userManager.states.inactive') }}
                     </el-tag>
                 </template>
             </el-table-column>
-            <el-table-column label="操作" width="240" fixed="right">
+            <el-table-column :label="t('userManager.columns.actions')" width="136" fixed="right">
                 <template #default="{ row }">
-                    <el-button type="primary" link @click="openEdit(row)">编辑</el-button>
-                    <el-button type="warning" link @click="openResetPassword(row)">重置密码</el-button>
-                    <el-button
+                    <ActionButton type="primary" @click="openEdit(row)" :label="t('common.actions.edit')" :icon="actionIcons.edit" />
+                    <ActionButton type="warning" @click="openResetPassword(row)" :label="t('userManager.actions.resetPassword')" :icon="actionIcons.lock" />
+                    <ActionButton
                         type="danger"
-                        link
                         :disabled="isCurrentUser(row)"
                         :loading="deletingId === row.id"
                         @click="confirmDelete(row)"
-                    >
-                        删除
-                    </el-button>
+                     :label="t('common.actions.delete')" :icon="actionIcons.delete" />
                 </template>
             </el-table-column>
         </el-table>
@@ -69,57 +66,57 @@
             />
         </div>
 
-        <el-dialog v-model="createVisible" title="新增用户" width="560px">
-            <el-form :model="createForm" label-width="120px">
-                <el-form-item label="用户名">
+        <el-dialog v-model="createVisible" :title="t('userManager.actions.create')" width="560px">
+            <el-form :model="createForm" label-width="150px">
+                <el-form-item :label="t('userManager.columns.username')">
                     <el-input v-model="createForm.username" />
                 </el-form-item>
-                <el-form-item label="密码">
+                <el-form-item :label="t('createUser.password')">
                     <el-input v-model="createForm.password" type="password" show-password />
                 </el-form-item>
-                <el-form-item label="确认密码">
+                <el-form-item :label="t('createUser.confirmPassword')">
                     <el-input v-model="createForm.confirmPassword" type="password" show-password />
                 </el-form-item>
-                <el-form-item label="角色">
+                <el-form-item :label="t('userManager.columns.role')">
                     <el-select v-model="createForm.role" style="width: 100%">
-                        <el-option label="User" value="User" />
-                        <el-option label="Admin" value="Admin" />
+                        <el-option :label="t('createUser.roles.user')" value="User" />
+                        <el-option :label="t('createUser.roles.admin')" value="Admin" />
                     </el-select>
                 </el-form-item>
-                <el-form-item label="邮箱">
+                <el-form-item :label="t('userManager.columns.email')">
                     <el-input v-model="createForm.email" />
                 </el-form-item>
-                <el-form-item label="激活状态">
+                <el-form-item :label="t('userManager.columns.active')">
                     <el-select v-model="createForm.isActive" style="width: 100%">
-                        <el-option label="1 - 已激活" :value="1" />
-                        <el-option label="0 - 未激活" :value="0" />
+                        <el-option :label="t('userManager.states.activeOption')" :value="1" />
+                        <el-option :label="t('userManager.states.inactiveOption')" :value="0" />
                     </el-select>
                 </el-form-item>
             </el-form>
             <template #footer>
-                <el-button @click="createVisible = false">取消</el-button>
-                <el-button type="primary" :loading="creating" @click="createUser">创建</el-button>
+                <ActionButton @click="createVisible = false" :label="t('common.actions.cancel')" :icon="actionIcons.close" />
+                <ActionButton type="primary" :loading="creating" @click="createUser" :label="t('common.actions.create')" :icon="actionIcons.add" />
             </template>
         </el-dialog>
 
-        <el-dialog v-model="editVisible" title="编辑用户" width="680px">
-            <el-form :model="editForm" label-width="120px">
+        <el-dialog v-model="editVisible" :title="t('userManager.dialogs.editTitle')" width="680px">
+            <el-form :model="editForm" label-width="150px">
                 <el-form-item label="ID">
                     <el-input v-model="editForm.id" />
                 </el-form-item>
-                <el-form-item label="用户名">
+                <el-form-item :label="t('userManager.columns.username')">
                     <el-input v-model="editForm.name" />
                 </el-form-item>
-                <el-form-item label="角色">
+                <el-form-item :label="t('userManager.columns.role')">
                     <el-select v-model="editForm.role" style="width: 100%">
-                        <el-option label="User" value="User" />
-                        <el-option label="Admin" value="Admin" />
+                        <el-option :label="t('createUser.roles.user')" value="User" />
+                        <el-option :label="t('createUser.roles.admin')" value="Admin" />
                     </el-select>
                 </el-form-item>
-                <el-form-item label="邮箱">
+                <el-form-item :label="t('userManager.columns.email')">
                     <el-input v-model="editForm.email" />
                 </el-form-item>
-                <el-form-item label="创建时间">
+                <el-form-item :label="t('userManager.columns.createdAt')">
                     <el-date-picker
                         v-model="editForm.createAt"
                         type="datetime"
@@ -128,65 +125,63 @@
                         style="width: 100%"
                     />
                 </el-form-item>
-                <el-form-item label="激活状态">
+                <el-form-item :label="t('userManager.columns.active')">
                     <el-select v-model="editForm.isActive" style="width: 100%">
-                        <el-option label="1 - 已激活" :value="1" />
-                        <el-option label="0 - 未激活" :value="0" />
+                        <el-option :label="t('userManager.states.activeOption')" :value="1" />
+                        <el-option :label="t('userManager.states.inactiveOption')" :value="0" />
                     </el-select>
                 </el-form-item>
             </el-form>
             <template #footer>
-                <el-button @click="editVisible = false">取消</el-button>
-                <el-button type="primary" :loading="saving" @click="saveUser">保存</el-button>
+                <ActionButton @click="editVisible = false" :label="t('common.actions.cancel')" :icon="actionIcons.close" />
+                <ActionButton type="primary" :loading="saving" @click="saveUser" :label="t('common.actions.save')" :icon="actionIcons.save" />
             </template>
         </el-dialog>
 
-        <el-dialog v-model="importResultVisible" title="批量导入结果" width="700px" :close-on-click-modal="false">
+        <el-dialog v-model="importResultVisible" :title="t('userManager.dialogs.importResults')" width="700px" :close-on-click-modal="false">
             <div v-if="importResult">
                 <el-alert
-                    :title="`导入完成：成功 ${importResult.successCount} 条，失败 ${importResult.failedCount} 条（共 ${importResult.totalCount} 条）`"
+                    :title="t('userManager.messages.importSummary', { success: importResult.successCount, failed: importResult.failedCount, total: importResult.totalCount })"
                     :type="importResult.failedCount === 0 ? 'success' : 'warning'"
                     :closable="false"
                     style="margin-bottom: 16px"
                 />
                 <el-table :data="importResult.results" max-height="360" stripe style="width: 100%">
-                    <el-table-column prop="row" label="行号" width="70" />
-                    <el-table-column prop="username" label="用户名" min-width="130" />
-                    <el-table-column label="状态" width="80">
+                    <el-table-column prop="row" :label="t('userManager.columns.row')" width="70" />
+                    <el-table-column prop="username" :label="t('userManager.columns.username')" min-width="130" />
+                    <el-table-column :label="t('userManager.columns.status')" width="80">
                         <template #default="{ row }">
                             <el-tag :type="row.success ? 'success' : 'danger'">
-                                {{ row.success ? '成功' : '失败' }}
+                                {{ row.success ? t('userManager.states.success') : t('userManager.states.failed') }}
                             </el-tag>
                         </template>
                     </el-table-column>
-                    <el-table-column prop="error" label="错误信息" min-width="200" />
+                    <el-table-column prop="error" :label="t('userManager.columns.error')" min-width="200" />
                 </el-table>
             </div>
             <template #footer>
-                <el-button type="primary" @click="closeImportResult">返回</el-button>
+                <ActionButton type="primary" @click="closeImportResult" :label="t('common.actions.back')" :icon="actionIcons.back" />
             </template>
         </el-dialog>
 
-        <el-dialog v-model="resetPasswordVisible" title="重置密码" width="520px">
-            <el-form :model="resetForm" label-width="120px">
-                <el-form-item label="用户 ID">
+        <el-dialog v-model="resetPasswordVisible" :title="t('userManager.actions.resetPassword')" width="520px">
+            <el-form :model="resetForm" label-width="150px">
+                <el-form-item :label="t('userManager.columns.userId')">
                     <el-input v-model="resetForm.id" disabled />
                 </el-form-item>
-                <el-form-item label="用户名">
+                <el-form-item :label="t('userManager.columns.username')">
                     <el-input v-model="resetForm.name" disabled />
                 </el-form-item>
-                <el-form-item label="新密码">
+                <el-form-item :label="t('userInfo.changePassword.new')">
                     <el-input v-model="resetForm.newPassword" type="password" show-password />
                 </el-form-item>
-                <el-form-item label="确认密码">
+                <el-form-item :label="t('createUser.confirmPassword')">
                     <el-input v-model="resetForm.confirmPassword" type="password" show-password />
                 </el-form-item>
             </el-form>
             <template #footer>
-                <el-button @click="resetPasswordVisible = false">取消</el-button>
-                <el-button type="primary" :loading="resettingPassword" @click="submitResetPassword">
-                    确认重置
-                </el-button>
+                <ActionButton @click="resetPasswordVisible = false" :label="t('common.actions.cancel')" :icon="actionIcons.close" />
+                <ActionButton type="primary" :loading="resettingPassword" @click="submitResetPassword" :label="t('userManager.actions.confirmReset')" :icon="actionIcons.reset" />
             </template>
         </el-dialog>
     </div>
@@ -197,6 +192,9 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import axios from '@/utils/axios'
 import { useAuthStore } from '@/stores/auth'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { useI18n } from 'vue-i18n'
+import ActionButton from '@/components/ui/ActionButton.vue'
+import { actionIcons } from '@/components/ui/actionIcons'
 import CryptoJS from 'crypto-js'
 import { DEFAULT_PAGE_SIZES, type PagedResult } from '@/types/pagination'
 
@@ -230,6 +228,8 @@ interface CreateUserPayload {
     email?: string | null
     isActive: number
 }
+
+const { t } = useI18n()
 
 const users = ref<UserRecord[]>([])
 const loading = ref(false)
@@ -352,7 +352,7 @@ const loadUsers = async (options: { resetPage?: boolean } = {}) => {
     } catch (error: any) {
         users.value = []
         pagination.totalCount = 0
-        ElMessage.error(error?.response?.data?.message || '加载用户列表失败')
+        ElMessage.error(error?.response?.data?.message || t('userManager.messages.loadFailed'))
     } finally {
         loading.value = false
     }
@@ -380,17 +380,17 @@ const openCreate = () => {
 
 const createUser = async () => {
     if (!createForm.username.trim() || !createForm.password.trim()) {
-        ElMessage.warning('用户名和密码不能为空')
+        ElMessage.warning(t('userManager.messages.credentialsRequired'))
         return
     }
 
     if (createForm.password.length < 6) {
-        ElMessage.warning('密码长度至少为 6 位')
+        ElMessage.warning(t('createUser.validation.passwordLength'))
         return
     }
 
     if (createForm.password !== createForm.confirmPassword) {
-        ElMessage.warning('两次输入的密码不一致')
+        ElMessage.warning(t('createUser.validation.confirmMismatch'))
         return
     }
 
@@ -409,11 +409,11 @@ const createUser = async () => {
         }
 
         await axios.post('/api/Admin/users', payload)
-        ElMessage.success('用户创建成功')
+        ElMessage.success(t('createUser.success'))
         createVisible.value = false
         await loadUsers({ resetPage: true })
     } catch (error: any) {
-        ElMessage.error(error?.response?.data?.message || '创建用户失败')
+        ElMessage.error(error?.response?.data?.message || t('userManager.messages.createFailed'))
     } finally {
         creating.value = false
     }
@@ -434,7 +434,7 @@ const saveUser = async () => {
     if (!editingSourceId.value) return
 
     if (!editForm.id.trim() || !editForm.name.trim() || !editForm.role.trim()) {
-        ElMessage.warning('ID、用户名和角色不能为空')
+        ElMessage.warning(t('userManager.messages.requiredFields'))
         return
     }
 
@@ -449,11 +449,11 @@ const saveUser = async () => {
             isActive: Number(editForm.isActive),
         })
 
-        ElMessage.success('用户更新成功')
+        ElMessage.success(t('userManager.messages.saveSuccess'))
         editVisible.value = false
         await loadUsers()
     } catch (error: any) {
-        ElMessage.error(error?.response?.data?.message || '更新用户失败')
+        ElMessage.error(error?.response?.data?.message || t('userManager.messages.saveFailed'))
     } finally {
         saving.value = false
     }
@@ -468,24 +468,24 @@ const openResetPassword = (row: UserRecord) => {
 
 const confirmDelete = async (row: UserRecord) => {
     if (isCurrentUser(row)) {
-        ElMessage.warning('不能删除当前登录账号')
+        ElMessage.warning(t('userManager.messages.cannotDeleteSelf'))
         return
     }
 
     try {
         await ElMessageBox.confirm(
-            `确定要删除用户“${row.name}”吗？此操作不可恢复。`,
-            '确认删除',
+            t('userManager.messages.deleteConfirm', { username: row.name }),
+            t('userManager.dialogs.deleteTitle'),
             {
                 type: 'warning',
-                confirmButtonText: '删除',
-                cancelButtonText: '取消',
+                confirmButtonText: t('common.actions.delete'),
+                cancelButtonText: t('common.actions.cancel'),
             },
         )
 
         deletingId.value = row.id
         await axios.delete(`/api/Admin/users/${row.id}`)
-        ElMessage.success('用户已删除')
+        ElMessage.success(t('userManager.messages.deleted'))
         if (users.value.length === 1 && pagination.pageNumber > 1) {
             pagination.pageNumber -= 1
         }
@@ -495,7 +495,7 @@ const confirmDelete = async (row: UserRecord) => {
             return
         }
 
-        ElMessage.error(error?.response?.data?.message || '删除用户失败')
+        ElMessage.error(error?.response?.data?.message || t('userManager.messages.deleteFailed'))
     } finally {
         deletingId.value = ''
     }
@@ -503,17 +503,17 @@ const confirmDelete = async (row: UserRecord) => {
 
 const submitResetPassword = async () => {
     if (!resetForm.newPassword.trim()) {
-        ElMessage.warning('新密码不能为空')
+        ElMessage.warning(t('userManager.messages.newPasswordRequired'))
         return
     }
 
     if (resetForm.newPassword.length < 6) {
-        ElMessage.warning('新密码长度至少为 6 位')
+        ElMessage.warning(t('createUser.validation.passwordLength'))
         return
     }
 
     if (resetForm.newPassword !== resetForm.confirmPassword) {
-        ElMessage.warning('两次输入的密码不一致')
+        ElMessage.warning(t('createUser.validation.confirmMismatch'))
         return
     }
 
@@ -523,11 +523,11 @@ const submitResetPassword = async () => {
             newPassword: hashPassword(resetForm.newPassword),
         })
 
-        ElMessage.success('密码重置成功，用户下次登录将被要求修改密码')
+        ElMessage.success(t('userManager.messages.passwordReset'))
         resetPasswordVisible.value = false
         resetPasswordForm()
     } catch (error: any) {
-        ElMessage.error(error?.response?.data?.message || '重置密码失败')
+        ElMessage.error(error?.response?.data?.message || t('userManager.messages.passwordResetFailed'))
     } finally {
         resettingPassword.value = false
     }
@@ -556,7 +556,7 @@ const handleImportFile = async (event: Event) => {
         importResult.value = resp.data
         importResultVisible.value = true
     } catch (error: any) {
-        ElMessage.error(error?.response?.data?.message || '导入失败')
+        ElMessage.error(error?.response?.data?.message || t('userManager.messages.importFailed'))
     } finally {
         importing.value = false
     }
@@ -579,7 +579,7 @@ const downloadTemplate = async () => {
         document.body.removeChild(a)
         URL.revokeObjectURL(url)
     } catch (error: any) {
-        ElMessage.error(error?.response?.data?.message || '下载模板失败')
+        ElMessage.error(error?.response?.data?.message || t('userManager.messages.downloadFailed'))
     }
 }
 

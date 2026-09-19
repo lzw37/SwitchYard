@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>作业过程编排 · Link.Name 回归示例</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { display: flex; flex-direction: column; height: 100dvh; overflow: hidden; margin: 0; background: #f2f5fa; font-family: "Microsoft YaHei", system-ui, sans-serif; }
+        header { padding: 14px 20px; color: #fff; background: #132e47; font-size: 14px; }
+        #app { flex: 1; min-height: 0; padding: 16px; }
+    </style>
+</head>
+<body>
+    <header>Link.Name 回归示例：含空名称 Link 和旧候选引用 · 使用正式页面加载流程 · 所有请求仅在本页内存处理</header>
+    <div id="app"></div>
+    <script type="module">
+        import { createApp, h } from 'vue'
+        import ElementPlus from 'element-plus'
+        import en from 'element-plus/es/locale/lang/en.mjs'
+        import zhCn from 'element-plus/es/locale/lang/zh-cn.mjs'
+        import i18n from '../src/i18n.ts'
+        import 'element-plus/dist/index.css'
+        import '../src/assets/main.css'
+        import '../src/assets/workspace.css'
+        import axios from 'axios'
+        import OperationProcessEditor from '../src/capacity/components/OperationProcessEditor.vue'
+        import { createExampleTemplate, demoCatalog, validateTemplate } from '../src/capacity/operationProcess.ts'
+
+        const scope = { instanceID: 'local-fixture', stationSchemeID: 'link-names', operationPlanID: 'plan' }
+        const catalog = structuredClone(demoCatalog)
+        catalog.tracks[0].name = ''
+        catalog.tracks[1].name = 'Ⅰ道'
+        catalog.tracks[2].name = ' \t '
+        catalog.tracks[3].name = ''
+        catalog.tracks[4].name = '牵出线'
+        const legacy = createExampleTemplate(scope, demoCatalog)
+        legacy.name = '旧模板：含无名称轨道候选'
+        legacy.revision = 1
+        const dwelling = legacy.activities.find(activity => activity.type === 'Dwelling')
+        dwelling.trackList = ['T1', 'T2', 'T3', 'T4', 'T5', 'deleted-link']
+        dwelling.selectedTrack = 'T1'
+        let saved = [legacy]
+
+        axios.defaults.adapter = async config => {
+            let data
+            if (config.method === 'get' && config.url === '/OperationProcess/GetCatalog') data = catalog
+            else if (config.method === 'get' && config.url === '/OperationProcess/GetTemplates') data = saved
+            else if (['post', 'put'].includes(config.method)) {
+                const draft = JSON.parse(config.data)
+                const errors = validateTemplate(draft, catalog)
+                if (errors.length) throw new Error(errors.join('；'))
+                draft.revision++
+                saved = [...saved.filter(item => item.id !== draft.id), draft]
+                data = draft
+            } else if (config.method === 'delete' && config.url === '/OperationProcess/DeleteTemplate') {
+                saved = saved.filter(item => item.id !== config.params.templateID)
+                data = null
+            } else throw new Error(`此示例不支持请求 ${config.url}`)
+            return { data: structuredClone(data), status: 200, statusText: 'OK', headers: {}, config }
+        }
+        const previewLanguage = new URLSearchParams(location.search).get('lang') === 'en' ? 'en' : 'zh'
+        i18n.global.locale.value = previewLanguage
+        document.documentElement.lang = previewLanguage === 'en' ? 'en' : 'zh-CN'
+        if (previewLanguage === 'en') {
+            document.title = 'Operation process · Link.Name fixture'
+            document.querySelector('header').textContent = 'Link.Name fixture · Includes unnamed links and legacy references · All requests handled in page memory'
+        }
+        createApp({ render: () => h(OperationProcessEditor, scope) }).use(i18n).use(ElementPlus, { locale: previewLanguage === 'en' ? en : zhCn }).mount('#app')
+    </script>
+</body>
+</html>

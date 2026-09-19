@@ -1,12 +1,8 @@
 <template>
     <div class="capacity-instance-manager">
         <div class="toolbar">
-            <el-button type="primary" @click="openCreate">
-                {{ t('capacityInstance.buttons.create') }}
-            </el-button>
-            <el-button type="primary" :loading="loading" @click="loadInstances">
-                {{ t('capacityInstance.buttons.refresh') }}
-            </el-button>
+            <ActionButton type="primary" @click="openCreate" :icon="Plus" :label="t('capacityInstance.buttons.create')" />
+            <ActionButton type="primary" :loading="loading" @click="loadInstances" :icon="Refresh" :label="t('capacityInstance.buttons.refresh')" />
         </div>
 
         <el-table :data="instances" style="width: 100%" v-loading="loading">
@@ -29,17 +25,11 @@
                     </el-tag>
                 </template>
             </el-table-column>
-            <el-table-column :label="t('capacityInstance.columns.actions')" width="280" fixed="right">
+            <el-table-column :label="t('capacityInstance.columns.actions')" width="136" fixed="right">
                 <template #default="{ row }">
-                    <el-button size="small" type="success" @click="openCopy(row)">
-                        {{ t('capacityInstance.buttons.copy') }}
-                    </el-button>
-                    <el-button size="small" @click="openEdit(row)">
-                        {{ t('capacityInstance.buttons.edit') }}
-                    </el-button>
-                    <el-button size="small" type="danger" @click="confirmDelete(row)">
-                        {{ t('capacityInstance.buttons.delete') }}
-                    </el-button>
+                    <ActionButton type="success" @click="openCopy(row)" :icon="CopyDocument" :label="t('capacityInstance.buttons.copy')" />
+                    <ActionButton @click="openEdit(row)" :icon="Edit" :label="t('capacityInstance.buttons.edit')" />
+                    <ActionButton type="danger" @click="confirmDelete(row)" :icon="Delete" :label="t('capacityInstance.buttons.delete')" />
                 </template>
             </el-table-column>
         </el-table>
@@ -82,12 +72,8 @@
                 </el-form-item>
             </el-form>
             <template #footer>
-                <el-button @click="dialogVisible = false">
-                    {{ t('capacityInstance.buttons.cancel') }}
-                </el-button>
-                <el-button type="primary" :loading="saving" @click="handleSubmit">
-                    {{ t('capacityInstance.buttons.save') }}
-                </el-button>
+                <ActionButton @click="dialogVisible = false" :icon="Close" :label="t('capacityInstance.buttons.cancel')" />
+                <ActionButton type="primary" :loading="saving" @click="handleSubmit" :icon="Check" :label="t('capacityInstance.buttons.save')" />
             </template>
         </el-dialog>
 
@@ -116,18 +102,16 @@
                 />
             </el-form>
             <template #footer>
-                <el-button @click="copyDialogVisible = false">
-                    {{ t('capacityInstance.buttons.cancel') }}
-                </el-button>
-                <el-button type="primary" :loading="copying" @click="handleCopy">
-                    {{ t('capacityInstance.buttons.copy') }}
-                </el-button>
+                <ActionButton @click="copyDialogVisible = false" :icon="Close" :label="t('capacityInstance.buttons.cancel')" />
+                <ActionButton type="primary" :loading="copying" @click="handleCopy" :icon="CopyDocument" :label="t('capacityInstance.buttons.copy')" />
             </template>
         </el-dialog>
     </div>
 </template>
 
 <script setup lang="ts">
+import ActionButton from '@/components/ui/ActionButton.vue'
+import { Check, Close, CopyDocument, Delete, Edit, Plus, Refresh } from '@element-plus/icons-vue'
 import { onMounted, reactive, ref } from 'vue'
 import axios from '@/utils/axios'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -417,13 +401,13 @@ onMounted(() => {
 
 <style scoped>
 .capacity-instance-manager {
-    padding: 20px;
+    padding: 12px;
 }
 
 .toolbar {
-    margin-bottom: 20px;
+    margin-bottom: 12px;
     display: flex;
-    gap: 10px;
+    gap: 8px;
 }
 
 .el-table {

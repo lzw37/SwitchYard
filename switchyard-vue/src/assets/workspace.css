@@ -1,0 +1,66 @@
+/* Hump pages retain their original theme, including overlays teleported to body. */
+:root {
+    --sy-surface: #ffffff;
+    --sy-surface-muted: #f6f8fa;
+    --sy-border: #dfe4ea;
+    --sy-text: #334155;
+    --sy-text-muted: #758195;
+    --sy-radius: 6px;
+}
+
+:root:where(:not(:has(.hump-main, .instance-management-page))) {
+    --el-color-primary: #4776a8;
+    --el-color-primary-light-3: #7e9fc2;
+    --el-color-primary-light-5: #a3bbd3;
+    --el-color-primary-light-7: #c8d6e5;
+    --el-color-primary-light-8: #dae4ee;
+    --el-color-primary-light-9: #edf2f7;
+    --el-color-primary-dark-2: #395e86;
+    --el-border-radius-base: 6px;
+    --el-text-color-primary: #334155;
+    --el-border-color: #dfe4ea;
+}
+
+.capacity-main, .course-shell { color: var(--sy-text); }
+.capacity-main .el-button-group:has(.action-button-anchor) {
+    display: inline-flex; align-items: center; gap: 6px; float: none;
+}
+.capacity-main .el-card:not(.station-layout-page *) {
+    border-color: var(--sy-border); border-radius: var(--sy-radius); box-shadow: none;
+}
+.capacity-main .el-card__header:not(.station-layout-page *) {
+    padding: 10px 12px; background: var(--sy-surface); border-color: var(--sy-border);
+}
+.capacity-main .el-tabs__item { font-size: 13px; }
+:is(.capacity-main, .course-shell) .el-empty__image:not(.station-layout-page *) { display: none; }
+:where(:root:not(:has(.hump-main, .instance-management-page))) .el-dialog { border-radius: 8px; }
+:where(:root:not(:has(.hump-main, .instance-management-page))) .el-dialog__title { font-size: 16px; font-weight: 500; }
+:where(:root:not(:has(.hump-main, .instance-management-page))) .el-dialog__header { border-bottom: 1px solid var(--sy-border); padding-bottom: 12px; margin-bottom: 12px; }
+.el-table .action-button-anchor + .action-button-anchor { margin-left: 6px; }
+.el-dialog__footer .action-button-anchor + .action-button-anchor { margin-left: 8px; }
+
+:where(:root:not(:has(.hump-main, .instance-management-page))) a,
+:where(:root:not(:has(.hump-main, .instance-management-page))) .green {
+    color: var(--el-color-primary, #4776a8);
+    transition: color 0.15s;
+    padding: 0;
+}
+@media (hover: hover) {
+    :where(:root:not(:has(.hump-main, .instance-management-page))) a:hover {
+        color: var(--el-color-primary-dark-2, #395e86);
+        background-color: transparent;
+    }
+}
+:where(:root:not(:has(.hump-main, .instance-management-page))) .el-message {
+    right: max(16px, env(safe-area-inset-right)) !important;
+}
+
+/* Keyboard focus must be as visible as hover, including icon-only controls. */
+:where(:root:not(:has(.hump-main, .instance-management-page))) button:focus-visible,
+:where(:root:not(:has(.hump-main, .instance-management-page))) [role="button"]:focus-visible {
+    outline: 2px solid var(--el-color-primary);
+    outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+    .sy-action-button, .sy-pane-divider::after { transition: none; }
+}

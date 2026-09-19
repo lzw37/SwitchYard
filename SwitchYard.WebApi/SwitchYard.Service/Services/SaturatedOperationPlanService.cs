@@ -1,5 +1,7 @@
 using System.Text.Json;
 using SwitchYard.Capacity;
+using SwitchYard.Service.Controllers;
+using SwitchYard.Service.Models;
 
 namespace SwitchYard.Service.Services;
 
@@ -56,9 +58,9 @@ public sealed class SaturatedOperationPlanService
                LIMIT 1",
             new
             {
-                context.InstanceId,
-                context.StationSchemeId,
-                context.SourceOperationPlanId
+                instanceId = context.InstanceId,
+                stationSchemeId = context.StationSchemeId,
+                sourceOperationPlanId = context.SourceOperationPlanId
             }) ?? new List<OperationPlanRow>()).FirstOrDefault()
             ?? throw new InvalidOperationException("源作业计划不存在。");
 
@@ -71,9 +73,9 @@ public sealed class SaturatedOperationPlanService
                  AND OperationPlanID = @sourceOperationPlanId",
             new
             {
-                context.InstanceId,
-                context.StationSchemeId,
-                context.SourceOperationPlanId
+                instanceId = context.InstanceId,
+                stationSchemeId = context.StationSchemeId,
+                sourceOperationPlanId = context.SourceOperationPlanId
             }) ?? new List<TrainRow>();
         var sourceMovements = db.Query<MovementRow>(
             $@"SELECT InstanceID, StationSchemeID, OperationPlanID, TrainID, TrainTemplateID,
@@ -85,9 +87,9 @@ public sealed class SaturatedOperationPlanService
                  AND OperationPlanID = @sourceOperationPlanId",
             new
             {
-                context.InstanceId,
-                context.StationSchemeId,
-                context.SourceOperationPlanId
+                instanceId = context.InstanceId,
+                stationSchemeId = context.StationSchemeId,
+                sourceOperationPlanId = context.SourceOperationPlanId
             }) ?? new List<MovementRow>();
 
         var trainMap = sourceTrains
@@ -98,6 +100,13 @@ public sealed class SaturatedOperationPlanService
             .ToDictionary(
                 movement => MovementKey(movement.TrainID!, movement.MovementID!),
                 StringComparer.OrdinalIgnoreCase);
+        var sourceScope = new ProcessScope
+        {
+            InstanceID = context.InstanceId, StationSchemeID = context.StationSchemeId,
+            OperationPlanID = context.SourceOperationPlanId
+        };
+        var processSnapshots = TrainProcessSnapshotStore.LoadAll(db, sourceScope);
+        var solvedSnapshots = PrepareProcessSnapshots(db, sourceScope, result, processSnapshots);
 
         var now = DateTime.Now;
         var targetPlanId = GenerateOperationPlanId(db, context.InstanceId, context.StationSchemeId);
@@ -122,6 +131,16 @@ public sealed class SaturatedOperationPlanService
             InsertOperationPlan(db, targetPlan);
             CopyTemplates(db, context, targetPlanId);
             InsertSolvedPlan(db, context, targetPlanId, result, trainMap, movementMap);
+            foreach (var snapshot in solvedSnapshots)
+            {
+                snapshot.OperationPlanID = targetPlanId;
+                snapshot.Process.OperationPlanID = targetPlanId;
+                TrainProcessSnapshotStore.Insert(db, new ProcessScope
+                {
+                    InstanceID = context.InstanceId, StationSchemeID = context.StationSchemeId,
+                    OperationPlanID = targetPlanId
+                }, snapshot);
+            }
             db.Commit();
             return targetPlan;
         }
@@ -130,6 +149,73 @@ public sealed class SaturatedOperationPlanService
             db.Rollback();
             throw;
         }
+    }
+
+    private static List<TrainProcessSnapshot> PrepareProcessSnapshots(DBConnector db, ProcessScope scope,
+        StationCapacitySolveResult result, IReadOnlyList<TrainProcessSnapshot> snapshots)
+    {
+        if (snapshots.Count == 0) return new();
+        var catalog = OperationProcessController.LoadCatalog(db, scope);
+        var solvedTrains = result.Trains.ToDictionary(train => train.Id, StringComparer.Ordinal);
+        var copies = new List<TrainProcessSnapshot>();
+        foreach (var snapshot in snapshots)
+        {
+            if (!solvedTrains.TryGetValue(snapshot.TrainID, out var solved))
+                continue;
+            var errors = OperationProcessValidator.Validate(snapshot.Process, catalog);
+            if (errors.Count > 0) throw new InvalidOperationException("过程快照或当前站场资源无效：" + string.Join("；", errors));
+            if (solved.EventTimes is null || solved.EventTimes.Count != snapshot.Process.Events.Count)
+                throw new InvalidOperationException($"求解结果缺少列车 {snapshot.TrainID} 的完整事件时刻。");
+            OperationProcessPlanScheduler.ValidateSchedule(snapshot.Process, solved.EventTimes, snapshot.OriginSeconds);
+            var resources = OperationProcessPlanScheduler.ResolveResources(snapshot.Process, catalog);
+            var movements = solved.Movements.ToDictionary(movement => movement.Id, StringComparer.Ordinal);
+            if (snapshot.ActivityMovementMap.Count != snapshot.Process.Activities.Count ||
+                movements.Count != snapshot.Process.Activities.Count ||
+                snapshot.ActivityMovementMap.Values.Distinct(StringComparer.Ordinal).Count() != snapshot.Process.Activities.Count)
+                throw new InvalidOperationException($"列车 {snapshot.TrainID} 的过程活动映射不完整。");
+            var locationsByEvent = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+            var selectedTracks = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var activity in snapshot.Process.Activities)
+            {
+                if (!snapshot.ActivityMovementMap.TryGetValue(activity.Id, out var movementId) ||
+                    !movements.TryGetValue(movementId, out var movement))
+                    throw new InvalidOperationException($"求解结果缺少活动 {activity.Id} 对应的移动。");
+                if (!double.IsFinite(movement.StartSeconds) || !double.IsFinite(movement.EndSeconds) ||
+                    Math.Abs(movement.StartSeconds - solved.EventTimes[activity.StartEvent]) > 0.0000001 ||
+                    Math.Abs(movement.EndSeconds - solved.EventTimes[activity.EndEvent]) > 0.0000001)
+                    throw new InvalidOperationException($"求解结果的活动 {activity.Id} 端点时刻与事件图不一致。");
+                string resourceId;
+                if (activity.Type == "Dwelling")
+                {
+                    if (movement.TrackId is null || !resources[activity.Id].TrackIDs.Contains(movement.TrackId, StringComparer.Ordinal) ||
+                        !string.IsNullOrEmpty(movement.RouteId))
+                        throw new InvalidOperationException($"求解结果的停留活动 {activity.Id} 股道不符合原约束。");
+                    resourceId = movement.TrackId;
+                    selectedTracks[activity.Id] = resourceId;
+                }
+                else
+                {
+                    if (movement.TrackId is not null || !resources[activity.Id].RouteIDs.Contains(movement.RouteId, StringComparer.Ordinal))
+                        throw new InvalidOperationException($"求解结果的活动 {activity.Id} 进路不符合原约束。");
+                    resourceId = movement.RouteId;
+                }
+                Intersect(activity.StartEvent, OperationProcessResourceLocations.Get(snapshot.Process, catalog, activity, resourceId, true));
+                Intersect(activity.EndEvent, OperationProcessResourceLocations.Get(snapshot.Process, catalog, activity, resourceId, false));
+            }
+            var copy = JsonSerializer.Deserialize<TrainProcessSnapshot>(
+                JsonSerializer.Serialize(snapshot, TrainProcessSnapshotStore.JsonOptions), TrainProcessSnapshotStore.JsonOptions)!;
+            copy.EventTimes = new Dictionary<string, double>(solved.EventTimes, StringComparer.Ordinal);
+            copy.SelectedTrackIDs = selectedTracks;
+            copies.Add(copy);
+
+            void Intersect(string eventId, List<string> locations)
+            {
+                if (locationsByEvent.TryGetValue(eventId, out var known)) known.IntersectWith(locations);
+                else locationsByEvent[eventId] = known = locations.ToHashSet(StringComparer.Ordinal);
+                if (known.Count == 0) throw new InvalidOperationException($"求解结果的共享事件 {eventId} 没有一致的地点或锚。");
+            }
+        }
+        return copies;
     }
 
     private static void CopyTemplates(DBConnector db, SaturatedPlanJobContext context, string targetPlanId)
@@ -145,9 +231,9 @@ public sealed class SaturatedOperationPlanService
             new
             {
                 targetPlanId,
-                context.InstanceId,
-                context.StationSchemeId,
-                context.SourceOperationPlanId
+                instanceId = context.InstanceId,
+                stationSchemeId = context.StationSchemeId,
+                sourceOperationPlanId = context.SourceOperationPlanId
             });
         db.ExecuteNonQuery(
             $@"INSERT INTO {Quote("movementtemplate")} (
@@ -162,9 +248,9 @@ public sealed class SaturatedOperationPlanService
             new
             {
                 targetPlanId,
-                context.InstanceId,
-                context.StationSchemeId,
-                context.SourceOperationPlanId
+                instanceId = context.InstanceId,
+                stationSchemeId = context.StationSchemeId,
+                sourceOperationPlanId = context.SourceOperationPlanId
             });
     }
 
@@ -183,7 +269,7 @@ public sealed class SaturatedOperationPlanService
                 throw new InvalidOperationException($"求解结果中的列车 {solvedTrain.Id} 无法在源作业计划中找到。");
             }
 
-            db.ExecuteNonQuery(
+            var insertedTrain = db.ExecuteNonQuery(
                 $@"INSERT INTO {Quote("train")} (
                        InstanceID, StationSchemeID, OperationPlanID, {Quote("ID")}, TrainTemplateID,
                        TrainNumber, Name, TrainType, IsFixedOperation)
@@ -202,6 +288,7 @@ public sealed class SaturatedOperationPlanService
                     TrainType = sourceTrain.TrainType,
                     IsFixedOperation = sourceTrain.IsFixedOperation
                 });
+            if (insertedTrain != 1) throw new InvalidOperationException("保存饱和计划列车失败。");
 
             for (var index = 0; index < solvedTrain.Movements.Count; index++)
             {
@@ -212,7 +299,7 @@ public sealed class SaturatedOperationPlanService
                         $"求解结果中的列车作业 {solvedTrain.Id}/{solvedMovement.Id} 无法在源作业计划中找到。");
                 }
 
-                db.ExecuteNonQuery(
+                var insertedMovement = db.ExecuteNonQuery(
                     $@"INSERT INTO {Quote("movement")} (
                            InstanceID, StationSchemeID, OperationPlanID, TrainID, TrainTemplateID,
                            MovementID, Name, RouteIDList, MinDuration, EarliestStartTime, LatestEndTime,
@@ -238,18 +325,20 @@ public sealed class SaturatedOperationPlanService
                         Tag = sourceMovement.Tag,
                         SortOrder = sourceMovement.SortOrder ?? index
                     });
+                if (insertedMovement != 1) throw new InvalidOperationException("保存饱和计划移动失败。");
             }
         }
     }
 
     private static void InsertOperationPlan(DBConnector db, OperationPlanRow plan)
     {
-        db.ExecuteNonQuery(
+        var inserted = db.ExecuteNonQuery(
             $@"INSERT INTO {Quote("operationplan")} (
                    InstanceID, StationSchemeID, OperationPlanID, Name, Description, SortOrder, CreatedDate, UpdatedDate)
                VALUES (
                    @InstanceID, @StationSchemeID, @OperationPlanID, @Name, @Description, @SortOrder, @CreatedDate, @UpdatedDate)",
             plan);
+        if (inserted != 1) throw new InvalidOperationException("保存饱和作业计划失败。");
     }
 
     private static string GenerateOperationPlanId(DBConnector db, string instanceId, string stationSchemeId)
@@ -286,15 +375,11 @@ public sealed class SaturatedOperationPlanService
 
     private static string MovementKey(string trainId, string movementId) => $"{trainId}\u001f{movementId}";
 
-    private static string FormatTime(int seconds, string? formatted)
+    private static string FormatTime(double seconds, string? formatted)
     {
-        if (!string.IsNullOrWhiteSpace(formatted))
-        {
-            return formatted.Trim();
-        }
-
-        var clamped = Math.Clamp(seconds, 0, 86_400);
-        return $"{clamped / 3600:00}:{clamped % 3600 / 60:00}:{clamped % 60:00}";
+        if (!double.IsFinite(seconds) || seconds < 0 || seconds > OperationProcessPlanScheduler.MaximumHorizonSeconds)
+            throw new InvalidOperationException("求解结果的移动时刻无效或超出七天范围。");
+        return OperationProcessPlanScheduler.FormatTime(seconds);
     }
 
     private static string Trim(string value, int maxLength)

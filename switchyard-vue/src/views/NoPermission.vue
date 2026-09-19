@@ -2,18 +2,22 @@
     <div class="no-permission-container">
         <div class="card">
             <h1>403</h1>
-            <p>无权限访问该页面</p>
+            <p>{{ t('noPermission.message') }}</p>
             <div class="actions">
-                <el-button type="primary" @click="goHome">返回首页</el-button>
-                <el-button @click="goLogin">去登录</el-button>
+                <ActionButton :label="t('noPermission.home')" :icon="actionIcons.back" @click="goHome" />
+                <ActionButton :label="t('noPermission.signIn')" :icon="actionIcons.user" @click="goLogin" />
             </div>
         </div>
     </div>
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
+import ActionButton from '@/components/ui/ActionButton.vue'
+import { actionIcons } from '@/components/ui/actionIcons'
 import { useRouter } from 'vue-router'
 
+const { t } = useI18n()
 const router = useRouter()
 
 const goHome = () => router.push('/')
@@ -26,15 +30,15 @@ const goLogin = () => router.push('/login')
     display: flex;
     align-items: center;
     justify-content: center;
-    background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+    background: var(--sy-background, #f5f7fa);
 }
 
 .card {
     width: 380px;
     text-align: center;
     background: #fff;
-    border-radius: 12px;
-    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.12);
+    border: 1px solid var(--sy-border, #dfe4ea);
+    border-radius: 6px;
     padding: 36px 28px;
 }
 

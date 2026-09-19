@@ -82,3 +82,18 @@ export function getEmuConsistSizing(
         longitudinalUnitsPerMeter,
     }
 }
+
+/** Keep one physical formation for the train's whole trip, sized to its shortest route. */
+export function getShortestTrainConsistSizing(candidates: readonly {
+    trainID: string
+    runKey: string
+    sizing: ReturnType<typeof getEmuConsistSizing>
+}[]) {
+    const shortestByTrain = new Map<string, NonNullable<ReturnType<typeof getEmuConsistSizing>>>()
+    for (const { trainID, sizing } of candidates) {
+        if (!sizing) continue
+        const previous = shortestByTrain.get(trainID)
+        if (!previous || sizing.totalLength < previous.totalLength) shortestByTrain.set(trainID, sizing)
+    }
+    return new Map(candidates.map(({ trainID, runKey }) => [runKey, shortestByTrain.get(trainID) ?? null]))
+}

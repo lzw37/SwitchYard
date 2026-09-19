@@ -31,6 +31,7 @@
 
 <script setup lang="ts">
 import { computed, h, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { ElAutoResizer, ElTableV2, ElTag, ElTooltip, type Column, type TableV2Instance } from 'element-plus'
 
 interface MovementRow {
@@ -41,7 +42,7 @@ interface MovementRow {
     timeText: string
 }
 
-type MovementPhase = 'waiting' | 'locking' | 'moving' | 'finished'
+type MovementPhase = 'waiting' | 'locking' | 'moving' | 'dwelling' | 'finished'
 type MovementStatusType = 'success' | 'warning' | 'info' | 'primary'
 type ScrollStrategy = 'auto' | 'smart' | 'center' | 'start' | 'end'
 
@@ -53,6 +54,8 @@ const props = defineProps<{
     rowClassName: (context: { row: MovementRow }) => string
     emptyText: string
 }>()
+
+const { t } = useI18n()
 
 const scrollbarSize = 8
 const tableRef = ref<TableV2Instance | null>(null)
@@ -75,20 +78,20 @@ const columns = computed<Column[]>(() => [
         cellRenderer: ({ rowData }: { rowData: MovementRow }) => h('span', rowData.index + 1),
     },
     {
-        key: 'trainName', dataKey: 'trainName', title: '列车', width: 92,
+        key: 'trainName', dataKey: 'trainName', title: t('operationSimulation.train'), width: 92,
         cellRenderer: ({ rowData }: { rowData: MovementRow }) => textCell(rowData.trainName),
     },
     {
-        key: 'routeName', dataKey: 'routeName', title: '进路',
+        key: 'routeName', dataKey: 'routeName', title: t('operationSimulation.route'),
         width: Math.max(150, viewportWidth.value - scrollbarSize - 46 - 92 - 136 - 82),
         cellRenderer: ({ rowData }: { rowData: MovementRow }) => textCell(rowData.routeName),
     },
     {
-        key: 'timeText', dataKey: 'timeText', title: '时间', width: 136,
+        key: 'timeText', dataKey: 'timeText', title: t('operationSimulation.time'), width: 136,
         cellRenderer: ({ rowData }: { rowData: MovementRow }) => textCell(rowData.timeText),
     },
     {
-        key: 'status', title: '状态', width: 82, align: 'center',
+        key: 'status', title: t('operationSimulation.status'), width: 82, align: 'center',
         cellRenderer: ({ rowData }: { rowData: MovementRow }) => {
             const phase = props.getPhase(rowData.index)
             return h(ElTag, { size: 'small', type: props.statusType(phase) }, {

@@ -32,6 +32,14 @@ const getConfig = () => {
         case "development":
         default:
             config = configDev;
+            // 开发 API 保持 7297 端口，随页面主机名连接，避免更换网络后仍请求旧 IP。
+            if (typeof window !== "undefined") {
+                const apiUrl = new URL(configDev.serverurl);
+                if (["localhost", "127.0.0.1"].includes(apiUrl.hostname)) {
+                    apiUrl.hostname = window.location.hostname;
+                    config = { ...configDev, serverurl: apiUrl.origin };
+                }
+            }
             break;
     }
 

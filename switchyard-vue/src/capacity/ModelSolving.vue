@@ -53,23 +53,19 @@
                 </el-select>
             </div>
             <div class="toolbar-actions">
-                <el-button
+                <ActionButton
                     :loading="generatingInput"
                     :disabled="!canGenerateInput"
                     @click="generateInput"
-                >
-                    {{ t('modelSolving.actions.generateInput') }}
-                </el-button>
-                <el-button :loading="loadingAgents" @click="loadAgents(false)">
-                    {{ t('modelSolving.actions.refreshConnections') }}
-                </el-button>
-                <el-button @click="openPresetManager">
-                    {{ t('modelSolving.presets.actions.manage') }}
-                </el-button>
+                 :icon="MagicStick" :label="t('modelSolving.actions.generateInput')" />
+                <ActionButton :loading="loadingAgents" @click="loadAgents(false)" :icon="Refresh" :label="t('modelSolving.actions.refreshConnections')" />
+                <ActionButton @click="openPresetManager" :icon="Setting" :label="t('modelSolving.presets.actions.manage')" />
             </div>
         </div>
 
-        <div class="workspace-grid">
+        <div class="workspace-grid" :style="{ '--job-pane-width': `${jobPaneWidth}px`, '--connections-pane-height': `${connectionsPaneHeight}px` }">
+            <PaneDivider v-model="jobPaneWidth" reverse class="model-column-divider" :min="280" :max="720" :label="t('modelSolving.sections.job')" />
+            <PaneDivider v-model="connectionsPaneHeight" direction="vertical" class="model-row-divider" :min="220" :max="720" :label="t('modelSolving.sections.input')" />
             <el-card class="panel connection-panel" shadow="never">
                 <template #header>
                     <div class="panel-header">
@@ -203,29 +199,22 @@
                 <el-empty v-else :description="t('modelSolving.empty.noJob')" :image-size="62" />
 
                 <div class="job-actions">
-                    <el-button
+                    <ActionButton
                         type="primary"
                         :loading="submitting"
                         :disabled="!canSubmit"
                         @click="submitJob"
-                    >
-                        {{ t('modelSolving.actions.solve') }}
-                    </el-button>
-                    <el-button
+                     :icon="VideoPlay" :label="t('modelSolving.actions.solve')" />
+                    <ActionButton
                         :disabled="!currentJob"
                         :loading="pollingJob"
-                        @click="refreshCurrentJob"
-                    >
-                        {{ t('modelSolving.actions.refreshJob') }}
-                    </el-button>
-                    <el-button
+                        @click="refreshCurrentJob()"
+                     :icon="Refresh" :label="t('modelSolving.actions.refreshJob')" />
+                    <ActionButton
                         type="success"
-                        plain
                         :disabled="!currentJob?.result"
                         @click="downloadResult"
-                    >
-                        {{ t('modelSolving.actions.downloadResult') }}
-                    </el-button>
+                     :icon="Download" :label="t('modelSolving.actions.downloadResult')" />
                 </div>
             </el-card>
 
@@ -233,7 +222,6 @@
                 <template #header>
                     <div class="panel-header">
                         <span>{{ t('modelSolving.sections.input') }}</span>
-                        <span class="panel-hint">{{ t('modelSolving.hints.editableJson') }}</span>
                     </div>
                 </template>
                 <el-input
@@ -284,7 +272,7 @@
                         :value="preset.presetId"
                     />
                 </el-select>
-                <el-button @click="startNewPreset">{{ t('modelSolving.presets.actions.new') }}</el-button>
+                <ActionButton @click="startNewPreset" :icon="Plus" :label="t('modelSolving.presets.actions.new')" />
             </div>
 
             <el-form label-width="128px" class="preset-form">
@@ -353,20 +341,15 @@
 
             <template #footer>
                 <div class="preset-dialog-footer">
-                    <el-button
+                    <ActionButton
                         v-if="editingPresetId"
                         type="danger"
-                        plain
                         :loading="savingPreset"
                         @click="deletePreset"
-                    >
-                        {{ t('modelSolving.presets.actions.delete') }}
-                    </el-button>
+                     :icon="Delete" :label="t('modelSolving.presets.actions.delete')" />
                     <span class="preset-dialog-footer-spacer" />
-                    <el-button @click="presetManagerVisible = false">{{ t('operationPlan.actions.cancel') }}</el-button>
-                    <el-button type="primary" :loading="savingPreset" @click="savePreset">
-                        {{ t('operationPlan.actions.save') }}
-                    </el-button>
+                    <ActionButton @click="presetManagerVisible = false" :icon="Close" :label="t('operationPlan.actions.cancel')" />
+                    <ActionButton type="primary" :loading="savingPreset" @click="savePreset" :icon="Check" :label="t('operationPlan.actions.save')" />
                 </div>
             </template>
         </el-dialog>
@@ -374,6 +357,11 @@
 </template>
 
 <script setup lang="ts">
+const jobPaneWidth = ref(380)
+const connectionsPaneHeight = ref(340)
+import ActionButton from '@/components/ui/ActionButton.vue'
+import PaneDivider from '@/components/ui/PaneDivider.vue'
+import { Check, Close, Delete, Download, MagicStick, Plus, Refresh, Setting, VideoPlay } from '@element-plus/icons-vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useI18n } from 'vue-i18n'
@@ -1038,9 +1026,8 @@ onBeforeUnmount(() => {
     min-height: 0;
     padding: 12px;
     overflow: auto;
-    border: 1px solid #d9e4ef;
-    border-radius: 10px;
-    background: #f5f8fc;
+    box-sizing: border-box;
+    background: #fff;
 }
 
 .toolbar,
@@ -1058,7 +1045,7 @@ onBeforeUnmount(() => {
     margin-bottom: 12px;
     padding: 12px;
     border: 1px solid #dbe6f1;
-    border-radius: 8px;
+    border-radius: 6px;
     background: #fff;
 }
 
@@ -1123,29 +1110,34 @@ onBeforeUnmount(() => {
 
 .workspace-grid {
     display: grid;
-    grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.75fr);
-    grid-template-rows: minmax(250px, auto) minmax(420px, 1fr);
-    gap: 12px;
+    grid-template-columns: minmax(320px, 1fr) 8px minmax(280px, var(--job-pane-width));
+    grid-template-rows: var(--connections-pane-height) 8px minmax(300px, 1fr);
+    gap: 0;
     min-height: calc(100% - 92px);
 }
 
-.panel {
-    min-width: 0;
-}
+.model-column-divider { grid-column: 2; grid-row: 1 / 4; }
+.model-row-divider { grid-column: 1 / 4; grid-row: 2; }
+.connection-panel { grid-column: 1; grid-row: 1; overflow: auto; }
+.job-panel { grid-column: 3; grid-row: 1; overflow: auto; }
+.json-panel { grid-column: 1; grid-row: 3; }
+.result-panel { grid-column: 3; grid-row: 3; }
+.panel { min-width: 0; min-height: 0; border-radius: 6px; }
 
 .panel :deep(.el-card__header) {
-    padding: 12px 14px;
+    padding: 8px 12px;
 }
 
 .panel :deep(.el-card__body) {
-    padding: 12px 14px;
+    padding: 8px 12px;
 }
 
 .panel-header {
     justify-content: space-between;
     gap: 12px;
     color: #1f3a56;
-    font-weight: 700;
+    font-size: 13px;
+    font-weight: 600;
 }
 
 .panel-hint {
@@ -1256,22 +1248,25 @@ onBeforeUnmount(() => {
     padding: 12px;
     border: 0;
     box-shadow: none;
-    background: #101827;
-    color: #d7e3f4;
+    background: #f8fafc;
+    color: #334155;
     font-family: Consolas, 'Courier New', monospace;
     font-size: 12px;
     line-height: 1.55;
 }
 
 .result-panel :deep(.el-textarea__inner) {
-    background: #12201c;
-    color: #d8efe6;
+    background: #f8fafc;
+    color: #334155;
 }
 
 @media (max-width: 1100px) {
+    .model-column-divider, .model-row-divider { display: none; }
+    .panel { grid-column: auto; grid-row: auto; }
     .workspace-grid {
         grid-template-columns: 1fr;
         grid-template-rows: auto auto 420px 420px;
+        gap: 8px;
     }
 }
 

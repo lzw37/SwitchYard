@@ -13,7 +13,7 @@
         >
             <template #context>
                 <label class="simulation-toolbar-control">
-                    <span>车站方案</span>
+                    <span>{{ t('stationLayout.menu.stationScheme') }}</span>
                     <el-select
                         v-model="currentStationSchemeId"
                         size="small"
@@ -21,7 +21,7 @@
                         class="simulation-select"
                         :loading="loadingStationSchemes"
                         :disabled="!selectedInstanceId || loadingStationSchemes"
-                        placeholder="请选择车站方案"
+                        :placeholder="t('stationLayout.placeholders.selectStationScheme')"
                         @change="handleStationSchemeChange"
                     >
                         <el-option
@@ -35,7 +35,7 @@
             </template>
             <template #primary>
                 <label class="simulation-toolbar-control">
-                    <span>作业计划</span>
+                    <span>{{ t('stationLayout3d.labels.operationPlan') }}</span>
                     <el-select
                         v-model="currentOperationPlanId"
                         size="small"
@@ -43,7 +43,7 @@
                         class="simulation-select"
                         :loading="loadingOperationPlans"
                         :disabled="!currentStationSchemeId || loadingOperationPlans"
-                        placeholder="请选择作业计划"
+                        :placeholder="t('stationLayout3d.placeholders.selectOperationPlan')"
                         @change="handleOperationPlanChange"
                     >
                         <el-option
@@ -55,19 +55,19 @@
                     </el-select>
                 </label>
                 <label class="simulation-toolbar-control">
-                    <span>范围</span>
+                    <span>{{ t('stationLayout3d.labels.playbackScope') }}</span>
                     <el-radio-group
                         v-model="playbackMode"
                         size="small"
                         class="playback-mode-toggle"
                         @change="handlePlaybackModeChange"
                     >
-                        <el-radio-button value="single">单列车</el-radio-button>
-                        <el-radio-button value="all">全站</el-radio-button>
+                        <el-radio-button value="single">{{ t('stationLayout3d.playbackModes.single') }}</el-radio-button>
+                        <el-radio-button value="all">{{ t('stationLayout3d.playbackModes.all') }}</el-radio-button>
                     </el-radio-group>
                 </label>
                 <label class="simulation-toolbar-control">
-                    <span>列车</span>
+                    <span>{{ t('stationLayout3d.labels.train') }}</span>
                     <el-select
                         v-model="selectedTrainId"
                         size="small"
@@ -75,7 +75,7 @@
                         class="simulation-select train-select"
                         :loading="loadingTrainOperationPlan"
                         :disabled="isAllTrainPlayback || trainOptions.length === 0 || loadingTrainOperationPlan"
-                        :placeholder="isAllTrainPlayback ? '全站全部列车' : '请选择列车'"
+                        :placeholder="isAllTrainPlayback ? t('stationLayout3d.placeholders.allTrains') : t('stationLayout3d.placeholders.selectTrain')"
                         @change="handleTrainChange"
                     >
                         <el-option
@@ -88,19 +88,17 @@
                 </label>
             </template>
             <template #actions>
-                <el-button
+                <ActionButton
+                    :label="t('common.actions.refresh')"
                     :icon="Refresh"
-                    size="small"
                     :loading="loadingAnyData"
                     :disabled="!hasScheme"
                     @click="refreshSimulationData"
-                >
-                    刷新
-                </el-button>
+                />
             </template>
         </StationLayoutViewToolbar>
 
-        <div class="simulation-body">
+        <div ref="simulationBodyRef" class="simulation-body" :style="{ '--simulation-side-width': `${simulationSideWidth}px` }">
             <div ref="simulationLeftPanelRef" class="simulation-left-panel">
                 <div
                     ref="layoutViewportRef"
@@ -110,6 +108,8 @@
                     <div v-if="layoutData" class="simulation-layout-stage" :style="simulationLayoutStageStyle">
                         <StationLayoutEditor
                             ref="layoutEditorRef"
+                            class="simulation-station-layer"
+                            :class="{ 'is-playing': isPlaying }"
                             readonly
                             :display-scale-x="layoutScaleX"
                             :display-scale-y="layoutScaleY"
@@ -125,6 +125,7 @@
                             :highlighted-route-arrow-node-ids="highlightedRouteArrowNodeIds"
                             :highlighted-route-color="highlightedRouteColor"
                             :highlighted-route-arrow-visible="highlightedRouteArrowVisible"
+                            :highlighted-routes="highlightedRoutes"
                         />
                         <SimulationTrainOverlay
                             :cars="simulationScreenTrainCars"
@@ -141,24 +142,24 @@
                     </div>
                 </div>
 
-                <div
-                    class="simulation-horizontal-resizer"
-                    role="separator"
-                    aria-orientation="horizontal"
-                    @pointerdown="startGanttPanelResize"
-                    @dblclick="resetGanttPanelHeight"
+                <PaneDivider
+                    v-model="ganttPanelHeight"
+                    direction="vertical"
+                    reverse
+                    :min="minGanttPanelHeight"
+                    :max="maxGanttPanelHeight"
+                    :reset-value="defaultGanttPanelHeight"
+                    :label="t('common.resize.vertical')"
                 />
 
                 <section class="simulation-gantt-panel" :style="simulationGanttPanelStyle">
                     <div class="simulation-gantt-header">
                         <div class="simulation-gantt-title">
-                            <h3>计划甘特图</h3>
-                            <span>{{ ganttSummaryText }}</span>
+                            <h3 :title="ganttSummaryText">{{ t('stationLayout3d.gantt.title') }}</h3>
                         </div>
                         <div class="simulation-gantt-subtable-toolbar">
                             <el-tabs
                                 v-model="activeGanttSubTableId"
-                                type="card"
                                 class="simulation-gantt-sub-tabs"
                                 @tab-remove="removeGanttSubTable"
                             >
@@ -174,19 +175,15 @@
                                 <span class="simulation-gantt-subtable-summary">
                                     {{ activeGanttSubTableSummaryText }}
                                 </span>
-                                <el-button
+                                <ActionButton
+                                    :label="t('stationLayout3d.buttons.editSubTable')"
                                     :icon="Edit"
-                                    circle
-                                    size="small"
                                     :disabled="!activeGanttSubTable"
-                                    title="编辑子表"
                                     @click="openEditGanttSubTableDialog"
                                 />
-                                <el-button
+                                <ActionButton
+                                    :label="t('stationLayout3d.buttons.createSubTable')"
                                     :icon="Plus"
-                                    circle
-                                    size="small"
-                                    title="新增子表"
                                     @click="openCreateGanttSubTableDialog"
                                 />
                             </div>
@@ -199,7 +196,7 @@
                     >
                         <div class="simulation-gantt-content" :style="ganttContentStyle">
                             <div class="simulation-gantt-axis-row">
-                                <div class="simulation-gantt-axis-label">轨道电路区段</div>
+                                <div class="simulation-gantt-axis-label">{{ t('stationLayout3d.gantt.cellAxis') }}</div>
                                 <div class="simulation-gantt-axis-track" :style="ganttTimelineStyle">
                                     <div
                                         v-for="tick in ganttTicks"
@@ -256,15 +253,15 @@
                     class="simulation-gantt-subtable-dialog"
                 >
                     <el-form label-position="top">
-                        <el-form-item label="子表名称">
+                        <el-form-item :label="t('stationLayout3d.labels.subTableName')">
                             <el-input
                                 v-model="ganttSubTableDialogForm.name"
                                 maxlength="100"
                                 show-word-limit
-                                placeholder="请输入子表名称"
+                                :placeholder="t('stationLayout3d.placeholders.subTableName')"
                             />
                         </el-form-item>
-                        <el-form-item label="显示轨道电路区段">
+                        <el-form-item :label="t('stationLayout3d.labels.subTableCells')">
                             <el-select
                                 v-model="ganttSubTableDialogForm.cellIds"
                                 class="simulation-gantt-subtable-cell-select"
@@ -273,7 +270,7 @@
                                 clearable
                                 collapse-tags
                                 collapse-tags-tooltip
-                                placeholder="请选择要显示的轨道电路区段"
+                                :placeholder="t('stationLayout3d.placeholders.selectSubTableCells')"
                             >
                                 <el-option
                                     v-for="cell in ganttAvailableCells"
@@ -285,20 +282,33 @@
                         </el-form-item>
                     </el-form>
                     <template #footer>
-                        <el-button @click="ganttSubTableDialogVisible = false">
-                            取消
-                        </el-button>
-                        <el-button type="primary" @click="confirmGanttSubTableDialog">
-                            确认
-                        </el-button>
+                        <ActionButton
+                            :label="t('common.actions.cancel')"
+                            @click="ganttSubTableDialogVisible = false"
+                            :icon="Close"
+                        />
+                        <ActionButton
+                            :label="t('stationLayout3d.dialogs.confirm')"
+                            type="primary"
+                            @click="confirmGanttSubTableDialog"
+                            :icon="Check"
+                        />
                     </template>
                 </el-dialog>
             </div>
 
+            <PaneDivider
+                v-model="simulationSideWidth"
+                class="simulation-side-divider"
+                reverse
+                :min="280"
+                :max="maxSimulationSideWidth"
+                :reset-value="380"
+                :label="t('common.resize.horizontal')"
+            />
             <aside class="simulation-side-panel">
                 <header class="simulation-panel-header">
                     <div>
-                        <h2>仿真播放</h2>
                         <span>{{ playbackSummaryText }}</span>
                     </div>
                     <el-tag size="small" :type="playbackStatusTagType">
@@ -308,21 +318,17 @@
 
                 <div class="simulation-controls">
                     <div class="simulation-control-buttons">
-                        <el-button
+                        <ActionButton
+                            :label="t('common.actions.reset')"
                             :icon="RefreshLeft"
-                            circle
-                            size="small"
                             :disabled="!canPlayback"
-                            title="重置"
                             @click="resetPlayback"
                         />
-                        <el-button
+                        <ActionButton
+                            :label="isPlaying ? t('stationLayout3d.buttons.pause') : t('stationLayout3d.buttons.play')"
                             :icon="isPlaying ? VideoPause : VideoPlay"
                             type="primary"
-                            circle
-                            size="small"
                             :disabled="!canPlayback"
-                            :title="isPlaying ? '暂停' : '播放'"
                             @click="togglePlayback"
                         />
                         <span class="simulation-clock">{{ playbackClockText }}</span>
@@ -337,7 +343,7 @@
                         @input="handlePlayheadInput"
                     />
                     <div class="simulation-speed-row">
-                        <span>速度</span>
+                        <span>{{ t('stationLayout3d.labels.speed') }}</span>
                         <el-select
                             v-model="playbackSpeed"
                             size="small"
@@ -356,28 +362,28 @@
                 <section class="simulation-route-status">
                     <div class="simulation-status-grid">
                         <div>
-                            <span>当前进路</span>
+                            <span>{{ t('operationSimulation.currentRoute') }}</span>
                             <strong>{{ activeRouteName }}</strong>
                         </div>
                         <div>
-                            <span>阶段</span>
+                            <span>{{ t('operationSimulation.phase') }}</span>
                             <strong>{{ activePhaseText }}</strong>
                         </div>
                         <div>
-                            <span>进度</span>
+                            <span>{{ t('operationSimulation.progress') }}</span>
                             <strong>{{ activeRouteProgressText }}</strong>
                         </div>
                         <div>
-                            <span>编组</span>
-                            <strong>8 节</strong>
+                            <span>{{ t('operationSimulation.formation') }}</span>
+                            <strong>{{ t('operationSimulation.carCount', { count: 8 }) }}</strong>
                         </div>
                     </div>
                 </section>
 
                 <section class="simulation-table-section">
                     <div class="simulation-table-header">
-                        <h3>作业序列</h3>
-                        <span>{{ routeRuns.length }} 条进路</span>
+                        <h3>{{ t('operationSimulation.movementSequence') }}</h3>
+                        <span>{{ t('operationSimulation.routeCount', { count: routeRuns.length }) }}</span>
                     </div>
                     <SimulationMovementTable
                         ref="movementTableRef"
@@ -395,12 +401,19 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { Edit, Plus, Refresh, RefreshLeft, VideoPause, VideoPlay } from '@element-plus/icons-vue'
+import ActionButton from '@/components/ui/ActionButton.vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { Check, Close, Edit, Plus, Refresh, RefreshLeft, VideoPause, VideoPlay } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import axios from '@/utils/axios'
+import PaneDivider from '@/components/ui/PaneDivider.vue'
+
+const { t } = useI18n()
 import StationLayoutEditor from './components/StationLayoutEditor.vue'
 import { projectTrainCarToViewport } from './simulationViewport'
+import { getDwellingHeadDistance, isDwellingRoute, preferDwellingRuns } from './simulationDwelling'
+import { getStationRouteHighlightColor } from './routeColors'
 import StationLayoutViewToolbar from './components/StationLayoutViewToolbar.vue'
 import SimulationMovementTable from './components/SimulationMovementTable.vue'
 import SimulationTrainOverlay from './components/SimulationTrainOverlay.vue'
@@ -526,6 +539,15 @@ interface RouteRun {
     color: string
 }
 
+interface RouteHighlight {
+    key: string
+    nodeIds: string[]
+    linkIds: string[]
+    arrowNodeIds: string[]
+    color: string
+    arrowVisible: boolean
+}
+
 interface SimulationTrainCar {
     key: string
     x: number
@@ -549,7 +571,7 @@ interface CanvasViewportState {
     scaleY: number
 }
 
-type RunPhase = 'waiting' | 'locking' | 'moving' | 'finished'
+type RunPhase = 'waiting' | 'locking' | 'moving' | 'dwelling' | 'finished'
 type PlaybackMode = 'single' | 'all'
 
 interface RouteRunSource {
@@ -618,7 +640,7 @@ const props = defineProps<{
 const defaultOperationPlanID = 'default'
 const trainCarCount = 8
 const trainCarLength = 34
-const trainCarWidth = 12
+const trainCarWidth = 14
 const trainCarGap = 4
 const trainCarTurnSmoothingDistance = trainCarLength * 0.9
 const syntheticRouteGapSeconds = 1.2
@@ -633,7 +655,7 @@ const ganttDefaultSubTableCount = 3
 const defaultGanttPanelHeight = 260
 const minGanttPanelHeight = 160
 const minLayoutPanelHeight = 220
-const horizontalResizerHeight = 12
+const horizontalResizerHeight = 8
 
 function createEmptyCanvasViewportState(): CanvasViewportState {
     return {
@@ -692,7 +714,13 @@ const activeRunIndices = ref<number[]>([])
 const activeRunPhase = ref<RunPhase>('waiting')
 const activeLockingRunCount = ref(0)
 const activeMovingRunCount = ref(0)
+const activeDwellingRunCount = ref(0)
 const runPhaseByKey = ref<Record<string, RunPhase>>({})
+const simulationBodyRef = ref<HTMLElement | null>(null)
+const simulationSideWidth = ref(380)
+const maxSimulationSideWidth = ref(640)
+const maxGanttPanelHeight = ref(defaultGanttPanelHeight * 2)
+let panelResizeObserver: ResizeObserver | null = null
 const ganttPanelHeight = ref(defaultGanttPanelHeight)
 const ganttSubTableSequence = ref(ganttDefaultSubTableCount)
 const ganttSubTables = ref<GanttSubTable[]>(
@@ -720,12 +748,9 @@ let ganttSubTableLoadVersion = 0
 let animationFrameId: number | null = null
 let tableScrollFrameId: number | null = null
 let ganttScrollFrameId: number | null = null
-let ganttResizeState: { pointerStartY: number; startHeight: number } | null = null
 let ganttSubTableSaveTimer: ReturnType<typeof window.setTimeout> | null = null
 let suppressGanttSubTableSave = false
 let ganttSubTableSaveRevision = 0
-let previousBodyCursor = ''
-let previousBodyUserSelect = ''
 let lastAnimationTimestamp = 0
 let lastPlaybackRenderTimestamp = 0
 let playbackRuntimeSeconds = 0
@@ -821,22 +846,22 @@ const activeGanttSubTableCells = computed<LayoutCell[]>(() => {
 })
 const ganttLanes = computed<GanttLane[]>(() => buildGanttLanes())
 const ganttSummaryText = computed(() => {
-    if (routeRuns.value.length === 0) return '暂无可播放作业'
+    if (routeRuns.value.length === 0) return t('stationLayout3d.gantt.noPlayableWork')
     const blockCount = ganttLanes.value.reduce((count, lane) => count + lane.blocks.length, 0)
-    return `${ganttLanes.value.length} 个区段 · ${blockCount} 条占用`
+    return t('stationLayout3d.gantt.summary', { laneCount: ganttLanes.value.length, blockCount })
 })
 const activeGanttSubTableSummaryText = computed(() => (
-    `${activeGanttSubTableCells.value.length}/${ganttAvailableCells.value.length} 个轨道电路区段`
+    t('stationLayout3d.gantt.subTableSummary', { selected: activeGanttSubTableCells.value.length, total: ganttAvailableCells.value.length })
 ))
 const ganttSubTableDialogTitle = computed(() => (
-    ganttSubTableDialogMode.value === 'create' ? '新建甘特图子表' : '编辑甘特图子表'
+    ganttSubTableDialogMode.value === 'create' ? t('stationLayout3d.dialogs.createGanttSubTable') : t('stationLayout3d.dialogs.editGanttSubTable')
 ))
 const ganttEmptyText = computed(() => {
     if (routeRuns.value.length === 0) return movementTableEmptyText.value
     if (ganttAvailableCells.value.length > 0 && activeGanttSubTableCells.value.length === 0) {
-        return '当前子表没有选择轨道电路区段'
+        return t('stationLayout3d.gantt.emptySubTable')
     }
-    return '当前计划没有可显示的轨道电路区段占用'
+    return t('stationLayout3d.gantt.emptyOccupation')
 })
 const activeRun = computed(() => {
     const runs = routeRuns.value
@@ -846,6 +871,28 @@ const activeRun = computed(() => {
 const highlightedRouteRuns = computed(() => activeRunIndices.value
     .map((index) => routeRuns.value[index] || null)
     .filter((run): run is RouteRun => run !== null))
+const highlightedRoutes = computed<RouteHighlight[]>((previous) => {
+    const previousByKey = new Map(previous?.map((route) => [route.key, route]))
+    const routesByKey = new Map<string, RouteHighlight>()
+    for (const run of highlightedRouteRuns.value) {
+        // Keep paths ordered and separate so simultaneous routes retain their
+        // own curves, directions and colors. Reuse props when only trains change.
+        const key = JSON.stringify([run.route.id, run.color, run.nodeIds, run.linkIds])
+        if (routesByKey.has(key)) continue
+        routesByKey.set(key, previousByKey.get(key) || {
+            key,
+            nodeIds: [...run.nodeIds],
+            linkIds: [...run.linkIds],
+            arrowNodeIds: [...run.nodeIds],
+            color: run.color,
+            arrowVisible: run.nodeIds.length >= 2,
+        })
+    }
+    const routes = [...routesByKey.values()].sort((left, right) => left.key < right.key ? -1 : left.key > right.key ? 1 : 0)
+    return previous && previous.length === routes.length && routes.every((route, index) => route === previous[index])
+        ? previous
+        : routes
+})
 const activePhase = computed(() => activeRunPhase.value)
 const activeRouteProgress = computed(() => getActiveRouteProgress(activeRun.value, playheadSeconds.value))
 // Several trains can share a route. Keep unchanged IDs stable so a new train
@@ -853,7 +900,7 @@ const activeRouteProgress = computed(() => getActiveRouteProgress(activeRun.valu
 const highlightedRouteNodeIds = computed<string[]>((previous) => normalizeUniqueStrings(highlightedRouteRuns.value.flatMap((run) => run.nodeIds), previous))
 const highlightedRouteLinkIds = computed<string[]>((previous) => normalizeUniqueStrings(highlightedRouteRuns.value.flatMap((run) => run.linkIds), previous))
 const highlightedRouteArrowNodeIds = highlightedRouteNodeIds
-const highlightedRouteColor = computed(() => isAllTrainPlayback.value ? '#fbbf24' : activeRun.value?.color || '#ffd600')
+const highlightedRouteColor = computed(() => activeRun.value?.color || getStationRouteHighlightColor(''))
 const highlightedRouteArrowVisible = computed(() => highlightedRouteArrowNodeIds.value.length >= 2)
 const simulationTrainCars = computed<SimulationTrainCar[]>(() => buildSimulationTrainCars())
 const simulationScreenTrainCars = computed<SimulationTrainCar[]>(() => simulationTrainCars.value.map(car => ({
@@ -870,8 +917,8 @@ const simulationLayoutStageStyle = computed(() => {
 const activeRouteName = computed(() => {
     if (isAllTrainPlayback.value) {
         const activeCount = activeRunIndices.value.length
-        if (activeCount > 0) return `${activeCount} 条进路进行中`
-        return routeRuns.value.length > 0 ? '等待下一项作业' : '-'
+        if (activeCount > 0) return t('operationSimulation.activeRoutes', { count: activeCount })
+        return routeRuns.value.length > 0 ? t('operationSimulation.waitingNext') : '-'
     }
     return activeRun.value ? getRouteDisplayName(activeRun.value.route.id) : '-'
 })
@@ -879,14 +926,17 @@ const activePhaseText = computed(() => {
     if (isAllTrainPlayback.value) {
         const locking = activeLockingRunCount.value
         const moving = activeMovingRunCount.value
-        if (locking + moving <= 0) return '等待'
-        return `办理 ${locking} / 走行 ${moving}`
+        const dwelling = activeDwellingRunCount.value
+        if (dwelling > 0) return t('stationLayout3d.phase.allActiveWithDwelling', { locking, moving, dwelling })
+        if (locking + moving <= 0) return t('stationLayout3d.phase.waiting')
+        return t('stationLayout3d.phase.allActive', { locking, moving })
     }
-    if (!activeRun.value) return '待选择'
-    if (activePhase.value === 'locking') return '办理进路'
-    if (activePhase.value === 'moving') return '列车走行'
-    if (activePhase.value === 'finished') return '已完成'
-    return '等待'
+    if (!activeRun.value) return t('stationLayout3d.phase.selecting')
+    if (activePhase.value === 'locking') return t('stationLayout3d.phase.locking')
+    if (activePhase.value === 'dwelling') return t('stationLayout3d.phase.dwelling')
+    if (activePhase.value === 'moving') return t('operationSimulation.moving')
+    if (activePhase.value === 'finished') return t('operationSimulation.completed')
+    return t('stationLayout3d.phase.waiting')
 })
 const finishedRunCount = computed(() => routeRuns.value.filter((run) => runPhaseByKey.value[run.key] === 'finished').length)
 const activeRouteProgressText = computed(() => {
@@ -894,10 +944,10 @@ const activeRouteProgressText = computed(() => {
     return `${Math.round(activeRouteProgress.value * 100)}%`
 })
 const playbackStatusText = computed(() => {
-    if (!canPlayback.value) return '未就绪'
-    if (isPlaying.value) return '播放中'
-    if (playheadSeconds.value >= simulationDurationSeconds.value) return '已结束'
-    return '已暂停'
+    if (!canPlayback.value) return t('stationLayout3d.status.notReady')
+    if (isPlaying.value) return t('stationLayout3d.status.playing')
+    if (playheadSeconds.value >= simulationDurationSeconds.value) return t('stationLayout3d.status.finished')
+    return t('stationLayout3d.status.paused')
 })
 const playbackStatusTagType = computed<'success' | 'warning' | 'info'>(() => {
     if (isPlaying.value) return 'success'
@@ -911,22 +961,22 @@ const playbackClockText = computed(() => (
 ))
 const playbackSummaryText = computed(() => {
     if (isAllTrainPlayback.value) {
-        return `${trainOptions.value.length} 列车 · ${routeRuns.value.length} 条有效进路`
+        return t('stationLayout3d.playback.allSummary', { trainCount: trainOptions.value.length, routeCount: routeRuns.value.length })
     }
     const train = selectedTrain.value
-    if (!train) return '请选择一列列车'
-    return `${formatTrainLabel(train)} · ${selectedTrainMovements.value.length} 个作业`
+    if (!train) return t('stationLayout3d.playback.selectTrain')
+    return t('stationLayout3d.playback.singleSummary', { train: formatTrainLabel(train), movementCount: selectedTrainMovements.value.length })
 })
 const layoutEmptyText = computed(() => {
-    if (!hasScheme.value) return '请选择车站方案'
-    if (loadingLayout.value) return '正在加载布置图'
-    return '当前方案没有可显示的布置图'
+    if (!hasScheme.value) return t('stationLayout.placeholders.selectStationScheme')
+    if (loadingLayout.value) return t('operationSimulation.loadingLayout')
+    return t('operationSimulation.emptyLayout')
 })
 const movementTableEmptyText = computed(() => {
-    if (isAllTrainPlayback.value) return '当前作业计划没有包含可解析开始/结束时间的可播放进路'
-    if (!selectedTrain.value) return '请选择列车'
-    if (selectedTrainMovements.value.length === 0) return '当前列车没有作业计划'
-    return '当前列车没有可播放的进路'
+    if (isAllTrainPlayback.value) return t('stationLayout3d.gantt.emptyAllPlan')
+    if (!selectedTrain.value) return t('stationLayout3d.placeholders.selectTrain')
+    if (selectedTrainMovements.value.length === 0) return t('stationLayout3d.gantt.emptyTrainPlan')
+    return t('stationLayout3d.gantt.emptyRoute')
 })
 // Playback status stays outside table data so a phase change does not make
 // Element Plus reprocess and lay out every operation row.
@@ -1166,7 +1216,7 @@ function getGanttBlockClassName(block: GanttBlock) {
 }
 
 function getGanttSubTableFallbackName(index: number) {
-    return `子表 ${index}`
+    return t('stationLayout3d.gantt.subTableFallbackName', { index })
 }
 
 function createGanttSubTable(index: number, name?: string): GanttSubTable {
@@ -1289,7 +1339,7 @@ function openEditGanttSubTableDialog() {
 function confirmGanttSubTableDialog() {
     const name = ganttSubTableDialogForm.value.name.trim()
     if (!name) {
-        ElMessage.warning('请输入子表名称')
+        ElMessage.warning(t('stationLayout3d.placeholders.subTableName'))
         return
     }
 
@@ -1712,15 +1762,6 @@ function getRouteDisplayName(routeID: string) {
     return stationRouteMap.value.get(routeID)?.name || routeID || '-'
 }
 
-function getStationRouteHighlightColor(type: string) {
-    const normalized = type.trim().toLowerCase()
-    if (normalized.includes('arrival') || normalized.includes('接车')) return '#22c55e'
-    if (normalized.includes('departure') || normalized.includes('发车')) return '#38bdf8'
-    if (normalized.includes('locomotive') || normalized.includes('机车')) return '#f59e0b'
-    if (normalized.includes('shunting') || normalized.includes('调车')) return '#a855f7'
-    return '#ffd600'
-}
-
 function getTrainColor(trainID: string) {
     const colors = ['#2563eb', '#dc2626', '#059669', '#7c3aed', '#ea580c', '#0891b2']
     const hash = trainID.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0)
@@ -1829,7 +1870,7 @@ function buildRouteRuns(): RouteRun[] {
             linkIds: item.geometry.linkIds,
             startSeconds,
             endSeconds,
-            lockSeconds: Math.min(lockSeconds, duration * 0.65),
+            lockSeconds: isDwellingRoute(item.route.type) ? 0 : Math.min(lockSeconds, duration * 0.65),
             usesPlanTime: runUsesPlanTime,
             absoluteStartSeconds,
             absoluteEndSeconds,
@@ -2117,7 +2158,12 @@ function getSmoothedPathAngle(
 function findActiveRunIndex(currentSeconds: number) {
     const runs = routeRuns.value
     if (runs.length === 0) return -1
-    const inProgress = runs.find((run) => currentSeconds >= run.startSeconds && currentSeconds <= run.endSeconds)
+    if (!isAllTrainPlayback.value) {
+        const dwellingIndex = runs.findIndex(run => isDwellingRoute(run.route.type)
+            && currentSeconds >= run.startSeconds && currentSeconds < run.endSeconds)
+        if (dwellingIndex >= 0) return dwellingIndex
+    }
+    const inProgress = runs.find((run) => currentSeconds >= run.startSeconds && currentSeconds < run.endSeconds)
     if (inProgress) return runs.indexOf(inProgress)
     for (let index = runs.length - 1; index >= 0; index--) {
         const run = runs[index]
@@ -2148,19 +2194,26 @@ function syncActiveRunIndex(currentSeconds = playheadSeconds.value) {
     if (activeRunPhase.value !== nextPhase) activeRunPhase.value = nextPhase
     let lockingCount = 0
     let movingCount = 0
-    nextActiveIndices.forEach((index) => {
-        const phase = getRunPhase(routeRuns.value[index] || null, currentSeconds)
+    let dwellingCount = 0
+    const visibleRuns = preferDwellingRuns(nextActiveIndices
+        .map(index => routeRuns.value[index])
+        .filter((run): run is RouteRun => !!run), currentSeconds)
+    visibleRuns.forEach((run) => {
+        const phase = getRunPhase(run, currentSeconds)
         if (phase === 'locking') lockingCount++
         if (phase === 'moving') movingCount++
+        if (phase === 'dwelling') dwellingCount++
     })
     if (activeLockingRunCount.value !== lockingCount) activeLockingRunCount.value = lockingCount
     if (activeMovingRunCount.value !== movingCount) activeMovingRunCount.value = movingCount
+    if (activeDwellingRunCount.value !== dwellingCount) activeDwellingRunCount.value = dwellingCount
 }
 
 function getRunPhase(run: RouteRun | null, currentSeconds: number): RunPhase {
     if (!run) return 'waiting'
     if (currentSeconds < run.startSeconds) return 'waiting'
     if (currentSeconds >= run.endSeconds) return 'finished'
+    if (isDwellingRoute(run.route.type)) return 'dwelling'
     if (currentSeconds <= run.startSeconds + run.lockSeconds) return 'locking'
     return 'moving'
 }
@@ -2193,7 +2246,7 @@ function getCachedRunPhase(index: number): RunPhase {
 
 function getActiveRouteProgress(run: RouteRun | null, currentSeconds: number) {
     if (!run) return 0
-    const moveStart = run.startSeconds + run.lockSeconds
+    const moveStart = run.startSeconds + (isDwellingRoute(run.route.type) ? 0 : run.lockSeconds)
     const moveDuration = Math.max(0.1, run.endSeconds - moveStart)
     if (currentSeconds <= moveStart) return 0
     return Math.max(0, Math.min(1, (currentSeconds - moveStart) / moveDuration))
@@ -2208,19 +2261,29 @@ function buildSimulationTrainCars(): SimulationTrainCar[] {
         : activeRun.value
             ? [activeRun.value]
             : []
-    const cars = visibleRuns.flatMap((run) => buildSimulationTrainCarsForRun(run, currentSeconds))
+    const cars = preferDwellingRuns(visibleRuns, currentSeconds)
+        .flatMap((run) => buildSimulationTrainCarsForRun(run, currentSeconds))
     pruneTrainCarAngleMemory(cars)
     return cars
 }
 
 function buildSimulationTrainCarsForRun(run: RouteRun, currentSeconds: number): SimulationTrainCar[] {
     const progress = getActiveRouteProgress(run, currentSeconds)
-    const headDistance = run.path.totalLength * progress
+    const dwelling = isDwellingRoute(run.route.type)
+    // Keep the complete parked consist on short tracks instead of clamping
+    // trailing cars onto the same point at the route entrance.
+    const nominalLength = trainCarCount * trainCarLength + (trainCarCount - 1) * trainCarGap
+    const lengthScale = dwelling ? Math.min(1, run.path.totalLength * 0.75 / nominalLength) : 1
+    const carLength = trainCarLength * lengthScale
+    const carPitch = (trainCarLength + trainCarGap) * lengthScale
+    const headDistance = dwelling
+        ? getDwellingHeadDistance(run.path.totalLength, trainCarCount, carPitch)
+        : run.path.totalLength * progress
     const fill = getTrainColor(run.train.id)
     const cars: SimulationTrainCar[] = []
 
     for (let index = 0; index < trainCarCount; index++) {
-        const offset = index * (trainCarLength + trainCarGap)
+        const offset = index * carPitch
         const key = `${run.key}-${index}`
         const position = getPositionOnPath(run.path, headDistance - offset, {
             smoothAngle: true,
@@ -2231,7 +2294,7 @@ function buildSimulationTrainCarsForRun(run: RouteRun, currentSeconds: number): 
             x: position.x,
             y: position.y,
             angle: getContinuousTrainCarAngle(key, position.angle),
-            length: trainCarLength,
+            length: carLength,
             width: trainCarWidth,
             fill: index === 0 ? fill : lightenTrainColor(fill, index),
             stroke: '#f8fafc',
@@ -2264,15 +2327,17 @@ function getRunTimeText(run: RouteRun) {
 }
 
 function getRunStatusText(phase: ReturnType<typeof getRunPhase>) {
-    if (phase === 'locking') return '办理'
-    if (phase === 'moving') return '走行'
-    if (phase === 'finished') return '完成'
-    return '待办'
+    if (phase === 'dwelling') return t('stationLayout3d.phase.dwelling')
+    if (phase === 'locking') return t('stationLayout3d.phase.locking')
+    if (phase === 'moving') return t('operationSimulation.moving')
+    if (phase === 'finished') return t('operationSimulation.completed')
+    return t('operationSimulation.pending')
 }
 
 function getRunStatusType(phase: ReturnType<typeof getRunPhase>): 'success' | 'warning' | 'info' | 'primary' {
     if (phase === 'locking') return 'warning'
     if (phase === 'moving') return 'primary'
+    if (phase === 'dwelling') return 'primary'
     if (phase === 'finished') return 'success'
     return 'info'
 }
@@ -2290,7 +2355,7 @@ function getSimulationRowClassName({ row }: { row: SimulationRow }) {
 }
 
 function isRunProcessingPhase(phase: RunPhase) {
-    return phase === 'locking' || phase === 'moving'
+    return phase === 'locking' || phase === 'moving' || phase === 'dwelling'
 }
 
 function getSimulationTableCurrentRunIndex() {
@@ -2335,46 +2400,6 @@ function scrollGanttToPlayhead() {
     const playheadContentLeft = ganttSidebarWidth + ganttPlayheadLeft.value
     const targetLeft = Math.max(0, playheadContentLeft - viewport.clientWidth * 0.45)
     viewport.scrollLeft = targetLeft
-}
-
-function startGanttPanelResize(event: PointerEvent) {
-    event.preventDefault()
-    ganttResizeState = {
-        pointerStartY: event.clientY,
-        startHeight: ganttPanelHeight.value,
-    }
-    previousBodyCursor = document.body.style.cursor
-    previousBodyUserSelect = document.body.style.userSelect
-    document.body.style.cursor = 'row-resize'
-    document.body.style.userSelect = 'none'
-    window.addEventListener('pointermove', handleGanttPanelResize)
-    window.addEventListener('pointerup', stopGanttPanelResize)
-    window.addEventListener('pointercancel', stopGanttPanelResize)
-}
-
-function handleGanttPanelResize(event: PointerEvent) {
-    if (!ganttResizeState) return
-    const deltaY = event.clientY - ganttResizeState.pointerStartY
-    const maxHeight = getMaxGanttPanelHeight()
-    ganttPanelHeight.value = clampNumber(
-        ganttResizeState.startHeight - deltaY,
-        minGanttPanelHeight,
-        maxHeight,
-    )
-}
-
-function stopGanttPanelResize() {
-    if (!ganttResizeState) return
-    ganttResizeState = null
-    window.removeEventListener('pointermove', handleGanttPanelResize)
-    window.removeEventListener('pointerup', stopGanttPanelResize)
-    window.removeEventListener('pointercancel', stopGanttPanelResize)
-    document.body.style.cursor = previousBodyCursor
-    document.body.style.userSelect = previousBodyUserSelect
-}
-
-function resetGanttPanelHeight() {
-    ganttPanelHeight.value = clampNumber(defaultGanttPanelHeight, minGanttPanelHeight, getMaxGanttPanelHeight())
 }
 
 function getMaxGanttPanelHeight() {
@@ -2574,7 +2599,7 @@ async function loadStationSchemes() {
         clearOperationPlans()
         clearStationRoutes()
         clearLayout()
-        ElMessage.error('加载车站方案失败')
+        ElMessage.error(t('operationSimulation.loadSchemesFailed'))
     } finally {
         if (loadVersion === stationSchemeLoadVersion) loadingStationSchemes.value = false
     }
@@ -2614,7 +2639,7 @@ async function loadOperationPlans() {
         if (loadVersion !== operationPlanLoadVersion) return
         console.error('Failed to load simulation operation plans:', error)
         clearOperationPlans()
-        ElMessage.error('加载作业计划失败')
+        ElMessage.error(t('stationLayout3d.messages.loadOperationPlansFailed'))
     } finally {
         if (loadVersion === operationPlanLoadVersion) loadingOperationPlans.value = false
     }
@@ -2648,7 +2673,7 @@ async function loadStationRoutes() {
         if (loadVersion !== stationRouteLoadVersion) return
         console.error('Failed to load simulation station routes:', error)
         stationRouteOptions.value = []
-        ElMessage.error('加载进路失败')
+        ElMessage.error(t('stationLayout3d.messages.loadStationRoutesFailed'))
     } finally {
         if (loadVersion === stationRouteLoadVersion) loadingStationRoutes.value = false
     }
@@ -2683,7 +2708,7 @@ async function loadTrainOperationPlan() {
         if (loadVersion !== trainPlanLoadVersion) return
         console.error('Failed to load simulation train operation plan:', error)
         clearTrainPlan()
-        ElMessage.error('加载列车作业计划失败')
+        ElMessage.error(t('stationLayout3d.messages.loadTrainOperationPlanFailed'))
     } finally {
         if (loadVersion === trainPlanLoadVersion) loadingTrainOperationPlan.value = false
     }
@@ -2754,7 +2779,7 @@ async function loadStationRouteTimes() {
         if (loadVersion !== stationRouteTimeLoadVersion) return
         console.error('Failed to load simulation station route times:', error)
         stationRouteTimesByKey.value = {}
-        ElMessage.error('加载进路占用时间失败')
+        ElMessage.error(t('stationLayout3d.messages.loadRouteTimesFailed'))
     } finally {
         if (loadVersion === stationRouteTimeLoadVersion) loadingStationRouteTimes.value = false
     }
@@ -2909,7 +2934,7 @@ async function loadLayout() {
         if (loadVersion !== layoutLoadVersion) return
         console.error('Failed to load simulation layout:', error)
         clearLayout()
-        ElMessage.error('加载布置图失败')
+        ElMessage.error(t('operationSimulation.loadLayoutFailed'))
     } finally {
         if (loadVersion === layoutLoadVersion) loadingLayout.value = false
     }
@@ -3078,9 +3103,22 @@ watch(playheadSeconds, () => {
     flush: 'post',
 })
 
+onMounted(() => {
+    const syncPanelBounds = () => {
+        maxSimulationSideWidth.value = Math.max(280, (simulationBodyRef.value?.clientWidth || 920) - 328)
+        simulationSideWidth.value = Math.min(simulationSideWidth.value, maxSimulationSideWidth.value)
+        maxGanttPanelHeight.value = getMaxGanttPanelHeight()
+        ganttPanelHeight.value = Math.min(ganttPanelHeight.value, maxGanttPanelHeight.value)
+    }
+    panelResizeObserver = new ResizeObserver(syncPanelBounds)
+    if (simulationBodyRef.value) panelResizeObserver.observe(simulationBodyRef.value)
+    if (simulationLeftPanelRef.value) panelResizeObserver.observe(simulationLeftPanelRef.value)
+    syncPanelBounds()
+})
+
 onBeforeUnmount(() => {
     pausePlayback()
-    stopGanttPanelResize()
+    panelResizeObserver?.disconnect()
     if (ganttSubTableSaveTimer) {
         window.clearTimeout(ganttSubTableSaveTimer)
         ganttSubTableSaveTimer = null
@@ -3158,9 +3196,9 @@ onBeforeUnmount(() => {
 
 .simulation-body {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 430px;
+    grid-template-columns: minmax(0, 1fr) 8px minmax(0, var(--simulation-side-width));
     flex: 1 1 auto;
-    gap: 12px;
+    gap: 0;
     min-height: 0;
     overflow: hidden;
 }
@@ -3179,39 +3217,26 @@ onBeforeUnmount(() => {
     min-width: 0;
     min-height: 0;
     overflow: auto;
-    border: 1px solid #d8e3ef;
-    border-radius: 8px;
+    border: 1px solid var(--sy-border);
+    border-radius: var(--sy-radius, 6px);
     background: #31363f;
 }
 
-.simulation-horizontal-resizer {
-    position: relative;
-    flex: 0 0 12px;
-    cursor: row-resize;
-    background: transparent;
-    touch-action: none;
-}
-
-.simulation-horizontal-resizer::before {
-    content: "";
-    position: absolute;
-    top: 5px;
-    right: 0;
-    left: 0;
-    height: 2px;
-    border-radius: 999px;
-    background: #a9b8ca;
-}
-
-.simulation-horizontal-resizer:hover::before {
-    background: #6d89ad;
-}
 
 .simulation-layout-stage {
     position: relative;
     display: inline-block;
     min-width: 100%;
     min-height: 100%;
+}
+
+.simulation-station-layer {
+    filter: brightness(1);
+    transition: filter 180ms ease;
+}
+
+.simulation-station-layer.is-playing {
+    filter: brightness(0.65);
 }
 
 .simulation-layout-empty {
@@ -3229,13 +3254,14 @@ onBeforeUnmount(() => {
     min-height: 188px;
     flex-direction: column;
     overflow: hidden;
-    border: 1px solid #d8e3ef;
-    border-radius: 8px;
+    border: 1px solid var(--sy-border);
+    border-radius: var(--sy-radius, 6px);
     background: #ffffff;
 }
 
 .simulation-gantt-header {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
     gap: 10px;
@@ -3256,8 +3282,8 @@ onBeforeUnmount(() => {
 .simulation-gantt-header h3 {
     margin: 0;
     color: #21354f;
-    font-size: 14px;
-    font-weight: 700;
+    font-size: 13px;
+    font-weight: 600;
 }
 
 .simulation-gantt-title span {
@@ -3367,7 +3393,7 @@ onBeforeUnmount(() => {
     background: #f8fafc;
     color: #65758a;
     font-size: 12px;
-    font-weight: 700;
+    font-weight: 600;
 }
 
 .simulation-gantt-lane-label {
@@ -3477,8 +3503,8 @@ onBeforeUnmount(() => {
     min-height: 0;
     flex-direction: column;
     overflow: hidden;
-    border: 1px solid #d8e3ef;
-    border-radius: 8px;
+    border: 1px solid var(--sy-border);
+    border-radius: var(--sy-radius, 6px);
     background: #ffffff;
 }
 
@@ -3489,15 +3515,15 @@ onBeforeUnmount(() => {
     gap: 12px;
     padding: 12px 14px;
     border-bottom: 1px solid #e4edf6;
-    background: #f8fbff;
+    background: var(--el-fill-color-extra-light);
 }
 
 .simulation-panel-header h2,
 .simulation-table-header h3 {
     margin: 0;
     color: #21354f;
-    font-size: 16px;
-    font-weight: 700;
+    font-size: 13px;
+    font-weight: 600;
     line-height: 1.4;
 }
 
@@ -3528,7 +3554,7 @@ onBeforeUnmount(() => {
     color: #1f3a68;
     font-family: Consolas, "Microsoft YaHei", monospace;
     font-size: 13px;
-    font-weight: 700;
+    font-weight: 600;
 }
 
 .simulation-speed-row {
@@ -3572,7 +3598,7 @@ onBeforeUnmount(() => {
     overflow: hidden;
     color: #21354f;
     font-size: 13px;
-    font-weight: 700;
+    font-weight: 600;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
@@ -3592,7 +3618,9 @@ onBeforeUnmount(() => {
     padding: 12px 14px 8px;
 }
 
-@media (max-width: 1100px) {
+@media (max-width: 760px) {
+    .simulation-side-divider { display: none; }
+
     .simulation-body {
         grid-template-columns: minmax(0, 1fr);
         overflow: auto;

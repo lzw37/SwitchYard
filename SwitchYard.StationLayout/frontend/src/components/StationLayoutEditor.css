@@ -162,13 +162,9 @@
 }
 
 .cell-name {
-    fill: #ffd600;
     stroke: rgba(17, 24, 39, 0.95);
     stroke-width: 4px;
     paint-order: stroke fill;
-    font-family: Arial, "Microsoft YaHei", sans-serif;
-    font-size: 13px;
-    font-weight: 700;
     text-anchor: middle;
     dominant-baseline: middle;
     cursor: pointer;

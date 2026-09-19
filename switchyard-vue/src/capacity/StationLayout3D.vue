@@ -92,14 +92,12 @@
                         @change="handleDisplayRatioChange"
                     />
                     <output class="layout3d-ratio-value">{{ formatDisplayRatio(displayRatio) }}</output>
-                    <el-tooltip :content="t('stationLayout3d.buttons.resetDisplayRatio')">
-                        <el-button
-                            size="small"
-                            :disabled="!canRender"
-                            :aria-label="t('stationLayout3d.buttons.resetDisplayRatio')"
-                            @click="resetDisplayRatio"
-                        >1:1</el-button>
-                    </el-tooltip>
+                    <ActionButton
+                        :label="t('stationLayout3d.buttons.resetDisplayRatio')"
+                        :disabled="!canRender"
+                        @click="resetDisplayRatio"
+                        :icon="RefreshLeft"
+                    />
                 </div>
             </template>
             <template #details>
@@ -140,35 +138,32 @@
                 </div>
             </template>
             <template #actions>
-                <el-tooltip :content="t('stationLayout3d.buttons.refresh')">
-                    <el-button
-                        size="small"
-                        :icon="RefreshRight"
-                        :loading="loadingAnyData"
-                        :disabled="!selectedInstanceId"
-                        @click="refresh3DData"
-                    />
-                </el-tooltip>
-                <el-tooltip :content="t('stationLayout3d.buttons.resetView')">
-                    <el-button size="small" :icon="Aim" :disabled="!canRender" @click="resetCamera" />
-                </el-tooltip>
-                <el-tooltip :content="t('stationLayout3d.buttons.resetPlayback')">
-                    <el-button
-                        size="small"
-                        :icon="RefreshLeft"
-                        :disabled="!canPlayback"
-                        @click="resetPlayback"
-                    />
-                </el-tooltip>
-                <el-tooltip :content="isPlaying ? t('stationLayout3d.buttons.pause') : t('stationLayout3d.buttons.play')">
-                    <el-button
-                        size="small"
-                        type="primary"
-                        :icon="isPlaying ? VideoPause : VideoPlay"
-                        :disabled="!canPlayback"
-                        @click="togglePlayback"
-                    />
-                </el-tooltip>
+                <ActionButton
+                    :label="t('stationLayout3d.buttons.refresh')"
+                    :icon="RefreshRight"
+                    :loading="loadingAnyData"
+                    :disabled="!selectedInstanceId"
+                    @click="refresh3DData"
+                />
+                <ActionButton
+                    :label="t('stationLayout3d.buttons.resetView')"
+                    :icon="Aim"
+                    :disabled="!canRender"
+                    @click="resetCamera"
+                />
+                <ActionButton
+                    :label="t('stationLayout3d.buttons.resetPlayback')"
+                    :icon="RefreshLeft"
+                    :disabled="!canPlayback"
+                    @click="resetPlayback"
+                />
+                <ActionButton
+                    :label="isPlaying ? t('stationLayout3d.buttons.pause') : t('stationLayout3d.buttons.play')"
+                    type="primary"
+                    :icon="isPlaying ? VideoPause : VideoPlay"
+                    :disabled="!canPlayback"
+                    @click="togglePlayback"
+                />
                 <span class="layout3d-playback-clock">{{ playbackClockText }}</span>
                 <el-select
                     v-model="playbackSpeed"
@@ -210,7 +205,7 @@
             />
         </div>
 
-        <div class="layout3d-content">
+        <div ref="layoutContentRef" class="layout3d-content">
             <div
                 ref="canvasWrapperRef"
                 class="layout3d-body"
@@ -222,16 +217,23 @@
                 </div>
             </div>
 
-            <section class="layout3d-gantt-panel">
+            <PaneDivider
+                v-model="ganttPanelHeight"
+                direction="vertical"
+                reverse
+                :min="160"
+                :max="maxGanttPanelHeight"
+                :reset-value="260"
+                :label="t('common.resize.vertical')"
+            />
+            <section class="layout3d-gantt-panel" :style="{ flexBasis: `${ganttPanelHeight}px` }">
                 <div class="layout3d-gantt-header">
                     <div class="layout3d-gantt-title">
-                        <h3>{{ t('stationLayout3d.gantt.title') }}</h3>
-                        <span>{{ ganttSummaryText }}</span>
+                        <h3 :title="ganttSummaryText">{{ t('stationLayout3d.gantt.title') }}</h3>
                     </div>
                     <div class="layout3d-gantt-subtable-toolbar">
                         <el-tabs
                             v-model="activeGanttSubTableId"
-                            type="card"
                             class="layout3d-gantt-sub-tabs"
                             @tab-remove="removeGanttSubTable"
                         >
@@ -247,19 +249,15 @@
                             <span class="layout3d-gantt-subtable-summary">
                                 {{ activeGanttSubTableSummaryText }}
                             </span>
-                            <el-button
+                            <ActionButton
+                                :label="t('stationLayout3d.buttons.editSubTable')"
                                 :icon="Edit"
-                                circle
-                                size="small"
                                 :disabled="!activeGanttSubTable"
-                                :title="t('stationLayout3d.buttons.editSubTable')"
                                 @click="openEditGanttSubTableDialog"
                             />
-                            <el-button
+                            <ActionButton
+                                :label="t('stationLayout3d.buttons.createSubTable')"
                                 :icon="Plus"
-                                circle
-                                size="small"
-                                :title="t('stationLayout3d.buttons.createSubTable')"
                                 @click="openCreateGanttSubTableDialog"
                             />
                         </div>
@@ -351,22 +349,29 @@
                 </el-form-item>
             </el-form>
             <template #footer>
-                <el-button @click="ganttSubTableDialogVisible = false">
-                    {{ t('stationLayout3d.dialogs.cancel') }}
-                </el-button>
-                <el-button type="primary" @click="confirmGanttSubTableDialog">
-                    {{ t('stationLayout3d.dialogs.confirm') }}
-                </el-button>
+                <ActionButton
+                    :label="t('stationLayout3d.dialogs.cancel')"
+                    @click="ganttSubTableDialogVisible = false"
+                    :icon="Close"
+                />
+                <ActionButton
+                    :label="t('stationLayout3d.dialogs.confirm')"
+                    type="primary"
+                    @click="confirmGanttSubTableDialog"
+                    :icon="Check"
+                />
             </template>
         </el-dialog>
     </section>
 </template>
 
 <script setup lang="ts">
+import ActionButton from '@/components/ui/ActionButton.vue'
+import PaneDivider from '@/components/ui/PaneDivider.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
-import { Aim, Edit, Plus, RefreshLeft, RefreshRight, VideoPause, VideoPlay } from '@element-plus/icons-vue'
+import { Aim, Check, Close, Edit, Plus, RefreshLeft, RefreshRight, VideoPause, VideoPlay } from '@element-plus/icons-vue'
 import * as THREE from 'three'
 import {
     getRollingStockBogieOffsets, getRollingStockDimensions, ROLLING_STOCK_OPTIONS,
@@ -374,11 +379,13 @@ import {
 } from './three/rollingStock'
 import { RollingStockTemplates, type RollingStockTemplateSpec } from './three/rollingStockTemplates'
 import { getRollingStockConsistForRun, type RollingStockModelSelection } from './three/emuModelSelection'
-import { getEmuConsistSizing, getLongestRouteLinkLength } from './three/trainSizing'
+import { getEmuConsistSizing, getLongestRouteLinkLength, getShortestTrainConsistSizing } from './three/trainSizing'
 import { createRailway, getRailwayDimensions, prepareRailwayPaths } from './three/railway'
 import { createStationGround, createStationPlatform, fitStationLighting, lightStationScene } from './three/stationEnvironment'
 import { sampleCurveCoordinates, transformLayoutCoordinates } from './three/layoutCoordinates'
-import { insertRouteCurves, sampleTrainPose, followRenderedPaths } from './three/trainPath'
+import { insertRouteCurves, followRenderedPaths } from './three/trainPath'
+import { buildTrainMotionProfiles, sampleTrainMotion, selectTrainMotionRuns } from './three/trainMotion'
+import { isDwellingRoute } from './simulationDwelling'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { CSS2DObject, CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js'
 import axios from '@/utils/axios'
@@ -624,6 +631,7 @@ interface RouteRun {
 
 interface SimulationTrainCar {
     key: string
+    runKey: string
     modelId: RollingStockModelId
     role: RollingStockCarRole
     carIndex: number
@@ -722,7 +730,7 @@ interface TrainCarObjectEntry {
     labelElement: HTMLElement
 }
 
-type RunPhase = 'waiting' | 'locking' | 'moving' | 'finished'
+type RunPhase = 'waiting' | 'locking' | 'moving' | 'dwelling' | 'finished'
 type PlaybackMode = 'single' | 'all'
 
 const props = withDefaults(defineProps<Props>(), {
@@ -757,6 +765,10 @@ const ganttTargetPixelsPerSecond = 0.08
 const ganttDefaultSubTableCount = 3
 
 const canvasWrapperRef = ref<HTMLElement | null>(null)
+const layoutContentRef = ref<HTMLElement | null>(null)
+const ganttPanelHeight = ref(260)
+const maxGanttPanelHeight = ref(520)
+let panelResizeObserver: ResizeObserver | null = null
 const canvasRef = ref<HTMLCanvasElement | null>(null)
 const layoutData = ref<StationLayoutData>(createEmptyLayout())
 const layoutCells = ref<LayoutCell[]>([])
@@ -787,7 +799,7 @@ const stationRouteTimesByKey = ref<Record<string, StationRouteTimeOption[]>>({})
 const trainOperationPlanTrains = ref<TrainOperationPlanTrain[]>([])
 const trainOperationPlanMovements = ref<TrainOperationPlanMovement[]>([])
 const playheadSeconds = ref(0)
-const playbackSpeed = ref(60)
+const playbackSpeed = ref(10)
 const playbackMode = ref<PlaybackMode>('single')
 const selectedTrainModel = ref<RollingStockModelSelection>('auto')
 const isPlaying = ref(false)
@@ -796,6 +808,7 @@ const activeRunIndices = ref<number[]>([])
 const activeRunPhase = ref<RunPhase>('waiting')
 const activeLockingRunCount = ref(0)
 const activeMovingRunCount = ref(0)
+const activeDwellingRunCount = ref(0)
 const runPhaseByKey = ref<Record<string, RunPhase>>({})
 const ganttViewportRef = ref<HTMLElement | null>(null)
 const ganttSubTableSequence = ref(ganttDefaultSubTableCount)
@@ -934,19 +947,28 @@ const routeRuns = computed<RouteRun[]>(() => sourceRouteRuns.value.map(run => ({
     ...run,
     path: buildRouteGeometry(run.route, displayLayoutData.value, displayTurnoutPaths.value).path,
 })))
-// Each operation uses its own route's complete Links, before rendering trims
-// curves/turnouts. Cache the dimensions across playback frames.
+// Select the shortest of each train's route-based formations once, so route
+// changes never resize its physical cars, couplers or wheelbases.
 const trainConsistByRun = computed(() => {
     const gauge = getLayoutTrackGaugeUnits()
     const links = displayLayoutData.value.tracks
-    return new Map(routeRuns.value.map(run => {
+    const candidates = routeRuns.value.map(run => {
         const consist = getRollingStockConsistForRun(run.train.trainType, selectedTrainModel.value)
-        return [run.key, {
+        return {
+            trainID: run.train.id,
+            runKey: run.key,
             ...consist,
             sizing: getEmuConsistSizing(gauge, getLongestRouteLinkLength(links, run), consist.carCount, getRollingStockDimensions(consist.modelId)),
-        }]
-    }))
+        }
+    })
+    const shortest = getShortestTrainConsistSizing(candidates)
+    return new Map(candidates.map(candidate => [candidate.runKey, {
+        modelId: candidate.modelId,
+        carCount: candidate.carCount,
+        sizing: shortest.get(candidate.runKey) ?? null,
+    }]))
 })
+const trainMotionByRun = computed(() => buildTrainMotionProfiles(routeRuns.value))
 const canPlayback = computed(() => routeRuns.value.length > 0 && simulationDurationSeconds.value > 0)
 const simulationDurationSeconds = computed(() => (
     routeRuns.value.reduce((maxSeconds, run) => Math.max(maxSeconds, run.endSeconds), 0)
@@ -1057,11 +1079,14 @@ const activePhaseText = computed(() => {
     if (isAllTrainPlayback.value) {
         const locking = activeLockingRunCount.value
         const moving = activeMovingRunCount.value
-        if (locking + moving <= 0) return t('stationLayout3d.phase.waiting')
+        const dwelling = activeDwellingRunCount.value
+        if (locking + moving + dwelling <= 0) return t('stationLayout3d.phase.waiting')
+        if (dwelling > 0) return String(t('stationLayout3d.phase.allActiveWithDwelling', { locking, moving, dwelling }))
         return String(t('stationLayout3d.phase.allActive', { locking, moving }))
     }
     if (!activeRun.value) return t('stationLayout3d.phase.selecting')
     if (activePhase.value === 'locking') return t('stationLayout3d.phase.locking')
+    if (activePhase.value === 'dwelling') return t('stationLayout3d.phase.dwelling')
     if (activePhase.value === 'moving') {
         return String(t('stationLayout3d.phase.movingWithProgress', {
             progress: Math.round(activeRouteProgress.value * 100),
@@ -1765,7 +1790,7 @@ function buildRouteRuns(): RouteRun[] {
             linkIds: item.geometry.linkIds,
             startSeconds,
             endSeconds,
-            lockSeconds: Math.min(lockSeconds, duration * 0.65),
+            lockSeconds: isDwellingRoute(item.route.type) ? 0 : Math.min(lockSeconds, duration * 0.65),
             usesPlanTime: runUsesPlanTime,
             absoluteStartSeconds,
             absoluteEndSeconds,
@@ -2003,15 +2028,14 @@ function clearTrainCarAngleMemory() {
     trainCarAngleMemory.clear()
 }
 
-function buildSimulationTrainCars(): SimulationTrainCar[] {
-    const currentSeconds = playheadSeconds.value
-    const visibleRuns = isAllTrainPlayback.value
-        ? activeRunIndices.value
-            .map((index) => routeRuns.value[index] || null)
-            .filter((run): run is RouteRun => run !== null)
-        : activeRun.value
-            ? [activeRun.value]
-            : []
+function buildSimulationTrainCars(currentSeconds = playheadSeconds.value): SimulationTrainCar[] {
+    const visibleRuns = selectTrainMotionRuns(routeRuns.value, currentSeconds)
+    // Single-train mode also shows its initial/final pose when seeking outside
+    // its active window. During playback choose runs from the exact frame time.
+    if (!isAllTrainPlayback.value && visibleRuns.length === 0) {
+        const run = routeRuns.value[findActiveRunIndex(currentSeconds)]
+        if (run) visibleRuns.push(run)
+    }
     const cars = visibleRuns.flatMap((run) => buildSimulationTrainCarsForRun(run, currentSeconds))
     pruneTrainCarAngleMemory(cars)
     return cars
@@ -2021,21 +2045,21 @@ function buildSimulationTrainCarsForRun(run: RouteRun, currentSeconds: number): 
     const consist = trainConsistByRun.value.get(run.key)
     if (!consist?.sizing) return []
     const { modelId, carCount, sizing } = consist
-    const progress = getActiveRouteProgress(run, currentSeconds)
-    const headDistance = run.path.totalLength * progress
+    const motion = trainMotionByRun.value.get(run.key) ?? buildTrainMotionProfiles([run]).get(run.key)
+    if (!motion) return []
     const fill = getTrainColor(run.train.id)
-    // The complete formation, including every gap, occupies 3/4 of this route's longest Link.
     const cars: SimulationTrainCar[] = []
 
     for (let index = 0; index < carCount; index++) {
-        const offset = index * sizing.carPitch
-        // A model change retires the old meshes, labels and angle memory together.
-        const key = `${run.key}-${modelId}-${index}`
+        const offset = ((carCount - 1) / 2 - index) * sizing.carPitch
+        // The same physical car survives route changes, including reversals.
+        const key = JSON.stringify([run.train.id, modelId, index])
         const role: RollingStockCarRole = index === 0 ? 'head' : index === carCount - 1 ? 'tail' : 'middle'
         const bogieOffsets = getRollingStockBogieOffsets(role, modelId).map(value => value * sizing.longitudinalUnitsPerMeter) as [number, number]
-        const position = sampleTrainPose(run.path, headDistance - offset, bogieOffsets)
+        const position = sampleTrainMotion(motion, currentSeconds, offset, bogieOffsets)
         cars.push({
             key,
+            runKey: run.key,
             modelId,
             role,
             carIndex: index,
@@ -2523,7 +2547,11 @@ function buildGanttSubTableSettingsPayload(): GanttSubTableSettingPayload[] {
 function findActiveRunIndex(currentSeconds: number) {
     const runs = routeRuns.value
     if (runs.length === 0) return -1
-    const inProgress = runs.find((run) => currentSeconds >= run.startSeconds && currentSeconds <= run.endSeconds)
+    if (!isAllTrainPlayback.value) {
+        const visibleRun = selectTrainMotionRuns(runs, currentSeconds)[0]
+        if (visibleRun) return runs.indexOf(visibleRun)
+    }
+    const inProgress = runs.find((run) => currentSeconds >= run.startSeconds && currentSeconds < run.endSeconds)
     if (inProgress) return runs.indexOf(inProgress)
     for (let index = runs.length - 1; index >= 0; index--) {
         const run = runs[index]
@@ -2554,19 +2582,24 @@ function syncActiveRunIndex(currentSeconds = playheadSeconds.value) {
     if (activeRunPhase.value !== nextPhase) activeRunPhase.value = nextPhase
     let lockingCount = 0
     let movingCount = 0
-    nextActiveIndices.forEach((index) => {
-        const phase = getRunPhase(routeRuns.value[index] || null, currentSeconds)
+    let dwellingCount = 0
+    const visibleRuns = selectTrainMotionRuns(routeRuns.value, currentSeconds)
+    visibleRuns.forEach((run) => {
+        const phase = getRunPhase(run, currentSeconds)
         if (phase === 'locking') lockingCount++
         if (phase === 'moving') movingCount++
+        if (phase === 'dwelling') dwellingCount++
     })
     if (activeLockingRunCount.value !== lockingCount) activeLockingRunCount.value = lockingCount
     if (activeMovingRunCount.value !== movingCount) activeMovingRunCount.value = movingCount
+    if (activeDwellingRunCount.value !== dwellingCount) activeDwellingRunCount.value = dwellingCount
 }
 
 function getRunPhase(run: RouteRun | null, currentSeconds: number): RunPhase {
     if (!run) return 'waiting'
     if (currentSeconds < run.startSeconds) return 'waiting'
     if (currentSeconds >= run.endSeconds) return 'finished'
+    if (isDwellingRoute(run.route.type)) return 'dwelling'
     if (currentSeconds <= run.startSeconds + run.lockSeconds) return 'locking'
     return 'moving'
 }
@@ -2593,7 +2626,7 @@ function areRunPhaseMapsEqual(left: Record<string, RunPhase>, right: Record<stri
 
 function getActiveRouteProgress(run: RouteRun | null, currentSeconds: number) {
     if (!run) return 0
-    const moveStart = run.startSeconds + run.lockSeconds
+    const moveStart = run.startSeconds + (isDwellingRoute(run.route.type) ? 0 : run.lockSeconds)
     const moveDuration = Math.max(0.1, run.endSeconds - moveStart)
     if (currentSeconds <= moveStart) return 0
     return Math.max(0, Math.min(1, (currentSeconds - moveStart) / moveDuration))
@@ -2632,6 +2665,7 @@ function startPlayback() {
 }
 
 function pausePlayback() {
+    if (isPlaying.value) setPlayheadSeconds(playbackRuntimeSeconds)
     isPlaying.value = false
     if (playbackFrameId !== null) {
         window.cancelAnimationFrame(playbackFrameId)
@@ -2656,7 +2690,8 @@ function stepPlayback(timestamp: number) {
         return
     }
     if (!lastPlaybackTimestamp) lastPlaybackTimestamp = timestamp
-    const deltaSeconds = Math.max(0, (timestamp - lastPlaybackTimestamp) / 1000)
+    // A suspended tab must not skip across a station on its first resumed frame.
+    const deltaSeconds = Math.min(0.05, Math.max(0, (timestamp - lastPlaybackTimestamp) / 1000))
     lastPlaybackTimestamp = timestamp
     playbackRuntimeSeconds = Math.min(
         simulationDurationSeconds.value,
@@ -3469,14 +3504,14 @@ function clearTrainObjects() {
     Array.from(trainCarObjectMap.keys()).forEach(removeTrainCarObject)
 }
 
-function updateTrainObjects() {
+function updateTrainObjects(currentSeconds?: number) {
     if (isDisposed) return
     if (!trainGroup || !lastMapper) {
         clearTrainObjects()
         return
     }
 
-    const cars = simulationTrainCars.value
+    const cars = currentSeconds === undefined ? simulationTrainCars.value : buildSimulationTrainCars(currentSeconds)
     const visibleKeys = new Set(cars.map((car) => car.key))
     Array.from(trainCarObjectMap.keys()).forEach((key) => {
         if (!visibleKeys.has(key)) removeTrainCarObject(key)
@@ -3594,6 +3629,7 @@ function renderOnce() {
 function rafTick() {
     rafId = null
     if (isDisposed || !renderer) return
+    if (isPlaying.value) updateTrainObjects(playbackRuntimeSeconds)
     renderOnce()
     ensureRafLoop()
 }
@@ -4133,13 +4169,18 @@ watch(
 )
 
 watch(playheadSeconds, () => {
-    updateTrainObjects()
+    if (!isPlaying.value) updateTrainObjects()
     scheduleScrollGanttToPlayhead()
 }, {
     flush: 'post',
 })
 
 onMounted(() => {
+    panelResizeObserver = new ResizeObserver(() => {
+        maxGanttPanelHeight.value = Math.max(160, (layoutContentRef.value?.clientHeight || 500) - 168)
+        ganttPanelHeight.value = Math.min(ganttPanelHeight.value, maxGanttPanelHeight.value)
+    })
+    if (layoutContentRef.value) panelResizeObserver.observe(layoutContentRef.value)
     nextTick(() => {
         if (isDisposed) return
         initThree()
@@ -4154,6 +4195,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+    panelResizeObserver?.disconnect()
     flushPendingGanttSubTableSettings()
     isDisposed = true
     trainModelPreparationVersion++
@@ -4317,7 +4359,7 @@ onBeforeUnmount(() => {
 
 .metric-item strong {
     font-family: "Consolas", "Courier New", monospace;
-    font-size: 14px;
+    font-size: 13px;
     color: #1452a3;
 }
 
@@ -4410,7 +4452,7 @@ onBeforeUnmount(() => {
     max-width: min(340px, calc(100% - 32px));
     padding: 10px 16px;
     border: 1px solid #c9d8e8;
-    border-radius: 4px;
+    border-radius: var(--sy-radius, 6px);
     background: rgba(255, 255, 255, 0.9);
     color: #334155;
     font-size: 13px;
@@ -4464,15 +4506,16 @@ onBeforeUnmount(() => {
 .layout3d-gantt-panel {
     display: flex;
     flex: 0 0 260px;
-    min-height: 188px;
+    min-height: 160px;
     flex-direction: column;
     overflow: hidden;
-    border-top: 1px solid #d8e3ef;
+    border-top: 1px solid var(--sy-border);
     background: #ffffff;
 }
 
 .layout3d-gantt-header {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
     gap: 10px;
@@ -4493,7 +4536,7 @@ onBeforeUnmount(() => {
 .layout3d-gantt-header h3 {
     margin: 0;
     color: #21354f;
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 700;
 }
 

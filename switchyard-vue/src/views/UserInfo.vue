@@ -3,16 +3,13 @@
         <div class="page-head">
             <div class="page-head-main">
                 <h1>{{ t('userInfo.title') }}</h1>
-                <el-button type="danger" plain @click="logoutCurrentAccount">
-                    {{ t('common.userMenu.logout') }}
-                </el-button>
+                <ActionButton type="danger" @click="logoutCurrentAccount" :label="t('common.userMenu.logout')" :icon="actionIcons.logout" />
             </div>
-            <p class="sub-text">{{ profileForm.username || '-' }}</p>
         </div>
 
         <el-alert
             v-if="isForcedPasswordChange"
-            title="首次登录或管理员重置密码后，必须先修改密码才能继续使用系统。"
+            :title="t('userInfo.messages.passwordChangeRequired')"
             type="warning"
             :closable="false"
             show-icon
@@ -21,7 +18,6 @@
 
         <div class="cards">
             <section class="card">
-                <h2>{{ t('userInfo.title') }}</h2>
                 <el-form
                     ref="profileFormRef"
                     :model="profileForm"
@@ -42,22 +38,20 @@
                     </el-form-item>
 
                     <el-form-item :label="t('userInfo.labels.role')">
-                        <el-input v-model="profileForm.role" disabled />
+                        <el-input :model-value="profileForm.role === 'Admin' ? t('createUser.roles.admin') : profileForm.role === 'User' ? t('createUser.roles.user') : profileForm.role" disabled />
                     </el-form-item>
 
-                    <el-form-item label="Created At">
+                    <el-form-item :label="t('userManager.columns.createdAt')">
                         <el-input :model-value="createdAtText" disabled />
                     </el-form-item>
 
                     <el-form-item>
-                        <el-button
+                        <ActionButton
                             type="primary"
                             :loading="savingProfile"
                             :disabled="isForcedPasswordChange"
                             @click="saveProfile"
-                        >
-                            {{ t('userInfo.save') }}
-                        </el-button>
+                         :label="t('userInfo.save')" :icon="actionIcons.save" />
                     </el-form-item>
                 </el-form>
             </section>
@@ -98,13 +92,11 @@
                     </el-form-item>
 
                     <el-form-item>
-                        <el-button
+                        <ActionButton
                             type="warning"
                             :loading="changingPassword"
                             @click="changePassword"
-                        >
-                            {{ t('userInfo.changePassword.submit') }}
-                        </el-button>
+                         :label="t('userInfo.changePassword.submit')" :icon="actionIcons.lock" />
                     </el-form-item>
                 </el-form>
             </section>
@@ -120,6 +112,8 @@ import axios from '@/utils/axios'
 import { useAuthStore } from '@/stores/auth'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
+import ActionButton from '@/components/ui/ActionButton.vue'
+import { actionIcons } from '@/components/ui/actionIcons'
 import CryptoJS from 'crypto-js'
 
 interface ProfileFormModel {
@@ -296,7 +290,7 @@ const loadUserInfo = async () => {
 
 const saveProfile = async () => {
     if (isForcedPasswordChange.value) {
-        ElMessage.warning('请先完成密码修改')
+        ElMessage.warning(t('userInfo.messages.passwordChangeFirst'))
         return
     }
 
@@ -393,7 +387,7 @@ onMounted(() => {
 
 .page-head h1 {
     margin: 0;
-    font-size: 28px;
+    font-size: 20px;
     color: #1f2937;
 }
 
@@ -411,14 +405,13 @@ onMounted(() => {
 .card {
     background: #fff;
     border: 1px solid #e5e7eb;
-    border-radius: 10px;
+    border-radius: 6px;
     padding: 20px;
-    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
 }
 
 .card h2 {
     margin: 0 0 14px;
-    font-size: 20px;
+    font-size: 16px;
     color: #111827;
 }
 

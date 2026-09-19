@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Text.Json;
 using Microsoft.AspNetCore.SignalR;
 using SwitchYard.Capacity;
 using SwitchYard.Service.Hubs;
@@ -34,6 +35,7 @@ public sealed class CapacitySolveJobService
         SaturatedPlanJobContext? saturatedPlanContext = null)
     {
         var jobId = Guid.NewGuid().ToString("N");
+        var minimumModelVersion = RequiredModelVersion(request);
         if (!_agents.TryReserve(
                 request.AgentId,
                 request.ModelId,
@@ -42,7 +44,8 @@ public sealed class CapacitySolveJobService
                 out var connectionId,
                 out var agent,
                 out var resourceLimits,
-                out var reservationError))
+                out var reservationError,
+                minimumModelVersion))
         {
             return (null, reservationError);
         }
@@ -89,6 +92,25 @@ public sealed class CapacitySolveJobService
             _logger.LogError(exception, "Failed to dispatch capacity solve job {JobId}.", jobId);
             return (Clone(job), job.Error);
         }
+    }
+
+    private static string? RequiredModelVersion(CapacitySolveJobRequest request)
+    {
+        if (!string.Equals(request.ModelId, CapacityAgentProtocol.StationCapacityModelId, StringComparison.OrdinalIgnoreCase) ||
+            request.Input.ValueKind != JsonValueKind.Object) return null;
+        string? requestedMinimum = null;
+        var containsProcess = false;
+        foreach (var property in request.Input.EnumerateObject())
+        {
+            if (string.Equals(property.Name, "minimumModelVersion", StringComparison.OrdinalIgnoreCase) && property.Value.ValueKind == JsonValueKind.String)
+                requestedMinimum = property.Value.GetString();
+            if (string.Equals(property.Name, "trains", StringComparison.OrdinalIgnoreCase) && property.Value.ValueKind == JsonValueKind.Array)
+                containsProcess |= property.Value.EnumerateArray().Any(train => train.ValueKind == JsonValueKind.Object &&
+                    train.EnumerateObject().Any(field => string.Equals(field.Name, "processConstraints", StringComparison.OrdinalIgnoreCase) &&
+                        field.Value.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined)));
+        }
+        if (containsProcess && (!Version.TryParse(requestedMinimum, out var version) || version < new Version(2, 0, 0))) return "2.0.0";
+        return requestedMinimum;
     }
 
     public void ReportProgress(string connectionId, CapacitySolveJobProgress progress)

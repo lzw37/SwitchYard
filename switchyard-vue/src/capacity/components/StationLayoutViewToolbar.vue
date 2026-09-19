@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ActionButton from '@/components/ui/ActionButton.vue'
 import { computed } from 'vue'
 import { Aim, Expand, Fold, Grid, Location } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
@@ -54,48 +55,43 @@ function toggleDensity() {
             <div class="station-layout-toolbar__primary">
                 <slot name="primary" />
                 <template v-if="showDisplayControls">
-                    <el-button
-                        size="small"
+                    <ActionButton
+                        :label="t('routeDesign.toolbar.showGrid')"
                         :icon="Grid"
                         :type="showGrid ? 'primary' : 'default'"
-                        plain
+                        :active="showGrid"
                         @click="emit('update:showGrid', !showGrid)"
-                    >
-                        {{ t('routeDesign.toolbar.showGrid') }}
-                    </el-button>
-                    <el-button
-                        size="small"
+                    />
+                    <ActionButton
+                        :label="t('routeDesign.toolbar.showNodes')"
                         :icon="Location"
                         :type="showNodes ? 'primary' : 'default'"
-                        plain
+                        :active="showNodes"
                         @click="emit('update:showNodes', !showNodes)"
-                    >
-                        {{ t('routeDesign.toolbar.showNodes') }}
-                    </el-button>
-                    <el-button type="primary" size="small" :icon="Aim" :disabled="fitDisabled" @click="emit('fit')">
-                        {{ t('stationLayout.tools.fitFullView') }}
-                    </el-button>
+                    />
+                    <ActionButton
+                        :label="t('stationLayout.tools.fitFullView')"
+                        type="primary"
+                        :icon="Aim"
+                        :disabled="fitDisabled"
+                        @click="emit('fit')"
+                    />
                 </template>
             </div>
 
             <div class="station-layout-toolbar__actions">
                 <slot name="actions" />
-                <el-button
+                <ActionButton
+                    :label="isFull ? t('stationLayout.toolbar.compact') : t('stationLayout.toolbar.full')"
                     class="station-layout-toolbar__density"
-                    size="small"
-                    text
                     :icon="isFull ? Fold : Expand"
-                    :title="isFull ? t('stationLayout.toolbar.compact') : t('stationLayout.toolbar.full')"
                     @click="toggleDensity"
-                >
-                    {{ isFull ? t('stationLayout.toolbar.compact') : t('stationLayout.toolbar.full') }}
-                </el-button>
+                />
             </div>
         </div>
 
         <div v-show="isFull" class="station-layout-toolbar__row station-layout-toolbar__row--details">
             <div v-if="showDisplayControls" class="station-view-display-group">
-                <span class="station-toolbar-group__label">{{ t('routeDesign.toolbar.layoutDisplay') }}</span>
                 <div class="station-view-switch-control">
                     <span>{{ t('routeDesign.toolbar.curveDisplay') }}</span>
                     <el-switch
@@ -118,7 +114,6 @@ function toggleDensity() {
             </div>
 
             <div v-if="showDisplayControls" class="station-view-scale-group">
-                <span class="station-toolbar-group__label">{{ t('routeDesign.toolbar.displayScale') }}</span>
                 <label class="station-view-scale-control">
                     <span>{{ t('stationLayout.scale.x') }}</span>
                     <el-slider
@@ -161,9 +156,9 @@ function toggleDensity() {
     width: 100%;
     min-width: 0;
     color: var(--el-text-color-primary);
-    background: linear-gradient(180deg, #fff 0%, #fafbfc 100%);
+    background: var(--el-bg-color);
     border-bottom: 1px solid var(--el-border-color-light);
-    box-shadow: 0 1px 2px rgb(15 23 42 / 4%);
+    box-shadow: none;
 }
 
 .station-layout-toolbar__row {
@@ -176,7 +171,7 @@ function toggleDensity() {
 }
 
 .station-layout-toolbar__row--main {
-    min-height: 44px;
+    min-height: 40px;
 }
 
 .station-layout-toolbar__row--details {

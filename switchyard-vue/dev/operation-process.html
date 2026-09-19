@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>作业过程编排 · 交互示例</title>
+    <style>
+      * { box-sizing: border-box; }
+      body { display: flex; flex-direction: column; height: 100dvh; overflow: hidden; margin: 0; color: #183247; background: #f2f5fa; font-family: "Microsoft YaHei", system-ui, sans-serif; }
+      .preview-header { display: flex; align-items: center; justify-content: space-between; padding: 18px 26px; background: #132e47; color: white; }
+      .preview-header strong { font-size: 18px; letter-spacing: .06em; }
+      .preview-header span { color: #bacbdc; font-size: 13px; }
+      #app { flex: 1; min-height: 0; padding: 16px; }
+    </style>
+  </head>
+  <body>
+    <header class="preview-header"><strong>SwitchYard / 作业过程编排</strong><span>交互示例 · 仅本页内存保存 · 不修改车站数据</span></header>
+    <div id="app"></div>
+    <script type="module">
+      import { createApp, h } from 'vue'
+      import ElementPlus from 'element-plus'
+        import en from 'element-plus/es/locale/lang/en.mjs'
+        import i18n from '../src/i18n.ts'
+      import 'element-plus/dist/index.css'
+        import '../src/assets/main.css'
+        import '../src/assets/workspace.css'
+      import zhCn from 'element-plus/es/locale/lang/zh-cn.mjs'
+      import OperationProcessEditor from '../src/capacity/components/OperationProcessEditor.vue'
+      const previewLanguage = new URLSearchParams(location.search).get('lang') === 'en' ? 'en' : 'zh'
+        i18n.global.locale.value = previewLanguage
+        document.documentElement.lang = previewLanguage === 'en' ? 'en' : 'zh-CN'
+        if (previewLanguage === 'en') {
+            document.title = 'Operation process · Interactive preview'
+            document.querySelector('.preview-header strong').textContent = 'SwitchYard / Operation process'
+            document.querySelector('.preview-header span').textContent = 'Interactive preview · Saved in memory for this page'
+        }
+        createApp({ render: () => h(OperationProcessEditor, {
+        instanceID: 'preview', stationSchemeID: 'demo-station', operationPlanID: 'demo-plan', preview: true,
+      }) }).use(i18n).use(ElementPlus, { locale: previewLanguage === 'en' ? en : zhCn }).mount('#app')
+    </script>
+  </body>
+</html>

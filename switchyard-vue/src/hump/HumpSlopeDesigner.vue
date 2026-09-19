@@ -22,7 +22,7 @@
                         </el-select>
                         <el-button type="primary" size="small" @click="showConditionManager = true">...</el-button>
                     </div>
-                    <el-button class="execute-btn" type="primary" size="small" @click="executeCalculation"
+                    <el-button class="execute-btn" type="primary" size="small" @click="executeCalculation()"
                         :loading="calculationExecuting" :disabled="calculationExecuting">
                         {{ calculationExecuting ? t('humpSlopeDesigner.calculation.executing') :
                             t('humpSlopeDesigner.calculation.executeButton') }}
@@ -113,7 +113,7 @@
                 @resistance-click="handleResistanceClick"
                 @control-point-drag-end="handleControlPointDragEnd" />
             <div v-if="shouldShowCreateCalculationNotice" class="empty-calculation-condition-notice">
-                请新建计算条件
+                {{ t('humpSlopeDesigner.createCondition') }}
             </div>
             <div v-if="isCurrentHumpSchemeEmpty" class="empty-slope-layout-notice">
                 {{ t('humpSlopeDesigner.messages.emptyHumpScheme') }}

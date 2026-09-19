@@ -3,7 +3,7 @@
         <div class="create-user-box">
             <h2 class="create-user-title">{{ t('createUser.title') }}</h2>
             <el-form :model="createUserForm" :rules="rules" ref="createUserFormRef" class="create-user-form"
-                label-width="80px">
+                label-position="top">
                 <el-form-item :label="t('createUser.username')" prop="username">
                     <el-input v-model="createUserForm.username" :placeholder="t('createUser.placeholder.username')"
                         clearable />
@@ -33,12 +33,10 @@
                 </el-form-item>
 
                 <el-form-item>
-                    <el-button type="primary" :loading="loading" @click="handleCreateUser" class="create-button">
-                        {{ t('createUser.buttons.create') }}
-                    </el-button>
-                    <el-button @click="handleCancel" class="cancel-button">
-                        {{ t('createUser.buttons.cancel') }}
-                    </el-button>
+                    <div class="form-actions">
+                        <ActionButton type="primary" :loading="loading" @click="handleCreateUser" :label="t('createUser.buttons.create')" :icon="actionIcons.save" />
+                        <ActionButton @click="handleCancel" :label="t('createUser.buttons.cancel')" :icon="actionIcons.close" />
+                    </div>
                 </el-form-item>
 
                 <div class="back-to-login">
@@ -50,6 +48,8 @@
 </template>
 
 <script setup lang="ts">
+import ActionButton from '@/components/ui/ActionButton.vue'
+import { actionIcons } from '@/components/ui/actionIcons'
 import { ref, reactive } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
@@ -192,36 +192,27 @@ const handleCancel = () => {
     justify-content: center;
     align-items: center;
     min-height: 100vh;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: var(--sy-surface-muted, #f6f8fa);
 }
 
 .create-user-box {
-    width: 450px;
-    padding: 40px;
+    width: min(450px, calc(100vw - 32px));
+    padding: 28px;
     background: white;
-    border-radius: 10px;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+    border-radius: 6px;
+    box-shadow: none; border: 1px solid var(--sy-border, #dfe4ea);
 }
 
 .create-user-title {
     text-align: center;
     margin-bottom: 30px;
     color: #333;
-    font-size: 24px;
+    font-size: 20px;
     font-weight: 600;
 }
 
 .create-user-form {
     width: 100%;
-}
-
-.create-button {
-    width: 48%;
-}
-
-.cancel-button {
-    width: 48%;
-    margin-left: 4%;
 }
 
 .back-to-login {
@@ -230,7 +221,7 @@ const handleCancel = () => {
 }
 
 .back-to-login a {
-    color: #667eea;
+    color: var(--el-color-primary, #4776a8);
     text-decoration: none;
     font-size: 14px;
 }
@@ -242,4 +233,5 @@ const handleCancel = () => {
 :deep(.el-form-item) {
     margin-bottom: 20px;
 }
+.form-actions { display:flex; align-items:center; gap:8px; }
 </style>

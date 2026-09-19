@@ -100,7 +100,8 @@ public sealed class CapacityAgentRegistry
         out string connectionId,
         out CapacityAgentInfo? agent,
         out CapacityTaskResourceLimits resourceLimits,
-        out string error)
+        out string error,
+        string? minimumModelVersion = null)
     {
         lock (_syncRoot)
         {
@@ -131,6 +132,15 @@ public sealed class CapacityAgentRegistry
             if (!record.Models.Any(model => string.Equals(model.Id, modelId, StringComparison.OrdinalIgnoreCase)))
             {
                 error = "指定的 CapacityAgent 不支持所选模型。";
+                return false;
+            }
+
+            if (!string.IsNullOrWhiteSpace(minimumModelVersion) &&
+                (!Version.TryParse(minimumModelVersion, out var requiredVersion) ||
+                 !record.Models.Any(model => string.Equals(model.Id, modelId, StringComparison.OrdinalIgnoreCase) &&
+                    Version.TryParse(model.Version, out var version) && version >= requiredVersion)))
+            {
+                error = $"该作业计划包含作业过程约束，需要模型版本 {minimumModelVersion} 或更新的 CapacityAgent；请更新并重新连接计算代理。";
                 return false;
             }
 

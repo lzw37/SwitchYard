@@ -1,36 +1,27 @@
 <template>
     <section class="capacity-main">
         <div class="capacity-tabs-wrapper">
+            <div class="workspace-topbar">
             <div class="left-controls">
-                <el-button type="primary" @click="showInstanceManager = true">
-                    {{ t('capacityMain.buttons.instanceManager') }}
-                </el-button>
+                <ActionButton :label="t('capacityMain.buttons.instanceManager')" :icon="actionIcons.folder" @click="showInstanceManager = true" />
                 <el-select
                     v-model="selectedInstance"
                     :placeholder="t('capacityMain.placeholders.selectInstance')"
                     :loading="loadingInstances"
                     :disabled="loadingInstances"
-                    style="margin-left: 12px; width: 220px;"
+                    class="instance-select"
                 >
                     <el-option v-for="inst in activeInstances" :key="inst.id" :label="inst.name" :value="inst.id" />
                 </el-select>
             </div>
             <div class="right-controls">
-                <el-button-group class="language-switch">
-                    <el-button size="small" :type="currentLocale === 'zh' ? 'primary' : 'default'"
-                        @click="switchLanguage('zh')">
-                        {{ t('common.language.zh') }}
-                    </el-button>
-                    <el-button size="small" :type="currentLocale === 'en' ? 'primary' : 'default'"
-                        @click="switchLanguage('en')">
-                        {{ t('common.language.en') }}
-                    </el-button>
-                </el-button-group>
+                <ActionButton :label="t(currentLocale === 'zh' ? 'common.language.en' : 'common.language.zh')"
+                    @click="switchLanguage(currentLocale === 'zh' ? 'en' : 'zh')">
+                    <span class="language-code">{{ currentLocale === 'zh' ? 'EN' : '中' }}</span>
+                </ActionButton>
                 <el-dropdown class="user-dropdown" @command="handleUserMenuCommand">
-                    <span class="user-menu-trigger">
-                        <span class="user-menu-name">{{ userDisplayName }}</span>
-                        <span class="user-menu-role">{{ userDisplayRole }}</span>
-                    </span>
+                    <button class="user-menu-trigger" type="button" :aria-label="`${userDisplayName} · ${userDisplayRole}`"
+                        :title="`${userDisplayName} · ${userDisplayRole}`"><el-icon><User /></el-icon></button>
                     <template #dropdown>
                         <el-dropdown-menu>
                             <el-dropdown-item command="userinfo">
@@ -45,6 +36,7 @@
                         </el-dropdown-menu>
                     </template>
                 </el-dropdown>
+            </div>
             </div>
             <el-tabs v-model="activeTab" class="capacity-tabs">
                 <el-tab-pane :label="t('capacityMain.tabs.stationLayout')" name="stationLayout">
@@ -119,6 +111,9 @@ import { useI18n } from 'vue-i18n'
 import axios from '@/utils/axios'
 import { ElMessage } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
+import ActionButton from '@/components/ui/ActionButton.vue'
+import { actionIcons } from '@/components/ui/actionIcons'
+import { User } from '@element-plus/icons-vue'
 import StationLayout from './StationLayout.vue'
 import RouteDesign from './RouteDesign.vue'
 import CalculationParameters from './CalculationParameters.vue'
@@ -227,241 +222,21 @@ onMounted(() => {
 
 </script>
 
-<style scoped lang="css">
-.capacity-main {
-    display: flex;
-    flex-direction: column;
-    width: 100%;
-    height: 100dvh;
-    padding: 24px;
-    overflow: hidden;
-    background-color: white;
-}
-
-.capacity-tabs-wrapper {
-    position: relative;
-    display: flex;
-    flex: 1 1 auto;
-    flex-direction: column;
-    min-height: 0;
-    width: 100%;
-    min-width: 0;
-}
-
-.left-controls {
-    position: absolute;
-    left: 0;
-    top: 0;
-    z-index: 1;
-    display: flex;
-    align-items: center;
-    height: 40px;
-}
-
-.right-controls {
-    position: absolute;
-    right: 0;
-    top: 0;
-    z-index: 1;
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 10px;
-    height: 40px;
-}
-
-.language-switch {
-    margin-left: 0;
-}
-
-.user-dropdown {
-    display: inline-flex;
-}
-
-.user-menu-trigger {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    height: 30px;
-    padding: 0 10px;
-    border-radius: 6px;
-    border: 1px solid #c9d8ea;
-    background: linear-gradient(180deg, #f9fbff 0%, #eef4fb 100%);
-    color: #1f3a68;
-    font-size: 13px;
-    cursor: pointer;
-    transition: all 0.2s ease;
-}
-
-.user-menu-trigger:hover {
-    border-color: #8eb0d8;
-    background: linear-gradient(180deg, #ffffff 0%, #e8f1fb 100%);
-}
-
-.user-menu-name {
-    max-width: clamp(64px, 14vw, 120px);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-weight: 600;
-}
-
-.user-menu-role {
-    padding: 1px 6px;
-    border-radius: 999px;
-    border: 1px solid #adc4e3;
-    color: #24528a;
-    background: #f0f6ff;
-    font-size: 12px;
-}
-
-.capacity-tabs {
-    display: flex;
-    flex: 1 1 auto;
-    flex-direction: column;
-    margin: 0 auto;
-    width: 100%;
-    min-width: 0;
-    min-height: 0;
-    overflow: hidden;
-}
-
-.capacity-tabs :deep(.el-tabs__header) {
-    padding-left: 450px;
-    padding-right: 300px;
-}
-
-.capacity-tabs :deep(.el-tabs__content),
-.capacity-tabs :deep(.el-tab-pane) {
-    width: 100%;
-    min-width: 0;
-    min-height: 0;
-    overflow: hidden;
-}
-
-.capacity-tabs :deep(.el-tabs__content) {
-    flex: 1 1 auto;
-}
-
-.capacity-tabs :deep(.el-tab-pane) {
-    height: 100%;
-}
-
-.tab-placeholder {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 400px;
-    border: 2px dashed #d6e5ef;
-    border-radius: 8px;
-    background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
-}
-
-.station-layout-pane {
-    width: 100%;
-    max-width: 100%;
-    height: 100%;
-    min-height: 0;
-    overflow: hidden;
-}
-
-.route-design-pane {
-    width: 100%;
-    max-width: 100%;
-    height: calc(100dvh - 118px);
-    min-height: 420px;
-    overflow: hidden;
-}
-
-.station-layout-3d-pane {
-    width: 100%;
-    max-width: 100%;
-    height: calc(100dvh - 118px);
-    min-height: 420px;
-    overflow: hidden;
-}
-
-.calculation-parameters-pane {
-    width: 100%;
-    max-width: 100%;
-    height: calc(100dvh - 118px);
-    min-height: 420px;
-    overflow: hidden;
-}
-
-.operation-plan-pane {
-    width: 100%;
-    max-width: 100%;
-    height: calc(100dvh - 118px);
-    min-height: 420px;
-    overflow: hidden;
-}
-
-.operation-simulation-pane {
-    width: 100%;
-    max-width: 100%;
-    height: calc(100dvh - 118px);
-    min-height: 420px;
-    overflow: hidden;
-}
-
-.model-solving-pane {
-    width: 100%;
-    max-width: 100%;
-    height: calc(100dvh - 118px);
-    min-height: 420px;
-    overflow: hidden;
-}
-
-@media (max-width: 768px) {
-    .capacity-main {
-        padding: 16px;
-    }
-
-    .capacity-tabs :deep(.el-tabs__header) {
-        padding-left: 0;
-        padding-right: 0;
-        padding-top: 48px;
-    }
-
-    .left-controls,
-    .right-controls {
-        position: static;
-        margin-bottom: 8px;
-    }
-
-    .capacity-tabs-wrapper {
-        display: flex;
-        flex-direction: column;
-    }
-
-    .station-layout-3d-pane {
-        height: calc(100dvh - 188px);
-        min-height: 420px;
-    }
-
-    .route-design-pane,
-    .calculation-parameters-pane,
-    .operation-plan-pane,
-    .operation-simulation-pane {
-        height: calc(100dvh - 188px);
-        min-height: 420px;
-    }
-
-    .model-solving-pane {
-        height: calc(100dvh - 188px);
-        min-height: 420px;
-    }
-}
-
-@media (max-width: 560px) {
-    .right-controls {
-        flex-wrap: wrap;
-        justify-content: flex-start;
-    }
-
-    .user-menu-role {
-        display: none;
-    }
-}
+<style scoped>
+.capacity-main { display:flex; flex-direction:column; width:100%; height:100dvh; padding:12px 16px; overflow:hidden; background:var(--sy-surface,#fff); }
+.capacity-tabs-wrapper { display:flex; flex:1; flex-direction:column; min-height:0; min-width:0; }
+.workspace-topbar { display:flex; justify-content:space-between; align-items:center; gap:12px; padding-bottom:8px; flex:0 0 auto; }
+.left-controls, .right-controls { display:flex; align-items:center; gap:8px; min-width:0; }
+.instance-select { width:220px; max-width:calc(100vw - 156px); }
+.language-code { font-size:11px; font-weight:600; }
+.user-menu-trigger { display:inline-flex; align-items:center; justify-content:center; width:30px; height:30px; border:1px solid var(--sy-border,#dfe4ea); border-radius:50%; color:var(--el-color-primary); background:#fff; cursor:pointer; }
+.user-menu-trigger:hover { background:var(--el-color-primary-light-9); }
+.capacity-tabs { display:flex; flex:1; flex-direction:column; width:100%; min-width:0; min-height:0; overflow:hidden; }
+.capacity-tabs :deep(> .el-tabs__header) { margin-bottom:10px; }
+.capacity-tabs :deep(> .el-tabs__content), .capacity-tabs :deep(> .el-tabs__content > .el-tab-pane) { width:100%; min-width:0; min-height:0; overflow:hidden; }
+.capacity-tabs :deep(> .el-tabs__content) { flex:1; }
+.capacity-tabs :deep(> .el-tabs__content > .el-tab-pane) { height:100%; }
+.station-layout-pane, .route-design-pane, .station-layout-3d-pane, .calculation-parameters-pane, .operation-plan-pane, .operation-simulation-pane, .model-solving-pane { width:100%; height:100%; min-width:0; min-height:0; overflow:hidden; }
+.tab-placeholder { display:flex; height:100%; align-items:center; justify-content:center; }
+@media (max-width:768px) { .capacity-main { padding:8px; } }
 </style>

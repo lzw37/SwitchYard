@@ -483,15 +483,15 @@ console.log('欢迎访问 SwitchYard 项目主页！');
                 <!-- <div class="about-stats">
                     <div class="stat-item">
                         <div class="stat-number">8+</div>
-                        <div class="stat-label">核心功能</div>
+                        <div class="stat-label">{{ t('home.stats.features') }}</div>
                     </div>
                     <div class="stat-item">
                         <div class="stat-number">2</div>
-                        <div class="stat-label">技术栈</div>
+                        <div class="stat-label">{{ t('home.stats.technology') }}</div>
                     </div>
                     <div class="stat-item">
                         <div class="stat-number">100%</div>
-                        <div class="stat-label">开源</div>
+                        <div class="stat-label">{{ t('home.stats.openSource') }}</div>
                     </div>
                 </div> -->
             </div>

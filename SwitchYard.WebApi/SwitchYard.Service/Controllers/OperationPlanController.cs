@@ -2,13 +2,16 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SwitchYard.Capacity;
 using SwitchYard.Service.Utils;
+using SwitchYard.Service.Models;
+using SwitchYard.Service.Services;
+using System.Text.Json;
 
 namespace SwitchYard.Service.Controllers
 {
     [ApiController]
     [Route("[controller]/[action]")]
     [Authorize]
-    public class OperationPlanController : ControllerBase
+    public partial class OperationPlanController : ControllerBase
     {
         private readonly ILogger<OperationPlanController> _logger;
         private readonly SnowflakeIdGenerator _snowflakeIdGenerator;
@@ -1080,6 +1083,9 @@ namespace SwitchYard.Service.Controllers
                 }
 
                 dbConnector.BeginTransaction();
+                TrainProcessSnapshotStore.DeleteTrain(dbConnector, new ProcessScope {
+                    InstanceID = scope.InstanceID!, StationSchemeID = scope.StationSchemeID!, OperationPlanID = scope.OperationPlanID!
+                }, normalizedID);
                 dbConnector.ExecuteNonQuery(
                     $@"DELETE FROM {QuoteIdentifier("movement")}
                        WHERE InstanceID = @instanceID
@@ -1143,6 +1149,9 @@ namespace SwitchYard.Service.Controllers
                     return NotFound("Train not found.");
                 }
 
+                if (IsProcessBoundTrain(dbConnector, movement.InstanceID!, movement.StationSchemeID!, movement.OperationPlanID!, movement.TrainID!))
+                    return ProcessBoundMovementConflict();
+
                 if (string.IsNullOrWhiteSpace(movement.MovementID))
                 {
                     movement.MovementID = GenerateOperationMovementID(
@@ -1200,6 +1209,9 @@ namespace SwitchYard.Service.Controllers
                     return NotFound("Movement not found.");
                 }
 
+                if (IsProcessBoundTrain(dbConnector, movement.InstanceID!, movement.StationSchemeID!, movement.OperationPlanID!, movement.TrainID!) &&
+                    !IsProcessMovementMetadataOnlyEdit(dbConnector, movement))
+                    return ProcessBoundMovementConflict();
                 UpdateMovement(dbConnector, movement);
                 return Ok(movement);
             }
@@ -1240,6 +1252,9 @@ namespace SwitchYard.Service.Controllers
                 {
                     return NotFound("Train not found.");
                 }
+
+                if (IsProcessBoundTrain(dbConnector, scope.InstanceID!, scope.StationSchemeID!, scope.OperationPlanID!, trainID))
+                    return ProcessBoundMovementConflict();
 
                 var items = NormalizeMovementOrderItems(request?.Items);
                 UpdateMovementSortOrders(
@@ -1295,6 +1310,9 @@ namespace SwitchYard.Service.Controllers
                 {
                     return NotFound("Movement not found.");
                 }
+
+                if (IsProcessBoundTrain(dbConnector, scope.InstanceID!, scope.StationSchemeID!, scope.OperationPlanID!, normalizedTrainID))
+                    return ProcessBoundMovementConflict();
 
                 dbConnector.ExecuteNonQuery(
                     $@"DELETE FROM {QuoteIdentifier("movement")}
@@ -2007,7 +2025,8 @@ namespace SwitchYard.Service.Controllers
                 .Select(movement => Math.Max(0, movement.MinDuration ?? 0))
                 .DefaultIfEmpty(0)
                 .Max();
-            var distributionEndMinutes = Math.Max(startMinutes, endMinutes - maxMinDuration);
+            var maxMinDurationMinutes = (int)Math.Ceiling(maxMinDuration / 60d);
+            var distributionEndMinutes = Math.Max(startMinutes, endMinutes - maxMinDurationMinutes);
             var availableMinutes = Math.Max(0, distributionEndMinutes - startMinutes);
             var movementSlotSize = totalMovementCount > 1
                 ? availableMinutes / (double)(totalMovementCount - 1)
@@ -2045,7 +2064,10 @@ namespace SwitchYard.Service.Controllers
                     var minDuration = Math.Max(0, movementTemplate.MinDuration ?? 0);
                     var plannedStartMinutes = startMinutes + (int)Math.Round(generatedMovementIndex * movementSlotSize);
                     var earliestStartMinutes = Math.Max(plannedStartMinutes, trainCursorMinutes);
-                    var latestEndMinutes = earliestStartMinutes + minDuration;
+                    var minDurationMinutes = (int)Math.Ceiling(minDuration / 60d);
+                    // MinDuration is seconds; the displayed plan cursor has minute precision.
+                    // Use a wider sum so very long templates cannot wrap into negative times.
+                    var latestEndMinutes = (int)Math.Min(int.MaxValue, (long)earliestStartMinutes + minDurationMinutes);
                     var routeAlternatives = ParseRouteIDList(movementTemplate.RouteIDList);
                     var route = routeAlternatives.Count > 0
                         ? routeAlternatives[(trainSequence - 1) % routeAlternatives.Count]
@@ -2467,7 +2489,10 @@ namespace SwitchYard.Service.Controllers
             return new TrainOperationPlanResponse
             {
                 Trains = LoadTrains(dbConnector, instanceID, stationSchemeID, operationPlanID),
-                Movements = LoadMovements(dbConnector, instanceID, stationSchemeID, operationPlanID)
+                Movements = LoadMovements(dbConnector, instanceID, stationSchemeID, operationPlanID),
+                ProcessConstraints = TrainProcessSnapshotStore.LoadAll(dbConnector, new ProcessScope {
+                    InstanceID = instanceID, StationSchemeID = stationSchemeID, OperationPlanID = operationPlanID
+                }).Select(snapshot => JsonSerializer.SerializeToElement(snapshot, TrainProcessSnapshotStore.JsonOptions)).ToList()
             };
         }
 
@@ -2878,6 +2903,8 @@ namespace SwitchYard.Service.Controllers
 
         private static IReadOnlyList<string> OperationPlanScopedTableNames { get; } = new[]
         {
+            TrainProcessSnapshotStore.TableName,
+            "operationprocesstemplate",
             "operationthroughputsummaryroute",
             "operationthroughputsummaryresult",
             "operationbottleneckanalysisresult",
@@ -2902,6 +2929,8 @@ namespace SwitchYard.Service.Controllers
         {
             foreach (var tableName in OperationPlanScopedTableNames)
             {
+                // The additive orchestration table is created on first use.
+                if ((tableName is "operationprocesstemplate" or TrainProcessSnapshotStore.TableName) && !TableExists(dbConnector, tableName)) continue;
                 dbConnector.ExecuteNonQuery(
                     $@"DELETE FROM {QuoteIdentifier(tableName)}
                        WHERE InstanceID = @instanceID
@@ -2959,6 +2988,7 @@ namespace SwitchYard.Service.Controllers
         {
             foreach (var tableName in OperationPlanScopedTableNames)
             {
+                if ((tableName is "operationprocesstemplate" or TrainProcessSnapshotStore.TableName) && !TableExists(dbConnector, tableName)) continue;
                 dbConnector.ExecuteNonQuery(
                     $@"UPDATE {QuoteIdentifier(tableName)}
                        SET OperationPlanID = @operationPlanID
@@ -3212,6 +3242,9 @@ namespace SwitchYard.Service.Controllers
 
         private void DeleteTrainOperationPlan(DBConnector dbConnector, string instanceID, string stationSchemeID, string operationPlanID)
         {
+            TrainProcessSnapshotStore.DeleteScope(dbConnector, new ProcessScope {
+                InstanceID = instanceID, StationSchemeID = stationSchemeID, OperationPlanID = operationPlanID
+            });
             dbConnector.ExecuteNonQuery(
                 $@"DELETE FROM {QuoteIdentifier("movement")}
                    WHERE InstanceID = @instanceID

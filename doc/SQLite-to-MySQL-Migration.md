@@ -1,30 +1,60 @@
-# SwitchYard SQLite 到 MySQL 迁移方案
+# SwitchYard SQLite 到 MySQL 迁移说明与历史评估
+
+## 当前实现与使用入口
+
+当前程序已支持两套业务数据库的 SQLite / MySQL 连接，并由 `DatabaseSchemaInitializer` 执行驼峰和能力库各自的建表脚本。API 启动不会创建 MySQL 数据库，不会生成管理员或模板实例。配置与上线说明以 [开发指南](Getting-Started.md) 和 [部署说明](Deploy-Instruction.md) 为准。
+
+仓库已有可运行的**驼峰数据库**迁移工具：
+
+- 包装脚本：[`scripts/Migrate-SqliteToMySql.ps1`](../scripts/Migrate-SqliteToMySql.ps1)
+- .NET 8 工具：[`tools/SQLiteToMySqlMigrator`](../tools/SQLiteToMySqlMigrator/Program.cs)
+- 默认建表脚本：[`mysql-schema.sql`](../SwitchYard.WebApi/SwitchYard.Service/Database/mysql-schema.sql)
+- 默认预检查：[`sqlite-precheck.sql`](../SwitchYard.WebApi/SwitchYard.Service/Database/sqlite-precheck.sql)
+
+工具固定迁移下文列出的 20 张驼峰表，**不迁移 `CapacityDatabase`**；仅替换 schema 参数不能使其成为能力库迁移工具。默认 MySQL schema 与工具建库语句使用 `utf8mb4_0900_ai_ci`，目标实例需支持该排序规则。
+
+工具只从指定 JSON 的 `HumpDatabase` 节读取默认连接信息，不加载 ASP.NET Core 的生产 JSON、环境变量或 `api.env`。创建自己的私有 JSON（例如被忽略的 `LocalData/migration.json`），填写 `HumpDatabase:SqlliteConfig:DatabaseFile` 与 `HumpDatabase:MysqlConfig` 的 Host、Port、Database、Username、Password，先用计划模式核对：
+
+```powershell
+# 从仓库根目录执行；该私有配置文件需预先准备。
+./scripts/Migrate-SqliteToMySql.ps1 -ConfigPath ./LocalData/migration.json -DryRun
+```
+
+`-DryRun` 仅校验配置与本地文件路径并显示计划，不连接数据库、不执行预检查 SQL，也不证明迁移可成功。正式执行前先备份并停写，确认目标是专门的新库后再移除 `-DryRun`。
+
+正式流程会尝试建库、执行预检查和 schema、清空目标表、事务导入数据、比较逐表行数，并在当前工作目录的 `migration-reports/` 写报告。**默认清空目标 20 张表，且清空发生在导入事务之外；导入失败不能自动恢复被清空的数据。** 预检查发现问题只警告，不会自动清洗或阻止后续迁移。
+
+可用覆盖项为 `-SqlitePath`、`-MySqlHost`、`-MySqlPort`、`-MySqlDatabase`、`-MySqlUsername`、`-MySqlPassword`、`-SchemaPath`、`-PrecheckPath`。密码宜放在受保护的私有配置中，避免写入命令历史。跳过开关为 `-SkipSchemaInitialization`、`-SkipPrecheck`、`-SkipClearTarget`、`-SkipValidation`。`-SkipClearTarget` 是追加导入，不是增量同步；非空目标可能产生重复记录并导致行数校验失败。
+
+迁移后需验证登录、模板 `001`、实例复制与计算数据；行数一致不能替代业务检查。切换 `HumpDatabase` 时不会同时迁移或切换能力库。
+
+> 以下第 1–10 节保留早期迁移设计和当时样本库的检查记录。表行数、重复/孤儿数据数量不是当前运行库的统计；约束、字段改名等是设计建议，不代表现有 schema。已完成的关键改造在相应小节注明。
 
 ## 1. 结论摘要
 
-当前项目已经在连接层预留了数据库类型切换能力，`DBConnector.GetDBConnector()` 会按 `HumpDatabase:DatabaseType` 在 SQLite 和 MySQL 间切换，说明迁移方向是正确的；但现状还不满足“只改配置即可切换”的条件。
+当前 `DBConnector.GetDBConnector()` 会按所选数据库配置节在 SQLite 和 MySQL 间切换。改变配置不会迁移业务数据；需先完成独立目标库的导入和验证。
 
-本仓库当前已落地的修复版本，按你的要求采用了“`MySQL` 不加主键、不加外键”的实现方式，相关脚本位于 `SwitchYard.WebApi/SwitchYard.Service/Database/mysql-schema.sql`。
+当前驼峰 MySQL schema 未添加主键、外键，相关脚本位于 `SwitchYard.WebApi/SwitchYard.Service/Database/mysql-schema.sql`；这一描述不适用于全部能力库表。
 
-本次检查后的结论是：
+早期检查及当前对应状态：
 
-1. 代码层只完成了“连接器切换”，没有完成“MySQL 可落地的建库、建表、初始化、数据约束、数据迁移工具链”。
-2. 现有 SQLite 库中存在重复键和孤儿数据，不能直接带严格主外键约束导入 MySQL。
-3. 现有部分 SQL 写法依赖 SQLite 的宽松特性，迁移前应先做一轮兼容性改造。
+1. 当前已有 schema 初始化、SQL 预检查、驼峰迁移工具与行数验证；版本化结构迁移和种子数据引导仍未提供。
+2. 早期样本 SQLite 中曾发现重复键和孤儿数据；迁移实际数据前应重新运行检查。
+3. 已修复下述车型作用域与计算结果参数化写入问题，其他兼容性仍需在目标实例验证。
 4. 推荐采用“新建 MySQL 库并行验证 + 一次性切换”的迁移方式，不建议原地替换。
 
-## 2. 本次代码与数据检查结果
+## 2. 早期代码与样本数据检查记录
 
 ### 2.1 代码入口
 
 - 数据库切换入口：`SwitchYard.WebApi/SwitchYard.Service/DBConnector.cs`
 - 配置入口：`SwitchYard.WebApi/SwitchYard.Service/appsettings.json`
 - 启动初始化：`SwitchYard.WebApi/SwitchYard.Service/Program.cs`
-- 自动建表逻辑：`SwitchYard.WebApi/SwitchYard.Service/Services/RefreshTokenService.cs`
+- 当前自动建表入口：`SwitchYard.WebApi/SwitchYard.Service/Services/DatabaseSchemaInitializer.cs`
 
 ### 2.2 现有库表
 
-SQLite 当前包含 20 张表：
+当时的驼峰 SQLite 样本包含以下 20 张表（能力库另有 schema）：
 
 - `user`
 - `refreshtoken`
@@ -47,7 +77,7 @@ SQLite 当前包含 20 张表：
 - `headwaycheckdata`
 - `headwaycheckresult`
 
-### 2.3 当前数据量
+### 2.3 历史样本数据量
 
 主要表记录数如下：
 
@@ -101,11 +131,11 @@ SQLite 当前包含 20 张表：
    - `position.ID`、`positionsegment.ID` 这样的值明显在不同实例/不同线路下重复出现
    - 说明这些表在业务上更接近“父级作用域内唯一”，而不是“全局唯一”
 
-### 2.5 当前代码里的 MySQL 迁移风险点
+### 2.5 早期风险与当前状态
 
-1. 只有 `refreshtoken` 有自动建表逻辑，其他业务表依赖现成 SQLite 文件，MySQL 侧没有完整 schema 初始化能力。
-2. `HumpController.ExecuteEnergyHeightCalculation()` 里仍在用字符串拼接批量 `INSERT`，迁移到 MySQL 前应改成参数化写入。
-3. `wagonconcept` 的更新/删除逻辑仅按 `TypeName` 查询和删除，没有带 `InstanceID`，在 MySQL 严格建模后这是明显 bug。
+1. 已增加 `DatabaseSchemaInitializer` 和四份业务 schema；旧表字段变更仍需单独核对。
+2. `HumpController` 的计算结果写入已改用参数化 `INSERT`。
+3. `wagonconcept` 的更新、删除及读取已按 `InstanceID` 与 `TypeName` 限定作用域。
 4. 表名 `user`、`switch` 建议统一做转义或重命名，避免与数据库关键字/系统对象语义冲突。
 5. `RefreshTokenService` 现在把时间字段以字符串方式存库，MySQL 目标模型应统一成 `DATETIME(6)` 或 `TIMESTAMP`。
 
@@ -172,13 +202,13 @@ SQLite 当前包含 20 张表：
 | `DATETIME`/文本时间混用 | 统一 `DATETIME(6)` |
 | `TEXT` token | 保留 `VARCHAR(128)` 或 `TEXT`，优先 `VARCHAR(128)` |
 
-## 5. 必做代码改造清单
+## 5. 早期代码改造清单及状态
 
-建议在真正迁移数据前先完成下面几项代码修改。
+以下保留设计方向；已实现项目标注状态，剩余建议不代表当前必需的上线前置条件。
 
 ### 5.1 抽出完整 schema 初始化
 
-新增独立的数据库初始化服务，例如：
+已实现独立的 `DatabaseSchemaInitializer` 并在启动调用。以下迁移管理、约束与种子数据职责属于后续设计：
 
 - `DatabaseSchemaInitializer`
 - `DatabaseMigrationRunner`
@@ -206,11 +236,11 @@ SQLite 当前包含 20 张表：
 
 ### 5.3 修正作用域查询 bug
 
-`wagonconcept` 当前有按 `TypeName` 全局更新/删除的逻辑，必须改为：
+此项已完成，`wagonconcept` 的作用域条件为：
 
 - `WHERE InstanceID = @InstanceID AND TypeName = @TypeName`
 
-否则多个实例下车型同名时会误删、误改。
+该条件避免多个实例下车型同名时误删、误改。
 
 ### 5.4 统一命名策略
 
@@ -227,7 +257,7 @@ SQLite 当前包含 20 张表：
 
 ### 5.5 改善连接串与安全配置
 
-建议把 MySQL 连接配置扩展为：
+当前连接器已支持以下配置键：
 
 - `Host`
 - `Port`
@@ -281,12 +311,12 @@ SQLite 当前包含 20 张表：
 2. 导出应用版本号、提交号、配置文件
 3. 明确切换窗口与回滚负责人
 
-### 步骤 2：完成代码兼容改造
+### 步骤 2：核对代码兼容改造
 
-1. 完成 schema initializer
-2. 修正 `wagonconcept` 查询范围
-3. 移除字符串拼接 SQL
-4. 补充 MySQL 初始化脚本
+1. 核对已有 schema initializer 与目标表结构
+2. 回归已修复的 `wagonconcept` 查询范围
+3. 核对参数化写入与数据库兼容性
+4. 核对已有 MySQL 初始化脚本
 5. 本地同时验证 SQLite 与 MySQL 两种配置
 
 ### 步骤 3：准备 MySQL 目标库
@@ -316,7 +346,7 @@ SQLite 当前包含 20 张表：
 
 推荐流程：
 
-1. 从 SQLite 导出为 CSV 或通过中间脚本逐表读取
+1. 优先使用文首说明的现有驼峰迁移工具逐表读取 SQLite
 2. 按依赖顺序导入 MySQL
 3. 导入顺序建议：
    - `user`
@@ -382,9 +412,9 @@ SQLite 当前包含 20 张表：
 4. 重新启动服务
 5. 保留 MySQL 故障现场供排查
 
-## 9. 建议的交付物
+## 9. 早期建议的交付物
 
-建议把迁移实施拆成以下几个交付件：
+其中 schema、预检查和迁移工具已在仓库提供；清洗、验证记录与回滚方案需结合实际数据准备：
 
 1. `mysql-schema.sql`
 2. `sqlite-precheck.sql`
@@ -393,17 +423,17 @@ SQLite 当前包含 20 张表：
 5. `migration-verification.md`
 6. `rollback-runbook.md`
 
-## 10. 对本项目的最终建议
+## 10. 早期实施顺序建议
 
 如果目标是“尽快切过去”，最稳妥的顺序是：
 
 1. 先做代码兼容改造
 2. 再做 SQLite 数据清洗
-3. 再生成 MySQL schema 和迁移脚本
+3. 核对仓库中的 MySQL schema 和迁移工具
 4. 先在测试库完整跑通一次
 5. 最后再切生产
 
-如果跳过第 1、2 步，直接把 SQLite 数据导进 MySQL，大概率会在以下地方出问题：
+如果后续增加严格约束或改动模型，而未先验证兼容性和数据质量，应重点检查以下风险：
 
 1. 主键/唯一键冲突
 2. 外键冲突

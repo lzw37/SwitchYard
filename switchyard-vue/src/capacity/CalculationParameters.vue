@@ -28,28 +28,20 @@
                 </div>
             </template>
             <template #primary>
-                <el-button
+                <ActionButton
                     :icon="SetUp"
                     type="primary"
-                    size="small"
                     :disabled="!canBatchSetRouteTimes"
-                    @click="openBatchSetDialog"
-                >
-                    {{ t('calculationParameters.batchSet.button') }}
-                </el-button>
-                <el-button
+                    @click="openBatchSetDialog" :label="t('calculationParameters.batchSet.button')" />
+                <ActionButton
                     :icon="DataAnalysis"
                     type="success"
-                    size="small"
                     :disabled="!canOpenTractionCalculation"
-                    @click="openTractionCalculationDialog"
-                >
-                    {{ t('calculationParameters.traction.button') }}
-                </el-button>
+                    @click="openTractionCalculationDialog" :label="t('calculationParameters.traction.button')" />
             </template>
         </StationLayoutViewToolbar>
 
-        <div ref="bodyRef" class="calc-params-body" :class="{ 'is-resizing': isResizing }" :style="calcBodyStyle">
+        <div ref="bodyRef" class="calc-params-body" :style="calcBodyStyle">
             <aside class="calc-route-pane" v-loading="loadingRoutes">
                 <header class="calc-pane-header">
                     <div>
@@ -57,12 +49,10 @@
                         <span>{{ stationRouteListSummary }}</span>
                     </div>
                     <div class="calc-header-actions">
-                        <el-tooltip :content="t('routeDesign.stationRoute.actions.refresh')" placement="top">
-                            <el-button :icon="Refresh" circle size="small" :disabled="!canLoadRoutes" @click="refreshRouteList" />
-                        </el-tooltip>
+                        <ActionButton :icon="Refresh" :disabled="!canLoadRoutes" @click="refreshRouteList" :label="t('routeDesign.stationRoute.actions.refresh')" />
                         <el-popover placement="bottom-start" trigger="click" width="360" popper-class="station-route-filter-popover">
                             <template #reference>
-                                <el-button :icon="Filter" circle size="small" :type="routeFiltersActive ? 'primary' : 'default'" />
+                                <ActionButton :icon="Filter" :type="routeFiltersActive ? 'primary' : 'default'" :label="t('routeDesign.stationRoute.actions.filter')" />
                             </template>
                             <div class="calc-filter-panel">
                                 <el-select v-model="routeFilters.types" multiple filterable clearable collapse-tags size="small" :placeholder="t('routeDesign.stationRoute.filter.type')">
@@ -81,9 +71,7 @@
                                 >
                                     <el-option v-for="option in getRouteFilterSelectOptions(filter)" :key="option.id" :label="option.name" :value="option.id" />
                                 </el-select>
-                                <el-button :icon="Close" size="small" :disabled="!routeFiltersActive" @click="clearRouteFilters">
-                                    {{ t('routeDesign.stationRoute.actions.clearFilters') }}
-                                </el-button>
+                                <ActionButton :icon="Close" :disabled="!routeFiltersActive" @click="clearRouteFilters" :label="t('routeDesign.stationRoute.actions.clearFilters')" />
                             </div>
                         </el-popover>
                     </div>
@@ -168,13 +156,7 @@
                     <el-table-column prop="description" :label="t('routeDesign.stationRoute.fields.description')" min-width="150" show-overflow-tooltip />
                 </el-table>
             </aside>
-            <div
-                class="calc-vertical-resizer"
-                role="separator"
-                aria-orientation="vertical"
-                @mousedown="startColumnResize('left', $event)"
-                @dblclick="resetRoutePaneWidth"
-            />
+            <PaneDivider v-model="routePaneWidth" :min="240" :max="Math.max(240, (bodyRef?.clientWidth || 1440) - paramPaneWidth - 376)" :label="t('calculationParameters.routes.title')" @dblclick="resetRoutePaneWidth" />
 
             <main ref="centerPaneRef" class="calc-center-pane" :style="calcCenterStyle">
                 <section class="calc-layout-pane">
@@ -199,13 +181,7 @@
                         />
                     </div>
                 </section>
-                <div
-                    class="calc-horizontal-resizer"
-                    role="separator"
-                    aria-orientation="horizontal"
-                    @mousedown="startRowResize"
-                    @dblclick="resetLayoutPaneHeight"
-                />
+                <PaneDivider :model-value="layoutPaneHeight || Math.round((centerPaneRef?.clientHeight || 600) * 2 / 3)" direction="vertical" :min="180" :max="Math.max(180, (centerPaneRef?.clientHeight || 600) - 158)" :label="t('calculationParameters.occupancy.title')" @update:model-value="layoutPaneHeight = $event" @dblclick="resetLayoutPaneHeight" />
                 <section class="calc-occupancy-pane">
                     <header class="calc-occupancy-header">
                         <h2>{{ t('calculationParameters.occupancy.title') }}</h2>
@@ -245,13 +221,7 @@
                     />
                 </section>
             </main>
-            <div
-                class="calc-vertical-resizer"
-                role="separator"
-                aria-orientation="vertical"
-                @mousedown="startColumnResize('right', $event)"
-                @dblclick="resetParamPaneWidth"
-            />
+            <PaneDivider v-model="paramPaneWidth" reverse :min="240" :max="Math.max(240, (bodyRef?.clientWidth || 1440) - routePaneWidth - 376)" :label="t('calculationParameters.manager.title')" @dblclick="resetParamPaneWidth" />
 
             <aside class="calc-param-pane">
                 <header class="calc-param-header">
@@ -260,26 +230,18 @@
                         <span>{{ selectedRouteId || t('calculationParameters.manager.noRoute') }}</span>
                     </div>
                     <div class="calc-param-actions">
-                        <el-button
+                        <ActionButton
                             :icon="Plus"
                             type="primary"
-                            size="small"
                             :disabled="!canCreateRouteTimes"
                             :loading="creatingRouteTimes"
-                            @click="createRouteTimes"
-                        >
-                            {{ t('calculationParameters.manager.createOccupancyTime') }}
-                        </el-button>
-                        <el-button
+                            @click="createRouteTimes" :label="t('calculationParameters.manager.createOccupancyTime')" />
+                        <ActionButton
                             :icon="Check"
                             type="success"
-                            size="small"
                             :disabled="!canSaveRouteTimes"
                             :loading="savingRouteTimes"
-                            @click="saveRouteTimes"
-                        >
-                            {{ t('calculationParameters.manager.saveOccupancyTime') }}
-                        </el-button>
+                            @click="saveRouteTimes" :label="t('calculationParameters.manager.saveOccupancyTime')" />
                     </div>
                 </header>
                 <div class="calc-uniform-shift-panel">
@@ -306,13 +268,10 @@
                             :disabled="loadingRouteTimes || creatingRouteTimes || savingRouteTimes"
                         />
                     </label>
-                    <el-button
-                        size="small"
+                    <ActionButton
                         :disabled="!canApplyUniformRouteTimes"
                         @click="applyUniformRouteTimeShifts"
-                    >
-                        {{ t('calculationParameters.manager.uniformShift.apply') }}
-                    </el-button>
+                     :icon="Check" :label="t('calculationParameters.manager.uniformShift.apply')" />
                 </div>
                 <el-table
                     :data="routeTimes"
@@ -385,9 +344,7 @@
                 <el-table-column prop="routeCount" :label="t('calculationParameters.batchSet.routeCount')" width="92" align="center" />
                 <el-table-column :label="t('calculationParameters.batchSet.routes')" width="150" align="center">
                     <template #default="{ row }">
-                        <el-button size="small" :disabled="batchSettingRouteTimes" @click="openBatchRouteList(row.type)">
-                            {{ t('calculationParameters.batchSet.routeList', { selected: row.selectedRouteIds.length, total: row.routeCount }) }}
-                        </el-button>
+                        <ActionButton :disabled="batchSettingRouteTimes" @click="openBatchRouteList(row.type)" :icon="List" :label="t('calculationParameters.batchSet.routeList', { selected: row.selectedRouteIds.length, total: row.routeCount })" />
                     </template>
                 </el-table-column>
                 <el-table-column :label="t('calculationParameters.manager.fields.startShift')" width="150">
@@ -418,17 +375,13 @@
                 </el-table-column>
             </el-table>
             <template #footer>
-                <el-button :disabled="batchSettingRouteTimes" @click="batchSetDialogVisible = false">
-                    {{ t('calculationParameters.batchSet.cancel') }}
-                </el-button>
-                <el-button
+                <ActionButton :disabled="batchSettingRouteTimes" @click="batchSetDialogVisible = false" :icon="Close" :label="t('calculationParameters.batchSet.cancel')" />
+                <ActionButton
                     type="primary"
                     :loading="batchSettingRouteTimes"
                     :disabled="batchRouteTimeSettings.length === 0"
                     @click="applyBatchSetRouteTimes"
-                >
-                    {{ t('calculationParameters.batchSet.apply') }}
-                </el-button>
+                 :icon="Check" :label="t('calculationParameters.batchSet.apply')" />
             </template>
         </el-dialog>
 
@@ -458,9 +411,7 @@
                 </el-checkbox-group>
             </div>
             <template #footer>
-                <el-button type="primary" @click="batchRouteListDialogVisible = false">
-                    {{ t('calculationParameters.batchSet.confirmRoutes') }}
-                </el-button>
+                <ActionButton type="primary" @click="batchRouteListDialogVisible = false" :icon="List" :label="t('calculationParameters.batchSet.confirmRoutes')" />
             </template>
         </el-dialog>
 
@@ -593,10 +544,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import ActionButton from '@/components/ui/ActionButton.vue'
+import PaneDivider from '@/components/ui/PaneDivider.vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
-import { Check, Close, DataAnalysis, Filter, Plus, Refresh, SetUp } from '@element-plus/icons-vue'
+import { Check, Close, DataAnalysis, Filter, List, Plus, Refresh, SetUp } from '@element-plus/icons-vue'
 import axios from '@/utils/axios'
 import OccupationTimeGantt from './components/OccupationTimeGantt.vue'
 import StationLayoutEditor from './components/StationLayoutEditor.vue'
@@ -757,7 +710,6 @@ const occupancyGanttAutoFit = ref(false)
 const routePaneWidth = ref(320)
 const paramPaneWidth = ref(300)
 const layoutPaneHeight = ref(0)
-const isResizing = ref(false)
 
 const routeHighlightColors = { arrival: '#ef4444', departure: '#2563eb', locomotive: '#16a34a', shunting: '#facc15' }
 const routeTypeOptions = ['Arrival', 'Departure', 'Shunting', 'Locomotive']
@@ -925,9 +877,6 @@ let layoutLoadVersion = 0
 let routeLoadVersion = 0
 let routeEndLoadVersion = 0
 let routeTimeLoadVersion = 0
-let resizeTarget: 'left' | 'right' | 'row' | '' = ''
-let previousBodyCursor = ''
-let previousBodyUserSelect = ''
 
 function readString(source: any, ...keys: string[]) {
     for (const key of keys) {
@@ -1992,60 +1941,6 @@ function clampValue(value: number, min: number, max: number) {
     return Math.max(min, Math.min(max, value))
 }
 
-function startResize(target: 'left' | 'right' | 'row', cursor: string, event: MouseEvent) {
-    event.preventDefault()
-    resizeTarget = target
-    isResizing.value = true
-    previousBodyCursor = document.body.style.cursor
-    previousBodyUserSelect = document.body.style.userSelect
-    document.body.style.cursor = cursor
-    document.body.style.userSelect = 'none'
-    window.addEventListener('mousemove', onResizeMouseMove)
-    window.addEventListener('mouseup', finishResize)
-}
-
-function startColumnResize(target: 'left' | 'right', event: MouseEvent) {
-    startResize(target, 'col-resize', event)
-}
-
-function startRowResize(event: MouseEvent) {
-    startResize('row', 'row-resize', event)
-}
-
-function onResizeMouseMove(event: MouseEvent) {
-    if (!resizeTarget) return
-
-    if (resizeTarget === 'left' || resizeTarget === 'right') {
-        const rect = bodyRef.value?.getBoundingClientRect()
-        if (!rect) return
-        const centerMin = 360
-        const resizerTotal = 16
-        if (resizeTarget === 'left') {
-            const maxWidth = rect.width - paramPaneWidth.value - centerMin - resizerTotal
-            routePaneWidth.value = clampValue(event.clientX - rect.left, 240, Math.max(240, maxWidth))
-        } else {
-            const maxWidth = rect.width - routePaneWidth.value - centerMin - resizerTotal
-            paramPaneWidth.value = clampValue(rect.right - event.clientX, 240, Math.max(240, maxWidth))
-        }
-        return
-    }
-
-    const rect = centerPaneRef.value?.getBoundingClientRect()
-    if (!rect) return
-    const maxHeight = rect.height - 150 - 8
-    layoutPaneHeight.value = clampValue(event.clientY - rect.top, 180, Math.max(180, maxHeight))
-}
-
-function finishResize() {
-    if (!resizeTarget) return
-    resizeTarget = ''
-    isResizing.value = false
-    window.removeEventListener('mousemove', onResizeMouseMove)
-    window.removeEventListener('mouseup', finishResize)
-    document.body.style.cursor = previousBodyCursor
-    document.body.style.userSelect = previousBodyUserSelect
-}
-
 function resetRoutePaneWidth() {
     routePaneWidth.value = 320
 }
@@ -2065,9 +1960,6 @@ watch(() => props.selectedInstanceId, () => {
     void refreshForInstance()
 }, { immediate: true })
 
-onBeforeUnmount(() => {
-    finishResize()
-})
 </script>
 
 <style scoped>
@@ -2395,49 +2287,6 @@ onBeforeUnmount(() => {
     vertical-align: middle;
 }
 
-.calc-vertical-resizer,
-.calc-horizontal-resizer {
-    position: relative;
-    background: #dbe5f0;
-    z-index: 2;
-}
-
-.calc-vertical-resizer {
-    cursor: col-resize;
-}
-
-.calc-horizontal-resizer {
-    cursor: row-resize;
-}
-
-.calc-vertical-resizer::before,
-.calc-horizontal-resizer::before {
-    content: "";
-    position: absolute;
-    background: #a9b8ca;
-}
-
-.calc-vertical-resizer::before {
-    top: 0;
-    bottom: 0;
-    left: 3px;
-    width: 2px;
-}
-
-.calc-horizontal-resizer::before {
-    top: 3px;
-    right: 0;
-    left: 0;
-    height: 2px;
-}
-
-.calc-vertical-resizer:hover,
-.calc-horizontal-resizer:hover,
-.calc-params-body.is-resizing .calc-vertical-resizer,
-.calc-params-body.is-resizing .calc-horizontal-resizer {
-    background: #c7d8ea;
-}
-
 .calc-pane-header {
     display: flex;
     align-items: center;
@@ -2452,7 +2301,7 @@ onBeforeUnmount(() => {
 .calc-occupancy-pane h2 {
     margin: 0;
     color: #1f2d3d;
-    font-size: 15px;
+    font-size: 13px;
     font-weight: 600;
 }
 
