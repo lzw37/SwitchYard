@@ -1300,6 +1300,7 @@
         }
     },
     "operationPlan": {
+        "schemeTemplates": "Shared station scheme templates",
         "actions": {
             "refresh": "Refresh",
             "add": "Add",
@@ -1430,7 +1431,7 @@
                 "updateFailed": "Failed to update operation plan",
                 "copySuccess": "Operation plan copied",
                 "copyFailed": "Failed to copy operation plan",
-                "deleteConfirm": "Delete operation plan {name}? Templates, train operations, and analysis results under it will also be deleted.",
+                "deleteConfirm": "Delete operation plan {name}? Its train operations and analysis results will also be deleted. Shared station scheme templates will be retained.",
                 "deleteSuccess": "Operation plan deleted",
                 "deleteFailed": "Failed to delete operation plan"
             }
@@ -1442,7 +1443,7 @@
             "fromProcess": {
                 "action": "Generate from Process",
                 "title": "Generate Train Template from Operation Process",
-                "description": "Choose a saved operation process in the current instance, station scheme, and operation plan. A new train template will use its name. Unsaved drafts are not listed.",
+                "description": "Choose a saved operation process in the current station scheme to create a shared train template with its name, available to every operation plan in the scheme. Unsaved drafts are not listed.",
                 "sourceLabel": "Operation process template",
                 "placeholder": "Select a saved operation process template",
                 "empty": "No saved operation process templates. Save one in the process editor first.",
@@ -1915,6 +1916,7 @@
         "labels": {
             "showLabels": "Show labels",
             "displayRatio": "X:Y coordinate ratio",
+            "showOccupancy": "Show occupancy",
             "trainModel": "Train model",
             "operationPlan": "Operation plan",
             "playbackScope": "Scope",

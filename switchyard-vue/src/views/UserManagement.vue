@@ -94,8 +94,8 @@
                 </el-form-item>
             </el-form>
             <template #footer>
-                <ActionButton @click="createVisible = false" :label="t('common.actions.cancel')" :icon="actionIcons.close" />
-                <ActionButton type="primary" :loading="creating" @click="createUser" :label="t('common.actions.create')" :icon="actionIcons.add" />
+                <ActionButton variant="text" @click="createVisible = false" :label="t('common.actions.cancel')" :icon="actionIcons.close" />
+                <ActionButton variant="text" type="primary" :loading="creating" @click="createUser" :label="t('common.actions.create')" :icon="actionIcons.add" />
             </template>
         </el-dialog>
 
@@ -133,8 +133,8 @@
                 </el-form-item>
             </el-form>
             <template #footer>
-                <ActionButton @click="editVisible = false" :label="t('common.actions.cancel')" :icon="actionIcons.close" />
-                <ActionButton type="primary" :loading="saving" @click="saveUser" :label="t('common.actions.save')" :icon="actionIcons.save" />
+                <ActionButton variant="text" @click="editVisible = false" :label="t('common.actions.cancel')" :icon="actionIcons.close" />
+                <ActionButton variant="text" type="primary" :loading="saving" @click="saveUser" :label="t('common.actions.save')" :icon="actionIcons.save" />
             </template>
         </el-dialog>
 
@@ -160,7 +160,7 @@
                 </el-table>
             </div>
             <template #footer>
-                <ActionButton type="primary" @click="closeImportResult" :label="t('common.actions.back')" :icon="actionIcons.back" />
+                <ActionButton variant="text" type="primary" @click="closeImportResult" :label="t('common.actions.back')" :icon="actionIcons.back" />
             </template>
         </el-dialog>
 
@@ -180,8 +180,8 @@
                 </el-form-item>
             </el-form>
             <template #footer>
-                <ActionButton @click="resetPasswordVisible = false" :label="t('common.actions.cancel')" :icon="actionIcons.close" />
-                <ActionButton type="primary" :loading="resettingPassword" @click="submitResetPassword" :label="t('userManager.actions.confirmReset')" :icon="actionIcons.reset" />
+                <ActionButton variant="text" @click="resetPasswordVisible = false" :label="t('common.actions.cancel')" :icon="actionIcons.close" />
+                <ActionButton variant="text" type="primary" :loading="resettingPassword" @click="submitResetPassword" :label="t('userManager.actions.confirmReset')" :icon="actionIcons.reset" />
             </template>
         </el-dialog>
     </div>

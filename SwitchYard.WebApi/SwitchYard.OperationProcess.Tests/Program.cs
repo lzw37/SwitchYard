@@ -47,9 +47,10 @@ try
     await TestActivityRenameSynchronizesEventNames();
     await TestConcurrentWrites();
     await TestOperationPlanLifecycle();
+    await TestSchemeTemplateOwnershipAndMigration();
     await TestEventNodeListsDerivedFromCandidateRoutes();
-    await TestGenerateTrainTemplateFromSavedProcess();
     await TestLegacyGenerationProjectsSecondsIntoMinutes();
+    await TestGenerateTrainTemplateFromSavedProcess();
     checks += SchedulerConstraintChecks.Run();
     await TestGenerateActualTrainsFromProcess();
     await TestGeneratedProcessEventsAreEarliest();
@@ -148,8 +149,8 @@ async Task TestAccessAndCatalog()
     await Request(HttpMethod.Get, "GetTemplates", expected: HttpStatusCode.BadRequest);
     await Request(HttpMethod.Get, "GetTemplates?instanceID=scope-a&stationSchemeID=missing&operationPlanID=plan-a",
         expected: HttpStatusCode.NotFound);
-    await Request(HttpMethod.Get, "GetTemplates?instanceID=scope-a&stationSchemeID=scheme-a&operationPlanID=missing",
-        expected: HttpStatusCode.NotFound);
+    await Request(HttpMethod.Get, "GetTemplates?instanceID=scope-a&stationSchemeID=scheme-a&operationPlanID=missing");
+    await Request(HttpMethod.Get, "GetTemplates?instanceID=scope-a&stationSchemeID=scheme-a");
     var catalog = await Request(HttpMethod.Get, $"GetCatalog?{scope}");
     Assert(catalog!["nodes"]!.AsArray().Count == 3, "catalog contains only nodes in the selected scheme");
     Assert(catalog["tracks"]!.AsArray().Count == 5, "catalog preserves every track in the selected scheme");
@@ -424,6 +425,7 @@ async Task TestActivityRenameSynchronizesEventNames()
     fixture.Events.Single(e => e.Id == "arrival-end").SelectedAnchor = "a20";
     var expected = Clone(fixture);
     expected.Revision = 1;
+    expected.OperationPlanID = "";
     var saved = await AssertResponseAndReload(
         await Request(HttpMethod.Post, "CreateTemplate", fixture), expected,
         "creation preserves supplied event names and properties");
@@ -571,6 +573,8 @@ async Task TestConcurrentWrites()
 
 async Task TestOperationPlanLifecycle()
 {
+    var db = DBConnector.GetDBConnector(DBConnector.CapacityDatabaseSectionName);
+    var before = db.Query<int>("SELECT COUNT(1) FROM operationprocesstemplate WHERE InstanceID='scope-a' AND StationSchemeID='scheme-a'")!.Single();
     await Request(HttpMethod.Post, "../OperationPlan/CopyOperationPlan", new
     {
         instanceID = "scope-a", stationSchemeID = "scheme-a", sourceOperationPlanID = "plan-a",
@@ -579,11 +583,10 @@ async Task TestOperationPlanLifecycle()
     const string copiedScope = "instanceID=scope-a&stationSchemeID=scheme-a&operationPlanID=plan-copy";
     var copied = (await Request(HttpMethod.Get, $"GetTemplate?{copiedScope}&templateID=persisted"))!
         .Deserialize<OperationProcessTemplate>(jsonOptions)!;
-    Assert(copied.OperationPlanID == "plan-copy" && copied.Activities.Count == 3,
-        "copying an operation plan carries its process graph with the authoritative new scope");
-    copied.Name = "副本独立修改";
-    await Request(HttpMethod.Put, "UpdateTemplate", copied);
-    Assert((await GetTemplate("persisted")).Name == "已更新的模板", "editing a copied process leaves original unchanged");
+    Assert(copied.OperationPlanID == "" && copied.Activities.Count == 3 && copied.Revision == 2,
+        "copied plans see the same scheme-owned process template");
+    Assert(db.Query<int>("SELECT COUNT(1) FROM operationprocesstemplate WHERE InstanceID='scope-a' AND StationSchemeID='scheme-a'")!.Single() == before,
+        "copying a plan does not duplicate scheme-owned templates");
     await Request(HttpMethod.Put, "../OperationPlan/EditOperationPlan", new
     {
         instanceID = "scope-a", stationSchemeID = "scheme-a", originalOperationPlanID = "plan-copy",
@@ -592,13 +595,145 @@ async Task TestOperationPlanLifecycle()
     const string renamedScope = "instanceID=scope-a&stationSchemeID=scheme-a&operationPlanID=plan-renamed";
     var renamed = (await Request(HttpMethod.Get, $"GetTemplate?{renamedScope}&templateID=persisted"))!
         .Deserialize<OperationProcessTemplate>(jsonOptions)!;
-    Assert(renamed.OperationPlanID == "plan-renamed" && renamed.Name == "副本独立修改",
-        "renaming an operation plan updates process scope and preserves edits");
+    Assert(renamed.OperationPlanID == "" && renamed.Name == "已更新的模板",
+        "renaming a plan preserves access to its scheme-owned templates");
     await Request(HttpMethod.Delete, $"../OperationPlan/DeleteOperationPlan?{renamedScope}");
-    var db = DBConnector.GetDBConnector(DBConnector.CapacityDatabaseSectionName);
     Assert(db.Query<int>("SELECT COUNT(1) FROM operationprocesstemplate WHERE OperationPlanID IN ('plan-copy','plan-renamed')")!.Single() == 0,
-        "deleting an operation plan removes its process template rows");
+        "plan lifecycle does not create plan-owned template rows");
+    Assert(db.Query<int>("SELECT COUNT(1) FROM operationprocesstemplate WHERE InstanceID='scope-a' AND StationSchemeID='scheme-a'")!.Single() == before,
+        "deleting a plan leaves every scheme template intact");
     Assert((await GetTemplate("persisted")).Revision == 2, "operation plan lifecycle leaves original template unchanged");
+}
+
+async Task TestSchemeTemplateOwnershipAndMigration()
+{
+    const string schemeQuery = "instanceID=scope-a&stationSchemeID=template-scheme";
+    var db = DBConnector.GetDBConnector(DBConnector.CapacityDatabaseSectionName);
+    db.ExecuteNonQuery("INSERT INTO stationscheme (InstanceID,ID,Name) VALUES ('scope-a','template-scheme','方案模板回归')");
+    var process = (await Request(HttpMethod.Post, "CreateTemplate", new OperationProcessTemplate {
+        InstanceID = "scope-a", StationSchemeID = "template-scheme", Id = "scheme-process", Name = "不依赖计划的过程"
+    }))!.Deserialize<OperationProcessTemplate>(jsonOptions)!;
+    Assert(process.OperationPlanID == "", "a process can be created before the scheme has any operation plan");
+    var train = (await Request(HttpMethod.Post, "../OperationPlan/CreateTrainTemplate", new TrainTemplateRequest {
+        InstanceID = "scope-a", StationSchemeID = "template-scheme", TrainTemplateID = "scheme-train", Name = "不依赖计划的列车", Number = 1
+    }))!.Deserialize<TrainTemplateRow>(jsonOptions)!;
+    Assert(train.OperationPlanID == "", "a train template can be created without a plan");
+    var movement = (await Request(HttpMethod.Post, "../OperationPlan/CreateMovementTemplate", new MovementTemplateRequest {
+        InstanceID = "scope-a", StationSchemeID = "template-scheme", TrainTemplateID = train.TrainTemplateID,
+        MovementID = "scheme-movement", Name = "方案移动", MinDuration = 12
+    }))!.Deserialize<MovementTemplateRow>(jsonOptions)!;
+    Assert(movement.OperationPlanID == "", "movement templates inherit station scheme ownership");
+    Assert(db.Query<int>("SELECT COUNT(*) FROM operationplan WHERE InstanceID='scope-a' AND StationSchemeID='template-scheme'")!.Single() == 0,
+        "editing templates does not synthesize an operation plan");
+    foreach (var legacyPlan in new[] { "plan-does-not-exist", "different-plan" })
+    {
+        var list = (await Request(HttpMethod.Get, $"../OperationPlan/GetTrainTemplates?{schemeQuery}&operationPlanID={legacyPlan}"))!
+            .Deserialize<List<TrainTemplateRow>>(jsonOptions)!;
+        Assert(list.Single().TrainTemplateID == train.TrainTemplateID, "obsolete plan parameters do not partition train templates");
+        var processes = (await Request(HttpMethod.Get, $"GetTemplates?{schemeQuery}&operationPlanID={legacyPlan}"))!
+            .Deserialize<List<OperationProcessTemplate>>(jsonOptions)!;
+        Assert(processes.Single().Id == process.Id, "obsolete plan parameters do not partition process templates");
+    }
+    process.Name = "方案共享修改";
+    process.OperationPlanID = "obsolete-plan";
+    process = (await Request(HttpMethod.Put, "UpdateTemplate", process))!.Deserialize<OperationProcessTemplate>(jsonOptions)!;
+    Assert(process.OperationPlanID == "" && process.Revision == 2, "legacy update payloads cannot reattach a process to a plan");
+    await Request(HttpMethod.Put, "../OperationPlan/EditTrainTemplate", new TrainTemplateRequest {
+        InstanceID = "scope-a", StationSchemeID = "template-scheme", OperationPlanID = "obsolete-plan",
+        TrainTemplateID = train.TrainTemplateID, Name = "共享列车修改", Number = 1
+    });
+    await Request(HttpMethod.Put, "../OperationPlan/EditMovementTemplate", new MovementTemplateRequest {
+        InstanceID = "scope-a", StationSchemeID = "template-scheme", OperationPlanID = "obsolete-plan",
+        TrainTemplateID = train.TrainTemplateID, MovementID = movement.MovementID, Name = "共享移动修改", MinDuration = 34
+    });
+    var changed = (await Request(HttpMethod.Get, $"../OperationPlan/GetMovementTemplates?{schemeQuery}&trainTemplateID={train.TrainTemplateID}"))!
+        .Deserialize<List<MovementTemplateRow>>(jsonOptions)!;
+    Assert(changed.Single().Name == "共享移动修改" && changed.Single().MinDuration == 34,
+        "movement edits are shared independently of the selected plan");
+    var otherScheme = (await Request(HttpMethod.Get, "../OperationPlan/GetTrainTemplates?instanceID=scope-a&stationSchemeID=foreign-scheme"))!
+        .Deserialize<List<TrainTemplateRow>>(jsonOptions)!;
+    Assert(otherScheme.All(row => row.TrainTemplateID != train.TrainTemplateID), "scheme templates do not leak into another scheme");
+
+    // Older plans may reuse template IDs for different content. Preserve both definitions,
+    // their children, and existing actual-train provenance when promoting them to a scheme.
+    TrainProcessSnapshotStore.EnsureSchema(db);
+    foreach (var oldPlan in new[] { "legacy-template-a", "legacy-template-b" })
+    {
+        db.ExecuteNonQuery("INSERT INTO operationplan (InstanceID,StationSchemeID,OperationPlanID,Name) " +
+            "VALUES ('scope-a','template-scheme',@oldPlan,@oldPlan)", new { oldPlan });
+        var oldProcess = new OperationProcessTemplate {
+            InstanceID = "scope-a", StationSchemeID = "template-scheme", OperationPlanID = oldPlan,
+            Id = "colliding-process", Name = oldPlan, Revision = 4
+        };
+        db.ExecuteNonQuery("INSERT INTO operationprocesstemplate (InstanceID,StationSchemeID,OperationPlanID,TemplateID,Document,Revision,UpdatedAtUtc) " +
+            "VALUES ('scope-a','template-scheme',@oldPlan,'colliding-process',@document,4,@updatedAt)",
+            new { oldPlan, document = JsonSerializer.Serialize(oldProcess, jsonOptions), updatedAt = DateTime.UtcNow });
+        db.ExecuteNonQuery("INSERT INTO traintemplate (InstanceID,StationSchemeID,OperationPlanID,TrainTemplateID,Name,Number,IsFixedOperation) " +
+            "VALUES ('scope-a','template-scheme',@oldPlan,'colliding-train',@oldPlan,1,0)", new { oldPlan });
+        db.ExecuteNonQuery("INSERT INTO movementtemplate (InstanceID,StationSchemeID,OperationPlanID,TrainTemplateID,MovementID,Name,MinDuration,SortOrder) " +
+            "VALUES ('scope-a','template-scheme',@oldPlan,'colliding-train','colliding-move',@oldPlan,10,0)", new { oldPlan });
+        db.ExecuteNonQuery("INSERT INTO train (InstanceID,StationSchemeID,OperationPlanID,ID,TrainTemplateID,Name) " +
+            "VALUES ('scope-a','template-scheme',@oldPlan,'actual-train','colliding-train',@oldPlan)", new { oldPlan });
+        db.ExecuteNonQuery("INSERT INTO movement (InstanceID,StationSchemeID,OperationPlanID,TrainID,TrainTemplateID,MovementID,Name) " +
+            "VALUES ('scope-a','template-scheme',@oldPlan,'actual-train','colliding-train','actual-move',@oldPlan)", new { oldPlan });
+        var snapshot = new TrainProcessSnapshot {
+            InstanceID = "scope-a", StationSchemeID = "template-scheme", OperationPlanID = oldPlan,
+            TrainID = "actual-train", SourceTemplateID = oldProcess.Id, SourceRevision = 4, SourceName = oldPlan,
+            Process = oldProcess, OriginSeconds = 28800, EventTimes = new() { ["retained-event"] = 28805 }
+        };
+        TrainProcessSnapshotStore.Insert(db, snapshot, snapshot);
+    }
+    var migratedProcesses = (await Request(HttpMethod.Get, $"GetTemplates?{schemeQuery}"))!
+        .Deserialize<List<OperationProcessTemplate>>(jsonOptions)!;
+    var migratedTrains = (await Request(HttpMethod.Get, $"../OperationPlan/GetTrainTemplates?{schemeQuery}"))!
+        .Deserialize<List<TrainTemplateRow>>(jsonOptions)!;
+    Assert(migratedProcesses.Count == 3 && migratedProcesses.Select(row => row.Id).Distinct().Count() == 3 &&
+        migratedProcesses.All(row => row.OperationPlanID == ""), "legacy process collisions retain every definition under distinct scheme IDs");
+    Assert(migratedTrains.Count == 3 && migratedTrains.Select(row => row.TrainTemplateID).Distinct().Count() == 3 &&
+        migratedTrains.All(row => row.OperationPlanID == ""), "legacy train template collisions are promoted without overwriting definitions");
+    foreach (var oldPlan in new[] { "legacy-template-a", "legacy-template-b" })
+    {
+        var promoted = migratedTrains.Single(row => row.Name?.StartsWith(oldPlan, StringComparison.Ordinal) == true);
+        var children = (await Request(HttpMethod.Get, $"../OperationPlan/GetMovementTemplates?{schemeQuery}&trainTemplateID={promoted.TrainTemplateID}"))!
+            .Deserialize<List<MovementTemplateRow>>(jsonOptions)!;
+        Assert(children.Count == 1 && children[0].Name == oldPlan && children[0].OperationPlanID == "",
+            "colliding train templates retain their own movement children");
+        Assert(db.Query<string>("SELECT TrainTemplateID FROM train WHERE InstanceID='scope-a' AND StationSchemeID='template-scheme' AND OperationPlanID=@oldPlan",
+            new { oldPlan })!.Single() == promoted.TrainTemplateID, "migration preserves actual-train provenance after template ID remapping");
+        Assert(db.Query<string>("SELECT TrainTemplateID FROM movement WHERE InstanceID='scope-a' AND StationSchemeID='template-scheme' AND OperationPlanID=@oldPlan",
+            new { oldPlan })!.Single() == promoted.TrainTemplateID, "migration preserves actual-movement provenance after template ID remapping");
+        var processSource = migratedProcesses.Single(row => row.Name.StartsWith(oldPlan, StringComparison.Ordinal));
+        var migratedSnapshot = TrainProcessSnapshotStore.LoadAll(db, new ProcessScope {
+            InstanceID = "scope-a", StationSchemeID = "template-scheme", OperationPlanID = oldPlan
+        }).Single();
+        Assert(migratedSnapshot.SourceTemplateID == processSource.Id && migratedSnapshot.Process.Id == processSource.Id,
+            $"process ID collision remapping preserves snapshot provenance to its own promoted source ({oldPlan}: source={migratedSnapshot.SourceTemplateID}, process={migratedSnapshot.Process.Id}, expected={processSource.Id})");
+        Assert(migratedSnapshot.OperationPlanID == oldPlan && migratedSnapshot.Process.OperationPlanID == oldPlan &&
+            migratedSnapshot.SourceRevision == 4 && migratedSnapshot.EventTimes["retained-event"] == 28805,
+            "process migration leaves actual execution ownership, source revision and event schedule intact");
+    }
+    var again = (await Request(HttpMethod.Get, $"../OperationPlan/GetTrainTemplates?{schemeQuery}&operationPlanID=unrelated"))!
+        .Deserialize<List<TrainTemplateRow>>(jsonOptions)!;
+    Assert(again.Select(row => row.TrainTemplateID).ToHashSet().SetEquals(migratedTrains.Select(row => row.TrainTemplateID)),
+        "legacy migration is idempotent across repeated API reads");
+    await Request(HttpMethod.Post, "../OperationPlan/CopyOperationPlan", new {
+        instanceID = "scope-a", stationSchemeID = "template-scheme", sourceOperationPlanID = "legacy-template-a",
+        operationPlanID = "legacy-template-copy", name = "只复制实际作业"
+    });
+    await Request(HttpMethod.Delete, $"../OperationPlan/DeleteOperationPlan?{schemeQuery}&operationPlanID=legacy-template-a");
+    await Request(HttpMethod.Delete, $"../OperationPlan/DeleteOperationPlan?{schemeQuery}&operationPlanID=legacy-template-copy");
+    foreach (var table in new[] { "operationprocesstemplate", "traintemplate", "movementtemplate" })
+        Assert(db.Query<int>($"SELECT COUNT(*) FROM {table} WHERE InstanceID='scope-a' AND StationSchemeID='template-scheme'")!.Single() == 3,
+            $"copying and deleting operation plans preserves all scheme rows in {table}");
+    await Request(HttpMethod.Delete, $"../OperationPlan/DeleteTrainTemplate?{schemeQuery}&trainTemplateID={train.TrainTemplateID}");
+    Assert(db.Query<int>("SELECT COUNT(*) FROM movementtemplate WHERE InstanceID='scope-a' AND StationSchemeID='template-scheme' AND TrainTemplateID=@id",
+        new { id = train.TrainTemplateID })!.Single() == 0, "deleting a scheme train template removes its movement templates");
+    await Request(HttpMethod.Delete, $"DeleteTemplate?{schemeQuery}&templateID={process.Id}&revision={process.Revision}", expected: HttpStatusCode.NoContent);
+    await Request(HttpMethod.Delete, $"../StationLayout/DeleteStationScheme?{schemeQuery}");
+    foreach (var table in new[] { "operationprocesstemplate", "traintemplate", "movementtemplate" })
+        Assert(db.Query<int>($"SELECT COUNT(*) FROM {table} WHERE InstanceID='scope-a' AND StationSchemeID='template-scheme'")!.Single() == 0,
+            $"deleting the owning station scheme removes its rows in {table}");
+    Assert((await GetTemplate("persisted")).Revision == 2, "deleting one scheme does not alter another scheme's template library");
 }
 
 async Task TestEventNodeListsDerivedFromCandidateRoutes()
@@ -727,11 +862,11 @@ async Task TestEventNodeListsDerivedFromCandidateRoutes()
     await AssertEveryReadView("catalog endpoint changes are reflected immediately without saving the template");
 
     var document = JsonNode.Parse(db.Query<string>("SELECT Document FROM operationprocesstemplate " +
-        "WHERE InstanceID = 'scope-a' AND StationSchemeID = 'scheme-a' AND OperationPlanID = 'plan-a' AND TemplateID = @id",
+        "WHERE InstanceID = 'scope-a' AND StationSchemeID = 'scheme-a' AND OperationPlanID = '' AND TemplateID = @id",
         new { id = saved.Id })!.Single())!;
     foreach (var ev in document["events"]!.AsArray()) ev!.AsObject().Remove("nodeList");
     db.ExecuteNonQuery("UPDATE operationprocesstemplate SET Document = @document " +
-        "WHERE InstanceID = 'scope-a' AND StationSchemeID = 'scheme-a' AND OperationPlanID = 'plan-a' AND TemplateID = @id",
+        "WHERE InstanceID = 'scope-a' AND StationSchemeID = 'scheme-a' AND OperationPlanID = '' AND TemplateID = @id",
         new { id = saved.Id, document = document.ToJsonString() });
     await AssertEveryReadView("legacy persisted documents without nodeList derive current candidates on every read");
     await Request(HttpMethod.Delete, $"DeleteTemplate?{scope}&templateID={saved.Id}&revision={saved.Revision}",
@@ -808,9 +943,9 @@ async Task TestGenerateTrainTemplateFromSavedProcess()
     Assert(result["movementCount"]!.GetValue<int>() == 5, "all five process activity types become movement template rows");
     Assert(trainTemplate.Name == source.Name && trainTemplate.Type == "" && trainTemplate.Number == 1 && trainTemplate.IsFixedOperation == 0,
         "generated template defaults and name come from the saved source, ignoring client-only fields");
-    Assert(trainTemplate.InstanceID == "scope-a" && trainTemplate.StationSchemeID == "scheme-a" && trainTemplate.OperationPlanID == planID &&
+    Assert(trainTemplate.InstanceID == "scope-a" && trainTemplate.StationSchemeID == "scheme-a" && trainTemplate.OperationPlanID == "" &&
            !string.IsNullOrWhiteSpace(trainTemplate.TrainTemplateID) && trainTemplate.TrainTemplateID != "client-forced-id",
-        "generated template receives a server identity inside the requested scope");
+        "generated template receives a server identity inside the station scheme");
     var movements = await ReadMovements(trainTemplate.TrainTemplateID!);
     Assert(movements.Select(m => m.Name).SequenceEqual(["接车", "停留", "机车出段", "调车", "发车"]),
         "movement rows follow the event DAG rather than the shuffled activity array");
@@ -838,13 +973,15 @@ async Task TestGenerateTrainTemplateFromSavedProcess()
     Assert(trainList.Any(t => t.TrainTemplateID == trainTemplate.TrainTemplateID) && trainList.Any(t => t.TrainTemplateID == secondTrain.TrainTemplateID),
         "generated templates are visible through the existing train template API");
 
+    var anotherPlan = RequestFor(source); anotherPlan["operationPlanID"] = "plan-a";
+    var sharedResult = await Request(HttpMethod.Post, endpoint, anotherPlan);
+    Assert(sharedResult!["trainTemplate"]!["operationPlanID"]!.GetValue<string>() == "",
+        "a process created through one plan can generate a scheme train template through another plan");
     var beforeRejections = TableCounts();
     await Request(HttpMethod.Post, endpoint, RequestFor(source), user: null, expected: HttpStatusCode.Unauthorized);
     await Request(HttpMethod.Post, endpoint, RequestFor(source), user: "outsider", expected: HttpStatusCode.Forbidden);
     var missing = RequestFor(source); missing["processTemplateID"] = "missing-source";
     await Request(HttpMethod.Post, endpoint, missing, expected: HttpStatusCode.NotFound);
-    var foreignPlan = RequestFor(source); foreignPlan["operationPlanID"] = "plan-a";
-    await Request(HttpMethod.Post, endpoint, foreignPlan, expected: HttpStatusCode.NotFound);
     var foreignScheme = RequestFor(source); foreignScheme["stationSchemeID"] = "foreign-scheme"; foreignScheme["operationPlanID"] = "plan-a";
     await Request(HttpMethod.Post, endpoint, foreignScheme, expected: HttpStatusCode.NotFound);
     var foreignInstance = RequestFor(source); foreignInstance["instanceID"] = "scope-b"; foreignInstance["operationPlanID"] = "plan-a";
@@ -883,7 +1020,7 @@ async Task TestGenerateTrainTemplateFromSavedProcess()
     await AssertSourceUnchanged("rejected generation leaves saved source and revision intact");
 
     db.ExecuteNonQuery("CREATE TRIGGER abort_process_generation BEFORE INSERT ON movementtemplate " +
-        "WHEN NEW.OperationPlanID = 'generation-plan' AND NEW.Name = '机车出段' " +
+        "WHEN NEW.StationSchemeID = 'scheme-a' AND NEW.OperationPlanID = '' AND NEW.Name = '机车出段' " +
         "BEGIN SELECT RAISE(ABORT, 'intentional generation rollback test'); END");
     try
     {
@@ -894,7 +1031,7 @@ async Task TestGenerateTrainTemplateFromSavedProcess()
     await AssertSourceUnchanged("transaction rollback never alters its process source");
 
     db.ExecuteNonQuery("CREATE TRIGGER ignore_process_movement BEFORE INSERT ON movementtemplate " +
-        "WHEN NEW.OperationPlanID = 'generation-plan' AND NEW.Name = '机车出段' " +
+        "WHEN NEW.StationSchemeID = 'scheme-a' AND NEW.OperationPlanID = '' AND NEW.Name = '机车出段' " +
         "BEGIN SELECT RAISE(IGNORE); END");
     try
     {
@@ -996,10 +1133,10 @@ async Task TestGenerateTrainTemplateFromSavedProcess()
         (await Request(HttpMethod.Get, $"../OperationPlan/GetMovementTemplates?{generationScope}&trainTemplateID={trainID}"))!
         .Deserialize<List<MovementTemplateRow>>(jsonOptions)!;
     string StoredDocument(string id) => db.Query<string>("SELECT Document FROM operationprocesstemplate " +
-        "WHERE InstanceID = 'scope-a' AND StationSchemeID = 'scheme-a' AND OperationPlanID = 'generation-plan' AND TemplateID = @id", new { id })!.Single();
+        "WHERE InstanceID = 'scope-a' AND StationSchemeID = 'scheme-a' AND OperationPlanID = '' AND TemplateID = @id", new { id })!.Single();
     (int Trains, int Movements) TableCounts() =>
-        (db.Query<int>("SELECT COUNT(1) FROM traintemplate WHERE OperationPlanID = 'generation-plan'")!.Single(),
-         db.Query<int>("SELECT COUNT(1) FROM movementtemplate WHERE OperationPlanID = 'generation-plan'")!.Single());
+        (db.Query<int>("SELECT COUNT(1) FROM traintemplate WHERE InstanceID='scope-a' AND StationSchemeID='scheme-a'")!.Single(),
+         db.Query<int>("SELECT COUNT(1) FROM movementtemplate WHERE InstanceID='scope-a' AND StationSchemeID='scheme-a'")!.Single());
     string[] RouteIDs(MovementTemplateRow movement) => (movement.RouteIDList ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
     string[] Warnings(JsonNode response) => response["warnings"]!.AsArray().Select(w => w!.GetValue<string>()).ToArray();
     async Task AssertSourceUnchanged(string label) => Assert(StoredDocument(source.Id) == sourceDocument &&
@@ -1008,7 +1145,7 @@ async Task TestGenerateTrainTemplateFromSavedProcess()
     {
         var changed = JsonSerializer.Deserialize<OperationProcessTemplate>(sourceDocument, jsonOptions)!;
         mutate(changed);
-        db.ExecuteNonQuery("UPDATE operationprocesstemplate SET Document = @document WHERE OperationPlanID = 'generation-plan' AND TemplateID = @id",
+        db.ExecuteNonQuery("UPDATE operationprocesstemplate SET Document = @document WHERE InstanceID='scope-a' AND StationSchemeID='scheme-a' AND OperationPlanID = '' AND TemplateID = @id",
             new { id = source.Id, document = JsonSerializer.Serialize(changed, jsonOptions) });
         try
         {
@@ -1018,7 +1155,7 @@ async Task TestGenerateTrainTemplateFromSavedProcess()
         }
         finally
         {
-            db.ExecuteNonQuery("UPDATE operationprocesstemplate SET Document = @document WHERE OperationPlanID = 'generation-plan' AND TemplateID = @id",
+            db.ExecuteNonQuery("UPDATE operationprocesstemplate SET Document = @document WHERE InstanceID='scope-a' AND StationSchemeID='scheme-a' AND OperationPlanID = '' AND TemplateID = @id",
                 new { id = source.Id, document = sourceDocument });
         }
     }
@@ -1078,7 +1215,10 @@ async Task TestGenerateActualTrainsFromProcess()
     foreach (var snapshot in snapshots)
     {
         Assert(snapshot.SourceTemplateID == source.Id && snapshot.SourceRevision == source.Revision && snapshot.ActivityMovementMap.Count == 5, "snapshot keeps source version and complete movement map");
-        Assert(JsonSerializer.Serialize(snapshot.Process, jsonOptions) == JsonSerializer.Serialize(source, jsonOptions), "complete source constraints survive without projection loss");
+        var expectedProcess = JsonSerializer.Deserialize<OperationProcessTemplate>(JsonSerializer.Serialize(source, jsonOptions), jsonOptions)!;
+        expectedProcess.OperationPlanID = planID;
+        Assert(JsonSerializer.Serialize(snapshot.Process, jsonOptions) == JsonSerializer.Serialize(expectedProcess, jsonOptions),
+            "complete scheme source constraints survive with the actual execution plan ownership");
         OperationProcessPlanScheduler.ValidateSchedule(snapshot.Process, snapshot.EventTimes, snapshot.OriginSeconds, 8 * 3600, 9 * 3600);
         Assert(snapshot.EventTimes["loco-s"] < snapshot.EventTimes["arrival-end"], "parallel locomotive operation is not forced after preceding table activity");
         Assert(Math.Abs(snapshot.EventTimes["shunt-e"] - snapshot.EventTimes["shunt-s"] - 0.06) < 0.000001, "subsecond activity constraints survive generation");
@@ -1141,13 +1281,17 @@ async Task TestGenerateActualTrainsFromProcess()
     var reloaded = (await Request(HttpMethod.Get, $"../OperationPlan/GetTrainOperationPlan?{targetScope}"))!.Deserialize<TrainOperationPlanResponse>(jsonOptions)!;
     Assert(reloaded.ProcessConstraints.Count == 3 && reloaded.Movements.Count == 15, "full constraints are returned after a fresh GET");
     var counts = Counts();
+    var otherPlanPayload = Payload(1); otherPlanPayload["operationPlanID"] = "plan-a";
+    var otherPlanGenerated = (await Request(HttpMethod.Post, endpoint, otherPlanPayload))!.Deserialize<TrainOperationPlanResponse>(jsonOptions)!;
+    Assert(otherPlanGenerated.GeneratedTrainIDs.Count == 1 && otherPlanGenerated.Trains.All(train => train.OperationPlanID == "plan-a") && Counts() == counts,
+        "one scheme process generates independently into another plan without changing the original plan");
     await Request(HttpMethod.Post, endpoint, Payload(1), user: null, expected: HttpStatusCode.Unauthorized);
     await Request(HttpMethod.Post, endpoint, Payload(1), user: "outsider", expected: HttpStatusCode.Forbidden);
     var stale = Payload(1); stale["revision"] = source.Revision + 1;
     await Request(HttpMethod.Post, endpoint, stale, expected: HttpStatusCode.Conflict);
     await Request(HttpMethod.Post, endpoint, Payload(0), expected: HttpStatusCode.BadRequest);
     await Request(HttpMethod.Post, endpoint, Payload(1001), expected: HttpStatusCode.BadRequest);
-    var foreign = Payload(1); foreign["operationPlanID"] = "plan-a";
+    var foreign = Payload(1); foreign["operationPlanID"] = "missing-target-plan";
     await Request(HttpMethod.Post, endpoint, foreign, expected: HttpStatusCode.NotFound);
     var tight = Payload(2); tight["endTime"] = "08:10";
     await Request(HttpMethod.Post, endpoint, tight, expected: HttpStatusCode.BadRequest);
@@ -1188,8 +1332,10 @@ async Task TestGenerateActualTrainsFromProcess()
     Assert((await Request(HttpMethod.Get, $"../OperationPlan/GetTrainOperationPlan?{targetScope}"))!["processConstraints"]!.AsArray().Count == 3, "source deletion keeps independent generated constraints readable");
     await Request(HttpMethod.Delete, $"../OperationPlan/DeleteTrain?{targetScope}&id={first.TrainID}");
     Assert(Counts().Snapshots == 2 && Counts().Movements == 10, "delete whole train cleans its activities and snapshot together");
-    await Request(HttpMethod.Post, "../OperationPlan/GenerateTrainOperationPlan", new { instanceID = "scope-a", stationSchemeID = "scheme-a", operationPlanID = planID, startTime = "00:00", endTime = "24:00" });
-    Assert(Counts() == (0, 0, 0), "existing replace-generation clears snapshots along with replaced trains");
+    var replacement = (await Request(HttpMethod.Post, "../OperationPlan/GenerateTrainOperationPlan", new { instanceID = "scope-a", stationSchemeID = "scheme-a", operationPlanID = planID, startTime = "00:00", endTime = "24:00" }))!
+        .Deserialize<TrainOperationPlanResponse>(jsonOptions)!;
+    Assert(Counts().Snapshots == 0 && replacement.Trains.Count > 0 && replacement.Trains.All(train => !generated.GeneratedTrainIDs.Contains(train.ID!)),
+        "replace-generation uses scheme templates and clears snapshots along with replaced process trains");
 
     // A model version gate must reserve no slot when an old worker cannot understand constraints.
     var registry = new CapacityAgentRegistry();
@@ -1198,7 +1344,7 @@ async Task TestGenerateActualTrainsFromProcess()
     Assert(registry.TryReserve("worker", CapacityAgentProtocol.StationCapacityModelId, "legacy", "owner", out _, out _, out _, out _), "old worker remains compatible with a legacy plan");
 
     JsonObject Payload(int count) => new() { ["instanceID"] = "scope-a", ["stationSchemeID"] = "scheme-a", ["operationPlanID"] = planID, ["processTemplateID"] = source.Id, ["revision"] = source.Revision, ["trainCount"] = count, ["startTime"] = "08:00", ["endTime"] = "09:00" };
-    string Document(string id) => db.Query<string>("SELECT Document FROM operationprocesstemplate WHERE OperationPlanID=@planID AND TemplateID=@id", new { planID, id })!.Single();
+    string Document(string id) => db.Query<string>("SELECT Document FROM operationprocesstemplate WHERE InstanceID='scope-a' AND StationSchemeID='scheme-a' AND OperationPlanID='' AND TemplateID=@id", new { id })!.Single();
     (int Trains, int Movements, int Snapshots) Counts() => (db.Query<int>("SELECT COUNT(*) FROM train WHERE OperationPlanID=@planID", new { planID })!.Single(), db.Query<int>("SELECT COUNT(*) FROM movement WHERE OperationPlanID=@planID", new { planID })!.Single(), db.Query<int>("SELECT COUNT(*) FROM trainprocesssnapshot WHERE OperationPlanID=@planID", new { planID })!.Single());
 }
 
@@ -1253,7 +1399,7 @@ async Task TestGeneratedProcessEventsAreEarliest()
     }
 
     string SourceDocument() => db.Query<string>("SELECT Document FROM operationprocesstemplate WHERE InstanceID='scope-a' " +
-        "AND StationSchemeID='scheme-a' AND OperationPlanID=@planID AND TemplateID=@id", new { planID, id = source.Id })!.Single();
+        "AND StationSchemeID='scheme-a' AND OperationPlanID='' AND TemplateID=@id", new { id = source.Id })!.Single();
 }
 
 OperationProcessTemplate BuildTemplate(string id) => new()

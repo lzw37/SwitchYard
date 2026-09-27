@@ -200,6 +200,7 @@
 
                 <div class="job-actions">
                     <ActionButton
+                        variant="icon-text"
                         type="primary"
                         :loading="submitting"
                         :disabled="!canSubmit"
@@ -211,6 +212,7 @@
                         @click="refreshCurrentJob()"
                      :icon="Refresh" :label="t('modelSolving.actions.refreshJob')" />
                     <ActionButton
+                        variant="icon-text"
                         type="success"
                         :disabled="!currentJob?.result"
                         @click="downloadResult"
@@ -342,14 +344,15 @@
             <template #footer>
                 <div class="preset-dialog-footer">
                     <ActionButton
+                        variant="text"
                         v-if="editingPresetId"
                         type="danger"
                         :loading="savingPreset"
                         @click="deletePreset"
                      :icon="Delete" :label="t('modelSolving.presets.actions.delete')" />
                     <span class="preset-dialog-footer-spacer" />
-                    <ActionButton @click="presetManagerVisible = false" :icon="Close" :label="t('operationPlan.actions.cancel')" />
-                    <ActionButton type="primary" :loading="savingPreset" @click="savePreset" :icon="Check" :label="t('operationPlan.actions.save')" />
+                    <ActionButton variant="text" @click="presetManagerVisible = false" :icon="Close" :label="t('operationPlan.actions.cancel')" />
+                    <ActionButton variant="text" type="primary" :loading="savingPreset" @click="savePreset" :icon="Check" :label="t('operationPlan.actions.save')" />
                 </div>
             </template>
         </el-dialog>
@@ -1083,6 +1086,10 @@ onBeforeUnmount(() => {
     display: flex;
     align-items: center;
     gap: 10px;
+}
+
+.preset-dialog-footer {
+    flex-wrap: wrap;
 }
 
 .preset-dialog-toolbar {

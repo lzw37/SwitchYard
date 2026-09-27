@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using SwitchYard.Capacity;
+using SwitchYard.Service.Services;
 using SwitchYard.StationLayout;
 
 namespace SwitchYard.Service.StationLayout;
@@ -374,6 +375,8 @@ public sealed class LegacyStationLayoutRepository : IStationLayoutRepository
                     $"DELETE FROM {Q(table)} WHERE InstanceID = @scopeId AND StationSchemeID = @schemeId",
                     new { scopeId, schemeId });
             }
+
+            SchemeTemplateStore.DeleteScheme(database, scopeId, schemeId);
 
             database.ExecuteNonQuery(
                 $"DELETE FROM {Q("stationlayoutrevision")} " +

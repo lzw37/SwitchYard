@@ -9,7 +9,7 @@ using SwitchYard.Service.Services;
 
 namespace SwitchYard.Service.Controllers;
 
-/// <summary>Additive process templates. Existing train/movement templates and route records are never changed.</summary>
+/// <summary>Station-scheme process templates with revision-checked updates.</summary>
 [ApiController]
 [Route("OperationProcess")]
 [Authorize]
@@ -17,7 +17,7 @@ public sealed class OperationProcessController : ControllerBase
 {
     private readonly ILogger<OperationProcessController> _logger;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
-    private const string ScopeFilter = "InstanceID = @InstanceID AND StationSchemeID = @StationSchemeID AND OperationPlanID = @OperationPlanID";
+    private const string ScopeFilter = "InstanceID = @InstanceID AND StationSchemeID = @StationSchemeID AND OperationPlanID = ''";
 
     public OperationProcessController(ILogger<OperationProcessController> logger) => _logger = logger;
 
@@ -140,14 +140,15 @@ public sealed class OperationProcessController : ControllerBase
             var normalized = new ProcessScope {
                 InstanceID = scope.InstanceID?.Trim() ?? "",
                 StationSchemeID = scope.StationSchemeID?.Trim() ?? "",
-                OperationPlanID = scope.OperationPlanID?.Trim() ?? ""
+                OperationPlanID = SchemeTemplateStore.PlanKey
             };
-            if (new[] { normalized.InstanceID, normalized.StationSchemeID, normalized.OperationPlanID }.Any(x => x.Length is 0 or > 50))
-                throw new ProcessRequestException(400, "instanceID、stationSchemeID、operationPlanID 均必填且最多 50 个字符。");
+            if (new[] { normalized.InstanceID, normalized.StationSchemeID }.Any(x => x.Length is 0 or > 50))
+                throw new ProcessRequestException(400, "instanceID、stationSchemeID 均必填且最多 50 个字符。");
             var db = DBConnector.GetDBConnector(DBConnector.CapacityDatabaseSectionName);
             var permissionError = AuthorizeScope(db, normalized);
             if (permissionError is not null) return permissionError;
             EnsureSchema(db);
+            SchemeTemplateStore.Migrate(db, normalized.InstanceID, normalized.StationSchemeID);
             return action(db, normalized);
         }
         catch (ProcessRequestException ex) { return StatusCode(ex.StatusCode, new { message = ex.Message, errors = ex.Errors }); }
@@ -172,8 +173,6 @@ public sealed class OperationProcessController : ControllerBase
             return StatusCode(403, new { message = "无权访问此能力分析实例。" });
         if ((db.Query<int>("SELECT COUNT(1) FROM stationscheme WHERE InstanceID = @InstanceID AND ID = @StationSchemeID", scope)?.FirstOrDefault() ?? 0) == 0)
             return NotFound(new { message = "当前实例下不存在此站场方案。" });
-        if ((db.Query<int>($"SELECT COUNT(1) FROM operationplan WHERE {ScopeFilter}", scope)?.FirstOrDefault() ?? 0) == 0)
-            return NotFound(new { message = "当前站场方案下不存在此作业计划。" });
         return null;
     }
 
@@ -205,7 +204,7 @@ public sealed class OperationProcessController : ControllerBase
 
     private static OperationProcessTemplate LoadTemplate(DBConnector db, ProcessScope scope, string templateID, ProcessCatalog? catalog = null)
     {
-        var template = FindTemplate(db, scope, templateID) ?? throw new ProcessRequestException(404, "当前作业计划下不存在此模板。");
+        var template = FindTemplate(db, scope, templateID) ?? throw new ProcessRequestException(404, "当前站场方案下不存在此模板。");
         OperationProcessEventNodes.Refresh(template, catalog ?? LoadCatalog(db, scope));
         return template;
     }
@@ -215,7 +214,7 @@ public sealed class OperationProcessController : ControllerBase
         var template = JsonSerializer.Deserialize<OperationProcessTemplate>(row.Document, JsonOptions)
                        ?? throw new InvalidOperationException("Stored operation process document was null.");
         template.Revision = row.Revision;
-        // Plan copy/rename changes SQL scope columns; materialize that authoritative scope.
+        // Scheme ownership is authoritative; template libraries have no execution plan.
         template.InstanceID = row.InstanceID;
         template.StationSchemeID = row.StationSchemeID;
         template.OperationPlanID = row.OperationPlanID;

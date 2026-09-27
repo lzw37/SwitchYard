@@ -26,7 +26,7 @@
         import i18n from '../src/i18n.ts'
         import { createExampleTemplate, demoCatalog, syncEventNodeLists, validateTemplate } from '../src/capacity/operationProcess.ts'
 
-        const scope = { instanceID: 'layout-fixture', stationSchemeID: 'layout-station', operationPlanID: 'default' }
+        const scope = { instanceID: 'layout-fixture', stationSchemeID: 'layout-station' }
         const catalog = structuredClone(demoCatalog)
         const template = createExampleTemplate(scope, catalog)
         template.name = '三栏布局示例：接车—停留—发车'

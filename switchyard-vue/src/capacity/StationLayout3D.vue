@@ -182,6 +182,15 @@
                     <span class="station-toolbar-switch-control__label">{{ t('stationLayout3d.labels.showLabels') }}</span>
                     <el-switch v-model="showLabels" size="small" />
                 </div>
+                <div class="station-toolbar-switch-control">
+                    <span class="station-toolbar-switch-control__label">{{ t('stationLayout3d.labels.showOccupancy') }}</span>
+                    <el-switch
+                        v-model="showTrackOccupancy"
+                        size="small"
+                        :disabled="!canRender"
+                        :aria-label="t('stationLayout3d.labels.showOccupancy')"
+                    />
+                </div>
             </template>
         </StationLayoutViewToolbar>
 
@@ -350,11 +359,13 @@
             </el-form>
             <template #footer>
                 <ActionButton
+                    variant="text"
                     :label="t('stationLayout3d.dialogs.cancel')"
                     @click="ganttSubTableDialogVisible = false"
                     :icon="Close"
                 />
                 <ActionButton
+                    variant="text"
                     :label="t('stationLayout3d.dialogs.confirm')"
                     type="primary"
                     @click="confirmGanttSubTableDialog"
@@ -386,6 +397,10 @@ import { sampleCurveCoordinates, transformLayoutCoordinates } from './three/layo
 import { insertRouteCurves, followRenderedPaths } from './three/trainPath'
 import { buildTrainMotionProfiles, sampleTrainMotion, selectTrainMotionRuns } from './three/trainMotion'
 import { isDwellingRoute } from './simulationDwelling'
+import { getStationRouteHighlightColor } from './routeColors'
+import { createTrackOccupancyTimeline } from './trackOccupancy'
+import { createTrackOccupancyOverlay } from './three/trackOccupancyOverlay'
+import { mapTrackOccupancyPaths } from './three/trackOccupancyPaths'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { CSS2DObject, CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js'
 import axios from '@/utils/axios'
@@ -776,6 +791,7 @@ const layoutGridSpacing = ref(20)
 const loadingData = ref(false)
 const loadErrorMessage = ref('')
 const showLabels = ref(true)
+const showTrackOccupancy = ref(false)
 const displayRatio = ref(1)
 const appliedDisplayRatio = ref(1)
 // Keep loaded coordinates intact. Rebuild geometry from transformed coordinates
@@ -836,6 +852,8 @@ let camera: THREE.PerspectiveCamera | null = null
 let controls: OrbitControls | null = null
 let layoutGroup: THREE.Group | null = null
 let trainGroup: THREE.Group | null = null
+let trackOccupancyOverlay: ReturnType<typeof createTrackOccupancyOverlay> | null = null
+let lastTrackOccupancyState: ReadonlyMap<string, readonly string[]> | null = null
 let resizeObserver: ResizeObserver | null = null
 let rafId: number | null = null
 let playbackFrameId: number | null = null
@@ -1012,6 +1030,14 @@ const activeGanttSubTableCells = computed<LayoutCell[]>(() => {
     return ganttAvailableCells.value.filter((cell) => selectedCellIds.has(cell.id))
 })
 const ganttLanes = computed<GanttLane[]>(() => buildGanttLanes())
+// Use every cell's actual occupation window, independently of the visible
+// Gantt sub-table. The timeline caches states between occupation boundaries.
+const trackOccupancyTimeline = computed(() => createTrackOccupancyTimeline(
+    routeRuns.value.flatMap(run => buildGanttBlocksForRun(run).map(({ cellID, block }) => ({
+        cellID, startSeconds: block.startSeconds, endSeconds: block.endSeconds, color: block.color,
+    }))),
+    layoutCells.value,
+))
 const ganttSummaryText = computed(() => {
     if (routeRuns.value.length === 0) return String(t('stationLayout3d.gantt.noPlayableWork'))
     const blockCount = ganttLanes.value.reduce((count, lane) => count + lane.blocks.length, 0)
@@ -1671,15 +1697,6 @@ function formatDurationSeconds(totalSeconds: number) {
 
 function getRouteDisplayName(routeID: string) {
     return stationRouteMap.value.get(routeID)?.name || routeID || '-'
-}
-
-function getStationRouteHighlightColor(type: string) {
-    const normalized = type.trim().toLowerCase()
-    if (normalized.includes('arrival') || normalized.includes('接车')) return '#22c55e'
-    if (normalized.includes('departure') || normalized.includes('发车')) return '#38bdf8'
-    if (normalized.includes('locomotive') || normalized.includes('机车')) return '#f59e0b'
-    if (normalized.includes('shunting') || normalized.includes('调车')) return '#a855f7'
-    return '#ffd600'
 }
 
 function getTrainColor(trainID: string) {
@@ -3529,8 +3546,45 @@ function updateTrainObjects(currentSeconds?: number) {
     })
 }
 
+function updateTrackOccupancy() {
+    if (isDisposed || !trackOccupancyOverlay) return
+    trackOccupancyOverlay.group.visible = showTrackOccupancy.value
+    if (!showTrackOccupancy.value) return
+    const state = trackOccupancyTimeline.value.sample(playheadSeconds.value)
+    if (state !== lastTrackOccupancyState) {
+        trackOccupancyOverlay.update(state)
+        lastTrackOccupancyState = state
+    }
+}
+
+function addTrackOccupancyOverlay(
+    paths: Array<{ id: string; points: THREE.Vector3[] }>,
+    layout: StationLayoutData,
+    mapper: LayoutMapper,
+) {
+    if (!layoutGroup) return
+    // Bind IDs explicitly; Link IDs may themselves contain "-visible-" or "curve-".
+    const bindings = new Map<string, { linkId: string } | { linkIds: readonly [string, string]; points: THREE.Vector3[] }>()
+    for (const segment of buildVisibleTrackSegments(layout)) {
+        bindings.set(segment.id, { linkId: segment.line.id })
+    }
+    for (const curve of layout.curves) {
+        bindings.set(`curve-${curve.id}`, {
+            linkIds: [curve.tangentLinkID1, curve.tangentLinkID2],
+            points: buildCurveSamplePoints(curve, 48).map(point => mapper.mapPoint(point)),
+        })
+    }
+    trackOccupancyOverlay = createTrackOccupancyOverlay(
+        mapTrackOccupancyPaths(paths, bindings), getWorldTrackGauge(mapper),
+    )
+    layoutGroup.add(trackOccupancyOverlay.group)
+    updateTrackOccupancy()
+}
+
 function rebuildScene() {
     if (isDisposed || !layoutGroup) return
+    trackOccupancyOverlay = null
+    lastTrackOccupancyState = null
     clearGroup(layoutGroup)
     lastMapper = null
 
@@ -3550,9 +3604,11 @@ function rebuildScene() {
         id: path.id,
         points: path.points.map(point => mapper.mapPoint({ x: point.x, y: point.z })),
     }))
-    layoutGroup.add(createRailway(paths, layout.switches.map(sw => ({
+    const railway = createRailway(paths, layout.switches.map(sw => ({
         id: sw.id, position: mapper.mapPoint(sw.position),
-    })), getWorldTrackGauge(mapper)))
+    })), getWorldTrackGauge(mapper))
+    layoutGroup.add(railway)
+    addTrackOccupancyOverlay(railway.userData.railway.paths, layout, mapper)
     for (const platform of layout.platforms) addPlatform(platform, mapper)
     for (const signal of layout.signals) addSignal(signal, layout, mapper, materials)
     if (!layout.signals.length) Object.values(materials).forEach(material => material.dispose())
@@ -4170,10 +4226,13 @@ watch(
 
 watch(playheadSeconds, () => {
     if (!isPlaying.value) updateTrainObjects()
+    updateTrackOccupancy()
     scheduleScrollGanttToPlayhead()
 }, {
     flush: 'post',
 })
+
+watch([showTrackOccupancy, trackOccupancyTimeline], updateTrackOccupancy, { flush: 'post' })
 
 onMounted(() => {
     panelResizeObserver = new ResizeObserver(() => {
@@ -4229,6 +4288,8 @@ onBeforeUnmount(() => {
     clearTrainCarAngleMemory()
     if (trainGroup && scene) scene.remove(trainGroup)
     trainGroup = null
+    trackOccupancyOverlay = null
+    lastTrackOccupancyState = null
     clearGroup(layoutGroup)
     if (layoutGroup && scene) scene.remove(layoutGroup)
     layoutGroup = null

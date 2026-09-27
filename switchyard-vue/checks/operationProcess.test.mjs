@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createExampleTemplate, createEmptyTemplate, demoCatalog, deriveEventNodeLists, syncEventNodeLists, dwellingTrackNames, namedTracks, reconcileDwellingTracks, validateTemplate, renameActivity, removeActivity, removeEvent, removeAnchor, getPrecedenceEndCandidates, getPrecedenceStartCandidates } from '../src/capacity/operationProcess.ts'
 
-const scope = { instanceID: 'instance', stationSchemeID: 'station', operationPlanID: 'plan' }
+const scope = { instanceID: 'instance', stationSchemeID: 'station' }
 const example = () => createExampleTemplate(scope, demoCatalog)
 
 test('precedence candidates contain activity ends in activity order, excluding start-only and standalone events', () => {
@@ -244,10 +244,13 @@ test('enforces relative event timing and minimum precedence interval', () => {
     assert.ok(validateTemplate(template, demoCatalog).some(error => error.includes('不满足最小间隔')))
 })
 
-test('new templates use distinct IDs and preserve scope', () => {
-    const first = createEmptyTemplate(scope), second = createEmptyTemplate(scope)
+test('new templates use distinct IDs and belong to the scheme without a plan', () => {
+    const first = createEmptyTemplate(scope), second = createEmptyTemplate({ ...scope, operationPlanID: 'legacy-plan' })
     assert.notEqual(first.id, second.id)
-    assert.equal(first.operationPlanID, scope.operationPlanID)
+    assert.equal(first.instanceID, scope.instanceID)
+    assert.equal(first.stationSchemeID, scope.stationSchemeID)
+    assert.equal(Object.hasOwn(first, 'operationPlanID'), false)
+    assert.equal(Object.hasOwn(second, 'operationPlanID'), false)
     assert.equal(first.revision, 0)
 })
 

@@ -8,7 +8,8 @@ public class ProcessScope
 {
     public string InstanceID { get; set; } = "";
     public string StationSchemeID { get; set; } = "";
-    public string OperationPlanID { get; set; } = "default";
+    // Library endpoints ignore this compatibility field; execution snapshots keep their plan ID.
+    public string OperationPlanID { get; set; } = "";
 }
 
 public sealed class OperationProcessTemplate : ProcessScope

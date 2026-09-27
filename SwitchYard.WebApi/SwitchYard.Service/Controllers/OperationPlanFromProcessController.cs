@@ -38,10 +38,11 @@ public partial class OperationPlanController
             if (permissionError is not null) return permissionError;
             EnsureTrainOperationPlanSchema(db);
             OperationProcessController.EnsureSchema(db);
+            SchemeTemplateStore.Migrate(db, scope.InstanceID, scope.StationSchemeID);
             TrainProcessSnapshotStore.EnsureSchema(db);
             db.BeginTransaction();
             var source = OperationProcessController.FindTemplate(db, scope, request.ProcessTemplateID.Trim(), lockForUpdate: true);
-            if (source is null) { db.Rollback(); return NotFound(new { message = "当前作业计划下不存在此已保存作业过程。" }); }
+            if (source is null) { db.Rollback(); return NotFound(new { message = "当前站场方案下不存在此已保存作业过程。" }); }
             if (source.Revision != request.Revision) { db.Rollback(); return ProcessGenerationRevisionConflict(); }
             var catalog = OperationProcessController.LoadCatalog(db, scope);
             var errors = OperationProcessValidator.Validate(source, catalog);

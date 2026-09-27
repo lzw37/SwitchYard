@@ -282,7 +282,7 @@ onBeforeUnmount(() => { ++fileVersion; cancelPreview() })
                 <el-form-item :label="t('operationPlan.cellOccupancyImport.file')">
                     <div class="cell-occupancy-file">
                         <input ref="fileInput" type="file" accept=".csv,text/csv" :disabled="importing" class="cell-occupancy-file-input" :aria-label="t('operationPlan.cellOccupancyImport.selectFile')" @change="selectFile" />
-                        <ActionButton :icon="UploadFilled" :loading="readingFile" :disabled="importing || readingFile" :label="t('operationPlan.cellOccupancyImport.selectFile')" @click="fileInput?.click()" />
+                        <ActionButton variant="icon-text" :icon="UploadFilled" :loading="readingFile" :disabled="importing || readingFile" :label="t('operationPlan.cellOccupancyImport.selectFile')" @click="fileInput?.click()" />
                         <span>{{ fileName || t('operationPlan.cellOccupancyImport.noFile') }}</span>
                         <span class="cell-occupancy-help">{{ t('operationPlan.cellOccupancyImport.fileHint') }}</span>
                     </div>
@@ -351,9 +351,11 @@ onBeforeUnmount(() => { ++fileVersion; cancelPreview() })
             </template>
         </div>
         <template #footer>
-            <ActionButton :icon="Refresh" :loading="previewing" :disabled="!canPreview || previewing" :label="t('operationPlan.cellOccupancyImport.preview')" @click="previewImport" />
-            <ActionButton :icon="Close" :disabled="importing" :label="t('operationPlan.actions.cancel')" @click="visible = false" />
-            <ActionButton :icon="Check" type="primary" :loading="importing" :disabled="!canImport" :label="t('operationPlan.cellOccupancyImport.confirmImport')" @click="importFile" />
+            <div class="dialog-actions">
+                <ActionButton variant="text" :icon="Refresh" :loading="previewing" :disabled="!canPreview || previewing" :label="t('operationPlan.cellOccupancyImport.preview')" @click="previewImport" />
+                <ActionButton variant="text" :icon="Close" :disabled="importing" :label="t('operationPlan.actions.cancel')" @click="visible = false" />
+                <ActionButton variant="text" :icon="Check" type="primary" :loading="importing" :disabled="!canImport" :label="t('operationPlan.cellOccupancyImport.confirmImport')" @click="importFile" />
+            </div>
         </template>
     </el-dialog>
 </template>
@@ -367,4 +369,6 @@ onBeforeUnmount(() => { ++fileVersion; cancelPreview() })
 .cell-occupancy-section-title { margin: 4px 0 0; font-weight: 600; }
 .cell-occupancy-messages ul { margin: 4px 0; padding-left: 20px; max-height: 150px; overflow-y: auto; }
 .cell-occupancy-import :deep(.el-form-item:last-child) { margin-bottom: 0; }
+.dialog-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.dialog-actions :deep(.el-button + .el-button) { margin-left: 0; }
 </style>

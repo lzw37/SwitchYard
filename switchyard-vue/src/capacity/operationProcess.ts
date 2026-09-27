@@ -6,7 +6,7 @@ export type ActivityType = typeof activityTypes[number]
 export const activityLabels: Record<ActivityType, string> = {
     Arrival: '接车', Departure: '发车', Shunting: '调车', Locomotive: '机车出入段', Dwelling: '停留',
 }
-export interface ProcessScope { instanceID: string; stationSchemeID: string; operationPlanID: string }
+export interface ProcessScope { instanceID: string; stationSchemeID: string }
 export interface ProcessActivity {
     id: string; name: string; type: ActivityType; minDuration: number; maxDuration: number
     startEvent: string; endEvent: string; routeList: string[]; selectedRoute: string | null
@@ -119,7 +119,7 @@ export function reconcileDwellingTracks(template: ProcessTemplate, catalog: Proc
 }
 export function makeID(prefix: string) { return `${prefix}-${crypto.randomUUID()}` }
 export function createEmptyTemplate(scope: ProcessScope): ProcessTemplate {
-    return { ...scope, id: makeID('process'), name: '新建作业过程模板', description: '', revision: 0,
+    return { instanceID: scope.instanceID, stationSchemeID: scope.stationSchemeID, id: makeID('process'), name: '新建作业过程模板', description: '', revision: 0,
         activities: [], events: [], precedences: [], anchors: [], routeAnchors: [] }
 }
 
@@ -148,7 +148,7 @@ export const demoCatalog: ProcessCatalog = {
 export function createExampleTemplate(scope: ProcessScope, catalog: ProcessCatalog): ProcessTemplate {
     const template = createEmptyTemplate(scope)
     template.name = '接车—停留—发车（含机车与调车协同）'
-    template.description = '五类活动示例。时刻从模板起点起算，单位为分钟；次序间隔为最小间隔。可编辑后另存为当前作业计划的过程模板。'
+    template.description = '五类活动示例。时刻从模板起点起算，单位为分钟；次序间隔为最小间隔。可编辑后另存为当前车站方案共享的过程模板。'
     const anchorByTrack = new Map<string, string>()
     function anchorFor(trackID: string | undefined) {
         if (!trackID || !catalog.tracks.some(track => track.id === trackID)) return null

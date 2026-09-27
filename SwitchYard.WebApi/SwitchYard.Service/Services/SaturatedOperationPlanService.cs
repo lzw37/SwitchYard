@@ -64,6 +64,7 @@ public sealed class SaturatedOperationPlanService
             }) ?? new List<OperationPlanRow>()).FirstOrDefault()
             ?? throw new InvalidOperationException("源作业计划不存在。");
 
+        SchemeTemplateStore.Migrate(db, context.InstanceId, context.StationSchemeId);
         var sourceTrains = db.Query<TrainRow>(
             $@"SELECT InstanceID, StationSchemeID, OperationPlanID, {Quote("ID")}, TrainTemplateID,
                       TrainNumber, Name, TrainType, IsFixedOperation
@@ -129,7 +130,6 @@ public sealed class SaturatedOperationPlanService
         try
         {
             InsertOperationPlan(db, targetPlan);
-            CopyTemplates(db, context, targetPlanId);
             InsertSolvedPlan(db, context, targetPlanId, result, trainMap, movementMap);
             foreach (var snapshot in solvedSnapshots)
             {
@@ -216,42 +216,6 @@ public sealed class SaturatedOperationPlanService
             }
         }
         return copies;
-    }
-
-    private static void CopyTemplates(DBConnector db, SaturatedPlanJobContext context, string targetPlanId)
-    {
-        db.ExecuteNonQuery(
-            $@"INSERT INTO {Quote("traintemplate")} (
-                   InstanceID, StationSchemeID, OperationPlanID, TrainTemplateID, Name, {Quote("Type")}, {Quote("Number")}, IsFixedOperation)
-               SELECT InstanceID, StationSchemeID, @targetPlanId, TrainTemplateID, Name, {Quote("Type")}, {Quote("Number")}, IsFixedOperation
-               FROM {Quote("traintemplate")}
-               WHERE InstanceID = @instanceId
-                 AND StationSchemeID = @stationSchemeId
-                 AND OperationPlanID = @sourceOperationPlanId",
-            new
-            {
-                targetPlanId,
-                instanceId = context.InstanceId,
-                stationSchemeId = context.StationSchemeId,
-                sourceOperationPlanId = context.SourceOperationPlanId
-            });
-        db.ExecuteNonQuery(
-            $@"INSERT INTO {Quote("movementtemplate")} (
-                   InstanceID, StationSchemeID, OperationPlanID, TrainTemplateID, MovementID,
-                   Name, RouteIDList, MinDuration, SortOrder)
-               SELECT InstanceID, StationSchemeID, @targetPlanId, TrainTemplateID, MovementID,
-                      Name, RouteIDList, MinDuration, SortOrder
-               FROM {Quote("movementtemplate")}
-               WHERE InstanceID = @instanceId
-                 AND StationSchemeID = @stationSchemeId
-                 AND OperationPlanID = @sourceOperationPlanId",
-            new
-            {
-                targetPlanId,
-                instanceId = context.InstanceId,
-                stationSchemeId = context.StationSchemeId,
-                sourceOperationPlanId = context.SourceOperationPlanId
-            });
     }
 
     private static void InsertSolvedPlan(

@@ -71,7 +71,7 @@
                                 >
                                     <el-option v-for="option in getRouteFilterSelectOptions(filter)" :key="option.id" :label="option.name" :value="option.id" />
                                 </el-select>
-                                <ActionButton :icon="Close" :disabled="!routeFiltersActive" @click="clearRouteFilters" :label="t('routeDesign.stationRoute.actions.clearFilters')" />
+                                <ActionButton variant="text" :icon="Close" :disabled="!routeFiltersActive" @click="clearRouteFilters" :label="t('routeDesign.stationRoute.actions.clearFilters')" />
                             </div>
                         </el-popover>
                     </div>
@@ -269,6 +269,7 @@
                         />
                     </label>
                     <ActionButton
+                        variant="text"
                         :disabled="!canApplyUniformRouteTimes"
                         @click="applyUniformRouteTimeShifts"
                      :icon="Check" :label="t('calculationParameters.manager.uniformShift.apply')" />
@@ -342,9 +343,9 @@
             >
                 <el-table-column prop="type" :label="t('calculationParameters.batchSet.routeType')" min-width="130" show-overflow-tooltip />
                 <el-table-column prop="routeCount" :label="t('calculationParameters.batchSet.routeCount')" width="92" align="center" />
-                <el-table-column :label="t('calculationParameters.batchSet.routes')" width="150" align="center">
+                <el-table-column :label="t('calculationParameters.batchSet.routes')" min-width="170" align="center">
                     <template #default="{ row }">
-                        <ActionButton :disabled="batchSettingRouteTimes" @click="openBatchRouteList(row.type)" :icon="List" :label="t('calculationParameters.batchSet.routeList', { selected: row.selectedRouteIds.length, total: row.routeCount })" />
+                        <ActionButton variant="text" :disabled="batchSettingRouteTimes" @click="openBatchRouteList(row.type)" :icon="List" :label="t('calculationParameters.batchSet.routeList', { selected: row.selectedRouteIds.length, total: row.routeCount })" />
                     </template>
                 </el-table-column>
                 <el-table-column :label="t('calculationParameters.manager.fields.startShift')" width="150">
@@ -375,8 +376,9 @@
                 </el-table-column>
             </el-table>
             <template #footer>
-                <ActionButton :disabled="batchSettingRouteTimes" @click="batchSetDialogVisible = false" :icon="Close" :label="t('calculationParameters.batchSet.cancel')" />
+                <ActionButton variant="text" :disabled="batchSettingRouteTimes" @click="batchSetDialogVisible = false" :icon="Close" :label="t('calculationParameters.batchSet.cancel')" />
                 <ActionButton
+                    variant="text"
                     type="primary"
                     :loading="batchSettingRouteTimes"
                     :disabled="batchRouteTimeSettings.length === 0"
@@ -411,7 +413,7 @@
                 </el-checkbox-group>
             </div>
             <template #footer>
-                <ActionButton type="primary" @click="batchRouteListDialogVisible = false" :icon="List" :label="t('calculationParameters.batchSet.confirmRoutes')" />
+                <ActionButton variant="text" type="primary" @click="batchRouteListDialogVisible = false" :icon="List" :label="t('calculationParameters.batchSet.confirmRoutes')" />
             </template>
         </el-dialog>
 

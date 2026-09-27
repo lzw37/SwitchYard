@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using SwitchYard.Capacity;
 using SwitchYard.Service.Utils;
+using SwitchYard.Service.Services;
 
 namespace SwitchYard.Service.Controllers
 {
@@ -1398,6 +1399,7 @@ namespace SwitchYard.Service.Controllers
                     dbConnector,
                     normalizedInstanceID,
                     normalizedStationSchemeID);
+                SchemeTemplateStore.DeleteScheme(dbConnector, normalizedInstanceID, normalizedStationSchemeID);
                 DeleteStationSchemeMetadata(
                     dbConnector,
                     normalizedInstanceID,

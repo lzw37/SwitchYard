@@ -27,7 +27,7 @@
         import OperationProcessEditor from '../src/capacity/components/OperationProcessEditor.vue'
         import { createExampleTemplate, demoCatalog, validateTemplate } from '../src/capacity/operationProcess.ts'
 
-        const scope = { instanceID: 'local-fixture', stationSchemeID: 'link-names', operationPlanID: 'plan' }
+        const scope = { instanceID: 'local-fixture', stationSchemeID: 'link-names' }
         const catalog = structuredClone(demoCatalog)
         catalog.tracks[0].name = ''
         catalog.tracks[1].name = 'Ⅰ道'

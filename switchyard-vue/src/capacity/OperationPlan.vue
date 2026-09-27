@@ -21,7 +21,8 @@
                     />
                 </el-select>
             </div>
-            <div class="operation-plan-object-control">
+            <span v-if="isSchemeTemplateTab" class="operation-plan-scope-hint">{{ t('operationPlan.schemeTemplates') }}</span>
+            <div v-else class="operation-plan-object-control">
                 <span class="operation-plan-control-label">{{ t('operationPlan.planObject.label') }}</span>
                 <el-select
                     v-model="currentOperationPlanId"
@@ -43,6 +44,7 @@
             </div>
             <div class="operation-plan-toolbar-actions">
                 <el-select
+                    v-if="!isSchemeTemplateTab"
                     v-model="selectedSaturatedPresetId"
                     size="small"
                     filterable
@@ -59,12 +61,14 @@
                     />
                 </el-select>
                 <ActionButton
+                    v-if="!isSchemeTemplateTab"
                     :icon="MagicStick"
                     type="success"
                     :loading="generatingSaturatedPlan"
                     :disabled="!canGenerateSaturatedPlan"
                     @click="generateSaturatedPlan" :label="saturatedPlanButtonText" />
                 <ActionButton
+                    v-if="!isSchemeTemplateTab"
                     :icon="Setting"
                     :disabled="!selectedInstanceId || !currentStationSchemeId"
                     @click="openOperationPlanManager" :label="t('operationPlan.planObject.actions.manage')" />
@@ -185,12 +189,12 @@
                     >
                         <template #default="{ row }">
                             <template v-if="isOperationPlanObjectInlineEditing(row)">
-                                <ActionButton
+                                <ActionButton variant="text"
                                     :icon="Check"
                                     type="primary"
                                     :loading="savingOperationPlanObject"
                                     @click="saveOperationPlanObject" :label="t('operationPlan.actions.save')" />
-                                <ActionButton
+                                <ActionButton variant="text"
                                     :icon="Close"
                                     :disabled="savingOperationPlanObject"
                                     @click="cancelOperationPlanObjectEdit" :label="t('operationPlan.actions.cancel')" />
@@ -243,9 +247,11 @@
                 <el-alert :title="t('operationPlan.train.fromProcess.mapping')" type="info" show-icon :closable="false" />
             </div>
             <template #footer>
-                <ActionButton :icon="Refresh" :disabled="loadingProcessTrainSources || generatingTrainFromProcess" @click="loadProcessTrainSources" :label="t('operationPlan.train.fromProcess.reload')" />
-                <ActionButton :disabled="generatingTrainFromProcess" @click="processTrainDialogVisible = false" :icon="Close" :label="t('operationPlan.actions.cancel')" />
-                <ActionButton type="primary" :icon="MagicStick" :loading="generatingTrainFromProcess" :disabled="!selectedProcessTrainSource || loadingProcessTrainSources || !canGenerateTrainFromProcess" @click="generateTrainFromProcess" :label="t('operationPlan.train.fromProcess.generate')" />
+                <div class="dialog-actions">
+                    <ActionButton variant="text" :icon="Refresh" :disabled="loadingProcessTrainSources || generatingTrainFromProcess" @click="loadProcessTrainSources" :label="t('operationPlan.train.fromProcess.reload')" />
+                    <ActionButton variant="text" :disabled="generatingTrainFromProcess" @click="processTrainDialogVisible = false" :icon="Close" :label="t('operationPlan.actions.cancel')" />
+                    <ActionButton variant="text" type="primary" :icon="MagicStick" :loading="generatingTrainFromProcess" :disabled="!selectedProcessTrainSource || loadingProcessTrainSources || !canGenerateTrainFromProcess" @click="generateTrainFromProcess" :label="t('operationPlan.train.fromProcess.generate')" />
+                </div>
             </template>
         </el-dialog>
 
@@ -271,9 +277,11 @@
                 <p class="operation-process-generation-help">{{ t('operationPlan.trainOperationPlan.fromProcess.distributionHint') }}</p>
             </div>
             <template #footer>
-                <ActionButton :icon="Refresh" :disabled="loadingProcessPlanSources || generatingPlanFromProcess" @click="loadProcessPlanSources" :label="t('operationPlan.train.fromProcess.reload')" />
-                <ActionButton :disabled="generatingPlanFromProcess" @click="processPlanDialogVisible = false" :icon="Close" :label="t('operationPlan.actions.cancel')" />
-                <ActionButton type="primary" :icon="MagicStick" :loading="generatingPlanFromProcess" :disabled="!selectedProcessPlanSource || !validProcessPlanParameters || !canGeneratePlanFromProcess" @click="generatePlanFromProcess" :label="t('operationPlan.trainOperationPlan.fromProcess.generate')" />
+                <div class="dialog-actions">
+                    <ActionButton variant="text" :icon="Refresh" :disabled="loadingProcessPlanSources || generatingPlanFromProcess" @click="loadProcessPlanSources" :label="t('operationPlan.train.fromProcess.reload')" />
+                    <ActionButton variant="text" :disabled="generatingPlanFromProcess" @click="processPlanDialogVisible = false" :icon="Close" :label="t('operationPlan.actions.cancel')" />
+                    <ActionButton variant="text" type="primary" :icon="MagicStick" :loading="generatingPlanFromProcess" :disabled="!selectedProcessPlanSource || !validProcessPlanParameters || !canGeneratePlanFromProcess" @click="generatePlanFromProcess" :label="t('operationPlan.trainOperationPlan.fromProcess.generate')" />
+                </div>
             </template>
         </el-dialog>
 
@@ -345,7 +353,6 @@
                     class="operation-process-editor-host"
                     :instance-i-d="selectedInstanceId || ''"
                     :station-scheme-i-d="currentStationSchemeId"
-                    :operation-plan-i-d="currentOperationPlanId"
                 />
             </el-tab-pane>
             <el-tab-pane
@@ -1323,11 +1330,13 @@
                             </el-form-item>
                         </el-form>
                         <template #footer>
-                            <ActionButton @click="operationOccupationTimeSubTableDialogVisible = false" :icon="Close" :label="t('operationPlan.actions.cancel')" />
-                            <ActionButton
-                                type="primary"
-                                @click="confirmOperationOccupationTimeSubTableDialog"
-                             :icon="Check" :label="t('operationPlan.actions.confirm')" />
+                            <div class="dialog-actions">
+                                <ActionButton variant="text" @click="operationOccupationTimeSubTableDialogVisible = false" :icon="Close" :label="t('operationPlan.actions.cancel')" />
+                                <ActionButton variant="text"
+                                    type="primary"
+                                    @click="confirmOperationOccupationTimeSubTableDialog"
+                                 :icon="Check" :label="t('operationPlan.actions.confirm')" />
+                            </div>
                         </template>
                     </el-dialog>
                 </section>
@@ -1737,8 +1746,10 @@
             </div>
 
             <template #footer>
-                <ActionButton :icon="Close" @click="closeRoutePicker" :label="t('operationPlan.actions.cancel')" />
-                <ActionButton :icon="Check" type="primary" @click="confirmRoutePicker" :label="t('operationPlan.actions.confirm')" />
+                <div class="dialog-actions">
+                    <ActionButton variant="text" :icon="Close" @click="closeRoutePicker" :label="t('operationPlan.actions.cancel')" />
+                    <ActionButton variant="text" :icon="Check" type="primary" @click="confirmRoutePicker" :label="t('operationPlan.actions.confirm')" />
+                </div>
             </template>
         </el-dialog>
 
@@ -1834,8 +1845,10 @@
             </div>
 
             <template #footer>
-                <ActionButton :icon="Close" @click="closeOperationBottleneckRoutePicker" :label="t('operationPlan.actions.cancel')" />
-                <ActionButton :icon="Check" type="primary" @click="confirmOperationBottleneckRoutePicker" :label="t('operationPlan.actions.confirm')" />
+                <div class="dialog-actions">
+                    <ActionButton variant="text" :icon="Close" @click="closeOperationBottleneckRoutePicker" :label="t('operationPlan.actions.cancel')" />
+                    <ActionButton variant="text" :icon="Check" type="primary" @click="confirmOperationBottleneckRoutePicker" :label="t('operationPlan.actions.confirm')" />
+                </div>
             </template>
         </el-dialog>
 
@@ -2361,11 +2374,12 @@ let operationOccupationTimeSubTableSaveTimer: ReturnType<typeof window.setTimeou
 let suppressOperationOccupationTimeSubTableSave = false
 let operationOccupationTimeSubTableSaveRevision = 0
 
-const hasScope = computed(() => Boolean(
+const hasSchemeScope = computed(() => Boolean(
     props.selectedInstanceId &&
-    currentStationSchemeId.value.trim() &&
-    currentOperationPlanId.value.trim(),
+    currentStationSchemeId.value.trim(),
 ))
+const hasScope = computed(() => hasSchemeScope.value && Boolean(currentOperationPlanId.value.trim()))
+const isSchemeTemplateTab = computed(() => activeOperationPlanTab.value === 'operationProcess' || activeOperationPlanTab.value === 'trainTemplate')
 const selectedTrainTemplate = computed(() => {
     const id = selectedTrainTemplateId.value.trim()
     return trainTemplates.value.find((item) => item.trainTemplateID === id) || null
@@ -2384,9 +2398,10 @@ const operationPlanObjectInlineActive = computed(() => (
     operationPlanOptions.value.some((item) => item.isDraft) ||
     Boolean(operationPlanObjectOriginalId.value)
 ))
-const canLoadTemplates = computed(() => hasScope.value && !loadingTrainTemplates.value && !deletingTrainOperationPlanTrains.value)
-const canEditTrainTemplates = computed(() => hasScope.value && !savingTrainTemplate.value && !deletingTrainOperationPlanTrains.value)
-const processTrainScopeKey = computed(() => JSON.stringify(getOperationPlanScope()))
+const canLoadTemplates = computed(() => hasSchemeScope.value && !loadingTrainTemplates.value && !deletingTrainOperationPlanTrains.value)
+const canEditTrainTemplates = computed(() => hasSchemeScope.value && !savingTrainTemplate.value && !deletingTrainOperationPlanTrains.value)
+const processTrainScopeKey = computed(() => JSON.stringify(getStationSchemeScope()))
+const operationPlanScopeKey = computed(() => JSON.stringify(getOperationPlanScope()))
 const selectedProcessTrainSource = computed(() => processTrainSources.value.find(source => source.id === processTrainSourceID.value) || null)
 const selectedProcessPlanSource = computed(() => processPlanSources.value.find(source => source.id === processPlanSourceID.value) || null)
 const processConstraintsByTrain = computed(() => new Map(trainProcessConstraints.value.map(snapshot => [snapshot.trainID, snapshot])))
@@ -2408,7 +2423,7 @@ const canGenerateTrainFromProcess = computed(() => (
     !loadingProcessTrainSources.value && !generatingTrainFromProcess.value &&
     !generatingTrainOperationPlan.value && !generatingSaturatedPlan.value && !generatingPlanFromProcess.value
 ))
-const canLoadMovementTemplates = computed(() => hasScope.value && selectedTrainTemplate.value !== null && !loadingMovementTemplates.value && !deletingTrainOperationPlanTrains.value)
+const canLoadMovementTemplates = computed(() => hasSchemeScope.value && selectedTrainTemplate.value !== null && !loadingMovementTemplates.value && !deletingTrainOperationPlanTrains.value)
 const canEditMovementTemplates = computed(() => canLoadMovementTemplates.value && !savingMovementTemplate.value && !trainTemplateInlineActive.value)
 const canLoadTrainOperationPlan = computed(() => hasScope.value && !loadingTrainOperationPlan.value && !generatingPlanFromProcess.value && !deletingTrainOperationPlanTrains.value)
 const canLoadOperationPlanChart = computed(() => (
@@ -2492,7 +2507,7 @@ const operationBottleneckAnalysisCountText = computed(() => (
 const operationBottleneckSummaryCountText = computed(() => (
     t('operationPlan.operationBottleneckAnalysis.summary.count', { count: displayOperationBottleneckSummaryRows.value.length })
 ))
-const trainTemplateEmptyText = computed(() => hasScope.value ? t('operationPlan.train.empty') : t('operationPlan.empty.selectScheme'))
+const trainTemplateEmptyText = computed(() => hasSchemeScope.value ? t('operationPlan.train.empty') : t('operationPlan.empty.selectScheme'))
 const movementTemplateEmptyText = computed(() => selectedTrainTemplate.value ? t('operationPlan.movement.empty') : t('operationPlan.empty.expandTrain'))
 const trainOperationPlanEmptyText = computed(() => (
     hasScope.value
@@ -3690,10 +3705,12 @@ function getCurrentOperationPlanID() {
 }
 
 function getOperationPlanScope() {
-    const instanceID = props.selectedInstanceId
-    const stationSchemeID = currentStationSchemeId.value.trim()
     const operationPlanID = getCurrentOperationPlanID()
-    return { instanceID, stationSchemeID, operationPlanID }
+    return { ...getStationSchemeScope(), operationPlanID }
+}
+
+function getStationSchemeScope() {
+    return { instanceID: props.selectedInstanceId, stationSchemeID: currentStationSchemeId.value.trim() }
 }
 
 function parseRouteIDList(value: string) {
@@ -4687,9 +4704,11 @@ function getOperationPlanChartRowStyle(row: OperationPlanChartRow) {
 }
 
 function getOperationPlanChartBarStyle(bar: OperationPlanChartBar) {
+    const startX = operationPlanChartTimeToX(bar.startMinutes)
+    const endX = operationPlanChartTimeToX(bar.endMinutes)
     return {
-        left: `${operationPlanChartTimeToX(bar.startMinutes)}px`,
-        width: `${Math.max(8, (bar.endMinutes - bar.startMinutes) * operationPlanChartPixelsPerMinute.value)}px`,
+        left: `${startX}px`,
+        width: `${Math.max(0, endX - startX)}px`,
         top: `${6 + bar.lane * 24}px`,
         backgroundColor: bar.color,
     }
@@ -5225,12 +5244,10 @@ async function moveMovementTemplate(row: MovementTemplate, direction: -1 | 1) {
     try {
         const instanceID = props.selectedInstanceId
         const stationSchemeID = currentStationSchemeId.value.trim()
-        const operationPlanID = getCurrentOperationPlanID()
         const trainTemplateID = selectedTrainTemplate.value?.trainTemplateID || row.trainTemplateID
         const response = await axios.put('/OperationPlan/UpdateMovementTemplateOrder', {
             instanceID,
             stationSchemeID,
-            operationPlanID,
             trainTemplateID,
             items: movementTemplates.value.map((item, sortOrder) => ({
                 movementID: item.movementID,
@@ -5341,10 +5358,10 @@ function isTrainOperationPlanMovementInlineEditing(row: TrainOperationPlanMoveme
 function syncTemplateScope() {
     trainTemplateForm.value.instanceID = props.selectedInstanceId
     trainTemplateForm.value.stationSchemeID = currentStationSchemeId.value.trim()
-    trainTemplateForm.value.operationPlanID = getCurrentOperationPlanID()
+    trainTemplateForm.value.operationPlanID = ''
     movementTemplateForm.value.instanceID = props.selectedInstanceId
     movementTemplateForm.value.stationSchemeID = currentStationSchemeId.value.trim()
-    movementTemplateForm.value.operationPlanID = getCurrentOperationPlanID()
+    movementTemplateForm.value.operationPlanID = ''
     movementTemplateForm.value.trainTemplateID = selectedTrainTemplate.value?.trainTemplateID || ''
 }
 
@@ -5513,8 +5530,8 @@ function openProcessConstraintDrawer() {
 }
 
 async function loadProcessConstraintCatalog() {
-    if (!hasScope.value || loadingProcessConstraintCatalog.value || processConstraintCatalogScopeKey.value === processTrainScopeKey.value) return
-    const scope = getOperationPlanScope()
+    if (!hasSchemeScope.value || loadingProcessConstraintCatalog.value || processConstraintCatalogScopeKey.value === processTrainScopeKey.value) return
+    const scope = getStationSchemeScope()
     const requestVersion = ++processConstraintCatalogVersion
     loadingProcessConstraintCatalog.value = true
     processConstraintCatalogError.value = ''
@@ -5621,7 +5638,7 @@ async function generateSaturatedPlan() {
         await loadOperationPlans()
         currentOperationPlanId.value = resultPlanId
         activeOperationPlanTab.value = 'trainOperationPlan'
-        await refreshOperationPlanData()
+        await handleOperationPlanChange()
         ElMessage.success(t('operationPlan.saturatedPlan.messages.generated', {
             name: saturatedPlanJob.value.resultOperationPlanName || resultPlanId,
         }))
@@ -5746,7 +5763,7 @@ async function saveOperationPlanObject() {
         await loadOperationPlans()
         if (saved?.operationPlanID) {
             currentOperationPlanId.value = saved.operationPlanID
-            await refreshOperationPlanData()
+            await handleOperationPlanChange()
         }
     } catch (error) {
         console.error('Failed to save operation plan object:', error)
@@ -5792,7 +5809,7 @@ async function copyOperationPlanObject(row: StationOperationPlan) {
         await loadOperationPlans()
         if (copied?.operationPlanID) {
             currentOperationPlanId.value = copied.operationPlanID
-            await refreshOperationPlanData()
+            await handleOperationPlanChange()
         }
     } catch (error) {
         console.error('Failed to copy operation plan object:', error)
@@ -5820,7 +5837,7 @@ async function deleteOperationPlanObject(row: StationOperationPlan) {
         const deletedCurrent = currentOperationPlanId.value === row.operationPlanID
         await loadOperationPlans()
         if (deletedCurrent) {
-            await refreshOperationPlanData()
+            await handleOperationPlanChange()
         }
         cancelOperationPlanObjectEdit()
     } catch (error) {
@@ -6032,12 +6049,12 @@ async function loadProcessPlanSources() {
     processPlanLoadError.value = ''
     processPlanGenerateError.value = ''
     try {
-        const sources = await processTemplateAPI.list(scope)
-        if (requestVersion !== processPlanSourceRequestVersion || !processPlanDialogVisible.value || !matchesProcessTrainScope(scope)) return
-        processPlanSources.value = sources.filter(source => source.instanceID === scope.instanceID && source.stationSchemeID === scope.stationSchemeID && source.operationPlanID === scope.operationPlanID)
+        const sources = await processTemplateAPI.list(getStationSchemeScope())
+        if (requestVersion !== processPlanSourceRequestVersion || !processPlanDialogVisible.value || !matchesOperationPlanScope(scope)) return
+        processPlanSources.value = sources.filter(source => source.instanceID === scope.instanceID && source.stationSchemeID === scope.stationSchemeID)
         if (!processPlanSources.value.some(source => source.id === processPlanSourceID.value)) processPlanSourceID.value = ''
     } catch (error) {
-        if (requestVersion !== processPlanSourceRequestVersion || !processPlanDialogVisible.value || !matchesProcessTrainScope(scope)) return
+        if (requestVersion !== processPlanSourceRequestVersion || !processPlanDialogVisible.value || !matchesOperationPlanScope(scope)) return
         processPlanSources.value = []
         processPlanSourceID.value = ''
         processPlanLoadError.value = getApiErrorMessage(error, t('operationPlan.train.fromProcess.loadFailed'))
@@ -6051,7 +6068,7 @@ async function generatePlanFromProcess() {
     if (!source || !processPlanDialogVisible.value || !canGeneratePlanFromProcess.value || !validProcessPlanParameters.value) return
     const scope = getOperationPlanScope()
     const runVersion = ++processPlanGenerationVersion
-    const isCurrentRun = () => runVersion === processPlanGenerationVersion && matchesProcessTrainScope(scope)
+    const isCurrentRun = () => runVersion === processPlanGenerationVersion && matchesOperationPlanScope(scope)
     const startTime = processPlanStartTime.value.trim()
     const endTime = processPlanEndTime.value.trim()
     generatingPlanFromProcess.value = true
@@ -6101,7 +6118,11 @@ async function generatePlanFromProcess() {
 }
 
 function matchesProcessTrainScope(scope: ProcessScope) {
-    return JSON.stringify(scope) === processTrainScopeKey.value
+    return scope.instanceID === props.selectedInstanceId && scope.stationSchemeID === currentStationSchemeId.value.trim()
+}
+
+function matchesOperationPlanScope(scope: ReturnType<typeof getOperationPlanScope>) {
+    return matchesProcessTrainScope(scope) && scope.operationPlanID === getCurrentOperationPlanID()
 }
 
 function openProcessTrainDialog() {
@@ -6115,8 +6136,8 @@ function openProcessTrainDialog() {
 }
 
 async function loadProcessTrainSources() {
-    if (!processTrainDialogVisible.value || !hasScope.value || generatingTrainFromProcess.value) return
-    const scope = getOperationPlanScope()
+    if (!processTrainDialogVisible.value || !hasSchemeScope.value || generatingTrainFromProcess.value) return
+    const scope = getStationSchemeScope()
     const requestVersion = ++processTrainSourceRequestVersion
     loadingProcessTrainSources.value = true
     processTrainLoadError.value = ''
@@ -6124,7 +6145,7 @@ async function loadProcessTrainSources() {
     try {
         const sources = await processTemplateAPI.list(scope)
         if (requestVersion !== processTrainSourceRequestVersion || !processTrainDialogVisible.value || !matchesProcessTrainScope(scope)) return
-        processTrainSources.value = sources.filter(source => source.instanceID === scope.instanceID && source.stationSchemeID === scope.stationSchemeID && source.operationPlanID === scope.operationPlanID)
+        processTrainSources.value = sources.filter(source => source.instanceID === scope.instanceID && source.stationSchemeID === scope.stationSchemeID)
         if (!processTrainSources.value.some(source => source.id === processTrainSourceID.value)) processTrainSourceID.value = ''
     } catch (error) {
         if (requestVersion !== processTrainSourceRequestVersion || !processTrainDialogVisible.value || !matchesProcessTrainScope(scope)) return
@@ -6139,7 +6160,7 @@ async function loadProcessTrainSources() {
 async function generateTrainFromProcess() {
     const source = selectedProcessTrainSource.value
     if (!source || !processTrainDialogVisible.value || !canGenerateTrainFromProcess.value) return
-    const scope = getOperationPlanScope()
+    const scope = getStationSchemeScope()
     const runVersion = ++processTrainGenerationVersion
     const isCurrentRun = () => runVersion === processTrainGenerationVersion && matchesProcessTrainScope(scope)
     generatingTrainFromProcess.value = true
@@ -6181,8 +6202,8 @@ async function generateTrainFromProcess() {
 }
 
 async function loadTrainTemplates() {
-    const { instanceID, stationSchemeID, operationPlanID } = getOperationPlanScope()
-    if (!instanceID || !stationSchemeID || !operationPlanID) {
+    const { instanceID, stationSchemeID } = getStationSchemeScope()
+    if (!instanceID || !stationSchemeID) {
         clearTrainTemplates()
         return
     }
@@ -6192,13 +6213,12 @@ async function loadTrainTemplates() {
     loadingTrainTemplates.value = true
     try {
         const response = await axios.get('/OperationPlan/GetTrainTemplates', {
-            params: { instanceID, stationSchemeID, operationPlanID },
+            params: { instanceID, stationSchemeID },
         })
         if (
             loadVersion !== trainTemplateLoadVersion ||
             instanceID !== props.selectedInstanceId ||
-            stationSchemeID !== currentStationSchemeId.value.trim() ||
-            operationPlanID !== getCurrentOperationPlanID()
+            stationSchemeID !== currentStationSchemeId.value.trim()
         ) {
             return
         }
@@ -6217,8 +6237,7 @@ async function loadTrainTemplates() {
         if (
             loadVersion !== trainTemplateLoadVersion ||
             instanceID !== props.selectedInstanceId ||
-            stationSchemeID !== currentStationSchemeId.value.trim() ||
-            operationPlanID !== getCurrentOperationPlanID()
+            stationSchemeID !== currentStationSchemeId.value.trim()
         ) {
             return
         }
@@ -6234,9 +6253,9 @@ async function loadTrainTemplates() {
 }
 
 async function loadMovementTemplates() {
-    const { instanceID, stationSchemeID, operationPlanID } = getOperationPlanScope()
+    const { instanceID, stationSchemeID } = getStationSchemeScope()
     const trainTemplateID = selectedTrainTemplate.value?.trainTemplateID || ''
-    if (!instanceID || !stationSchemeID || !operationPlanID || !trainTemplateID) {
+    if (!instanceID || !stationSchemeID || !trainTemplateID) {
         clearMovementTemplates()
         return
     }
@@ -6245,13 +6264,12 @@ async function loadMovementTemplates() {
     loadingMovementTemplates.value = true
     try {
         const response = await axios.get('/OperationPlan/GetMovementTemplates', {
-            params: { instanceID, stationSchemeID, operationPlanID, trainTemplateID },
+            params: { instanceID, stationSchemeID, trainTemplateID },
         })
         if (
             loadVersion !== movementTemplateLoadVersion ||
             instanceID !== props.selectedInstanceId ||
             stationSchemeID !== currentStationSchemeId.value.trim() ||
-            operationPlanID !== getCurrentOperationPlanID() ||
             trainTemplateID !== selectedTrainTemplate.value?.trainTemplateID
         ) {
             return
@@ -6265,7 +6283,6 @@ async function loadMovementTemplates() {
             loadVersion !== movementTemplateLoadVersion ||
             instanceID !== props.selectedInstanceId ||
             stationSchemeID !== currentStationSchemeId.value.trim() ||
-            operationPlanID !== getCurrentOperationPlanID() ||
             trainTemplateID !== selectedTrainTemplate.value?.trainTemplateID
         ) {
             return
@@ -6780,7 +6797,7 @@ async function confirmDeleteSelectedTrainOperationPlanTrains() {
     const trainIDs = [...selectedTrainOperationPlanTrainIDs.value]
     const selectionVersion = trainSelectionVersion
     const runVersion = ++trainBatchDeleteVersion
-    const isCurrentRun = () => runVersion === trainBatchDeleteVersion && matchesProcessTrainScope(scope)
+    const isCurrentRun = () => runVersion === trainBatchDeleteVersion && matchesOperationPlanScope(scope)
     confirmingTrainBatchDelete.value = true
     try {
         await ElMessageBox.confirm(
@@ -6995,11 +7012,9 @@ async function handleCellOccupancyImported(result: CellOccupancyImportResult, so
         currentOperationPlanId.value = result.operationPlanID
         activeOperationPlanTab.value = 'trainOperationPlan'
         trainOperationPlanTrainSearch.value = ''
-        selectedTrainTemplateId.value = ''
-        clearMovementTemplates()
         clearTrainOperationPlan()
         clearRoutePickerLayoutPreview()
-        await refreshOperationPlanData()
+        await handleOperationPlanChange()
         if (!isCurrentScope()) return
         await loadOperationPlanChartData()
     } finally {
@@ -7008,7 +7023,7 @@ async function handleCellOccupancyImported(result: CellOccupancyImportResult, so
 }
 
 async function refreshOperationPlanData() {
-    if (!hasScope.value) {
+    if (!hasSchemeScope.value) {
         clearTrainTemplates()
         clearTrainOperationPlan()
         return
@@ -7019,19 +7034,15 @@ async function refreshOperationPlanData() {
 
 async function handleStationSchemeChange() {
     currentOperationPlanId.value = ''
-    selectedTrainTemplateId.value = ''
-    clearMovementTemplates()
+    clearTrainTemplates()
     clearTrainOperationPlan()
     await loadOperationPlans()
     await refreshOperationPlanData()
 }
 
 async function handleOperationPlanChange() {
-    selectedTrainTemplateId.value = ''
-    clearMovementTemplates()
     clearTrainOperationPlan()
-    clearOperationPlanChart()
-    await refreshOperationPlanData()
+    await loadTrainOperationPlan()
 }
 
 async function toggleTrainTemplateExpansion(row: TrainTemplate) {
@@ -7061,7 +7072,7 @@ function toggleTrainOperationPlanTrainExpansion(row: TrainOperationPlanTrain) {
 }
 
 function startCreateTrainTemplateInline() {
-    if (!hasScope.value) {
+    if (!hasSchemeScope.value) {
         ElMessage.warning(t('operationPlan.empty.selectScheme'))
         return
     }
@@ -7124,7 +7135,6 @@ async function saveTrainTemplate() {
         const payload = {
             instanceID: form.instanceID,
             stationSchemeID: form.stationSchemeID,
-            operationPlanID: form.operationPlanID,
             originalTrainTemplateID: trainTemplateOriginalId.value,
             trainTemplateID: form.trainTemplateID.trim(),
             name: form.name.trim(),
@@ -7166,7 +7176,6 @@ async function updateTrainTemplateFixedOperation(row: TrainTemplate, checked: bo
         const response = await axios.put('/OperationPlan/EditTrainTemplate', {
             instanceID: row.instanceID || props.selectedInstanceId,
             stationSchemeID: row.stationSchemeID || currentStationSchemeId.value.trim(),
-            operationPlanID: row.operationPlanID || getCurrentOperationPlanID(),
             originalTrainTemplateID: row.trainTemplateID,
             trainTemplateID: row.trainTemplateID,
             name: row.name,
@@ -7211,7 +7220,6 @@ async function deleteTrainTemplate(row: TrainTemplate) {
             params: {
                 instanceID: props.selectedInstanceId,
                 stationSchemeID: currentStationSchemeId.value.trim(),
-                operationPlanID: getCurrentOperationPlanID(),
                 trainTemplateID: row.trainTemplateID,
             },
         })
@@ -7298,7 +7306,6 @@ async function saveMovementTemplate() {
         const payload = {
             instanceID: form.instanceID,
             stationSchemeID: form.stationSchemeID,
-            operationPlanID: form.operationPlanID,
             trainTemplateID: form.trainTemplateID,
             originalMovementID: movementTemplateOriginalId.value,
             movementID: form.movementID.trim(),
@@ -7356,7 +7363,6 @@ async function deleteMovementTemplate(row: MovementTemplate) {
             params: {
                 instanceID: props.selectedInstanceId,
                 stationSchemeID: currentStationSchemeId.value.trim(),
-                operationPlanID: getCurrentOperationPlanID(),
                 trainTemplateID: row.trainTemplateID,
                 movementID: row.movementID,
             },
@@ -7415,7 +7421,7 @@ watch(selectedTrainProcessConstraints, snapshot => {
     if (!snapshot) processConstraintDrawerVisible.value = false
 })
 
-watch(processTrainScopeKey, () => {
+watch(operationPlanScopeKey, () => {
     trainBatchDeleteVersion++
     confirmingTrainBatchDelete.value = false
     deletingTrainOperationPlanTrains.value = false
@@ -7423,7 +7429,6 @@ watch(processTrainScopeKey, () => {
     trainOperationPlanTrainSearch.value = ''
     processPlanSourceRequestVersion++
     processPlanGenerationVersion++
-    processConstraintCatalogVersion++
     processPlanDialogVisible.value = false
     processPlanSources.value = []
     processPlanSourceID.value = ''
@@ -7434,6 +7439,10 @@ watch(processTrainScopeKey, () => {
     processPlanResult.value = null
     trainProcessConstraints.value = []
     processConstraintDrawerVisible.value = false
+}, { flush: 'sync' })
+
+watch(processTrainScopeKey, () => {
+    processConstraintCatalogVersion++
     processConstraintCatalog.value = { nodes: [], tracks: [], routes: [] }
     loadingProcessConstraintCatalog.value = false
     processConstraintCatalogError.value = ''
@@ -7537,6 +7546,12 @@ onBeforeUnmount(() => {
     gap: 12px;
     min-height: 36px;
     flex-wrap: wrap;
+}
+
+.operation-plan-scope-hint {
+    margin-right: auto;
+    color: var(--el-text-color-secondary);
+    font-size: 12px;
 }
 
 .operation-plan-scheme-control,
@@ -8203,18 +8218,23 @@ onBeforeUnmount(() => {
     position: absolute;
     display: flex;
     align-items: center;
+    box-sizing: border-box;
     height: 18px;
-    min-width: 8px;
+    min-width: 0;
     max-width: none;
-    padding: 0 7px;
+    padding: 0;
     overflow: hidden;
-    border-radius: 5px;
+    border: 0;
+    border-radius: 0;
     color: #ffffff;
-    box-shadow: 0 2px 7px rgba(33, 53, 79, 0.16);
+    box-shadow: none;
 }
 
 .operation-plan-chart-bar span {
+    box-sizing: border-box;
+    width: 100%;
     min-width: 0;
+    padding: 0 7px;
     overflow: hidden;
     font-size: 11px;
     font-weight: 600;
@@ -8512,4 +8532,6 @@ onBeforeUnmount(() => {
         width: 100%;
     }
 }
+.dialog-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.dialog-actions :deep(.el-button + .el-button) { margin-left: 0; }
 </style>

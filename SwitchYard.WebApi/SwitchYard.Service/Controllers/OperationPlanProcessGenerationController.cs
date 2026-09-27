@@ -16,23 +16,24 @@ public partial class OperationPlanController
         {
             var scope = new ProcessScope {
                 InstanceID = request?.InstanceID?.Trim() ?? "", StationSchemeID = request?.StationSchemeID?.Trim() ?? "",
-                OperationPlanID = request?.OperationPlanID?.Trim() ?? ""
+                OperationPlanID = SchemeTemplateStore.PlanKey
             };
-            if (new[] { scope.InstanceID, scope.StationSchemeID, scope.OperationPlanID }.Any(id => id.Length is 0 or > 50) ||
+            if (new[] { scope.InstanceID, scope.StationSchemeID }.Any(id => id.Length is 0 or > 50) ||
                 string.IsNullOrWhiteSpace(request?.ProcessTemplateID) || request.ProcessTemplateID.Length > 100 || request.Revision is null or <= 0)
-                return BadRequest(new { message = "请提供有效的实例、站场方案、作业计划、已保存作业过程 id 和正整数 revision。" });
+                return BadRequest(new { message = "请提供有效的实例、站场方案、已保存作业过程 id 和正整数 revision。" });
 
             db = GetCapacityDbConnector();
-            var permissionError = AuthorizeProcessGenerationScope(db, scope);
+            var permissionError = AuthorizeProcessGenerationScope(db, scope, requirePlan: false);
             if (permissionError is not null) return permissionError;
             // Schema preparation may issue DDL (and backfills); keep it outside the atomic insert.
             EnsureOperationPlanTemplateSchema(db);
             OperationProcessController.EnsureSchema(db);
+            SchemeTemplateStore.Migrate(db, scope.InstanceID, scope.StationSchemeID);
             db.BeginTransaction();
             // SQLite's write transaction and MySQL's locking read serialize source edits/deletes
             // until commit. All validation and inserts use this same transaction connection.
             var source = OperationProcessController.FindTemplate(db, scope, request.ProcessTemplateID.Trim(), lockForUpdate: true);
-            if (source is null) { db.Rollback(); return NotFound(new { message = "当前作业计划下不存在此已保存作业过程。" }); }
+            if (source is null) { db.Rollback(); return NotFound(new { message = "当前站场方案下不存在此已保存作业过程。" }); }
             if (source.Revision != request.Revision) { db.Rollback(); return ProcessGenerationRevisionConflict(); }
             var catalog = OperationProcessController.LoadCatalog(db, scope);
             var errors = OperationProcessValidator.Validate(source, catalog);
@@ -84,7 +85,7 @@ public partial class OperationPlanController
         message = "作业过程已被修改或删除，请刷新并重新选择已保存版本。"
     });
 
-    private IActionResult? AuthorizeProcessGenerationScope(DBConnector db, ProcessScope scope)
+    private IActionResult? AuthorizeProcessGenerationScope(DBConnector db, ProcessScope scope, bool requirePlan = true)
     {
         var instance = db.Query<CapacityInstance>("SELECT * FROM capacityinstance WHERE ID = @InstanceID", scope)?.FirstOrDefault();
         if (instance is null) return NotFound(new { message = "能力分析实例不存在。" });
@@ -96,7 +97,7 @@ public partial class OperationPlanController
             return StatusCode(403, new { message = "无权访问此能力分析实例。" });
         if ((db.Query<int>("SELECT COUNT(1) FROM stationscheme WHERE InstanceID = @InstanceID AND ID = @StationSchemeID", scope)?.FirstOrDefault() ?? 0) == 0)
             return NotFound(new { message = "当前实例下不存在此站场方案。" });
-        if (!OperationPlanExists(db, scope.InstanceID, scope.StationSchemeID, scope.OperationPlanID))
+        if (requirePlan && !OperationPlanExists(db, scope.InstanceID, scope.StationSchemeID, scope.OperationPlanID))
             return NotFound(new { message = "当前站场方案下不存在此作业计划。" });
         return null;
     }

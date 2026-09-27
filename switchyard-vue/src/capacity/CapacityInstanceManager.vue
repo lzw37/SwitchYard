@@ -72,8 +72,8 @@
                 </el-form-item>
             </el-form>
             <template #footer>
-                <ActionButton @click="dialogVisible = false" :icon="Close" :label="t('capacityInstance.buttons.cancel')" />
-                <ActionButton type="primary" :loading="saving" @click="handleSubmit" :icon="Check" :label="t('capacityInstance.buttons.save')" />
+                <ActionButton variant="text" @click="dialogVisible = false" :icon="Close" :label="t('capacityInstance.buttons.cancel')" />
+                <ActionButton variant="text" type="primary" :loading="saving" @click="handleSubmit" :icon="Check" :label="t('capacityInstance.buttons.save')" />
             </template>
         </el-dialog>
 
@@ -102,8 +102,8 @@
                 />
             </el-form>
             <template #footer>
-                <ActionButton @click="copyDialogVisible = false" :icon="Close" :label="t('capacityInstance.buttons.cancel')" />
-                <ActionButton type="primary" :loading="copying" @click="handleCopy" :icon="CopyDocument" :label="t('capacityInstance.buttons.copy')" />
+                <ActionButton variant="text" @click="copyDialogVisible = false" :icon="Close" :label="t('capacityInstance.buttons.cancel')" />
+                <ActionButton variant="text" type="primary" :loading="copying" @click="handleCopy" :icon="CopyDocument" :label="t('capacityInstance.buttons.copy')" />
             </template>
         </el-dialog>
     </div>

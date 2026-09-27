@@ -318,21 +318,21 @@ namespace SwitchYard.Service.Controllers
         {
             try
             {
-                var scope = NormalizeOperationPlanScope(instanceID, stationSchemeID, operationPlanID);
+                var scope = NormalizeTemplateScope(instanceID, stationSchemeID);
                 if (scope.ErrorResult != null)
                 {
                     return scope.ErrorResult;
                 }
 
                 var dbConnector = GetCapacityDbConnector();
-                var authResult = ValidateCapacityInstanceOwnershipOrFail(dbConnector, scope.InstanceID!);
+                var authResult = ValidateTemplateSchemeOrFail(dbConnector, scope.InstanceID!, scope.StationSchemeID!);
                 if (authResult != null)
                 {
                     return authResult;
                 }
 
                 EnsureOperationPlanTemplateSchema(dbConnector);
-                EnsureDefaultOperationPlan(dbConnector, scope.InstanceID!, scope.StationSchemeID!);
+                SchemeTemplateStore.Migrate(dbConnector, scope.InstanceID!, scope.StationSchemeID!);
                 return Ok(LoadTrainTemplates(dbConnector, scope.InstanceID!, scope.StationSchemeID!, scope.OperationPlanID!));
             }
             catch (Exception ex)
@@ -355,14 +355,14 @@ namespace SwitchYard.Service.Controllers
                 }
 
                 var template = normalized.Template!;
-                var authResult = ValidateCapacityInstanceOwnershipOrFail(dbConnector, template.InstanceID!);
+                var authResult = ValidateTemplateSchemeOrFail(dbConnector, template.InstanceID!, template.StationSchemeID!);
                 if (authResult != null)
                 {
                     return authResult;
                 }
 
                 EnsureOperationPlanTemplateSchema(dbConnector);
-                EnsureDefaultOperationPlan(dbConnector, template.InstanceID!, template.StationSchemeID!);
+                SchemeTemplateStore.Migrate(dbConnector, template.InstanceID!, template.StationSchemeID!);
                 if (string.IsNullOrWhiteSpace(template.TrainTemplateID))
                 {
                     template.TrainTemplateID = GenerateTrainTemplateID(dbConnector, template.InstanceID!, template.StationSchemeID!, template.OperationPlanID!);
@@ -414,14 +414,14 @@ namespace SwitchYard.Service.Controllers
                     originalTrainTemplateID = template.TrainTemplateID;
                 }
 
-                var authResult = ValidateCapacityInstanceOwnershipOrFail(dbConnector, template.InstanceID!);
+                var authResult = ValidateTemplateSchemeOrFail(dbConnector, template.InstanceID!, template.StationSchemeID!);
                 if (authResult != null)
                 {
                     return authResult;
                 }
 
                 EnsureOperationPlanTemplateSchema(dbConnector);
-                EnsureDefaultOperationPlan(dbConnector, template.InstanceID!, template.StationSchemeID!);
+                SchemeTemplateStore.Migrate(dbConnector, template.InstanceID!, template.StationSchemeID!);
                 if (!TrainTemplateExists(dbConnector, template.InstanceID!, template.StationSchemeID!, template.OperationPlanID!, originalTrainTemplateID!))
                 {
                     return NotFound("Train template not found.");
@@ -500,7 +500,7 @@ namespace SwitchYard.Service.Controllers
             DBConnector? dbConnector = null;
             try
             {
-                var scope = NormalizeOperationPlanScope(instanceID, stationSchemeID, operationPlanID);
+                var scope = NormalizeTemplateScope(instanceID, stationSchemeID);
                 if (scope.ErrorResult != null)
                 {
                     return scope.ErrorResult;
@@ -513,14 +513,14 @@ namespace SwitchYard.Service.Controllers
                 }
 
                 dbConnector = GetCapacityDbConnector();
-                var authResult = ValidateCapacityInstanceOwnershipOrFail(dbConnector, scope.InstanceID!);
+                var authResult = ValidateTemplateSchemeOrFail(dbConnector, scope.InstanceID!, scope.StationSchemeID!);
                 if (authResult != null)
                 {
                     return authResult;
                 }
 
                 EnsureOperationPlanTemplateSchema(dbConnector);
-                EnsureDefaultOperationPlan(dbConnector, scope.InstanceID!, scope.StationSchemeID!);
+                SchemeTemplateStore.Migrate(dbConnector, scope.InstanceID!, scope.StationSchemeID!);
                 if (!TrainTemplateExists(dbConnector, scope.InstanceID!, scope.StationSchemeID!, scope.OperationPlanID!, normalizedTrainTemplateID))
                 {
                     return NotFound("Train template not found.");
@@ -562,7 +562,7 @@ namespace SwitchYard.Service.Controllers
         {
             try
             {
-                var scope = NormalizeOperationPlanScope(instanceID, stationSchemeID, operationPlanID);
+                var scope = NormalizeTemplateScope(instanceID, stationSchemeID);
                 if (scope.ErrorResult != null)
                 {
                     return scope.ErrorResult;
@@ -575,14 +575,14 @@ namespace SwitchYard.Service.Controllers
                 }
 
                 var dbConnector = GetCapacityDbConnector();
-                var authResult = ValidateCapacityInstanceOwnershipOrFail(dbConnector, scope.InstanceID!);
+                var authResult = ValidateTemplateSchemeOrFail(dbConnector, scope.InstanceID!, scope.StationSchemeID!);
                 if (authResult != null)
                 {
                     return authResult;
                 }
 
                 EnsureOperationPlanTemplateSchema(dbConnector);
-                EnsureDefaultOperationPlan(dbConnector, scope.InstanceID!, scope.StationSchemeID!);
+                SchemeTemplateStore.Migrate(dbConnector, scope.InstanceID!, scope.StationSchemeID!);
                 if (!TrainTemplateExists(dbConnector, scope.InstanceID!, scope.StationSchemeID!, scope.OperationPlanID!, normalizedTrainTemplateID))
                 {
                     return Ok(new List<MovementTemplateRow>());
@@ -615,14 +615,14 @@ namespace SwitchYard.Service.Controllers
                 }
 
                 var movement = normalized.Movement!;
-                var authResult = ValidateCapacityInstanceOwnershipOrFail(dbConnector, movement.InstanceID!);
+                var authResult = ValidateTemplateSchemeOrFail(dbConnector, movement.InstanceID!, movement.StationSchemeID!);
                 if (authResult != null)
                 {
                     return authResult;
                 }
 
                 EnsureOperationPlanTemplateSchema(dbConnector);
-                EnsureDefaultOperationPlan(dbConnector, movement.InstanceID!, movement.StationSchemeID!);
+                SchemeTemplateStore.Migrate(dbConnector, movement.InstanceID!, movement.StationSchemeID!);
                 if (!TrainTemplateExists(dbConnector, movement.InstanceID!, movement.StationSchemeID!, movement.OperationPlanID!, movement.TrainTemplateID!))
                 {
                     return NotFound("Train template not found.");
@@ -695,14 +695,14 @@ namespace SwitchYard.Service.Controllers
                     originalMovementID = movement.MovementID;
                 }
 
-                var authResult = ValidateCapacityInstanceOwnershipOrFail(dbConnector, movement.InstanceID!);
+                var authResult = ValidateTemplateSchemeOrFail(dbConnector, movement.InstanceID!, movement.StationSchemeID!);
                 if (authResult != null)
                 {
                     return authResult;
                 }
 
                 EnsureOperationPlanTemplateSchema(dbConnector);
-                EnsureDefaultOperationPlan(dbConnector, movement.InstanceID!, movement.StationSchemeID!);
+                SchemeTemplateStore.Migrate(dbConnector, movement.InstanceID!, movement.StationSchemeID!);
                 if (!TrainTemplateExists(dbConnector, movement.InstanceID!, movement.StationSchemeID!, movement.OperationPlanID!, movement.TrainTemplateID!))
                 {
                     return NotFound("Train template not found.");
@@ -772,7 +772,7 @@ namespace SwitchYard.Service.Controllers
         {
             try
             {
-                var scope = NormalizeOperationPlanScope(request?.InstanceID, request?.StationSchemeID, request?.OperationPlanID);
+                var scope = NormalizeTemplateScope(request?.InstanceID, request?.StationSchemeID);
                 if (scope.ErrorResult != null)
                 {
                     return scope.ErrorResult;
@@ -785,14 +785,14 @@ namespace SwitchYard.Service.Controllers
                 }
 
                 var dbConnector = GetCapacityDbConnector();
-                var authResult = ValidateCapacityInstanceOwnershipOrFail(dbConnector, scope.InstanceID!);
+                var authResult = ValidateTemplateSchemeOrFail(dbConnector, scope.InstanceID!, scope.StationSchemeID!);
                 if (authResult != null)
                 {
                     return authResult;
                 }
 
                 EnsureOperationPlanTemplateSchema(dbConnector);
-                EnsureDefaultOperationPlan(dbConnector, scope.InstanceID!, scope.StationSchemeID!);
+                SchemeTemplateStore.Migrate(dbConnector, scope.InstanceID!, scope.StationSchemeID!);
                 if (!TrainTemplateExists(dbConnector, scope.InstanceID!, scope.StationSchemeID!, scope.OperationPlanID!, trainTemplateID))
                 {
                     return NotFound("Train template not found.");
@@ -830,7 +830,7 @@ namespace SwitchYard.Service.Controllers
         {
             try
             {
-                var scope = NormalizeOperationPlanScope(instanceID, stationSchemeID, operationPlanID);
+                var scope = NormalizeTemplateScope(instanceID, stationSchemeID);
                 if (scope.ErrorResult != null)
                 {
                     return scope.ErrorResult;
@@ -845,14 +845,14 @@ namespace SwitchYard.Service.Controllers
                 }
 
                 var dbConnector = GetCapacityDbConnector();
-                var authResult = ValidateCapacityInstanceOwnershipOrFail(dbConnector, scope.InstanceID!);
+                var authResult = ValidateTemplateSchemeOrFail(dbConnector, scope.InstanceID!, scope.StationSchemeID!);
                 if (authResult != null)
                 {
                     return authResult;
                 }
 
                 EnsureOperationPlanTemplateSchema(dbConnector);
-                EnsureDefaultOperationPlan(dbConnector, scope.InstanceID!, scope.StationSchemeID!);
+                SchemeTemplateStore.Migrate(dbConnector, scope.InstanceID!, scope.StationSchemeID!);
                 if (!MovementTemplateExists(
                     dbConnector,
                     scope.InstanceID!,
@@ -1605,6 +1605,22 @@ namespace SwitchYard.Service.Controllers
             return (scope.InstanceID, scope.StationSchemeID, TrimToMaxLength(normalizedOperationPlanID, 50), null);
         }
 
+        private IActionResult? ValidateTemplateSchemeOrFail(DBConnector db, string instanceID, string stationSchemeID)
+        {
+            var authorization = ValidateCapacityInstanceOwnershipOrFail(db, instanceID);
+            if (authorization is not null) return authorization;
+            return (db.Query<int>("SELECT COUNT(1) FROM stationscheme WHERE InstanceID = @instanceID AND ID = @stationSchemeID",
+                new { instanceID, stationSchemeID })?.FirstOrDefault() ?? 0) == 0
+                ? NotFound("Station scheme not found.") : null;
+        }
+
+        private (string? InstanceID, string? StationSchemeID, string? OperationPlanID, IActionResult? ErrorResult)
+            NormalizeTemplateScope(string? instanceID, string? stationSchemeID)
+        {
+            var scope = NormalizeScope(instanceID, stationSchemeID);
+            return (scope.InstanceID, scope.StationSchemeID, SchemeTemplateStore.PlanKey, scope.ErrorResult);
+        }
+
         private (OperationPlanRow? OperationPlan, IActionResult? ErrorResult) NormalizeOperationPlanRequest(
             OperationPlanRequest? request,
             bool allowMissingID)
@@ -1647,7 +1663,7 @@ namespace SwitchYard.Service.Controllers
             TrainTemplateRequest? request,
             bool allowMissingID)
         {
-            var scope = NormalizeOperationPlanScope(request?.InstanceID, request?.StationSchemeID, request?.OperationPlanID);
+            var scope = NormalizeTemplateScope(request?.InstanceID, request?.StationSchemeID);
             if (scope.ErrorResult != null)
             {
                 return (null, scope.ErrorResult);
@@ -1682,7 +1698,7 @@ namespace SwitchYard.Service.Controllers
             MovementTemplateRequest? request,
             bool allowMissingID)
         {
-            var scope = NormalizeOperationPlanScope(request?.InstanceID, request?.StationSchemeID, request?.OperationPlanID);
+            var scope = NormalizeTemplateScope(request?.InstanceID, request?.StationSchemeID);
             if (scope.ErrorResult != null)
             {
                 return (null, scope.ErrorResult);
@@ -2424,6 +2440,7 @@ namespace SwitchYard.Service.Controllers
             string stationSchemeID,
             string operationPlanID)
         {
+            operationPlanID = SchemeTemplateStore.PlanKey;
             return dbConnector.Query<TrainTemplateRow>(
                 $@"SELECT InstanceID, StationSchemeID, OperationPlanID, TrainTemplateID, Name,
                            {QuoteIdentifier("Type")} AS {QuoteIdentifier("Type")},
@@ -2446,6 +2463,7 @@ namespace SwitchYard.Service.Controllers
             string operationPlanID,
             string trainTemplateID)
         {
+            operationPlanID = SchemeTemplateStore.PlanKey;
             return dbConnector.Query<MovementTemplateRow>(
                 $@"SELECT InstanceID, StationSchemeID, OperationPlanID, TrainTemplateID, MovementID, Name, RouteIDList, MinDuration, SortOrder
                    FROM {QuoteIdentifier("movementtemplate")}
@@ -2463,6 +2481,7 @@ namespace SwitchYard.Service.Controllers
             string stationSchemeID,
             string operationPlanID)
         {
+            operationPlanID = SchemeTemplateStore.PlanKey;
             var rows = dbConnector.Query<MovementTemplateRow>(
                 $@"SELECT InstanceID, StationSchemeID, OperationPlanID, TrainTemplateID, MovementID, Name, RouteIDList, MinDuration, SortOrder
                    FROM {QuoteIdentifier("movementtemplate")}
@@ -2868,6 +2887,7 @@ namespace SwitchYard.Service.Controllers
 
         private static void EnsureDefaultOperationPlan(DBConnector dbConnector, string instanceID, string stationSchemeID)
         {
+            SchemeTemplateStore.Migrate(dbConnector, instanceID, stationSchemeID);
             EnsureOperationPlanObjectSchema(dbConnector);
             var exists = (dbConnector.Query<OperationPlanRow>(
                 $@"SELECT OperationPlanID
@@ -2904,7 +2924,6 @@ namespace SwitchYard.Service.Controllers
         private static IReadOnlyList<string> OperationPlanScopedTableNames { get; } = new[]
         {
             TrainProcessSnapshotStore.TableName,
-            "operationprocesstemplate",
             "operationthroughputsummaryroute",
             "operationthroughputsummaryresult",
             "operationbottleneckanalysisresult",
@@ -2916,9 +2935,7 @@ namespace SwitchYard.Service.Controllers
             "operationbottlenecksummarycategoryroute",
             "operationbottlenecksummarycategory",
             "movement",
-            "train",
-            "movementtemplate",
-            "traintemplate"
+            "train"
         };
 
         private static void DeleteOperationPlanScopedData(
@@ -2929,8 +2946,8 @@ namespace SwitchYard.Service.Controllers
         {
             foreach (var tableName in OperationPlanScopedTableNames)
             {
-                // The additive orchestration table is created on first use.
-                if ((tableName is "operationprocesstemplate" or TrainProcessSnapshotStore.TableName) && !TableExists(dbConnector, tableName)) continue;
+                // Execution snapshots are created on first use.
+                if ((tableName is TrainProcessSnapshotStore.TableName) && !TableExists(dbConnector, tableName)) continue;
                 dbConnector.ExecuteNonQuery(
                     $@"DELETE FROM {QuoteIdentifier(tableName)}
                        WHERE InstanceID = @instanceID
@@ -2988,7 +3005,7 @@ namespace SwitchYard.Service.Controllers
         {
             foreach (var tableName in OperationPlanScopedTableNames)
             {
-                if ((tableName is "operationprocesstemplate" or TrainProcessSnapshotStore.TableName) && !TableExists(dbConnector, tableName)) continue;
+                if ((tableName is TrainProcessSnapshotStore.TableName) && !TableExists(dbConnector, tableName)) continue;
                 dbConnector.ExecuteNonQuery(
                     $@"UPDATE {QuoteIdentifier(tableName)}
                        SET OperationPlanID = @operationPlanID
@@ -3791,7 +3808,6 @@ namespace SwitchYard.Service.Controllers
                 ["Number"] = intType,
                 ["IsFixedOperation"] = boolType
             });
-            BackfillOperationPlanID(dbConnector, "traintemplate");
         }
 
         private static void EnsureMovementTemplateSchema(DBConnector dbConnector)
@@ -3848,7 +3864,6 @@ namespace SwitchYard.Service.Controllers
                 ["MinDuration"] = intType,
                 ["SortOrder"] = intType
             });
-            BackfillOperationPlanID(dbConnector, "movementtemplate");
             BackfillMovementTemplateSortOrder(dbConnector);
         }
 
@@ -4391,7 +4406,6 @@ namespace SwitchYard.Service.Controllers
             foreach (var group in rows
                 .Where(row => !string.IsNullOrWhiteSpace(row.InstanceID) &&
                               !string.IsNullOrWhiteSpace(row.StationSchemeID) &&
-                              !string.IsNullOrWhiteSpace(row.OperationPlanID) &&
                               !string.IsNullOrWhiteSpace(row.TrainTemplateID) &&
                               !string.IsNullOrWhiteSpace(row.MovementID))
                 .GroupBy(row => new

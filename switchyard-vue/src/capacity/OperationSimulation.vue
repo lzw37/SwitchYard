@@ -283,11 +283,13 @@
                     </el-form>
                     <template #footer>
                         <ActionButton
+                            variant="text"
                             :label="t('common.actions.cancel')"
                             @click="ganttSubTableDialogVisible = false"
                             :icon="Close"
                         />
                         <ActionButton
+                            variant="text"
                             :label="t('stationLayout3d.dialogs.confirm')"
                             type="primary"
                             @click="confirmGanttSubTableDialog"

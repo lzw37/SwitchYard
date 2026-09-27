@@ -15,7 +15,7 @@ internal static class OperationProcessTrainTemplateGenerator
             "本次仅生成列车模板，保留活动名称、备选进路、最小持续时间及作业顺序。最大持续时间、事件时刻/地点、次序间隔、锚和选定资源等约束仍保留在原作业过程中，未写入列车模板。"
         };
         var train = new TrainTemplateRow {
-            InstanceID = source.InstanceID, StationSchemeID = source.StationSchemeID, OperationPlanID = source.OperationPlanID,
+            InstanceID = source.InstanceID, StationSchemeID = source.StationSchemeID, OperationPlanID = SchemeTemplateStore.PlanKey,
             TrainTemplateID = trainTemplateID, Name = LegacyName(source.Name, "列车模板", warnings), Type = "", Number = 1, IsFixedOperation = 0
         };
         var (ordered, edges) = OrderActivities(source);
@@ -41,7 +41,7 @@ internal static class OperationProcessTrainTemplateGenerator
                 throw new ArgumentException($"活动“{activity.Name}”的进路 id 含旧列车模板分隔符或仅大小写不同，无法完整保存全部候选，请先调整进路 id。");
 
             movements.Add(new MovementTemplateRow {
-                InstanceID = source.InstanceID, StationSchemeID = source.StationSchemeID, OperationPlanID = source.OperationPlanID,
+                InstanceID = source.InstanceID, StationSchemeID = source.StationSchemeID, OperationPlanID = SchemeTemplateStore.PlanKey,
                 TrainTemplateID = trainTemplateID, MovementID = nextMovementID(), Name = LegacyName(activity.Name, $"活动 {activity.Id}", warnings),
                 RouteIDList = string.Join(",", routeIDs), MinDuration = DurationSeconds(activity), SortOrder = movements.Count
             });

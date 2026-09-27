@@ -1300,6 +1300,7 @@
         }
     },
     "operationPlan": {
+        "schemeTemplates": "车站方案共享模板",
         "actions": {
             "refresh": "刷新",
             "add": "新增",
@@ -1430,7 +1431,7 @@
                 "updateFailed": "更新作业计划失败",
                 "copySuccess": "作业计划已复制",
                 "copyFailed": "复制作业计划失败",
-                "deleteConfirm": "确定删除作业计划 {name} 吗？该计划下的模板、列车作业和分析结果也会被删除。",
+                "deleteConfirm": "确定删除作业计划 {name} 吗？该计划下的列车作业和分析结果也会被删除，车站方案的共享模板会保留。",
                 "deleteSuccess": "作业计划已删除",
                 "deleteFailed": "删除作业计划失败"
             }
@@ -1442,7 +1443,7 @@
             "fromProcess": {
                 "action": "从作业过程生成",
                 "title": "从作业过程生成列车模板",
-                "description": "选择当前实例、站场方案和作业计划下已保存的作业过程，使用其名称创建一个新的列车模板。未保存草稿不会出现在列表中。",
+                "description": "选择当前车站方案下已保存的作业过程，使用其名称创建共享列车模板，供该方案下的各个作业计划使用。未保存草稿不会出现在列表中。",
                 "sourceLabel": "作业过程模板",
                 "placeholder": "请选择已保存的作业过程模板",
                 "empty": "暂无已保存的作业过程模板，请先在作业过程编排中保存模板。",
@@ -1915,6 +1916,7 @@
         "labels": {
             "showLabels": "显示标签",
             "displayRatio": "X:Y 坐标比例",
+            "showOccupancy": "占用显示",
             "trainModel": "车型",
             "operationPlan": "作业计划",
             "playbackScope": "范围",

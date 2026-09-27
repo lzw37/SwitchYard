@@ -35,7 +35,7 @@
             document.querySelector('.preview-header span').textContent = 'Interactive preview · Saved in memory for this page'
         }
         createApp({ render: () => h(OperationProcessEditor, {
-        instanceID: 'preview', stationSchemeID: 'demo-station', operationPlanID: 'demo-plan', preview: true,
+        instanceID: 'preview', stationSchemeID: 'demo-station', preview: true,
       }) }).use(i18n).use(ElementPlus, { locale: previewLanguage === 'en' ? en : zhCn }).mount('#app')
     </script>
   </body>

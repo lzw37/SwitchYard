@@ -15,11 +15,13 @@
         </div>
 
         <el-alert v-if="loadError" :title="loadError" type="error" show-icon :closable="false" class="process-alert">
-            <ActionButton type="primary" :disabled="editingLocked" @click="loadScope" :icon="Refresh" :label="ui('重新加载', 'Reload')" />
+            <ActionButton variant="icon-text" type="primary" :disabled="editingLocked" @click="loadScope" :icon="Refresh" :label="ui('重新加载', 'Reload')" />
         </el-alert>
         <el-alert v-if="conflictMessage" :title="conflictMessage" type="warning" show-icon :closable="false" class="process-alert">
-            <ActionButton type="primary" :disabled="editingLocked" @click="saveConflictCopy" :icon="DocumentCopy" :label="ui('保留修改并另存为新模板', 'Save changes as a new template')" />
-            <ActionButton :disabled="editingLocked" @click="reloadConflictingTemplate" :icon="Refresh" :label="ui('放弃本地修改并重新加载', 'Discard changes and reload')" />
+            <div class="process-recovery-actions">
+                <ActionButton variant="text" type="primary" :disabled="editingLocked" @click="saveConflictCopy" :icon="DocumentCopy" :label="ui('保留修改并另存为新模板', 'Save changes as a new template')" />
+                <ActionButton variant="text" :disabled="editingLocked" @click="reloadConflictingTemplate" :icon="Refresh" :label="ui('放弃本地修改并重新加载', 'Discard changes and reload')" />
+            </div>
         </el-alert>
         <el-alert v-if="preview" :title="ui('这是可交互的测试案例：可拖动活动、点击图形并修改右侧属性；保存仅保留在本次演示中。', 'Interactive demo. Drag activities and select objects to edit. Saves last for this session only.')" type="info" show-icon :closable="false" class="process-alert" />
         <el-alert v-if="trackCleanupNotice" :title="ui('已从草稿中移除未命名或已不存在的备选轨道，请保存需要保留此修正的模板。', 'Removed unnamed or missing tracks from drafts. Save a template to keep these corrections.')" type="info" show-icon :closable="false" class="process-alert" />
@@ -45,7 +47,7 @@
                     <div v-if="connecting" class="process-connection-status" role="status" aria-live="polite">
                         <span v-if="!precedenceSource"><b>1 / 2</b> {{ ui('选择亮起的结束事件。', 'Select a highlighted end event.') }}</span>
                         <span v-else><b>2 / 2</b> {{ eventName(precedenceSource.eventID) }} · {{ ui('选择后序活动的开始事件。', 'Select the start event of the following activity.') }}</span>
-                        <ActionButton @click="cancelPrecedence" :icon="Close" :label="ui('取消（Esc）', 'Cancel (Esc)')" />
+                        <ActionButton variant="text" @click="cancelPrecedence" :icon="Close" :label="ui('取消（Esc）', 'Cancel (Esc)')" />
                     </div>
                     <div class="process-canvas-scroll" :class="{ 'process-is-busy': busy, 'process-is-connecting': connecting }">
                         <svg ref="canvasRef" class="process-canvas" :width="canvasWidth * zoom" :height="canvasHeight * zoom" :viewBox="`0 0 ${canvasWidth} ${canvasHeight}`" role="group" :aria-label="ui('作业过程编排图，点击活动、事件、次序或锚以编辑属性', 'Operation process diagram. Select an activity, event, precedence or anchor to edit.')" @pointermove="moveActivity" @pointerup="endDrag" @pointercancel="endDrag">
@@ -190,7 +192,7 @@
                 </aside>
             </div>
         </template>
-        <div v-else-if="!loading" class="process-empty"><h3>{{ hasScope ? ui('从一个作业模板开始', 'Create an operation template') : ui('请先选择站场方案与作业计划', 'Select a station scheme and operation plan') }}</h3><div v-if="hasScope"><ActionButton type="primary" :icon="DocumentCopy" :disabled="busy" @click="loadExample" :label="ui('查看测试案例', 'View example')" /><ActionButton :icon="Plus" :disabled="busy" @click="newTemplate" :label="ui('创建空白模板', 'Create blank template')" /></div></div>
+        <div v-else-if="!loading" class="process-empty"><h3>{{ hasScope ? ui('从一个作业模板开始', 'Create an operation template') : ui('请先选择车站方案', 'Select a station scheme') }}</h3><div v-if="hasScope"><ActionButton variant="icon-text" type="primary" :icon="DocumentCopy" :disabled="busy" @click="loadExample" :label="ui('查看测试案例', 'View example')" /><ActionButton variant="icon-text" :icon="Plus" :disabled="busy" @click="newTemplate" :label="ui('创建空白模板', 'Create blank template')" /></div></div>
     </section>
 </template>
 
@@ -261,16 +263,16 @@ function translateValidation(message: string) {
     return message
 }
 
-const props = withDefaults(defineProps<{ instanceID: string; stationSchemeID: string; operationPlanID: string; preview?: boolean }>(), { preview: false })
+const props = withDefaults(defineProps<{ instanceID: string; stationSchemeID: string; preview?: boolean }>(), { preview: false })
 type ObjectKind = 'activity' | 'event' | 'precedence' | 'anchor'
 type Selection = { kind: ObjectKind | 'template'; id: string }
 type ListRow = { id: string; name: string; summary: string; detail: string }
 type ScopeState = { templates: ProcessTemplate[]; saved: Map<string, string>; selectedID: string | null; catalog: ProcessCatalog }
 type EventSide = 'start' | 'end' | 'standalone'
 type GraphPort = { x: number; y: number; bottom: number; side: 'left' | 'right' }
-const scope = computed<ProcessScope>(() => ({ instanceID: props.instanceID, stationSchemeID: props.stationSchemeID, operationPlanID: props.operationPlanID }))
-const scopeKey = computed(() => JSON.stringify([props.preview, props.instanceID, props.stationSchemeID, props.operationPlanID]))
-const hasScope = computed(() => props.preview || !!(props.instanceID && props.stationSchemeID && props.operationPlanID))
+const scope = computed<ProcessScope>(() => ({ instanceID: props.instanceID, stationSchemeID: props.stationSchemeID }))
+const scopeKey = computed(() => JSON.stringify([props.preview, props.instanceID, props.stationSchemeID]))
+const hasScope = computed(() => props.preview || !!(props.instanceID && props.stationSchemeID))
 const templates = ref<ProcessTemplate[]>([])
 const current = ref<ProcessTemplate | null>(null)
 const catalog = ref<ProcessCatalog>({ nodes: [], tracks: [], routes: [] })
@@ -690,6 +692,8 @@ onBeforeUnmount(() => { requestEpoch++; cancelPrecedence(); endDrag(); window.re
 .process-template-actions > .el-select { width: 400px; max-width: 100%; }
 .process-template-actions .el-button + .el-button { margin-left: 0; }
 .process-alert { margin-bottom: 12px; }
+.process-recovery-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.process-recovery-actions :deep(.el-button + .el-button) { margin-left: 0; }
 .process-save-state { font-size: 11px; color: #658378; border: 1px solid #d6e6de; background: #eff7f3; padding: 2px 7px; border-radius: 4px; white-space: nowrap; }
 .process-save-state.dirty { color: #9b7b39; background: #fff8e8; border-color: #ebdcb8; }
 .process-workspace { display: grid; flex: 1; min-width: 0; min-height: 0; grid-template-columns: minmax(320px, 1fr) 8px var(--inspector-width) 8px var(--object-list-width); grid-template-rows: minmax(0, 1fr); gap: 0; align-items: stretch; overflow: auto; }
@@ -788,6 +792,8 @@ onBeforeUnmount(() => { requestEpoch++; cancelPrecedence(); endDrag(); window.re
 .process-validation.invalid { background: #fffbf2; color: #a88a4b; }
 .process-validation ul { padding-left: 16px; margin: 7px 0 0; font-size: 10px; }
 .process-empty { display: flex; flex: 1; min-height: 0; overflow: auto; align-items: center; flex-direction: column; justify-content: center; text-align: center; }
+.process-empty > div { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.process-empty :deep(.el-button + .el-button) { margin-left: 0; }
 .process-empty-icon { width: 70px; height: 70px; border-radius: 20px; }
 .process-empty-icon svg { width: 38px; height: 38px; }
 .process-empty h3 { color: #465a75; font-size: 18px; margin: 22px 0 7px; }

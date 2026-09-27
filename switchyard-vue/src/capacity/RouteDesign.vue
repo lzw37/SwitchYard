@@ -164,11 +164,13 @@
                     </el-table>
                     <footer class="route-search-result-actions">
                         <ActionButton
+                            variant="text"
                             :label="t('routeDesign.stationRoute.actions.cancel')"
                             @click="closeRouteSearchDialog"
                             :icon="Close"
                         />
                         <ActionButton
+                            variant="text"
                             :label="t('routeDesign.stationRoute.searchDialog.useRoute')"
                             type="primary"
                             :disabled="!selectedRouteCandidate"
@@ -309,6 +311,7 @@
                                                 </el-option>
                                             </el-select>
                                             <ActionButton
+                                                variant="text"
                                                 :label="t('routeDesign.stationRoute.actions.clearFilters')"
                                                 :icon="Close"
                                                 class="station-route-filter-clear"
@@ -419,6 +422,7 @@
                                                     :disabled="!canEditRoutes || savingRoute || generatingRouteDescription"
                                                 />
                                                 <ActionButton
+                                                    variant="icon-text"
                                                     :label="t('routeDesign.stationRoute.actions.generateDescription')"
                                                     :icon="MagicStick"
                                                     :loading="generatingRouteDescription"
@@ -519,27 +523,24 @@
                             </el-form>
 
                             <div class="station-route-form-actions">
-                                <ActionButton
-                                    :label="t('routeDesign.stationRoute.actions.delete')"
+                                <el-button
                                     class="route-action-delete"
-                                    :icon="Delete"
                                     type="danger"
+                                    size="small"
                                     :disabled="!selectedRouteId || savingRoute"
                                     @click="deleteSelectedStationRoute"
-                                />
-                                <ActionButton
-                                    :label="t('routeDesign.stationRoute.actions.cancel')"
-                                    :icon="Close"
+                                >{{ t('routeDesign.stationRoute.actions.delete') }}</el-button>
+                                <el-button
+                                    size="small"
                                     :disabled="savingRoute"
                                     @click="cancelStationRouteEdit"
-                                />
-                                <ActionButton
-                                    :label="t('routeDesign.stationRoute.actions.save')"
-                                    :icon="Check"
+                                >{{ t('routeDesign.stationRoute.actions.cancel') }}</el-button>
+                                <el-button
                                     type="primary"
+                                    size="small"
                                     :disabled="!canSaveRoute"
                                     @click="saveStationRoute"
-                                />
+                                >{{ t('routeDesign.stationRoute.actions.save') }}</el-button>
                             </div>
                         </div>
                     </div>
@@ -663,6 +664,7 @@
 
                         <div class="auto-route-form-actions">
                             <ActionButton
+                                variant="text"
                                 :label="t('routeDesign.autoRoute.actions.generate')"
                                 :icon="Check"
                                 type="primary"
@@ -671,6 +673,7 @@
                                 @click="autoGenerateStationRoutes"
                             />
                             <ActionButton
+                                variant="text"
                                 :label="t('routeDesign.autoRoute.actions.clear')"
                                 :icon="Close"
                                 :disabled="autoRouteGenerationLoading"
@@ -732,6 +735,7 @@
                                         />
                                     </el-select>
                                     <ActionButton
+                                        variant="text"
                                         :label="t('routeDesign.routeEnd.actions.clearFilters')"
                                         :icon="Close"
                                         class="route-end-filter-clear"
@@ -885,27 +889,24 @@
                             </el-form>
 
                             <div class="route-end-form-actions">
-                                <ActionButton
-                                    :label="t('routeDesign.routeEnd.actions.delete')"
+                                <el-button
                                     class="route-action-delete"
-                                    :icon="Delete"
                                     type="danger"
+                                    size="small"
                                     :disabled="!selectedRouteEndId || savingRouteEnd"
                                     @click="deleteSelectedRouteEnd"
-                                />
-                                <ActionButton
-                                    :label="t('routeDesign.routeEnd.actions.cancel')"
-                                    :icon="Close"
+                                >{{ t('routeDesign.routeEnd.actions.delete') }}</el-button>
+                                <el-button
+                                    size="small"
                                     :disabled="savingRouteEnd"
                                     @click="cancelRouteEndEdit"
-                                />
-                                <ActionButton
-                                    :label="t('routeDesign.routeEnd.actions.save')"
-                                    :icon="Check"
+                                >{{ t('routeDesign.routeEnd.actions.cancel') }}</el-button>
+                                <el-button
                                     type="primary"
+                                    size="small"
                                     :disabled="!canSaveRouteEnd"
                                     @click="saveRouteEnd"
-                                />
+                                >{{ t('routeDesign.routeEnd.actions.save') }}</el-button>
                             </div>
                         </div>
                     </div>
@@ -3945,6 +3946,7 @@ onBeforeUnmount(() => {
 
 .route-search-result-actions {
     display: flex;
+    flex-wrap: wrap;
     justify-content: flex-end;
     gap: 8px;
     flex: 0 0 auto;
@@ -4177,7 +4179,7 @@ onBeforeUnmount(() => {
 
 .station-route-description-control {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 32px;
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: flex-start;
     gap: 6px;
     width: 100%;
@@ -4680,6 +4682,16 @@ onBeforeUnmount(() => {
     white-space: nowrap;
 }
 
+.station-route-form-actions > .el-button,
+.route-end-form-actions > .el-button {
+    min-width: 64px;
+    height: 30px;
+    padding: 0 12px;
+    margin-left: 0;
+    border-radius: 6px;
+    font-size: 13px;
+}
+
 .route-action-delete {
     margin-right: auto;
 }
@@ -4751,6 +4763,11 @@ onBeforeUnmount(() => {
 @container route-form (max-width: 340px) {
     .route-field-grid {
         grid-template-columns: minmax(0, 1fr);
+    }
+
+    .station-route-description-control {
+        grid-template-columns: minmax(0, 1fr);
+        justify-items: start;
     }
 }
 
