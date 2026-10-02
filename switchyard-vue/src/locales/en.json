@@ -1,4 +1,66 @@
 {
+    "capacityGantt": {
+        "toolbar": "Occupancy chart controls",
+        "fit": "Fit to window",
+        "fitHint": "Fit the chart to the window and follow resizing; manual zoom exits auto-fit",
+        "scaleX": "X Scale",
+        "scaleY": "Y Scale",
+        "refresh": "Refresh",
+        "dragHint": "Move or resize only the current occupancy block; release to save",
+        "startHandle": "Adjust this cell's occupancy start time",
+        "endHandle": "Adjust this cell's occupancy end time",
+        "saveSuccess": "This cell's occupancy was updated",
+        "saveFailed": "Failed to save cell occupancy times; the original times were restored"
+    },
+    "stationPlanView": {
+        "toolbar": "Station plan view controls",
+        "chartLabel": "Mesoscopic station operation plan, one line per train",
+        "axis": "Track sections / entrances",
+        "cell": "Track circuit section",
+        "endpoint": "Station entrance / exit",
+        "configure": "Configure displayed elements",
+        "settingsHint": "Choose axis sections and entrances. Entrance candidates come from route endpoints in this station scheme. Settings are saved with the current operation plan.",
+        "missingEndpoints": "{count} train endpoints are unselected, hiding their entry or exit connections",
+        "completeEndpoints": "Show missing train endpoints",
+        "usedEndpoint": "Train endpoint in this plan",
+        "selectAll": "Select all",
+        "clearSelection": "Clear",
+        "saveSettings": "Save settings",
+        "settingsSaved": "Station plan display settings saved",
+        "saveSettingsFailed": "Could not save display settings. Please retry.",
+        "loadSettingsFailed": "Could not load display settings. Refresh to retry.",
+        "startTime": "Station plan start time",
+        "endTime": "Station plan end time",
+        "summary": "{trains} trains, {rows} displayed elements",
+        "trainLegend": "Click lines or train numbers to select multiple trains; Esc or clicking empty chart space clears selection; hovering a line temporarily thickens it",
+        "trainLine": "Train operation line {train}",
+        "startHandle": "Adjust the start of {train}'s horizontal run",
+        "endHandle": "Adjust the end of {train}'s horizontal run",
+        "handleInfo": {
+            "trainNumber": "Train number",
+            "cell": "Track circuit",
+            "time": "Time"
+        },
+        "moveRow": "Drag this run vertically to change its track circuit and matching routes",
+        "editSaved": "Train run changes saved to the operation plan",
+        "routesChanged": "The following routes were changed:",
+        "routeChangeItem": "{train} · {movement}: {from} → {to}",
+        "editSaveFailed": "Save failed; original times and routes restored",
+        "undo": "Undo (Ctrl+Z)",
+        "redo": "Redo (Ctrl+Y)",
+        "historyHint": "Keeps up to 20 edits. Making a new edit after undo clears redo history.",
+        "historyCount": "{undo} actions to undo, {redo} actions to redo",
+        "undoSaved": "Change undone and saved to the operation plan",
+        "redoSaved": "Change redone and saved to the operation plan",
+        "historySaveFailed": "Could not save undo or redo. The current plan and history are unchanged.",
+        "editErrors": {
+            "stale": "The operation plan changed. Refresh and retry."
+        },
+        "emptyRows": "No axis elements selected. Choose sections or entrances in display settings.",
+        "emptyTrains": "No train paths on the selected elements",
+        "emptyEndpoints": "Routes have no configured endpoints",
+        "note": "Horizontal lines show dwelling; vertical lines show moves between sections or entrances. Select a train and drag square handles to adjust times, or drag a run vertically to change its section. Release to save. This chart saves edits directly without checking plan legality."
+    },
     "login": {
         "title": "User Login",
         "usernamePlaceholder": "Please enter username",
@@ -685,45 +747,61 @@
         },
         "hero": {
             "subtitle": "Rail yard & hub teaching toolkit",
-            "description": "Provides hump calculations, car release simulations, yard layout design and more",
+            "description": "Modeling, calculation and 2D/3D visualization for hump profile design and station capacity analysis",
             "btnHump": "Hump Profile",
+            "btnCapacity": "Station Capacity",
             "btnSource": "View Source"
         },
         "features": {
             "title": "Core Features",
-            "subtitle": "A professional teaching and simulation platform for rail yards",
-            "cards": {
-                "layout": {
-                    "title": "Yard Layout",
-                    "desc": "Visual plan/profile views for hump yards"
+            "subtitle": "Hump profile design and station capacity analysis for railway teaching and scheme evaluation",
+            "modules": {
+                "hump": {
+                    "title": "Hump Profile Design",
+                    "description": "Design longitudinal profiles and analyze wagon release operations using yard layouts, vehicle parameters and calculation conditions.",
+                    "link": "Open hump profile design",
+                    "items": {
+                        "profile": {
+                            "title": "Yard Layout and Gradient Design",
+                            "description": "Define the hump layout and release tracks, set segment lengths and gradients, and construct longitudinal profiles."
+                        },
+                        "energy": {
+                            "title": "Vehicle Parameters and Energy Height",
+                            "description": "Configure vehicles, calculation conditions and retarder states. Calculate resistance and kinetic energy heights to analyze energy changes during release."
+                        },
+                        "headway": {
+                            "title": "Release Curves and Headway Checks",
+                            "description": "Calculate speed and elapsed time along the release track, and check headways between successive cuts to assess profile designs."
+                        },
+                        "simulation": {
+                            "title": "2D and 3D Release Simulation",
+                            "description": "Visualize calculated wagon movements in 2D and 3D to examine track positions and operational timing."
+                        }
+                    }
                 },
-                "slope": {
-                    "title": "Slope Design",
-                    "desc": "Design and optimize hump slopes with scientific calculations"
-                },
-                "sim": {
-                    "title": "Release Simulation",
-                    "desc": "Dynamic simulation of car releases with real-time observation"
-                },
-                "velocity": {
-                    "title": "Velocity Curves",
-                    "desc": "Compute and analyze vehicle velocity-distance curves"
-                },
-                "time": {
-                    "title": "Time Curves",
-                    "desc": "Analyze displacement-time curves and compute runtimes"
-                },
-                "energy": {
-                    "title": "Energy Calculations",
-                    "desc": "Accurate resistance and kinetic energy computations"
-                },
-                "wagon": {
-                    "title": "Wagon Parameters",
-                    "desc": "Configure vehicle parameters flexibly"
-                },
-                "safety": {
-                    "title": "Safety Checks",
-                    "desc": "Interval and safety checks to ensure operations safety"
+                "capacity": {
+                    "title": "Station Capacity Analysis",
+                    "description": "Develop station operation plans, estimate capacity and analyze bottlenecks using track topology, operation timing and section occupancy.",
+                    "preview": "In phased development · Phase 1 Preview expected around the end of 2026.",
+                    "link": "View capacity module overview",
+                    "items": {
+                        "layout": {
+                            "title": "Station Topology and Route Modeling",
+                            "description": "Draw station layouts, define tracks, turnouts, signals and track circuit sections, and establish routes and resource occupancy relationships."
+                        },
+                        "planning": {
+                            "title": "Operation Modeling and Planning",
+                            "description": "Represent operations through activities, events and precedence constraints. Create plans manually, with automatic generation planned through solver integration."
+                        },
+                        "analysis": {
+                            "title": "Section Occupancy and Capacity",
+                            "description": "Calculate occupancy durations and utilization from operation plans, identify bottleneck sections, and summarize capacity estimates by route category."
+                        },
+                        "playback": {
+                            "title": "2D and 3D Operation Playback",
+                            "description": "Display train arrivals, dwell periods and departures alongside route occupancy to examine the temporal and spatial relationships in a plan."
+                        }
+                    }
                 }
             }
         },
@@ -775,8 +853,8 @@
                 "p": "SwitchYard is a comprehensive toolkit designed for teaching rail yards and hubs. It uses modern frontend-backend separation to provide an intuitive and efficient platform for teachers and students."
             },
             "modules": {
-                "title": "Rich Modules",
-                "p": "Covers hump calculations, car release simulation, yard layout design and more, supporting full workflow simulation and analysis."
+                "title": "Two Core Modules",
+                "p": "The toolkit is organized around hump profile design and station capacity analysis. The hump module covers profile design, energy heights and wagon release analysis. The capacity module is being developed in phases for station modeling, operation planning, section occupancy and capacity analysis."
             },
             "open": {
                 "title": "Open Source & Collaboration",
@@ -1384,6 +1462,7 @@
             "operationProcess": "Operation Process",
             "trainOperationPlan": "Train Operation Plan",
             "trainOperationChart": "Operation Plan Chart",
+            "stationPlanView": "Mesoscopic Station Plan",
             "operationOccupationTimeTable": "Operation Occupancy Time Table",
             "operationBottleneckAnalysis": "Operation Bottleneck Analysis",
             "operationThroughputSummary": "Capacity Category Summary"
@@ -1612,8 +1691,8 @@
                 "expandTrain": "Expand a train first",
                 "fields": {
                     "trainID": "Train ID",
-                    "earliestStartTime": "Earliest Start Time",
-                    "latestEndTime": "Latest End Time",
+                    "earliestStartTime": "Start Time",
+                    "latestEndTime": "End Time",
                     "route": "Route",
                     "tag": "Tag"
                 },

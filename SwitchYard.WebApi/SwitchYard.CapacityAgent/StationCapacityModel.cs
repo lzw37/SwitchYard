@@ -74,9 +74,11 @@ internal sealed class StationCapacityModel : ICapacityModel
 
         var settings = input.Settings ?? new StationCapacitySolveSettings();
         var horizon = EffectiveHorizon(input);
-        var minimumShift = input.RouteOccupations.SelectMany(window => new[]
+        var occupations = input.RouteOccupations.Concat(input.Trains.SelectMany(train => train.Movements)
+            .SelectMany(movement => movement.CellOccupationOverrides)).ToList();
+        var minimumShift = occupations.SelectMany(window => new[]
             { window.StartOccupationShiftSeconds, window.EndOccupationShiftSeconds }).DefaultIfEmpty(0).Min();
-        var maximumShift = input.RouteOccupations.SelectMany(window => new[]
+        var maximumShift = occupations.SelectMany(window => new[]
             { window.StartOccupationShiftSeconds, window.EndOccupationShiftSeconds }).DefaultIfEmpty(0).Max();
         var occupationLower = Math.Min(-horizon, minimumShift);
         var occupationUpper = Math.Max(horizon * 2, horizon + maximumShift);
@@ -488,7 +490,9 @@ internal sealed class StationCapacityModel : ICapacityModel
                 var routeSelected = routeVariables[(context.Key, route.Id)];
                 foreach (var cellId in route.CellIds)
                 {
-                    var window = ResolveOccupationWindow(input.RouteOccupations, route.Id, context.Train.TrainType, cellId);
+                    var window = context.Movement.CellOccupationOverrides.FirstOrDefault(occupation =>
+                        occupation.RouteId == route.Id && occupation.CellId == cellId)
+                        ?? ResolveOccupationWindow(input.RouteOccupations, route.Id, context.Train.TrainType, cellId);
                     var occupationStart = occupationStarts[(context.Key, cellId)];
                     var occupationEnd = occupationEnds[(context.Key, cellId)];
                     solver.Add(occupationStart + bigM * (1 - routeSelected) >=

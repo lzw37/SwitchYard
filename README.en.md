@@ -17,6 +17,7 @@ SwitchYard is a toolkit for teaching railway yard and hub operations, preparing 
 | Develop the frontend and reuse UI components | [Frontend development (Chinese)](switchyard-vue/README.md) |
 | Deploy the API and static frontend | [Deployment (Chinese)](doc/Deploy-Instruction.md) |
 | Operate and back up a deployment | [Operations (Chinese)](doc/Operations-Recommendations.md) |
+| Understand deletion scopes, references, and result invalidation | [Deletion lifecycle](docs/deletion-lifecycle.md) |
 | Migrate SQLite data to MySQL | [Database migration (Chinese)](doc/SQLite-to-MySQL-Migration.md) |
 | Embed the standalone station layout module | [Module overview](SwitchYard.StationLayout/README.md) / [Integration guide (Chinese)](SwitchYard.StationLayout/INTEGRATION_GUIDE.zh-CN.md) |
 

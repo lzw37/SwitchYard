@@ -288,7 +288,7 @@ namespace SwitchYard.Service.Controllers
 
                 dbConnector.BeginTransaction();
                 DeleteOperationPlanScopedData(dbConnector, scope.InstanceID!, scope.StationSchemeID!, scope.OperationPlanID!);
-                dbConnector.ExecuteNonQuery(
+                var deleted = dbConnector.ExecuteNonQuery(
                     $@"DELETE FROM {QuoteIdentifier("operationplan")}
                        WHERE InstanceID = @instanceID
                          AND StationSchemeID = @stationSchemeID
@@ -299,6 +299,8 @@ namespace SwitchYard.Service.Controllers
                         stationSchemeID = scope.StationSchemeID,
                         operationPlanID = scope.OperationPlanID
                     });
+                if (deleted != 1) throw new InvalidOperationException("Operation plan deletion was not saved.");
+                CapacityDataLifecycle.VerifyPlanDeleted(dbConnector, scope.InstanceID!, scope.StationSchemeID!, scope.OperationPlanID!);
                 dbConnector.Commit();
                 return Ok("Operation plan deleted successfully.");
             }
@@ -1099,7 +1101,7 @@ namespace SwitchYard.Service.Controllers
                         operationPlanID = scope.OperationPlanID,
                         normalizedID
                     });
-                dbConnector.ExecuteNonQuery(
+                var deleted = dbConnector.ExecuteNonQuery(
                     $@"DELETE FROM {QuoteIdentifier("train")}
                        WHERE InstanceID = @instanceID
                          AND StationSchemeID = @stationSchemeID
@@ -1112,6 +1114,16 @@ namespace SwitchYard.Service.Controllers
                         operationPlanID = scope.OperationPlanID,
                         normalizedID
                     });
+                if (deleted != 1) throw new InvalidOperationException("Train deletion was not saved.");
+                foreach (var (table, key) in new[] { ("movement", "TrainID"), ("trainprocesssnapshot", "TrainID") })
+                {
+                    if (!CapacityDataLifecycle.TableExists(dbConnector, table)) continue;
+                    if ((dbConnector.Query<long>($@"SELECT COUNT(1) FROM {QuoteIdentifier(table)}
+                        WHERE InstanceID=@instanceID AND StationSchemeID=@stationSchemeID AND OperationPlanID=@operationPlanID AND {QuoteIdentifier(key)}=@normalizedID",
+                        new { instanceID = scope.InstanceID, stationSchemeID = scope.StationSchemeID, operationPlanID = scope.OperationPlanID, normalizedID })?.FirstOrDefault() ?? 0) != 0)
+                        throw new InvalidOperationException("Train deletion left execution data.");
+                }
+                CapacityDataLifecycle.InvalidateAnalysis(dbConnector, scope.InstanceID!, scope.StationSchemeID!, scope.OperationPlanID!);
                 dbConnector.Commit();
                 return Ok("Train deleted successfully.");
             }
@@ -1212,6 +1224,11 @@ namespace SwitchYard.Service.Controllers
                 if (IsProcessBoundTrain(dbConnector, movement.InstanceID!, movement.StationSchemeID!, movement.OperationPlanID!, movement.TrainID!) &&
                     !IsProcessMovementMetadataOnlyEdit(dbConnector, movement))
                     return ProcessBoundMovementConflict();
+                movement.CellOccupationOverridesJson ??= dbConnector.Query<MovementRow>(
+                    $@"SELECT CellOccupationOverridesJson FROM {QuoteIdentifier("movement")}
+                       WHERE InstanceID = @InstanceID AND StationSchemeID = @StationSchemeID
+                         AND OperationPlanID = @OperationPlanID AND TrainID = @TrainID AND MovementID = @MovementID",
+                    movement)?.SingleOrDefault()?.CellOccupationOverridesJson;
                 UpdateMovement(dbConnector, movement);
                 return Ok(movement);
             }
@@ -1281,6 +1298,7 @@ namespace SwitchYard.Service.Controllers
             [FromQuery] string? trainID = null,
             [FromQuery] string? movementID = null)
         {
+            DBConnector? dbConnector = null;
             try
             {
                 var scope = NormalizeOperationPlanScope(instanceID, stationSchemeID, operationPlanID);
@@ -1297,7 +1315,7 @@ namespace SwitchYard.Service.Controllers
                     return BadRequest("trainID and movementID are required.");
                 }
 
-                var dbConnector = GetCapacityDbConnector();
+                dbConnector = GetCapacityDbConnector();
                 var authResult = ValidateCapacityInstanceOwnershipOrFail(dbConnector, scope.InstanceID!);
                 if (authResult != null)
                 {
@@ -1314,7 +1332,8 @@ namespace SwitchYard.Service.Controllers
                 if (IsProcessBoundTrain(dbConnector, scope.InstanceID!, scope.StationSchemeID!, scope.OperationPlanID!, normalizedTrainID))
                     return ProcessBoundMovementConflict();
 
-                dbConnector.ExecuteNonQuery(
+                dbConnector.BeginTransaction();
+                var deleted = dbConnector.ExecuteNonQuery(
                     $@"DELETE FROM {QuoteIdentifier("movement")}
                        WHERE InstanceID = @instanceID
                          AND StationSchemeID = @stationSchemeID
@@ -1329,10 +1348,14 @@ namespace SwitchYard.Service.Controllers
                         normalizedTrainID,
                         normalizedMovementID
                     });
+                if (deleted != 1) throw new InvalidOperationException("Movement deletion was not saved.");
+                CapacityDataLifecycle.InvalidateAnalysis(dbConnector, scope.InstanceID!, scope.StationSchemeID!, scope.OperationPlanID!);
+                dbConnector.Commit();
                 return Ok("Movement deleted successfully.");
             }
             catch (Exception ex)
             {
+                dbConnector?.Rollback();
                 _logger.LogError(ex, "Failed to delete movement.");
                 return StatusCode(500, "Failed to delete movement.");
             }
@@ -1793,7 +1816,8 @@ namespace SwitchYard.Service.Controllers
 
         private (MovementRow? Movement, IActionResult? ErrorResult) NormalizeMovementRowRequest(
             MovementRow? request,
-            bool allowMissingMovementID)
+            bool allowMissingMovementID,
+            bool limitOccupationOffsets = true)
         {
             var scope = NormalizeOperationPlanScope(request?.InstanceID, request?.StationSchemeID, request?.OperationPlanID);
             if (scope.ErrorResult != null)
@@ -1813,6 +1837,11 @@ namespace SwitchYard.Service.Controllers
                 return (null, BadRequest("movementID is required."));
             }
 
+            string? cellOccupationOverridesJson;
+            try { cellOccupationOverridesJson = MovementCellOccupationOverrides.Normalize(request?.CellOccupationOverridesJson, limitOccupationOffsets); }
+            catch (Exception ex) when (ex is JsonException or ArgumentException)
+            { return (null, BadRequest(ex.Message)); }
+
             return (new MovementRow
             {
                 InstanceID = scope.InstanceID,
@@ -1826,6 +1855,7 @@ namespace SwitchYard.Service.Controllers
                 MinDuration = request?.MinDuration,
                 EarliestStartTime = request?.EarliestStartTime?.Trim() ?? string.Empty,
                 LatestEndTime = request?.LatestEndTime?.Trim() ?? string.Empty,
+                CellOccupationOverridesJson = cellOccupationOverridesJson,
                 Route = request?.Route?.Trim() ?? string.Empty,
                 Tag = request?.Tag?.Trim() ?? string.Empty,
                 SortOrder = request?.SortOrder
@@ -2545,7 +2575,7 @@ namespace SwitchYard.Service.Controllers
             return dbConnector.Query<MovementRow>(
                 $@"SELECT InstanceID, StationSchemeID, OperationPlanID, TrainID, TrainTemplateID, MovementID, Name, RouteIDList,
                            MinDuration, EarliestStartTime, LatestEndTime,
-                           {QuoteIdentifier("Route")}, Tag, SortOrder
+                           {QuoteIdentifier("Route")}, Tag, SortOrder, CellOccupationOverridesJson
                    FROM {QuoteIdentifier("movement")}
                    WHERE InstanceID = @instanceID
                      AND StationSchemeID = @stationSchemeID
@@ -2921,41 +2951,11 @@ namespace SwitchYard.Service.Controllers
                 });
         }
 
-        private static IReadOnlyList<string> OperationPlanScopedTableNames { get; } = new[]
-        {
-            TrainProcessSnapshotStore.TableName,
-            "operationthroughputsummaryroute",
-            "operationthroughputsummaryresult",
-            "operationbottleneckanalysisresult",
-            "operationoccupationtimesubtable",
-            "operationoccupationtimecell",
-            "operationoccupationtimerow",
-            "operationanalysiscell",
-            "operationanalysismeta",
-            "operationbottlenecksummarycategoryroute",
-            "operationbottlenecksummarycategory",
-            "movement",
-            "train"
-        };
+        private static IReadOnlyList<string> OperationPlanScopedTableNames => CapacityDataLifecycle.PlanTables;
 
         private static void DeleteOperationPlanScopedData(
-            DBConnector dbConnector,
-            string instanceID,
-            string stationSchemeID,
-            string operationPlanID)
-        {
-            foreach (var tableName in OperationPlanScopedTableNames)
-            {
-                // Execution snapshots are created on first use.
-                if ((tableName is TrainProcessSnapshotStore.TableName) && !TableExists(dbConnector, tableName)) continue;
-                dbConnector.ExecuteNonQuery(
-                    $@"DELETE FROM {QuoteIdentifier(tableName)}
-                       WHERE InstanceID = @instanceID
-                         AND StationSchemeID = @stationSchemeID
-                         AND OperationPlanID = @operationPlanID",
-                    new { instanceID, stationSchemeID, operationPlanID });
-            }
-        }
+            DBConnector dbConnector, string instanceID, string stationSchemeID, string operationPlanID) =>
+            CapacityDataLifecycle.DeletePlanChildren(dbConnector, instanceID, stationSchemeID, operationPlanID);
 
         private static void CopyOperationPlanScopedData(
             DBConnector dbConnector,
@@ -3294,11 +3294,11 @@ namespace SwitchYard.Service.Controllers
                     $@"INSERT INTO {QuoteIdentifier("movement")} (
                            InstanceID, StationSchemeID, OperationPlanID, TrainID, TrainTemplateID, MovementID, Name, RouteIDList,
                            MinDuration, EarliestStartTime, LatestEndTime,
-                           {QuoteIdentifier("Route")}, Tag, SortOrder)
+                           {QuoteIdentifier("Route")}, Tag, SortOrder, CellOccupationOverridesJson)
                        VALUES (
                            @InstanceID, @StationSchemeID, @OperationPlanID, @TrainID, @TrainTemplateID, @MovementID, @Name, @RouteIDList,
                            @MinDuration, @EarliestStartTime, @LatestEndTime,
-                           @Route, @Tag, @SortOrder)",
+                           @Route, @Tag, @SortOrder, @CellOccupationOverridesJson)",
                     movement);
             }
         }
@@ -3335,17 +3335,17 @@ namespace SwitchYard.Service.Controllers
                 $@"INSERT INTO {QuoteIdentifier("movement")} (
                        InstanceID, StationSchemeID, OperationPlanID, TrainID, TrainTemplateID, MovementID, Name, RouteIDList,
                        MinDuration, EarliestStartTime, LatestEndTime,
-                       {QuoteIdentifier("Route")}, Tag, SortOrder)
+                       {QuoteIdentifier("Route")}, Tag, SortOrder, CellOccupationOverridesJson)
                    VALUES (
                        @InstanceID, @StationSchemeID, @OperationPlanID, @TrainID, @TrainTemplateID, @MovementID, @Name, @RouteIDList,
                        @MinDuration, @EarliestStartTime, @LatestEndTime,
-                       @Route, @Tag, @SortOrder)",
+                       @Route, @Tag, @SortOrder, @CellOccupationOverridesJson)",
                 movement);
         }
 
-        private void UpdateMovement(DBConnector dbConnector, MovementRow movement)
+        private int UpdateMovement(DBConnector dbConnector, MovementRow movement)
         {
-            dbConnector.ExecuteNonQuery(
+            return dbConnector.ExecuteNonQuery(
                 $@"UPDATE {QuoteIdentifier("movement")}
                    SET TrainTemplateID = @TrainTemplateID,
                        Name = @Name,
@@ -3355,7 +3355,8 @@ namespace SwitchYard.Service.Controllers
                        LatestEndTime = @LatestEndTime,
                        {QuoteIdentifier("Route")} = @Route,
                        Tag = @Tag,
-                       SortOrder = @SortOrder
+                       SortOrder = @SortOrder,
+                       CellOccupationOverridesJson = @CellOccupationOverridesJson
                     WHERE InstanceID = @InstanceID
                       AND StationSchemeID = @StationSchemeID
                       AND OperationPlanID = @OperationPlanID
@@ -3701,6 +3702,7 @@ namespace SwitchYard.Service.Controllers
             EnsureMovementSchema(dbConnector);
             EnsureOperationBottleneckSummaryCategorySchema(dbConnector);
             EnsureOperationAnalysisResultSchema(dbConnector);
+            EnsureStationPlanViewSettingsSchema(dbConnector);
         }
 
         private static void EnsureOperationPlanObjectSchema(DBConnector dbConnector)
@@ -3924,7 +3926,7 @@ namespace SwitchYard.Service.Controllers
             BackfillOperationPlanID(dbConnector, "train");
         }
 
-        private static void EnsureMovementSchema(DBConnector dbConnector)
+        internal static void EnsureMovementSchema(DBConnector dbConnector)
         {
             var tableName = QuoteIdentifier("movement");
             if (!TableExists(dbConnector, "movement"))
@@ -3946,7 +3948,8 @@ namespace SwitchYard.Service.Controllers
                             {QuoteIdentifier("LatestEndTime")} VARCHAR(50) NULL,
                             {QuoteIdentifier("Route")} VARCHAR(50) NULL,
                             {QuoteIdentifier("Tag")} VARCHAR(50) NULL,
-                            {QuoteIdentifier("SortOrder")} INT NULL
+                            {QuoteIdentifier("SortOrder")} INT NULL,
+                            {QuoteIdentifier("CellOccupationOverridesJson")} LONGTEXT NULL
                         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
                 }
                 else
@@ -3966,7 +3969,8 @@ namespace SwitchYard.Service.Controllers
                             {QuoteIdentifier("LatestEndTime")} TEXT NULL,
                             {QuoteIdentifier("Route")} TEXT NULL,
                             {QuoteIdentifier("Tag")} TEXT NULL,
-                            {QuoteIdentifier("SortOrder")} INTEGER NULL
+                            {QuoteIdentifier("SortOrder")} INTEGER NULL,
+                            {QuoteIdentifier("CellOccupationOverridesJson")} TEXT NULL
                         )");
                 }
 
@@ -3989,6 +3993,7 @@ namespace SwitchYard.Service.Controllers
                 ["MinDuration"] = intType,
                 ["EarliestStartTime"] = shortTextType,
                 ["LatestEndTime"] = shortTextType,
+                ["CellOccupationOverridesJson"] = longTextType,
                 ["Route"] = shortTextType,
                 ["Tag"] = shortTextType,
                 ["SortOrder"] = intType

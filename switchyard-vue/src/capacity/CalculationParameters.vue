@@ -185,39 +185,22 @@
                 <section class="calc-occupancy-pane">
                     <header class="calc-occupancy-header">
                         <h2>{{ t('calculationParameters.occupancy.title') }}</h2>
-                        <div class="calc-occupancy-controls">
-                            <div class="calc-gantt-scale-control">
-                                <span>{{ t('calculationParameters.occupancy.horizontalScale') }}</span>
-                                <el-slider
-                                    v-model="occupancyGanttScaleX"
-                                    size="small"
-                                    :min="0.01"
-                                    :max="4"
-                                    :step="0.01"
-                                    :disabled="occupancyGanttAutoFit"
-                                    class="calc-gantt-scale-slider"
-                                />
-                                <span class="calc-scale-value">{{ occupancyGanttScaleX.toFixed(2) }}</span>
-                            </div>
-                            <div class="calc-switch-control">
-                                <span>{{ t('calculationParameters.occupancy.autoFit') }}</span>
-                                <el-switch v-model="occupancyGanttAutoFit" size="small" />
-                            </div>
-                        </div>
                     </header>
                     <OccupationTimeGantt
                         class="calc-occupation-gantt"
                         v-model:scale-x="occupancyGanttScaleX"
+                        v-model:auto-fit="occupancyGanttAutoFit"
                         :cells="ganttCells"
                         :times="routeTimes"
                         :disabled="loadingRouteTimes || savingRouteTimes"
-                        :auto-fit="occupancyGanttAutoFit"
+                        :refresh-disabled="!selectedRouteId"
                         :empty-text="occupancyGanttEmptyText"
                         :cell-axis-label="t('calculationParameters.manager.fields.cellID')"
                         :time-axis-label="t('calculationParameters.occupancy.timeAxis')"
                         :start-handle-label="t('calculationParameters.occupancy.startHandle')"
                         :end-handle-label="t('calculationParameters.occupancy.endHandle')"
                         @change="handleGanttTimeChange"
+                        @refresh="loadRouteTimes"
                     />
                 </section>
             </main>
@@ -2446,31 +2429,6 @@ watch(() => props.selectedInstanceId, () => {
     flex: 0 0 auto;
     gap: 10px;
     min-width: 0;
-}
-
-.calc-occupancy-controls,
-.calc-gantt-scale-control {
-    display: inline-flex;
-    align-items: center;
-    min-width: 0;
-}
-
-.calc-occupancy-controls {
-    justify-content: flex-end;
-    flex-wrap: wrap;
-    gap: 10px;
-}
-
-.calc-gantt-scale-control {
-    gap: 6px;
-    color: #4c5968;
-    font-size: 12px;
-    white-space: nowrap;
-}
-
-.calc-gantt-scale-slider {
-    width: 120px;
-    flex: 0 0 120px;
 }
 
 .calc-occupation-gantt {

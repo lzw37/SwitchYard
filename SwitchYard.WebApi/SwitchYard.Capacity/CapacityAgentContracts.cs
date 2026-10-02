@@ -254,6 +254,7 @@ public sealed class StationCapacityMovementInput
     public int Sequence { get; set; }
     public List<string> CandidateRouteIds { get; set; } = new();
     public List<string> RequiredRouteTags { get; set; } = new();
+    public List<StationCapacityRouteOccupationInput> CellOccupationOverrides { get; set; } = new();
     public double OriginalStartSeconds { get; set; }
     public double OriginalEndSeconds { get; set; }
     public double MinDurationSeconds { get; set; }

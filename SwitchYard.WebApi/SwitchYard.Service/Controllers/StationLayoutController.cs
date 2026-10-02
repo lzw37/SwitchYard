@@ -969,6 +969,7 @@ namespace SwitchYard.Service.Controllers
             [FromQuery] string? stationSchemeID = null,
             [FromQuery] string? id = null)
         {
+            DBConnector? dbConnector = null;
             try
             {
                 var normalizedInstanceID = instanceID?.Trim();
@@ -981,7 +982,7 @@ namespace SwitchYard.Service.Controllers
                     return BadRequest("instanceID, stationSchemeID and id are required when deleting a station route.");
                 }
 
-                var dbConnector = GetCapacityDbConnector();
+                dbConnector = GetCapacityDbConnector();
                 var authResult = ValidateCapacityInstanceOwnershipOrFail(dbConnector, normalizedInstanceID);
                 if (authResult != null)
                 {
@@ -994,18 +995,28 @@ namespace SwitchYard.Service.Controllers
                     return NotFound("Station route not found.");
                 }
 
+                dbConnector.BeginTransaction();
+                if (CapacityDataLifecycle.RouteIsReferenced(dbConnector, normalizedInstanceID, normalizedStationSchemeID, normalizedID))
+                {
+                    dbConnector.Rollback();
+                    return Conflict("此进路仍被列车作业、模板或过程约束引用，请先解除引用后再删除。");
+                }
+                CapacityDataLifecycle.DeleteRouteParameters(dbConnector, normalizedInstanceID, normalizedStationSchemeID, normalizedID);
                 var tableName = QuoteIdentifier("stationroute");
-                dbConnector.ExecuteNonQuery(
+                var deleted = dbConnector.ExecuteNonQuery(
                     $@"DELETE FROM {tableName}
                        WHERE InstanceID = @normalizedInstanceID
                          AND StationSchemeID = @normalizedStationSchemeID
                          AND ID = @normalizedID",
                     new { normalizedInstanceID, normalizedStationSchemeID, normalizedID });
 
+                if (deleted != 1) throw new InvalidOperationException("Station route deletion was not saved.");
+                dbConnector.Commit();
                 return Ok("Station route deleted successfully.");
             }
             catch (Exception ex)
             {
+                dbConnector?.Rollback();
                 _logger.LogError(ex, "Failed to delete station route.");
                 return StatusCode(500, "Failed to delete station route.");
             }
@@ -1395,15 +1406,12 @@ namespace SwitchYard.Service.Controllers
                 }
 
                 dbConnector.BeginTransaction();
-                DeleteStationLayoutTableRowsForExistingTables(
-                    dbConnector,
-                    normalizedInstanceID,
-                    normalizedStationSchemeID);
-                SchemeTemplateStore.DeleteScheme(dbConnector, normalizedInstanceID, normalizedStationSchemeID);
+                CapacityDataLifecycle.DeleteSchemeChildren(dbConnector, normalizedInstanceID, normalizedStationSchemeID);
                 DeleteStationSchemeMetadata(
                     dbConnector,
                     normalizedInstanceID,
                     normalizedStationSchemeID);
+                CapacityDataLifecycle.VerifySchemeDeleted(dbConnector, normalizedInstanceID, normalizedStationSchemeID);
                 dbConnector.Commit();
 
                 return Ok("Station scheme deleted successfully.");
@@ -1891,10 +1899,11 @@ namespace SwitchYard.Service.Controllers
             string instanceID,
             string stationSchemeID)
         {
-            dbConnector.ExecuteNonQuery(
+            var deleted = dbConnector.ExecuteNonQuery(
                 $@"DELETE FROM {QuoteIdentifier("stationscheme")}
                    WHERE InstanceID = @instanceID AND ID = @stationSchemeID",
                 new { instanceID, stationSchemeID });
+            if (deleted != 1) throw new InvalidOperationException("Station scheme deletion was not saved.");
         }
 
         private static void DeleteStationLayoutTableRowsForExistingTables(

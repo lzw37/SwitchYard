@@ -159,13 +159,15 @@ public partial class OperationPlanController
     private static bool IsProcessMovementMetadataOnlyEdit(DBConnector db, MovementRow movement)
     {
         var old = db.Query<MovementRow>($@"SELECT TrainTemplateID, RouteIDList, MinDuration, EarliestStartTime,
-            LatestEndTime, {QuoteIdentifier("Route")} AS {QuoteIdentifier("Route")}, SortOrder FROM {QuoteIdentifier("movement")}
+            LatestEndTime, {QuoteIdentifier("Route")} AS {QuoteIdentifier("Route")}, SortOrder, CellOccupationOverridesJson FROM {QuoteIdentifier("movement")}
             WHERE InstanceID = @InstanceID AND StationSchemeID = @StationSchemeID AND OperationPlanID = @OperationPlanID
             AND TrainID = @TrainID AND MovementID = @MovementID", movement)?.SingleOrDefault();
         return old is not null && (old.TrainTemplateID ?? "") == (movement.TrainTemplateID ?? "") &&
             (old.RouteIDList ?? "") == (movement.RouteIDList ?? "") && old.MinDuration == movement.MinDuration &&
             (old.EarliestStartTime ?? "") == (movement.EarliestStartTime ?? "") && (old.LatestEndTime ?? "") == (movement.LatestEndTime ?? "") &&
-            (old.Route ?? "") == (movement.Route ?? "") && old.SortOrder == movement.SortOrder;
+            (old.Route ?? "") == (movement.Route ?? "") && old.SortOrder == movement.SortOrder &&
+            (movement.CellOccupationOverridesJson is null ||
+             (MovementCellOccupationOverrides.Normalize(old.CellOccupationOverridesJson) ?? "{}") == movement.CellOccupationOverridesJson);
     }
 
     private static int ProcessPlanDurationSeconds(ProcessActivity activity)

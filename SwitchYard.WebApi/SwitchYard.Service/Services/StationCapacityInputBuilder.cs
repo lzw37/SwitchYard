@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using SwitchYard.Capacity;
+using SwitchYard.Service.Controllers;
 using SwitchYard.Service.Models;
 
 namespace SwitchYard.Service.Services;
@@ -13,6 +14,7 @@ public sealed class StationCapacityInputBuilder
         var stationSchemeId = request.StationSchemeId.Trim();
         var operationPlanId = request.OperationPlanId.Trim();
         var dbConnector = DBConnector.GetDBConnector(DBConnector.CapacityDatabaseSectionName);
+        OperationPlanController.EnsureMovementSchema(dbConnector);
 
         var routeRows = dbConnector.Query<StationRouteRow>(
             @"SELECT InstanceID, StationSchemeID, ID, `Type` AS `Type`, Description,
@@ -44,7 +46,7 @@ public sealed class StationCapacityInputBuilder
         var movementRows = dbConnector.Query<MovementRow>(
             @"SELECT InstanceID, StationSchemeID, OperationPlanID, TrainID, TrainTemplateID,
                      MovementID, Name, RouteIDList, MinDuration, EarliestStartTime,
-                     LatestEndTime, `Route` AS `Route`, Tag, SortOrder
+                     LatestEndTime, `Route` AS `Route`, Tag, SortOrder, CellOccupationOverridesJson
               FROM movement
               WHERE InstanceID = @instanceId
                 AND StationSchemeID = @stationSchemeId
@@ -123,6 +125,14 @@ public sealed class StationCapacityInputBuilder
                     Sequence = movement.SortOrder ?? index,
                     CandidateRouteIds = candidateRoutes,
                     RequiredRouteTags = ParseList(movement.Tag),
+                    CellOccupationOverrides = MovementCellOccupationOverrides.Read(movement.CellOccupationOverridesJson)
+                        .Select(pair => new StationCapacityRouteOccupationInput
+                        {
+                            RouteId = pair.Value.RouteID,
+                            CellId = pair.Key,
+                            StartOccupationShiftSeconds = pair.Value.StartOccupationShift,
+                            EndOccupationShiftSeconds = pair.Value.EndOccupationShift
+                        }).ToList(),
                     OriginalStartSeconds = originalStart,
                     OriginalEndSeconds = originalEnd,
                     MinDurationSeconds = minDuration,

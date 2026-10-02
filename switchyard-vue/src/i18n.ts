@@ -1,10 +1,12 @@
 import { createI18n } from "vue-i18n";
 import zh from "./locales/zh.json";
 import en from "./locales/en.json";
+import capacityPreviewZh from "./locales/capacity-preview.zh.json";
+import capacityPreviewEn from "./locales/capacity-preview.en.json";
 
 const messages = {
-    zh,
-    en,
+    zh: { ...zh, capacityPreview: capacityPreviewZh },
+    en: { ...en, capacityPreview: capacityPreviewEn },
 };
 
 function getDefaultLocale(): "en" | "zh" {

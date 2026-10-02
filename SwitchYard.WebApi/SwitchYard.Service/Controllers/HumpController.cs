@@ -1377,6 +1377,7 @@ namespace SwitchYard.Service.Controllers
 
                 // Delete existing records
                 dbConnector.BeginTransaction();
+                HumpDataLifecycle.InvalidateLayoutResults(dbConnector, flatLayout.InstanceID, slopeLineID: flatLayout.SlopeLineID);
                 dbConnector.ExecuteNonQuery("DELETE FROM retarder WHERE InstanceID = @instanceID AND SlopeLineID = @slopeLineID", new { instanceID = flatLayout.InstanceID, slopeLineID = flatLayout.SlopeLineID });
                 dbConnector.ExecuteNonQuery("DELETE FROM switch WHERE InstanceID = @instanceID AND SlopeLineID = @slopeLineID", new { instanceID = flatLayout.InstanceID, slopeLineID = flatLayout.SlopeLineID });
                 dbConnector.ExecuteNonQuery("DELETE FROM positionsegment WHERE InstanceID = @instanceID AND SlopeLineID = @slopeLineID", new { instanceID = flatLayout.InstanceID, slopeLineID = flatLayout.SlopeLineID });
@@ -1456,6 +1457,7 @@ namespace SwitchYard.Service.Controllers
 
                 // Delete existing records
                 dbConnector.BeginTransaction();
+                HumpDataLifecycle.InvalidateLayoutResults(dbConnector, flatLayout.InstanceID, slopeLineID: flatLayout.SlopeLineID);
                 dbConnector.ExecuteNonQuery("DELETE FROM retarder WHERE InstanceID = @instanceID AND SlopeLineID = @slopeLineID", new { instanceID = flatLayout.InstanceID, slopeLineID = flatLayout.SlopeLineID });
                 dbConnector.ExecuteNonQuery("DELETE FROM switch WHERE InstanceID = @instanceID AND SlopeLineID = @slopeLineID", new { instanceID = flatLayout.InstanceID, slopeLineID = flatLayout.SlopeLineID });
                 dbConnector.ExecuteNonQuery("DELETE FROM positionsegment WHERE InstanceID = @instanceID AND SlopeLineID = @slopeLineID", new { instanceID = flatLayout.InstanceID, slopeLineID = flatLayout.SlopeLineID });
@@ -1633,6 +1635,7 @@ namespace SwitchYard.Service.Controllers
         [HttpDelete(Name = "DeleteWagonConcept")]
         public IActionResult DeleteWagonConcept(string instanceID, string typeName)
         {
+            DBConnector? dbConnector = null;
             try
             {
                 if (string.IsNullOrWhiteSpace(instanceID) || string.IsNullOrWhiteSpace(typeName))
@@ -1647,23 +1650,34 @@ namespace SwitchYard.Service.Controllers
                 if (authResult != null) return authResult;
 
                 var username = User.Identity?.Name;
-                DBConnector dbConnector = DBConnector.GetDBConnector();
+                dbConnector = DBConnector.GetDBConnector();
                 var existing = LoadWagonConceptByTypeName(dbConnector, instanceID, typeName);
                 if (existing == null)
                 {
                     return NotFound("WagonConcept not found.");
                 }
 
+                dbConnector.BeginTransaction();
+                var references = dbConnector.Query<string>(
+                    "SELECT ID FROM humpcalculation WHERE InstanceID=@instanceID AND WagonType=@typeName" +
+                    (DBConnector.IsMySql() ? " FOR UPDATE" : ""), new { instanceID, typeName }) ?? new();
+                if (references.Count > 0)
+                {
+                    dbConnector.Rollback();
+                    return Conflict(new { message = "此车辆概念仍被计算引用，请先删除或修改关联计算。", calculationIDs = references });
+                }
                 var result = dbConnector.ExecuteNonQuery(
                     "DELETE FROM wagonconcept WHERE InstanceID = @instanceID AND TypeName = @typeName",
                     new { instanceID, typeName });
                 if (result > 0)
                 {
+                    dbConnector.Commit();
                     LogInformationWithContext("Deleted WagonConcept {TypeName}.", typeName);
                     return Ok("WagonConcept deleted successfully.");
                 }
                 else
                 {
+                    dbConnector.Rollback();
                     _logger.LogWarning(
                         "Failed to delete WagonConcept {TypeName} for instance {InstanceID} by user {Username}.",
                         typeName,
@@ -1674,6 +1688,7 @@ namespace SwitchYard.Service.Controllers
             }
             catch (Exception ex)
             {
+                dbConnector?.Rollback();
                 LogErrorWithContext(ex, "Error deleting WagonConcept.");
                 return StatusCode(500, "Internal server error while deleting WagonConcept.");
             }
@@ -1845,9 +1860,10 @@ namespace SwitchYard.Service.Controllers
         [HttpDelete(Name = "DeleteOperationCondition")]
         public IActionResult DeleteOperationCondition(string id)
         {
+            DBConnector? dbConnector = null;
             try
             {
-                DBConnector dbConnector = DBConnector.GetDBConnector();
+                dbConnector = DBConnector.GetDBConnector();
                 var existing = dbConnector.Query<OperationCondition>("SELECT * FROM operationcondition WHERE ID = @id", new { id }).FirstOrDefault();
                 if (existing == null)
                 {
@@ -1857,20 +1873,32 @@ namespace SwitchYard.Service.Controllers
                 var authResult = ValidateInstanceOwnershipOrFail(existing.InstanceID);
                 if (authResult != null) return authResult;
 
-                var result = dbConnector.ExecuteNonQuery("DELETE FROM operationcondition WHERE ID = @id", new { id });
+                dbConnector.BeginTransaction();
+                var references = dbConnector.Query<string>(
+                    "SELECT ID FROM humpcalculation WHERE InstanceID=@instanceID AND OperationConditionID=@id" +
+                    (DBConnector.IsMySql() ? " FOR UPDATE" : ""), new { instanceID = existing.InstanceID, id }) ?? new();
+                if (references.Count > 0)
+                {
+                    dbConnector.Rollback();
+                    return Conflict(new { message = "此计算条件仍被计算引用，请先删除或修改关联计算。", calculationIDs = references });
+                }
+                var result = dbConnector.ExecuteNonQuery("DELETE FROM operationcondition WHERE ID = @id AND InstanceID=@instanceID", new { id, instanceID = existing.InstanceID });
                 if (result > 0)
                 {
+                    dbConnector.Commit();
                     LogInformationWithContext("Deleted OperationCondition {ID}.", id);
                     return Ok("OperationCondition deleted successfully.");
                 }
                 else
                 {
+                    dbConnector.Rollback();
                     _logger.LogWarning("Failed to delete OperationCondition {ID}.", id, existing.InstanceID);
                     return StatusCode(500, "Failed to delete OperationCondition.");
                 }
             }
             catch (Exception ex)
             {
+                dbConnector?.Rollback();
                 LogErrorWithContext(ex, "Error deleting OperationCondition.");
                 return StatusCode(500, "Internal server error while deleting OperationCondition.");
             }
@@ -2039,6 +2067,7 @@ namespace SwitchYard.Service.Controllers
 
                 // Delete existing records
                 dbConnector.BeginTransaction();
+                HumpDataLifecycle.InvalidateLayoutResults(dbConnector, instanceID, humpSchemeID: humpSchemeID);
                 dbConnector.ExecuteNonQuery("DELETE FROM vpositionsegment WHERE InstanceID = @instanceID AND HumpSchemeID = @humpSchemeID", new { instanceID, humpSchemeID });
                 dbConnector.ExecuteNonQuery("DELETE FROM vposition WHERE InstanceID = @instanceID AND HumpSchemeID = @humpSchemeID", new { instanceID, humpSchemeID });
                 var generatedPositionIdMap = new Dictionary<string, string>();
@@ -2107,6 +2136,7 @@ namespace SwitchYard.Service.Controllers
 
                 // Delete existing records
                 dbConnector.BeginTransaction();
+                HumpDataLifecycle.InvalidateLayoutResults(dbConnector, instanceID, humpSchemeID: humpSchemeID);
                 dbConnector.ExecuteNonQuery("DELETE FROM vpositionsegment WHERE InstanceID = @instanceID AND HumpSchemeID = @humpSchemeID", new { instanceID, humpSchemeID });
                 dbConnector.ExecuteNonQuery("DELETE FROM vposition WHERE InstanceID = @instanceID AND HumpSchemeID = @humpSchemeID", new { instanceID, humpSchemeID });
                 dbConnector.Commit();
@@ -3070,9 +3100,17 @@ namespace SwitchYard.Service.Controllers
                 if (authResult != null) return authResult;
 
                 dbConnector.BeginTransaction();
+                var references = dbConnector.Query<string>(
+                    "SELECT HeadwayCheckID FROM headwaycheckwagon WHERE InstanceID=@instanceID AND HumpCalculationID=@id" +
+                    (DBConnector.IsMySql() ? " FOR UPDATE" : ""), new { instanceID = humpCalculation.InstanceID, id }) ?? new();
+                if (references.Count > 0)
+                {
+                    dbConnector.Rollback();
+                    return Conflict(new { message = "此计算仍被间隔检验引用，请先解除车辆关联。", headwayCheckIDs = references.Distinct().ToArray() });
+                }
                 DeleteHumpCalculationArtifactsByCalculation(dbConnector, humpCalculation.InstanceID, humpCalculation.HumpSchemeID, id);
 
-                var result = dbConnector.ExecuteNonQuery("DELETE FROM humpcalculation WHERE ID = @id", new { id });
+                var result = dbConnector.ExecuteNonQuery("DELETE FROM humpcalculation WHERE ID=@id AND InstanceID=@instanceID AND HumpSchemeID=@humpSchemeID", new { id, instanceID, humpSchemeID });
                 if (result > 0)
                 {
                     dbConnector.Commit();
@@ -3338,6 +3376,7 @@ namespace SwitchYard.Service.Controllers
                 return;
             }
 
+            HumpDataLifecycle.RemoveCalculationReferences(dbConnector, instanceID, humpCalculationIds);
             dbConnector.ExecuteNonQuery(
                 "DELETE FROM humpcalculationdata WHERE InstanceID = @instanceID AND HumpCalculationID IN @humpCalculationIds",
                 new { instanceID, humpCalculationIds });
@@ -3348,6 +3387,7 @@ namespace SwitchYard.Service.Controllers
 
         private void DeleteHumpCalculationArtifactsByScheme(DBConnector dbConnector, string instanceID, string humpSchemeID, List<string> humpCalculationIds)
         {
+            HumpDataLifecycle.RemoveCalculationReferences(dbConnector, instanceID, humpCalculationIds);
             dbConnector.ExecuteNonQuery(
                 "DELETE FROM humpcalculationdata WHERE InstanceID = @instanceID AND HumpSchemeID = @humpSchemeID",
                 new { instanceID, humpSchemeID });

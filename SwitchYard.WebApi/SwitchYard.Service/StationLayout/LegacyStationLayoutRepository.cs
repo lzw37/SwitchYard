@@ -369,22 +369,13 @@ public sealed class LegacyStationLayoutRepository : IStationLayoutRepository
                 return Task.FromResult(false);
             }
 
-            foreach (var table in SchemeDataTables)
-            {
-                database.ExecuteNonQuery(
-                    $"DELETE FROM {Q(table)} WHERE InstanceID = @scopeId AND StationSchemeID = @schemeId",
-                    new { scopeId, schemeId });
-            }
+            CapacityDataLifecycle.DeleteSchemeChildren(database, scopeId, schemeId);
 
-            SchemeTemplateStore.DeleteScheme(database, scopeId, schemeId);
-
-            database.ExecuteNonQuery(
-                $"DELETE FROM {Q("stationlayoutrevision")} " +
-                "WHERE InstanceID = @scopeId AND StationSchemeID = @schemeId",
-                new { scopeId, schemeId });
-            database.ExecuteNonQuery(
+            var deleted = database.ExecuteNonQuery(
                 $"DELETE FROM {Q("stationscheme")} WHERE InstanceID = @scopeId AND ID = @schemeId",
                 new { scopeId, schemeId });
+            if (deleted != 1) throw new InvalidOperationException("Station scheme deletion was not saved.");
+            CapacityDataLifecycle.VerifySchemeDeleted(database, scopeId, schemeId);
             database.Commit();
             return Task.FromResult(true);
         }

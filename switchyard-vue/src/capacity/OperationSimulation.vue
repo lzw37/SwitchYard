@@ -189,61 +189,20 @@
                             </div>
                         </div>
                     </div>
-                    <div
-                        v-if="ganttLanes.length > 0"
-                        ref="ganttViewportRef"
-                        class="simulation-gantt-viewport"
-                    >
-                        <div class="simulation-gantt-content" :style="ganttContentStyle">
-                            <div class="simulation-gantt-axis-row">
-                                <div class="simulation-gantt-axis-label">{{ t('stationLayout3d.gantt.cellAxis') }}</div>
-                                <div class="simulation-gantt-axis-track" :style="ganttTimelineStyle">
-                                    <div
-                                        v-for="tick in ganttTicks"
-                                        :key="tick.key"
-                                        class="simulation-gantt-axis-tick"
-                                        :class="{ 'is-major': tick.major }"
-                                        :style="getGanttTickStyle(tick)"
-                                    >
-                                        <span>{{ tick.label }}</span>
-                                    </div>
-                                    <div class="simulation-gantt-now-line" :style="ganttPlayheadStyle" />
-                                </div>
-                            </div>
-                            <div
-                                v-for="lane in ganttLanes"
-                                :key="lane.key"
-                                class="simulation-gantt-lane-row"
-                            >
-                                <div class="simulation-gantt-lane-label" :title="lane.label">
-                                    {{ lane.label }}
-                                </div>
-                                <div class="simulation-gantt-lane-track" :style="ganttTimelineStyle">
-                                    <div
-                                        v-for="tick in ganttTicks"
-                                        :key="`${lane.key}-${tick.key}`"
-                                        class="simulation-gantt-grid-line"
-                                        :class="{ 'is-major': tick.major }"
-                                        :style="getGanttTickStyle(tick)"
-                                    />
-                                    <div
-                                        v-for="block in lane.blocks"
-                                        :key="block.key"
-                                        class="simulation-gantt-block"
-                                        :class="getGanttBlockClassName(block)"
-                                        :style="getGanttBlockStyle(block)"
-                                        :title="block.title"
-                                    >
-                                        <span>{{ block.label }}</span>
-                                    </div>
-                                    <div class="simulation-gantt-now-line" :style="ganttPlayheadStyle" />
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div v-else class="simulation-gantt-empty">
-                        {{ ganttEmptyText }}
-                    </div>
+                    <TrackOccupancyGantt
+                        ref="ganttRef"
+                        v-model:scale-x="ganttScaleX"
+                        :rows="ganttDisplayRows"
+                        :ticks="ganttTicks"
+                        :timeline-width="ganttTimelineWidth"
+                        :playhead-left="ganttPlayheadLeft"
+                        :empty-text="ganttEmptyText"
+                        :cell-axis-label="t('stationLayout3d.gantt.cellAxis')"
+                        :time-axis-label="t('operationPlan.trainOperationChart.timeAxis')"
+                        :refresh-disabled="!hasScope || loadingAnyData"
+                        :refresh-loading="loadingAnyData"
+                        @refresh="refreshSimulationData"
+                    />
                 </section>
 
                 <el-dialog
@@ -404,6 +363,9 @@
 
 <script setup lang="ts">
 import ActionButton from '@/components/ui/ActionButton.vue'
+import TrackOccupancyGantt from './components/TrackOccupancyGantt.vue'
+import { trackOccupancyGanttMetrics, type TrackOccupancyGanttRow } from './components/trackOccupancyGantt'
+import { getMovementCellOccupationShifts, mergeMovementCellOccupationTimes } from './movementCellOccupation'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Check, Close, Edit, Plus, Refresh, RefreshLeft, VideoPause, VideoPlay } from '@element-plus/icons-vue'
@@ -471,6 +433,7 @@ interface TrainOperationPlanMovement {
     minDuration: number | null
     earliestStartTime: string
     latestEndTime: string
+    cellOccupationOverridesJson?: string | null
     route: string
     tag: string
     sortOrder: number | null
@@ -649,7 +612,7 @@ const syntheticRouteGapSeconds = 1.2
 const routeLockMinSeconds = 1.2
 const routeLockMaxSeconds = 8
 const playbackRenderIntervalMs = 33
-const ganttSidebarWidth = 168
+const ganttSidebarWidth = trackOccupancyGanttMetrics.sidebarWidth
 const ganttMinTimelineWidth = 860
 const ganttMaxTimelineWidth = 6400
 const ganttTargetPixelsPerSecond = 0.08
@@ -696,7 +659,9 @@ const layoutEditorRef = ref<any | null>(null)
 const simulationLeftPanelRef = ref<HTMLElement | null>(null)
 const layoutViewportRef = ref<HTMLElement | null>(null)
 const movementTableRef = ref<InstanceType<typeof SimulationMovementTable> | null>(null)
-const ganttViewportRef = ref<HTMLElement | null>(null)
+const ganttRef = ref<InstanceType<typeof TrackOccupancyGantt> | null>(null)
+const ganttScaleX = ref(1)
+const ganttViewportRef = computed(() => ganttRef.value?.viewport || null)
 // Reading the editor's exposed getter in a computed tracks its scale and bounds,
 // including changes made by fit-to-view, without keeping a second stale snapshot.
 const layoutViewportState = computed<CanvasViewportState>(readLayoutViewportState)
@@ -821,18 +786,8 @@ const ganttTimelineWidth = computed(() => {
 })
 const ganttTimeScale = computed(() => ganttTimelineWidth.value / Math.max(1, simulationDurationSeconds.value))
 const ganttPlayheadLeft = computed(() => secondsToGanttLeft(playheadSeconds.value))
-const ganttTimelineStyle = computed(() => ({
-    width: `${ganttTimelineWidth.value}px`,
-}))
-const ganttContentStyle = computed(() => ({
-    minWidth: `${ganttSidebarWidth + ganttTimelineWidth.value}px`,
-    '--simulation-gantt-sidebar-width': `${ganttSidebarWidth}px`,
-}))
 const simulationGanttPanelStyle = computed(() => ({
     flexBasis: `${ganttPanelHeight.value}px`,
-}))
-const ganttPlayheadStyle = computed(() => ({
-    left: `${ganttPlayheadLeft.value}px`,
 }))
 const ganttTicks = computed<GanttTick[]>(() => buildGanttTicks())
 const ganttAvailableCells = computed<LayoutCell[]>(() => getGanttAvailableCells())
@@ -847,6 +802,14 @@ const activeGanttSubTableCells = computed<LayoutCell[]>(() => {
     return ganttAvailableCells.value.filter((cell) => selectedCellIds.has(cell.id))
 })
 const ganttLanes = computed<GanttLane[]>(() => buildGanttLanes())
+const ganttDisplayRows = computed<TrackOccupancyGanttRow[]>(() => ganttLanes.value.map((lane) => ({
+    key: lane.key,
+    label: lane.label,
+    blocks: lane.blocks.map((block) => ({
+        ...block,
+        className: getGanttBlockClassName(block),
+    })),
+})))
 const ganttSummaryText = computed(() => {
     if (routeRuns.value.length === 0) return t('stationLayout3d.gantt.noPlayableWork')
     const blockCount = ganttLanes.value.reduce((count, lane) => count + lane.blocks.length, 0)
@@ -1110,7 +1073,7 @@ function getFallbackGanttCellsFromRouteTimes() {
 }
 
 function buildGanttBlocksForRun(run: RouteRun) {
-    const routeTimeRows = getStationRouteTimes(run.route.id, run.train.trainType)
+    const routeTimeRows = mergeMovementCellOccupationTimes(run.movement.cellOccupationOverridesJson, run.route.id, getStationRouteTimes(run.route.id, run.train.trainType))
     if (routeTimeRows.length > 0) {
         return routeTimeRows
             .map((time, timeIndex) => buildTimedGanttBlock(run, time, timeIndex))
@@ -1118,8 +1081,10 @@ function buildGanttBlocksForRun(run: RouteRun) {
     }
 
     return getRouteLayoutCellIds(run).map((cellID, cellIndex) => {
-        const startSeconds = run.startSeconds
-        const endSeconds = run.endSeconds
+        const baseWindow = getRunGanttBaseWindow(run)
+        const shifts = getMovementCellOccupationShifts(run.movement.cellOccupationOverridesJson, run.route.id, cellID, {})
+        const startSeconds = baseWindow.startSeconds + shifts.startOccupationShift
+        const endSeconds = baseWindow.endSeconds + shifts.endOccupationShift
         return {
             cellID,
             block: createGanttBlock(run, cellID, cellIndex, startSeconds, endSeconds),
@@ -1127,12 +1092,13 @@ function buildGanttBlocksForRun(run: RouteRun) {
     })
 }
 
-function buildTimedGanttBlock(run: RouteRun, time: StationRouteTimeOption, timeIndex: number) {
+function buildTimedGanttBlock(run: RouteRun, time: Pick<StationRouteTimeOption, 'cellID' | 'startOccupationShift' | 'endOccupationShift'>, timeIndex: number) {
     const cellID = time.cellID.trim()
     if (!cellID) return null
     const baseWindow = getRunGanttBaseWindow(run)
-    const startSeconds = baseWindow.startSeconds + Number(time.startOccupationShift ?? 0)
-    const endSeconds = baseWindow.endSeconds + Number(time.endOccupationShift ?? 0)
+    const shifts = getMovementCellOccupationShifts(run.movement.cellOccupationOverridesJson, run.route.id, cellID, time)
+    const startSeconds = baseWindow.startSeconds + shifts.startOccupationShift
+    const endSeconds = baseWindow.endSeconds + shifts.endOccupationShift
     return {
         cellID,
         block: createGanttBlock(run, cellID, timeIndex, startSeconds, endSeconds),
@@ -1189,20 +1155,6 @@ function getRouteLayoutCellIds(run: RouteRun) {
         .filter((cell) => parseRouteReferenceList(cell.linkIDList).some((linkID) => routeLinkIds.has(linkID)))
         .map((cell) => cell.id || cell.name)
         .filter((cellID) => Boolean(cellID))
-}
-
-function getGanttTickStyle(tick: GanttTick) {
-    return {
-        left: `${tick.left}px`,
-    }
-}
-
-function getGanttBlockStyle(block: GanttBlock) {
-    return {
-        left: `${block.left}px`,
-        width: `${block.width}px`,
-        '--simulation-gantt-block-color': block.color,
-    }
 }
 
 function getGanttBlockClassName(block: GanttBlock) {
@@ -1561,6 +1513,7 @@ function normalizeMovement(item: unknown): TrainOperationPlanMovement | null {
         minDuration: readOptionalInteger(item, 'minDuration', 'MinDuration'),
         earliestStartTime: readString(item, 'earliestStartTime', 'EarliestStartTime').trim(),
         latestEndTime: readString(item, 'latestEndTime', 'LatestEndTime').trim(),
+        cellOccupationOverridesJson: readString(item, 'cellOccupationOverridesJson', 'CellOccupationOverridesJson'),
         route: readString(item, 'route', 'Route').trim(),
         tag: readString(item, 'tag', 'Tag').trim(),
         sortOrder: readOptionalInteger(item, 'sortOrder', 'SortOrder'),
@@ -1894,7 +1847,7 @@ function getRouteOccupationWindowSeconds(item: {
 }) {
     const baseStartSeconds = Number(item.startMinutes || 0) * 60
     const baseEndSeconds = Number(item.endMinutes || item.startMinutes || 0) * 60
-    const routeTimeRows = getStationRouteTimes(item.route.id, item.train.trainType)
+    const routeTimeRows = mergeMovementCellOccupationTimes(item.movement.cellOccupationOverridesJson, item.route.id, getStationRouteTimes(item.route.id, item.train.trainType))
     if (routeTimeRows.length === 0) {
         return {
             startSeconds: baseStartSeconds,
@@ -1905,8 +1858,9 @@ function getRouteOccupationWindowSeconds(item: {
     let startSeconds = baseStartSeconds
     let endSeconds = baseEndSeconds
     routeTimeRows.forEach((time) => {
-        const cellStartSeconds = baseStartSeconds + Number(time.startOccupationShift ?? 0)
-        const rawCellEndSeconds = baseEndSeconds + Number(time.endOccupationShift ?? 0)
+        const shifts = getMovementCellOccupationShifts(item.movement.cellOccupationOverridesJson, item.route.id, time.cellID, time)
+        const cellStartSeconds = baseStartSeconds + shifts.startOccupationShift
+        const rawCellEndSeconds = baseEndSeconds + shifts.endOccupationShift
         startSeconds = Math.min(startSeconds, cellStartSeconds)
         endSeconds = Math.max(endSeconds, Math.max(cellStartSeconds, rawCellEndSeconds))
     })
@@ -2399,7 +2353,7 @@ function scheduleScrollGanttToPlayhead() {
 function scrollGanttToPlayhead() {
     const viewport = ganttViewportRef.value
     if (!viewport || routeRuns.value.length === 0) return
-    const playheadContentLeft = ganttSidebarWidth + ganttPlayheadLeft.value
+    const playheadContentLeft = ganttSidebarWidth + ganttPlayheadLeft.value * ganttScaleX.value
     const targetLeft = Math.max(0, playheadContentLeft - viewport.clientWidth * 0.45)
     viewport.scrollLeft = targetLeft
 }
@@ -3345,159 +3299,6 @@ onBeforeUnmount(() => {
     width: 100%;
 }
 
-.simulation-gantt-viewport {
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow: auto;
-    scrollbar-gutter: stable;
-}
-
-.simulation-gantt-content {
-    position: relative;
-    width: max-content;
-    min-height: 100%;
-}
-
-.simulation-gantt-axis-row,
-.simulation-gantt-lane-row {
-    display: grid;
-    grid-template-columns: var(--simulation-gantt-sidebar-width) auto;
-}
-
-.simulation-gantt-axis-row {
-    position: sticky;
-    top: 0;
-    z-index: 8;
-    height: 36px;
-    border-bottom: 1px solid #dfe8f1;
-    background: #f8fafc;
-}
-
-.simulation-gantt-lane-row {
-    height: 38px;
-    border-bottom: 1px solid #eef3f8;
-}
-
-.simulation-gantt-axis-label,
-.simulation-gantt-lane-label {
-    position: sticky;
-    left: 0;
-    z-index: 6;
-    box-sizing: border-box;
-    width: var(--simulation-gantt-sidebar-width);
-    border-right: 1px solid #dfe8f1;
-}
-
-.simulation-gantt-axis-label {
-    display: flex;
-    align-items: center;
-    padding: 0 10px;
-    background: #f8fafc;
-    color: #65758a;
-    font-size: 12px;
-    font-weight: 600;
-}
-
-.simulation-gantt-lane-label {
-    display: flex;
-    align-items: center;
-    overflow: hidden;
-    padding: 0 10px;
-    background: #ffffff;
-    color: #40546b;
-    font-size: 12px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.simulation-gantt-axis-track,
-.simulation-gantt-lane-track {
-    position: relative;
-}
-
-.simulation-gantt-axis-track {
-    height: 36px;
-    background: #f8fafc;
-}
-
-.simulation-gantt-lane-track {
-    height: 38px;
-    background: #ffffff;
-}
-
-.simulation-gantt-axis-tick,
-.simulation-gantt-grid-line {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    width: 1px;
-    background: #e4ebf3;
-}
-
-.simulation-gantt-axis-tick.is-major,
-.simulation-gantt-grid-line.is-major {
-    background: #cbd8e6;
-}
-
-.simulation-gantt-axis-tick span {
-    position: absolute;
-    bottom: 8px;
-    transform: translateX(-50%);
-    padding: 0 3px;
-    background: #f8fafc;
-    color: #65758a;
-    font-size: 11px;
-    white-space: nowrap;
-}
-
-.simulation-gantt-block {
-    position: absolute;
-    top: 7px;
-    z-index: 3;
-    box-sizing: border-box;
-    height: 24px;
-    overflow: hidden;
-    padding: 0 6px;
-    border: 1px solid color-mix(in srgb, var(--simulation-gantt-block-color) 72%, #0f172a);
-    border-radius: 5px;
-    background: var(--simulation-gantt-block-color);
-    color: #ffffff;
-    font-size: 11px;
-    line-height: 22px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.simulation-gantt-block.is-finished {
-    border-color: #8792a1;
-    background: #a0a8b3;
-    color: #ffffff;
-}
-
-.simulation-gantt-block.is-active {
-    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.22);
-    transform: translateY(-1px);
-}
-
-.simulation-gantt-now-line {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    z-index: 5;
-    width: 2px;
-    transform: translateX(-1px);
-    background: #ef4444;
-    pointer-events: none;
-}
-
-.simulation-gantt-empty {
-    display: flex;
-    flex: 1 1 auto;
-    align-items: center;
-    justify-content: center;
-    color: #65758a;
-    font-size: 13px;
-}
 
 .simulation-side-panel {
     display: flex;

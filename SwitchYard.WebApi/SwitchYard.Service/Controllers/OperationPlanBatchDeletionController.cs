@@ -70,6 +70,7 @@ public partial class OperationPlanController
                     if ((db.Query<long>($"SELECT COUNT(1) FROM {QuoteIdentifier(table)} WHERE {scopeFilter} AND {QuoteIdentifier(key)} IN @TrainIDs", parameters)?.FirstOrDefault() ?? 0) != 0)
                         throw new InvalidOperationException($"Batch deletion left selected rows in {table}.");
             }
+            CapacityDataLifecycle.InvalidateAnalysis(db, scope.InstanceID, scope.StationSchemeID, scope.OperationPlanID);
             db.Commit();
             // Train templates and source operation-process templates are never deleted here.
             return Ok(new { deletedTrainIDs = trainIDs, deletedCount = trainIDs.Length });

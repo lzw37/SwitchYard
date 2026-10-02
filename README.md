@@ -17,6 +17,7 @@ SwitchYard 是面向铁路站场与枢纽教学、方案编制和计算分析的
 | 开发前端、复用圆按钮和拖动条 | [前端开发说明](switchyard-vue/README.md) |
 | 部署 Web 服务和静态前端 | [部署说明](doc/Deploy-Instruction.md) |
 | 检查日志、备份和运行状态 | [运维说明](doc/Operations-Recommendations.md) |
+| 检查删除范围、关联引用和结果失效规则 | [删除与关联数据维护](docs/deletion-lifecycle.md) |
 | 将 SQLite 数据迁移到 MySQL | [数据库迁移说明](doc/SQLite-to-MySQL-Migration.md) |
 | 在其他程序中接入独立车站布置图 | [独立控件接入指南](SwitchYard.StationLayout/INTEGRATION_GUIDE.zh-CN.md) |
 

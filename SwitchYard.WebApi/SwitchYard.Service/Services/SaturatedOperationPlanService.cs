@@ -39,6 +39,7 @@ public sealed class SaturatedOperationPlanService
         }
 
         var db = DBConnector.GetDBConnector(DBConnector.CapacityDatabaseSectionName);
+        OperationPlanController.EnsureMovementSchema(db);
         var instance = (db.Query<CapacityInstance>(
             "SELECT ID, Name, Owner, CreatedDate, IsActive FROM capacityinstance WHERE ID = @id",
             new { id = context.InstanceId }) ?? new List<CapacityInstance>()).FirstOrDefault()
@@ -81,7 +82,7 @@ public sealed class SaturatedOperationPlanService
         var sourceMovements = db.Query<MovementRow>(
             $@"SELECT InstanceID, StationSchemeID, OperationPlanID, TrainID, TrainTemplateID,
                       MovementID, Name, RouteIDList, MinDuration, EarliestStartTime, LatestEndTime,
-                      {Quote("Route")}, Tag, SortOrder
+                      {Quote("Route")}, Tag, SortOrder, CellOccupationOverridesJson
                FROM {Quote("movement")}
                WHERE InstanceID = @instanceId
                  AND StationSchemeID = @stationSchemeId
@@ -267,11 +268,11 @@ public sealed class SaturatedOperationPlanService
                     $@"INSERT INTO {Quote("movement")} (
                            InstanceID, StationSchemeID, OperationPlanID, TrainID, TrainTemplateID,
                            MovementID, Name, RouteIDList, MinDuration, EarliestStartTime, LatestEndTime,
-                           {Quote("Route")}, Tag, SortOrder)
+                           {Quote("Route")}, Tag, SortOrder, CellOccupationOverridesJson)
                        VALUES (
                            @InstanceID, @StationSchemeID, @OperationPlanID, @TrainID, @TrainTemplateID,
                            @MovementID, @Name, @RouteIDList, @MinDuration, @EarliestStartTime, @LatestEndTime,
-                           @Route, @Tag, @SortOrder)",
+                           @Route, @Tag, @SortOrder, @CellOccupationOverridesJson)",
                     new MovementRow
                     {
                         InstanceID = context.InstanceId,
@@ -286,6 +287,7 @@ public sealed class SaturatedOperationPlanService
                         EarliestStartTime = FormatTime(solvedMovement.StartSeconds, solvedMovement.StartTime),
                         LatestEndTime = FormatTime(solvedMovement.EndSeconds, solvedMovement.EndTime),
                         Route = solvedMovement.RouteId,
+                        CellOccupationOverridesJson = sourceMovement.CellOccupationOverridesJson,
                         Tag = sourceMovement.Tag,
                         SortOrder = sourceMovement.SortOrder ?? index
                     });

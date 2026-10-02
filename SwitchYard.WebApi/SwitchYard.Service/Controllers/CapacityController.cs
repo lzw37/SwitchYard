@@ -308,6 +308,7 @@ namespace SwitchYard.Service.Controllers
         [HttpDelete]
         public IActionResult DeleteInstance(string id)
         {
+            DBConnector? dbConnector = null;
             try
             {
                 if (string.IsNullOrWhiteSpace(id))
@@ -323,7 +324,11 @@ namespace SwitchYard.Service.Controllers
 
                 var username = User.Identity?.Name;
                 var isAdmin = IsCurrentUserAdmin();
-                var dbConnector = GetCapacityDbConnector();
+                dbConnector = GetCapacityDbConnector();
+                if (GetCapacityInstanceById(dbConnector, id) is null)
+                    return NotFound("Instance not found.");
+                dbConnector.BeginTransaction();
+                CapacityDataLifecycle.DeleteInstanceChildren(dbConnector, id);
                 var result = isAdmin
                     ? dbConnector.ExecuteNonQuery("DELETE FROM capacityinstance WHERE ID = @id", new { id })
                     : dbConnector.ExecuteNonQuery(
@@ -332,15 +337,19 @@ namespace SwitchYard.Service.Controllers
 
                 if (result > 0)
                 {
+                    CapacityDataLifecycle.VerifyInstanceDeleted(dbConnector, id);
+                    dbConnector.Commit();
                     _logger.LogInformation("Deleted CapacityInstance with ID {InstanceID}.", id);
                     return Ok("Instance deleted successfully.");
                 }
 
+                dbConnector.Rollback();
                 _logger.LogWarning("Failed to delete CapacityInstance with ID {InstanceID}.", id);
                 return StatusCode(500, "Failed to delete instance.");
             }
             catch (Exception ex)
             {
+                dbConnector?.Rollback();
                 _logger.LogError(ex, "Error deleting CapacityInstance.");
                 return StatusCode(500, "Internal server error while deleting CapacityInstance.");
             }

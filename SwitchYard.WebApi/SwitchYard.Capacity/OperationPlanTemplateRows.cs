@@ -184,11 +184,24 @@ namespace SwitchYard.Capacity
 
         public string? LatestEndTime { get; set; }
 
+        public string? CellOccupationOverridesJson { get; set; }
+
         public string? Route { get; set; }
 
         public string? Tag { get; set; }
 
         public int? SortOrder { get; set; }
+    }
+
+    public sealed class MovementBatchEditItem
+    {
+        public MovementRow? Original { get; set; }
+        public MovementRow? Updated { get; set; }
+    }
+
+    public sealed class MovementBatchEditRequest
+    {
+        public List<MovementBatchEditItem> Items { get; set; } = new();
     }
 
     public sealed class MovementOrderItem

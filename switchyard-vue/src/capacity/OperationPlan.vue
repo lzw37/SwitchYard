@@ -9,7 +9,7 @@
                     filterable
                     class="operation-plan-scheme-select"
                     :loading="loadingStationSchemes"
-                    :disabled="!selectedInstanceId || loadingStationSchemes || loadingTrainTemplates || cellOccupancyImportBusy || refreshingCellOccupancyImport"
+                    :disabled="!selectedInstanceId || loadingStationSchemes || loadingTrainTemplates || savingTrainOperationPlanMovement || cellOccupancyImportBusy || refreshingCellOccupancyImport"
                     :placeholder="t('stationLayout.placeholders.selectStationScheme')"
                     @change="handleStationSchemeChange"
                 >
@@ -30,7 +30,7 @@
                     filterable
                     class="operation-plan-object-select"
                     :loading="loadingOperationPlans"
-                    :disabled="!currentStationSchemeId || loadingOperationPlans || operationPlanInlineActive || cellOccupancyImportBusy || refreshingCellOccupancyImport"
+                    :disabled="!currentStationSchemeId || loadingOperationPlans || operationPlanInlineActive || savingTrainOperationPlanMovement || cellOccupancyImportBusy || refreshingCellOccupancyImport"
                     :placeholder="t('operationPlan.planObject.placeholders.select')"
                     @change="handleOperationPlanChange"
                 >
@@ -973,6 +973,30 @@
                                         </el-tooltip>
                                     </template>
                                 </el-table-column>
+                                <el-table-column prop="earliestStartTime" :label="t('operationPlan.trainOperationPlan.movement.fields.earliestStartTime')" width="150" show-overflow-tooltip>
+                                    <template #default="{ row }">
+                                        <el-input
+                                            v-if="isTrainOperationPlanMovementInlineEditing(row)"
+                                            v-model="trainOperationPlanMovementForm.earliestStartTime"
+                                            :aria-label="t('operationPlan.trainOperationPlan.movement.fields.earliestStartTime')"
+                                            size="small"
+                                            clearable
+                                        />
+                                        <span v-else>{{ row.earliestStartTime || '—' }}</span>
+                                    </template>
+                                </el-table-column>
+                                <el-table-column prop="latestEndTime" :label="t('operationPlan.trainOperationPlan.movement.fields.latestEndTime')" width="150" show-overflow-tooltip>
+                                    <template #default="{ row }">
+                                        <el-input
+                                            v-if="isTrainOperationPlanMovementInlineEditing(row)"
+                                            v-model="trainOperationPlanMovementForm.latestEndTime"
+                                            :aria-label="t('operationPlan.trainOperationPlan.movement.fields.latestEndTime')"
+                                            size="small"
+                                            clearable
+                                        />
+                                        <span v-else>{{ row.latestEndTime || '—' }}</span>
+                                    </template>
+                                </el-table-column>
                                 <el-table-column prop="minDuration" :label="t('operationPlan.movement.fields.minDuration')" width="132" align="right">
                                     <template #default="{ row }">
                                         <el-input-number
@@ -985,28 +1009,6 @@
                                             :step="1"
                                         />
                                         <span v-else>{{ row.minDuration ?? '' }}</span>
-                                    </template>
-                                </el-table-column>
-                                <el-table-column prop="earliestStartTime" :label="t('operationPlan.trainOperationPlan.movement.fields.earliestStartTime')" width="150" show-overflow-tooltip>
-                                    <template #default="{ row }">
-                                        <el-input
-                                            v-if="isTrainOperationPlanMovementInlineEditing(row)"
-                                            v-model="trainOperationPlanMovementForm.earliestStartTime"
-                                            size="small"
-                                            clearable
-                                        />
-                                        <span v-else>{{ row.earliestStartTime }}</span>
-                                    </template>
-                                </el-table-column>
-                                <el-table-column prop="latestEndTime" :label="t('operationPlan.trainOperationPlan.movement.fields.latestEndTime')" width="150" show-overflow-tooltip>
-                                    <template #default="{ row }">
-                                        <el-input
-                                            v-if="isTrainOperationPlanMovementInlineEditing(row)"
-                                            v-model="trainOperationPlanMovementForm.latestEndTime"
-                                            size="small"
-                                            clearable
-                                        />
-                                        <span v-else>{{ row.latestEndTime }}</span>
                                     </template>
                                 </el-table-column>
                                 <el-table-column prop="route" :label="t('operationPlan.trainOperationPlan.movement.fields.route')" min-width="140" show-overflow-tooltip>
@@ -1096,60 +1098,78 @@
                 >
                     <header class="operation-plan-card-header">
                         <span class="operation-plan-panel-summary" :title="operationPlanChartCountText">{{ operationPlanChartCountText }}</span>
-                        <div class="operation-plan-card-actions">
-                            <ActionButton
-                                :icon="Refresh"
-                                :disabled="!canLoadOperationPlanChart || operationPlanInlineActive"
-                                @click="loadOperationPlanChartData" :label="t('operationPlan.actions.refresh')" />
-                        </div>
+                        <span class="operation-plan-chart-hint">{{ t('capacityGantt.dragHint') }}</span>
                     </header>
 
-                    <div v-if="operationPlanChartBars.length === 0" class="operation-plan-chart-empty">
-                        {{ operationPlanChartEmptyText }}
-                    </div>
-                    <div v-else class="operation-plan-chart-scroll">
-                        <div class="operation-plan-chart-grid" :style="operationPlanChartGridStyle">
-                            <div class="operation-plan-chart-corner">
-                                {{ t('operationPlan.trainOperationChart.cellAxis') }}
-                            </div>
-                            <div class="operation-plan-chart-time-head">
-                                <span class="operation-plan-chart-axis-title">
-                                    {{ t('operationPlan.trainOperationChart.timeAxis') }}
-                                </span>
-                                <span
-                                    v-for="tick in operationPlanChartTicks"
-                                    :key="`operation-chart-head-${tick}`"
-                                    class="operation-plan-chart-tick-label"
-                                    :style="{ left: `${operationPlanChartTimeToX(tick)}px` }"
-                                >
-                                    {{ formatOperationPlanChartTime(tick) }}
-                                </span>
-                            </div>
+                    <TrackOccupancyGantt
+                        ref="operationPlanChartGanttRef"
+                        v-model:scale-x="operationPlanChartScaleX"
+                        v-model:auto-fit="operationPlanChartAutoFit"
+                        :rows="operationPlanChartDisplayRows"
+                        :ticks="operationPlanChartDisplayTicks"
+                        :timeline-width="operationPlanChartTimelineWidth"
+                        :empty-text="operationPlanChartEmptyText"
+                        :cell-axis-label="t('operationPlan.trainOperationChart.cellAxis')"
+                        :time-axis-label="t('operationPlan.trainOperationChart.timeAxis')"
+                        :start-handle-label="t('capacityGantt.startHandle')"
+                        :end-handle-label="t('capacityGantt.endHandle')"
+                        :disabled="!canEditOperationPlanChart"
+                        :controls-disabled="operationPlanChartDrag !== null || savingTrainOperationPlanMovement"
+                        :refresh-disabled="!canLoadOperationPlanChart || operationPlanInlineActive"
+                        :refresh-loading="loadingOperationPlanChart || loadingTrainOperationPlan"
+                        editable
+                        @drag-start="startOperationPlanChartDrag"
+                        @refresh="loadTrainOperationPlan"
+                    />
+                </section>
+            </el-tab-pane>
 
-                            <template v-for="row in operationPlanChartRows" :key="row.cellID">
-                                <div class="operation-plan-chart-cell" :style="getOperationPlanChartRowStyle(row)" :title="row.cellName">
-                                    {{ row.cellName }}
-                                </div>
-                                <div class="operation-plan-chart-track" :style="getOperationPlanChartRowStyle(row)">
-                                    <span
-                                        v-for="tick in operationPlanChartTicks"
-                                        :key="`operation-chart-line-${row.cellID}-${tick}`"
-                                        class="operation-plan-chart-grid-line"
-                                        :style="{ left: `${operationPlanChartTimeToX(tick)}px` }"
-                                    />
-                                    <div
-                                        v-for="bar in row.bars"
-                                        :key="bar.key"
-                                        class="operation-plan-chart-bar"
-                                        :style="getOperationPlanChartBarStyle(bar)"
-                                        :title="bar.title"
-                                    >
-                                        <span>{{ bar.label }}</span>
-                                    </div>
-                                </div>
-                            </template>
+            <el-tab-pane
+                :label="t('operationPlan.tabs.stationPlanView')"
+                name="stationPlanView"
+                class="operation-plan-sub-tab-pane"
+                lazy
+            >
+                <section class="operation-plan-card operation-plan-chart-card" v-loading="loadingOperationPlanChart || loadingTrainOperationPlan">
+                    <header class="operation-plan-card-header">
+                        <span class="operation-plan-panel-summary">{{ t('stationPlanView.summary', { trains: stationPlanTrains.length, rows: stationPlanRows.length }) }}</span>
+                        <div class="station-plan-time-range">
+                            <span>{{ t('operationPlan.trainOperationPlan.timeRange') }}</span>
+                            <el-input v-model="trainOperationPlanStartTime" :aria-label="t('stationPlanView.startTime')" size="small" />
+                            <span>—</span>
+                            <el-input v-model="trainOperationPlanEndTime" :aria-label="t('stationPlanView.endTime')" size="small" />
                         </div>
-                    </div>
+                    </header>
+                    <el-alert v-if="stationPlanSettingsError" :title="t('stationPlanView.loadSettingsFailed')" type="error" :closable="false" />
+                    <el-alert v-if="!loadingOperationPlanChart && !loadingTrainOperationPlan && !loadingStationPlanSettings && !stationPlanSettingsError && stationPlanMissingEndpoints.length" :title="t('stationPlanView.missingEndpoints', { count: stationPlanMissingEndpoints.length })" type="warning" :closable="false" show-icon>
+                        <div class="station-plan-missing-endpoints">
+                            <span>{{ stationPlanMissingEndpoints.map(endpoint => endpoint.label).join('、') }}</span>
+                            <el-button type="primary" link :loading="savingStationPlanSettings" :disabled="!hasScope || operationPlanInlineActive" @click="completeStationPlanEndpoints">{{ t('stationPlanView.completeEndpoints') }}</el-button>
+                        </div>
+                    </el-alert>
+                    <StationPlanView
+                        :rows="stationPlanRows"
+                        :trains="stationPlanTrains"
+                        :selection-scope="operationPlanScopeKey"
+                        :editable="canEditOperationPlanChart && !stationPlanActions.busy"
+                        :readOnlyTrainIDs="stationPlanReadOnlyTrainIDs"
+                        :undo-count="stationPlanActions.undoCount"
+                        :redo-count="stationPlanActions.redoCount"
+                        :start-minutes="parseOperationPlanTime(trainOperationPlanStartTime)"
+                        :end-minutes="parseOperationPlanTime(trainOperationPlanEndTime)"
+                        :loading="loadingOperationPlanChart || loadingTrainOperationPlan"
+                        :refresh-disabled="!canLoadOperationPlanChart || operationPlanInlineActive"
+                        :empty-text="hasScope ? t('stationPlanView.emptyRows') : t('operationPlan.empty.selectScheme')"
+                        @refresh="refreshStationPlanView"
+                        @edit="saveStationPlanSegmentEdit"
+                        @undo="replayStationPlanAction('undo')"
+                        @redo="replayStationPlanAction('redo')"
+                    >
+                        <template #actions>
+                            <ActionButton :icon="Setting" :label="t('stationPlanView.configure')" :loading="loadingStationPlanSettings" :disabled="!hasScope || loadingStationPlanSettings || stationPlanSettingsError || savingStationPlanSettings" @click="openStationPlanSettings" />
+                        </template>
+                    </StationPlanView>
+                    <p class="station-plan-note">{{ t('stationPlanView.note') }}</p>
                 </section>
             </el-tab-pane>
 
@@ -1852,6 +1872,32 @@
             </template>
         </el-dialog>
 
+        <el-dialog v-model="stationPlanSettingsVisible" :title="t('stationPlanView.configure')" width="720px" :close-on-click-modal="!savingStationPlanSettings" :close-on-press-escape="!savingStationPlanSettings" :show-close="!savingStationPlanSettings" append-to-body>
+            <p class="station-plan-settings-hint">{{ t('stationPlanView.settingsHint') }}</p>
+            <section class="station-plan-settings-section">
+                <div class="station-plan-settings-heading"><strong>{{ t('stationPlanView.cell') }}</strong>
+                    <el-button text size="small" :disabled="savingStationPlanSettings" @click="stationPlanCellDraft = operationOccupationTimeTableCells.map(cell => cell.id)">{{ t('stationPlanView.selectAll') }}</el-button>
+                    <el-button text size="small" :disabled="savingStationPlanSettings" @click="stationPlanCellDraft = []">{{ t('stationPlanView.clearSelection') }}</el-button>
+                </div>
+                <el-checkbox-group v-model="stationPlanCellDraft" :disabled="savingStationPlanSettings" class="station-plan-settings-options">
+                    <el-checkbox v-for="cell in operationOccupationTimeTableCells" :key="cell.id" :value="cell.id">{{ cell.name }}<span v-if="cell.name !== cell.id"> ({{ cell.id }})</span></el-checkbox>
+                </el-checkbox-group>
+            </section>
+            <section class="station-plan-settings-section">
+                <div class="station-plan-settings-heading"><strong>{{ t('stationPlanView.endpoint') }}</strong>
+                    <el-button text size="small" :disabled="savingStationPlanSettings" @click="stationPlanEndpointDraft = stationPlanEndpointOptions.map(endpoint => endpoint.sourceID)">{{ t('stationPlanView.selectAll') }}</el-button>
+                    <el-button text size="small" :disabled="savingStationPlanSettings" @click="stationPlanEndpointDraft = []">{{ t('stationPlanView.clearSelection') }}</el-button>
+                </div>
+                <el-checkbox-group v-model="stationPlanEndpointDraft" :disabled="savingStationPlanSettings" class="station-plan-settings-options">
+                    <el-checkbox v-for="endpoint in stationPlanEndpointOptions" :key="endpoint.key" :value="endpoint.sourceID">{{ endpoint.label }}<span v-if="stationPlanBoundaryIDs.has(endpoint.sourceID)" class="station-plan-used-endpoint"> · {{ t('stationPlanView.usedEndpoint') }}</span></el-checkbox>
+                </el-checkbox-group>
+                <p v-if="stationPlanEndpointOptions.length === 0" class="station-plan-settings-hint">{{ t('stationPlanView.emptyEndpoints') }}</p>
+            </section>
+            <template #footer>
+                <el-button :disabled="savingStationPlanSettings" @click="stationPlanSettingsVisible = false">{{ t('operationPlan.actions.cancel') }}</el-button>
+                <el-button type="primary" :loading="savingStationPlanSettings" @click="saveStationPlanSettings">{{ t('stationPlanView.saveSettings') }}</el-button>
+            </template>
+        </el-dialog>
     </section>
 </template>
 
@@ -1860,7 +1906,16 @@ const templateListWidth = ref(460)
 const planListWidth = ref(460)
 import ActionButton from '@/components/ui/ActionButton.vue'
 import PaneDivider from '@/components/ui/PaneDivider.vue'
-import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import TrackOccupancyGantt from './components/TrackOccupancyGantt.vue'
+import StationPlanView from './components/StationPlanView.vue'
+import { buildStationPlanTrains, resolveStationPlanMovementRouteID, stationPlanBoundaryEndpointIDs, stationPlanTimeLabel, type StationPlanAxisRow, type StationPlanMovement, type StationPlanSegmentEdit } from './components/stationPlanView'
+import { editStationPlanSegment, StationPlanEditingError } from './components/stationPlanEditing'
+import { ActionStack } from '@/utils/actionStack'
+import { StationPlanMovementAction } from './components/stationPlanActions'
+import { getTrackOccupancyGanttTimeScale, trackOccupancyGanttMetrics, type TrackOccupancyGanttRow, type TrackOccupancyGanttDragStart } from './components/trackOccupancyGantt'
+import { adjustOperationPlanGanttWindow, type OperationPlanGanttWindow } from './operationPlanGantt'
+import { getMovementCellOccupationShifts, setMovementCellOccupationOverride } from './movementCellOccupation'
+import { computed, defineAsyncComponent, h, nextTick, onBeforeUnmount, ref, shallowReactive, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox, type TableInstance } from 'element-plus'
 import { ArrowDown, ArrowRight, ArrowUp, Check, Close, CopyDocument, Delete, Edit, Filter, List, MagicStick, Plus, Refresh, Search, Setting, UploadFilled } from '@element-plus/icons-vue'
@@ -2007,6 +2062,7 @@ interface TrainOperationPlanMovement {
     minDuration: number | null
     earliestStartTime: string
     latestEndTime: string
+    cellOccupationOverridesJson?: string | null
     route: string
     tag: string
     sortOrder: number | null
@@ -2014,7 +2070,7 @@ interface TrainOperationPlanMovement {
 }
 
 type TemplateEditMode = 'create' | 'edit'
-type OperationPlanSubTab = 'operationProcess' | 'trainTemplate' | 'trainOperationPlan' | 'trainOperationChart' | 'operationOccupationTimeTable' | 'operationBottleneckAnalysis' | 'operationThroughputSummary'
+type OperationPlanSubTab = 'operationProcess' | 'trainTemplate' | 'trainOperationPlan' | 'trainOperationChart' | 'stationPlanView' | 'operationOccupationTimeTable' | 'operationBottleneckAnalysis' | 'operationThroughputSummary'
 type OperationOccupationTimeUnit = 'seconds' | 'minutes'
 type RoutePickerTarget = 'movementTemplate' | 'trainOperationPlanMovement' | 'trainOperationPlanMovementRoute'
 type RoutePickerFilterField = 'types' | 'startNodeIds' | 'endNodeIds' | 'nodeIds' | 'linkIds' | 'cellIds' | 'switchIds' | 'signalIds'
@@ -2081,6 +2137,27 @@ interface OperationPlanChartRow {
     cellName: string
     bars: OperationPlanChartBar[]
     laneCount: number
+}
+
+interface OperationPlanChartDragState {
+    movement: TrainOperationPlanMovement
+    blockKey: string
+    cellID: string
+    routeID: string
+    baseStartMinutes: number
+    baseEndMinutes: number
+    laneAssignments: Record<string, number>
+    rowLaneCounts: Record<string, number>
+    window: OperationPlanGanttWindow
+    mode: TrackOccupancyGanttDragStart['mode']
+    scopeKey: string
+    domain: { start: number; end: number }
+    pixelsPerMinute: number
+    pointerId: number
+    pointerStartX: number
+    scrollStartX: number
+    previousCursor: string
+    previousUserSelect: string
 }
 
 type OperationOccupationTimeTableRowType = 'group' | 'route' | 'fixed-total' | 'total' | 'utilization'
@@ -2214,6 +2291,15 @@ const movementTemplates = ref<MovementTemplate[]>([])
 const trainOperationPlanTrains = ref<TrainOperationPlanTrain[]>([])
 const trainOperationPlanMovements = ref<TrainOperationPlanMovement[]>([])
 const stationRouteTimesByKey = ref<Record<string, StationRouteTimeOption[]>>({})
+const stationPlanNodeNames = ref<Record<string, string>>({})
+const stationPlanSettings = ref<{ cellIDs: string[] | null; endpointNodeIDs: string[] | null }>({ cellIDs: null, endpointNodeIDs: null })
+const loadingStationPlanSettings = ref(false)
+const savingStationPlanSettings = ref(false)
+const stationPlanSettingsError = ref(false)
+const stationPlanSettingsVisible = ref(false)
+const stationPlanCellDraft = ref<string[]>([])
+const stationPlanEndpointDraft = ref<string[]>([])
+let stationPlanSettingsVersion = 0
 const selectedTrainTemplateId = ref('')
 const selectedTrainOperationPlanTrainId = ref('')
 const trainOperationPlanTrainTable = ref<TableInstance>()
@@ -2260,6 +2346,14 @@ const loadingTrainTemplates = ref(false)
 const loadingMovementTemplates = ref(false)
 const loadingTrainOperationPlan = ref(false)
 const loadingOperationPlanChart = ref(false)
+const operationPlanChartGanttRef = ref<InstanceType<typeof TrackOccupancyGantt> | null>(null)
+const operationPlanChartScaleX = ref(1)
+const operationPlanChartAutoFit = ref(false)
+const operationPlanChartGeometry = ref<{ domain: { start: number; end: number }; pixelsPerMinute: number } | null>(null)
+const operationPlanChartDrag = shallowRef<OperationPlanChartDragState | null>(null)
+const operationPlanChartDragPreview = ref<{ startMinutes: number; endMinutes: number } | null>(null)
+const operationPlanChartLaneAssignments = ref<Record<string, number>>({})
+const operationPlanChartRowLaneCounts = ref<Record<string, number>>({})
 const loadingOperationBottleneckSummaryCategories = ref(false)
 const savingOperationAnalysisSnapshot = ref(false)
 const savingOperationPlanObject = ref(false)
@@ -2360,6 +2454,7 @@ let trainOperationPlanLoadVersion = 0
 let trainSelectionVersion = 0
 let trainBatchDeleteVersion = 0
 let operationPlanChartLoadVersion = 0
+let operationPlanChartSaveVersion = 0
 let saturatedPlanRunVersion = 0
 let processTrainSourceRequestVersion = 0
 let processTrainGenerationVersion = 0
@@ -2398,7 +2493,7 @@ const operationPlanObjectInlineActive = computed(() => (
     operationPlanOptions.value.some((item) => item.isDraft) ||
     Boolean(operationPlanObjectOriginalId.value)
 ))
-const canLoadTemplates = computed(() => hasSchemeScope.value && !loadingTrainTemplates.value && !deletingTrainOperationPlanTrains.value)
+const canLoadTemplates = computed(() => hasSchemeScope.value && !loadingTrainTemplates.value && !deletingTrainOperationPlanTrains.value && !savingTrainOperationPlanMovement.value && operationPlanChartDrag.value === null)
 const canEditTrainTemplates = computed(() => hasSchemeScope.value && !savingTrainTemplate.value && !deletingTrainOperationPlanTrains.value)
 const processTrainScopeKey = computed(() => JSON.stringify(getStationSchemeScope()))
 const operationPlanScopeKey = computed(() => JSON.stringify(getOperationPlanScope()))
@@ -2425,11 +2520,13 @@ const canGenerateTrainFromProcess = computed(() => (
 ))
 const canLoadMovementTemplates = computed(() => hasSchemeScope.value && selectedTrainTemplate.value !== null && !loadingMovementTemplates.value && !deletingTrainOperationPlanTrains.value)
 const canEditMovementTemplates = computed(() => canLoadMovementTemplates.value && !savingMovementTemplate.value && !trainTemplateInlineActive.value)
-const canLoadTrainOperationPlan = computed(() => hasScope.value && !loadingTrainOperationPlan.value && !generatingPlanFromProcess.value && !deletingTrainOperationPlanTrains.value)
+const canLoadTrainOperationPlan = computed(() => hasScope.value && !loadingTrainOperationPlan.value && !generatingPlanFromProcess.value && !deletingTrainOperationPlanTrains.value && !savingTrainOperationPlanMovement.value)
 const canLoadOperationPlanChart = computed(() => (
     hasScope.value &&
     !deletingTrainOperationPlanTrains.value &&
     !loadingOperationPlanChart.value &&
+    !savingTrainOperationPlanMovement.value &&
+    operationPlanChartDrag.value === null &&
     !loadingTrainOperationPlan.value &&
     !loadingStationRoutes.value &&
     !loadingStationRouteEnds.value
@@ -2439,6 +2536,8 @@ const canGenerateTrainOperationPlan = computed(() => (
     !deletingTrainOperationPlanTrains.value &&
     !generatingPlanFromProcess.value &&
     !generatingTrainOperationPlan.value &&
+    !savingTrainOperationPlanMovement.value &&
+    operationPlanChartDrag.value === null &&
     !loadingTrainOperationPlan.value &&
     !operationPlanInlineActive.value
 ))
@@ -2449,6 +2548,8 @@ const canGenerateSaturatedPlan = computed(() => (
     Boolean(selectedSaturatedPresetId.value) &&
     !loadingSolvePresets.value &&
     !generatingSaturatedPlan.value &&
+    !savingTrainOperationPlanMovement.value &&
+    operationPlanChartDrag.value === null &&
     !operationPlanInlineActive.value
 ))
 const saturatedPlanButtonText = computed(() => (
@@ -2464,6 +2565,11 @@ const canEditTrainOperationPlan = computed(() => (
     !generatingTrainOperationPlan.value &&
     !savingTrainOperationPlanTrain.value &&
     !savingTrainOperationPlanMovement.value
+))
+const canEditOperationPlanChart = computed(() => (
+    canEditTrainOperationPlan.value && !operationPlanInlineActive.value && !operationPlanObjectInlineActive.value &&
+    !loadingOperationPlanChart.value && !loadingStationRoutes.value && !loadingStationRouteEnds.value &&
+    !cellOccupancyImportBusy.value && !refreshingCellOccupancyImport.value && !generatingSaturatedPlan.value
 ))
 const canDeleteSelectedTrainOperationPlanTrains = computed(() => (
     canEditTrainOperationPlan.value && !operationPlanInlineActive.value && !operationPlanObjectInlineActive.value &&
@@ -2615,7 +2721,7 @@ const operationPlanChartCells = computed<OperationPlanChartCell[]>(() => {
 const operationPlanChartBars = computed<OperationPlanChartBar[]>(() => {
     const bars: OperationPlanChartBar[] = []
     trainOperationPlanMovements.value.forEach((movement) => {
-        const routeID = movement.route.trim()
+        const routeID = resolveStationPlanMovementRouteID(movement.route, movement.routeIDList)
         if (!routeID) return
 
         const route = stationRouteOptionMap.value.get(routeID)
@@ -2651,9 +2757,10 @@ const operationPlanChartBars = computed<OperationPlanChartBar[]>(() => {
 
         cellIDs.forEach((cellID) => {
             const time = routeTimeByCellID.get(cellID)
+            const shifts = getMovementCellOccupationShifts(movement.cellOccupationOverridesJson, routeID, cellID, time || {})
             const isInterruptCell = interruptCellIDSet.has(cellID.toLowerCase())
-            const startMinutes = baseStartMinutes + (time?.startOccupationShift ?? 0) / 60
-            const endMinutes = Math.max(startMinutes, baseEndMinutes + (time?.endOccupationShift ?? 0) / 60)
+            const startMinutes = baseStartMinutes + shifts.startOccupationShift / 60
+            const endMinutes = Math.max(startMinutes, baseEndMinutes + shifts.endOccupationShift / 60)
             bars.push({
                 key: `${movement.trainID}-${movement.movementID}-${routeID}-${cellID}`,
                 cellID,
@@ -2695,7 +2802,7 @@ const operationPlanChartRows = computed<OperationPlanChartRow[]>(() => {
                 cellID: cell.id,
                 cellName: cell.name || cell.id,
                 bars,
-                laneCount: Math.max(1, ...bars.map((bar) => bar.lane + 1)),
+                laneCount: Math.max(1, operationPlanChartRowLaneCounts.value[cell.id] || 0, ...bars.map((bar) => bar.lane + 1)),
             }
         })
         .filter((row) => row.cellID)
@@ -2712,6 +2819,56 @@ const operationOccupationTimeTableCells = computed<OperationPlanChartCell[]>(() 
     })
     return Array.from(cellsByID.values())
 })
+const stationPlanEndpointOptions = computed<StationPlanAxisRow[]>(() => {
+    const nodes = new Map<string, StationPlanAxisRow>()
+    stationRouteOptions.value.forEach(route => {
+        ;[route.startNodeID, route.endNodeID].filter(Boolean).forEach(id => {
+            if (nodes.has(id)) return
+            const boundary = stationRouteEndByBindingNodeId.value.get(id)
+            const name = boundary?.segmentTag || boundary?.sidingTag || stationPlanNodeNames.value[id] || id
+            nodes.set(id, { key: `node:${id}`, sourceID: id, label: name === id ? id : `${name} (${id})`, kind: 'endpoint' })
+        })
+    })
+    return [...nodes.values()]
+})
+const stationPlanRows = computed<StationPlanAxisRow[]>(() => {
+    const settings = stationPlanSettings.value
+    const endpoints = stationPlanEndpointOptions.value.filter(row => settings.endpointNodeIDs === null || settings.endpointNodeIDs.includes(row.sourceID))
+    const starts = new Set(stationRouteOptions.value.map(route => route.startNodeID))
+    const cells: StationPlanAxisRow[] = operationOccupationTimeTableCells.value
+        .filter(cell => settings.cellIDs === null || settings.cellIDs.includes(cell.id))
+        .map(cell => ({ key: `cell:${cell.id}`, sourceID: cell.id, label: cell.name || cell.id, kind: 'cell' }))
+    return [...endpoints.filter(row => starts.has(row.sourceID)), ...cells, ...endpoints.filter(row => !starts.has(row.sourceID))]
+})
+const stationPlanActions = shallowReactive(new ActionStack())
+const stationPlanReadOnlyTrainIDs = computed(() => [...new Set(trainOperationPlanMovements.value.filter(movement => movement.isDraft).map(movement => movement.trainID))])
+const stationPlanMovements = computed(() => trainOperationPlanMovements.value.flatMap(movement => {
+        const startMinutes = parseOperationPlanTime(movement.earliestStartTime)
+        const endMinutes = parseOperationPlanTime(movement.latestEndTime)
+        return startMinutes === null || endMinutes === null ? [] : [{
+            trainID: movement.trainID, movementID: movement.movementID, name: movement.name,
+            routeID: movement.route.trim(), routeIDList: movement.routeIDList, startMinutes, endMinutes, sortOrder: movement.sortOrder,
+            cellOccupationOverridesJson: movement.cellOccupationOverridesJson,
+            minDuration: movement.minDuration,
+        }]
+    }))
+const stationPlanEditRoutes = computed(() => stationRouteOptions.value.map(route => ({
+    id: route.id, name: route.name, type: route.type, cellIDs: parseRouteReferenceList(route.cellList),
+    startNodeID: route.startNodeID, endNodeID: route.endNodeID,
+})))
+const stationPlanTrains = computed(() => {
+    const movements = stationPlanMovements.value
+    const ids = [...new Set([...trainOperationPlanTrains.value.map(train => train.id), ...movements.map(movement => movement.trainID)])]
+    return buildStationPlanTrains(ids.map(id => ({ id, label: trainOperationPlanTrainMap.value.get(id)?.trainNumber || id, color: getOperationPlanChartTrainColor(id) })),
+        movements, stationPlanEditRoutes.value, stationPlanMovementTimes)
+})
+function stationPlanMovementTimes(movement: StationPlanMovement) {
+    return getOperationPlanChartRouteTimes(movement.routeID, trainOperationPlanTrainMap.value.get(movement.trainID)?.trainType || '')
+}
+const stationPlanBoundaryIDs = computed(() => new Set(stationPlanBoundaryEndpointIDs(stationPlanTrains.value)))
+const stationPlanMissingEndpoints = computed(() => stationPlanEndpointOptions.value.filter(endpoint =>
+    stationPlanBoundaryIDs.value.has(endpoint.sourceID) && stationPlanSettings.value.endpointNodeIDs !== null &&
+    !stationPlanSettings.value.endpointNodeIDs.includes(endpoint.sourceID)))
 const operationOccupationRouteRows = computed<OperationOccupationTimeTableRow[]>(() => {
     const routeStats = new Map<string, OperationOccupationRouteStats>()
 
@@ -3055,6 +3212,8 @@ const operationBottleneckRoutePickerEmptyText = computed(() => (
         : t('operationPlan.operationBottleneckAnalysis.summary.routePicker.empty')
 ))
 const operationPlanChartDomain = computed(() => {
+    if (operationPlanChartDrag.value) return operationPlanChartDrag.value.domain
+    if (operationPlanChartGeometry.value) return operationPlanChartGeometry.value.domain
     const chartValues = operationPlanChartBars.value.flatMap((bar) => [bar.startMinutes, bar.endMinutes])
     const planStart = parseOperationPlanTime(trainOperationPlanStartTime.value)
     const planEnd = parseOperationPlanTime(trainOperationPlanEndTime.value)
@@ -3069,22 +3228,17 @@ const operationPlanChartDomain = computed(() => {
     return { start: min - padding, end: max + padding }
 })
 const operationPlanChartTimelineWidth = computed(() => (
-    Math.max(860, operationPlanChartTimeSpan.value * operationPlanChartPixelsPerMinute.value)
+    operationPlanChartTimeSpan.value * operationPlanChartPixelsPerMinute.value
 ))
 const operationPlanChartTimeSpan = computed(() => (
     Math.max(1, operationPlanChartDomain.value.end - operationPlanChartDomain.value.start)
 ))
 const operationPlanChartPixelsPerMinute = computed(() => {
+    if (operationPlanChartGeometry.value) return operationPlanChartGeometry.value.pixelsPerMinute
     const span = operationPlanChartTimeSpan.value
-    if (span <= 180) return 4
-    if (span <= 480) return 2.4
-    if (span <= 960) return 1.5
-    return 1
+    const targetScale = span <= 180 ? 4 : span <= 480 ? 2.4 : span <= 960 ? 1.5 : 1
+    return getTrackOccupancyGanttTimeScale(span, 860, targetScale)
 })
-const operationPlanChartGridStyle = computed(() => ({
-    gridTemplateColumns: `180px ${operationPlanChartTimelineWidth.value}px`,
-    minWidth: `${180 + operationPlanChartTimelineWidth.value}px`,
-}))
 const operationPlanChartTicks = computed(() => {
     const step = getOperationPlanChartTickStep(operationPlanChartTimeSpan.value)
     const first = Math.ceil(operationPlanChartDomain.value.start / step) * step
@@ -3094,6 +3248,29 @@ const operationPlanChartTicks = computed(() => {
     }
     return ticks
 })
+const operationPlanChartDisplayRows = computed<TrackOccupancyGanttRow[]>(() => (
+    operationPlanChartBars.value.length === 0 ? [] : operationPlanChartRows.value.map((row) => ({
+        key: row.cellID,
+        label: row.cellName,
+        height: trackOccupancyGanttMetrics.rowHeight + (row.laneCount - 1) * trackOccupancyGanttMetrics.lanePitch,
+        blocks: row.bars.map((bar) => ({
+            key: bar.key,
+            left: operationPlanChartTimeToX(getOperationPlanChartDisplayWindow(bar).startMinutes),
+            width: operationPlanChartTimeToX(getOperationPlanChartDisplayWindow(bar).endMinutes) - operationPlanChartTimeToX(getOperationPlanChartDisplayWindow(bar).startMinutes),
+            top: trackOccupancyGanttMetrics.barInset + bar.lane * trackOccupancyGanttMetrics.lanePitch,
+            label: bar.label,
+            title: processConstraintsByTrain.value.has(bar.trainID) ? `${bar.title}\n${t('operationPlan.trainOperationPlan.fromProcess.lockedHint')}` : getOperationPlanChartDisplayTitle(bar),
+            color: bar.color,
+            editable: !processConstraintsByTrain.value.has(bar.trainID),
+            className: operationPlanChartDrag.value?.blockKey === bar.key ? 'is-active' : '',
+        })),
+    }))
+))
+const operationPlanChartDisplayTicks = computed(() => operationPlanChartTicks.value.map((tick) => ({
+    key: tick,
+    left: operationPlanChartTimeToX(tick),
+    label: formatOperationPlanChartTime(tick),
+})))
 const routePickerRoutes = computed<StationRouteOption[]>(() => {
     const routesById = new Map<string, StationRouteOption>()
     stationRouteOptions.value.forEach((route) => routesById.set(route.id, route))
@@ -3496,6 +3673,7 @@ function normalizeTrainOperationPlanMovement(item: any): TrainOperationPlanMovem
         minDuration: readOptionalInteger(item, 'minDuration', 'MinDuration'),
         earliestStartTime: readString(item, 'earliestStartTime', 'EarliestStartTime').trim(),
         latestEndTime: readString(item, 'latestEndTime', 'LatestEndTime').trim(),
+        cellOccupationOverridesJson: readString(item, 'cellOccupationOverridesJson', 'CellOccupationOverridesJson'),
         route: readString(item, 'route', 'Route').trim(),
         tag: readString(item, 'tag', 'Tag').trim(),
         sortOrder: readOptionalInteger(item, 'sortOrder', 'SortOrder'),
@@ -3630,6 +3808,9 @@ function normalizeOperationAnalysisSnapshot(data: any): OperationAnalysisSnapsho
 }
 
 function normalizeTrainOperationPlanResponse(data: any) {
+    operationPlanChartGeometry.value = null
+    operationPlanChartLaneAssignments.value = {}
+    operationPlanChartRowLaneCounts.value = {}
     clearTrainOperationPlanSelection()
     const trainRows: any[] = Array.isArray(data?.trains) ? data.trains : Array.isArray(data?.Trains) ? data.Trains : []
     const movementRows: any[] = Array.isArray(data?.movements) ? data.movements : Array.isArray(data?.Movements) ? data.Movements : []
@@ -3753,7 +3934,7 @@ function parseOperationPlanTime(value: string) {
 
     let dayOffset = 0
     let timeText = text
-    const dayMatch = text.match(/^D\+(\d+)\s+(.+)$/i)
+    const dayMatch = text.match(/^D([+-]\d+)\s+(.+)$/i)
     if (dayMatch) {
         dayOffset = Number(dayMatch[1])
         timeText = (dayMatch[2] || '').trim()
@@ -4479,6 +4660,7 @@ function getRouteDisplayName(routeID: string) {
 
 function isOperationPlanChartDataTab(tab: OperationPlanSubTab) {
     return tab === 'trainOperationChart' ||
+        tab === 'stationPlanView' ||
         tab === 'operationOccupationTimeTable' ||
         tab === 'operationBottleneckAnalysis' ||
         tab === 'operationThroughputSummary'
@@ -4668,6 +4850,9 @@ function getOperationPlanChartTrainColor(trainID: string) {
 }
 
 function assignOperationPlanChartBarLanes(bars: OperationPlanChartBar[]) {
+    if (Object.keys(operationPlanChartLaneAssignments.value).length > 0) {
+        return bars.map(bar => ({ ...bar, lane: operationPlanChartLaneAssignments.value[bar.key] ?? 0 }))
+    }
     const laneEndMinutes: number[] = []
     return [...bars]
         .sort((left, right) => left.startMinutes - right.startMinutes || left.endMinutes - right.endMinutes)
@@ -4695,22 +4880,177 @@ function operationPlanChartTimeToX(minutes: number) {
     return (minutes - operationPlanChartDomain.value.start) * operationPlanChartPixelsPerMinute.value
 }
 
-function getOperationPlanChartRowHeight(row: OperationPlanChartRow) {
-    return Math.max(36, 12 + row.laneCount * 24)
+function getOperationPlanChartDisplayWindow(bar: OperationPlanChartBar) {
+    return operationPlanChartDrag.value?.blockKey === bar.key && operationPlanChartDragPreview.value
+        ? operationPlanChartDragPreview.value : bar
 }
 
-function getOperationPlanChartRowStyle(row: OperationPlanChartRow) {
-    return { height: `${getOperationPlanChartRowHeight(row)}px` }
+function getOperationPlanChartDisplayTitle(bar: OperationPlanChartBar) {
+    const window = getOperationPlanChartDisplayWindow(bar)
+    return window === bar ? bar.title : `${bar.label}\n${bar.movementName}\n${formatOperationPlanChartTime(window.startMinutes)} - ${formatOperationPlanChartTime(window.endMinutes)}`
 }
 
-function getOperationPlanChartBarStyle(bar: OperationPlanChartBar) {
-    const startX = operationPlanChartTimeToX(bar.startMinutes)
-    const endX = operationPlanChartTimeToX(bar.endMinutes)
-    return {
-        left: `${startX}px`,
-        width: `${Math.max(0, endX - startX)}px`,
-        top: `${6 + bar.lane * 24}px`,
-        backgroundColor: bar.color,
+function startOperationPlanChartDrag({ event, blockKey, mode }: TrackOccupancyGanttDragStart) {
+    if (!canEditOperationPlanChart.value || operationPlanChartDrag.value || event.button !== 0) return
+    const bar = operationPlanChartBars.value.find((item) => item.key === blockKey)
+    if (!bar || processConstraintsByTrain.value.has(bar.trainID)) return
+    const movement = trainOperationPlanMovements.value.find((item) => item.trainID === bar.trainID && item.movementID === bar.movementID)
+    if (!movement || movement.isDraft) return
+    const startMinutes = parseOperationPlanTime(movement.earliestStartTime)
+    const endMinutes = parseOperationPlanTime(movement.latestEndTime)
+    if (startMinutes === null || endMinutes === null || endMinutes < startMinutes) return
+    event.preventDefault()
+    const domain = { ...operationPlanChartDomain.value }
+    const pixelsPerMinute = operationPlanChartPixelsPerMinute.value
+    operationPlanChartGeometry.value = { domain, pixelsPerMinute }
+    operationPlanChartAutoFit.value = false
+    const rows = operationPlanChartRows.value
+    operationPlanChartLaneAssignments.value = Object.fromEntries(rows.flatMap(row => row.bars.map(item => [item.key, item.lane])))
+    operationPlanChartRowLaneCounts.value = Object.fromEntries(rows.map(row => [row.cellID, row.laneCount]))
+    operationPlanChartDrag.value = {
+        movement: { ...movement },
+        blockKey,
+        cellID: bar.cellID,
+        routeID: bar.routeID,
+        baseStartMinutes: startMinutes,
+        baseEndMinutes: endMinutes,
+        laneAssignments: { ...operationPlanChartLaneAssignments.value },
+        rowLaneCounts: { ...operationPlanChartRowLaneCounts.value },
+        window: { startMinutes: bar.startMinutes, endMinutes: bar.endMinutes, minDurationSeconds: 0, minimumStartMinutes: null },
+        mode,
+        scopeKey: operationPlanScopeKey.value,
+        domain,
+        pixelsPerMinute: pixelsPerMinute * operationPlanChartScaleX.value,
+        pointerId: event.pointerId,
+        pointerStartX: event.clientX,
+        scrollStartX: operationPlanChartGanttRef.value?.viewport?.scrollLeft || 0,
+        previousCursor: document.body.style.cursor,
+        previousUserSelect: document.body.style.userSelect,
+    }
+    operationPlanChartDragPreview.value = { startMinutes: bar.startMinutes, endMinutes: bar.endMinutes }
+    if (operationAnalysisSnapshotSaveTimer) {
+        window.clearTimeout(operationAnalysisSnapshotSaveTimer)
+        operationAnalysisSnapshotSaveTimer = null
+    }
+    document.body.style.cursor = mode === 'move' ? 'grabbing' : 'ew-resize'
+    document.body.style.userSelect = 'none'
+    window.addEventListener('pointermove', moveOperationPlanChartDrag)
+    window.addEventListener('pointerup', finishOperationPlanChartDrag)
+    window.addEventListener('pointercancel', cancelOperationPlanChartDrag)
+    window.addEventListener('keydown', handleOperationPlanChartDragKey)
+}
+
+function replaceOperationPlanChartMovement(movement: TrainOperationPlanMovement) {
+    const key = getTrainOperationPlanMovementIdentityKey(movement)
+    trainOperationPlanMovements.value = trainOperationPlanMovements.value.map((item) => (
+        getTrainOperationPlanMovementIdentityKey(item) === key ? { ...movement } : item
+    ))
+}
+
+function moveOperationPlanChartDrag(event: PointerEvent) {
+    const drag = operationPlanChartDrag.value
+    if (!drag || event.pointerId !== drag.pointerId) return
+    if (drag.scopeKey !== operationPlanScopeKey.value) { cancelOperationPlanChartDrag(); return }
+    const scrollDelta = (operationPlanChartGanttRef.value?.viewport?.scrollLeft || 0) - drag.scrollStartX
+    const deltaMinutes = (event.clientX - drag.pointerStartX + scrollDelta) / drag.pixelsPerMinute
+    operationPlanChartDragPreview.value = adjustOperationPlanGanttWindow(drag.window, drag.mode, deltaMinutes)
+}
+
+function stopOperationPlanChartDrag() {
+    const drag = operationPlanChartDrag.value
+    if (!drag) return null
+    operationPlanChartDrag.value = null
+    operationPlanChartDragPreview.value = null
+    document.body.style.cursor = drag.previousCursor
+    document.body.style.userSelect = drag.previousUserSelect
+    window.removeEventListener('pointermove', moveOperationPlanChartDrag)
+    window.removeEventListener('pointerup', finishOperationPlanChartDrag)
+    window.removeEventListener('pointercancel', cancelOperationPlanChartDrag)
+    window.removeEventListener('keydown', handleOperationPlanChartDragKey)
+    return drag
+}
+
+function cancelOperationPlanChartDrag() {
+    stopOperationPlanChartDrag()
+}
+
+function handleOperationPlanChartDragKey(event: KeyboardEvent) {
+    if (event.key === 'Escape') { event.preventDefault(); cancelOperationPlanChartDrag() }
+}
+
+function finishOperationPlanChartDrag(event: PointerEvent) {
+    const drag = operationPlanChartDrag.value
+    if (!drag || event.pointerId !== drag.pointerId) return
+    moveOperationPlanChartDrag(event)
+    const preview = operationPlanChartDragPreview.value
+    const finished = stopOperationPlanChartDrag()
+    if (!finished || !preview || finished.scopeKey !== operationPlanScopeKey.value) return
+    if (preview.startMinutes === finished.window.startMinutes && preview.endMinutes === finished.window.endMinutes) return
+    const movement = {
+        ...finished.movement,
+        cellOccupationOverridesJson: setMovementCellOccupationOverride(finished.movement.cellOccupationOverridesJson, finished.cellID, {
+            routeID: finished.routeID,
+            startOccupationShift: Math.round((preview.startMinutes - finished.baseStartMinutes) * 60),
+            endOccupationShift: Math.round((preview.endMinutes - finished.baseEndMinutes) * 60),
+        }),
+    }
+    const row = operationPlanChartRows.value.find(item => item.cellID === finished.cellID)
+    if (row) {
+        const fitsLane = (lane: number) => !row.bars.some(bar => bar.key !== finished.blockKey && bar.lane === lane &&
+            preview.startMinutes < bar.endMinutes && preview.endMinutes > bar.startMinutes)
+        let lane = operationPlanChartLaneAssignments.value[finished.blockKey] ?? 0
+        if (!fitsLane(lane)) {
+            lane = 0
+            while (!fitsLane(lane)) lane++
+        }
+        operationPlanChartLaneAssignments.value = { ...operationPlanChartLaneAssignments.value, [finished.blockKey]: lane }
+        operationPlanChartRowLaneCounts.value = { ...operationPlanChartRowLaneCounts.value, [finished.cellID]: Math.max(row.laneCount, lane + 1) }
+    }
+    replaceOperationPlanChartMovement(movement)
+    const geometry = operationPlanChartGeometry.value
+    if (geometry && (preview.startMinutes < geometry.domain.start || preview.endMinutes > geometry.domain.end)) {
+        const start = Math.min(geometry.domain.start, preview.startMinutes)
+        operationPlanChartGeometry.value = {
+            ...geometry, domain: { start, end: Math.max(geometry.domain.end, preview.endMinutes) },
+        }
+        // Expanding the left boundary preserves the screen positions of existing blocks.
+        const scrollDelta = (geometry.domain.start - start) * geometry.pixelsPerMinute * operationPlanChartScaleX.value
+        void nextTick(() => {
+            if (finished.scopeKey === operationPlanScopeKey.value && operationPlanChartGanttRef.value?.viewport) {
+                operationPlanChartGanttRef.value.viewport.scrollLeft += scrollDelta
+            }
+        })
+    }
+    void saveOperationPlanChartMovement(movement, finished)
+}
+
+async function saveOperationPlanChartMovement(movement: TrainOperationPlanMovement, drag: OperationPlanChartDragState) {
+    const saveVersion = ++operationPlanChartSaveVersion
+    const isCurrent = () => saveVersion === operationPlanChartSaveVersion && drag.scopeKey === operationPlanScopeKey.value
+    savingTrainOperationPlanMovement.value = true
+    try {
+        const response = await axios.put('/OperationPlan/EditMovement', movement)
+        if (!isCurrent()) return
+        replaceOperationPlanChartMovement(normalizeTrainOperationPlanMovement(response.data) || movement)
+        clearOperationAnalysisSnapshotState()
+        scheduleSaveOperationAnalysisSnapshot(0)
+        ElMessage.success(t('capacityGantt.saveSuccess'))
+    } catch (error) {
+        if (!isCurrent()) return
+        replaceOperationPlanChartMovement(drag.movement)
+        operationPlanChartLaneAssignments.value = drag.laneAssignments
+        operationPlanChartRowLaneCounts.value = drag.rowLaneCounts
+        operationPlanChartGeometry.value = {
+            domain: { ...drag.domain },
+            pixelsPerMinute: drag.pixelsPerMinute / operationPlanChartScaleX.value,
+        }
+        await nextTick()
+        if (isCurrent() && operationPlanChartGanttRef.value?.viewport) {
+            operationPlanChartGanttRef.value.viewport.scrollLeft = drag.scrollStartX
+        }
+        ElMessage.error(`${t('capacityGantt.saveFailed')} ${getApiErrorMessage(error, '')}`.trim())
+    } finally {
+        if (isCurrent()) savingTrainOperationPlanMovement.value = false
     }
 }
 
@@ -5860,6 +6200,9 @@ function clearMovementTemplates() {
 }
 
 function clearTrainOperationPlan() {
+    operationPlanChartGeometry.value = null
+    operationPlanChartLaneAssignments.value = {}
+    operationPlanChartRowLaneCounts.value = {}
     clearTrainOperationPlanSelection()
     trainOperationPlanLoadVersion++
     operationPlanChartLoadVersion++
@@ -6363,7 +6706,7 @@ async function loadTrainOperationPlan() {
 function getOperationPlanChartRouteTimePairs() {
     const pairs = new Map<string, { routeID: string; trainTypeID: string }>()
     trainOperationPlanMovements.value.forEach((movement) => {
-        const routeID = movement.route.trim()
+        const routeID = resolveStationPlanMovementRouteID(movement.route, movement.routeIDList)
         if (!routeID) return
 
         const trainTypeID = trainOperationPlanTrainMap.value.get(movement.trainID)?.trainType?.trim() || ''
@@ -6396,6 +6739,9 @@ async function loadOperationPlanChartCells(
     stationLayoutCells.value = getLayoutCells(response.data)
         .map((cell: OperationPlanChartCell) => ({ id: cell.id, name: cell.name || cell.id }))
         .filter((cell: OperationPlanChartCell) => cell.id)
+    stationPlanNodeNames.value = Object.fromEntries((Array.isArray(response.data?.nodes) ? response.data.nodes : [])
+        .map((node: any) => [readString(node, 'id', 'ID').trim(), readString(node, 'name', 'Name', 'description', 'Description').trim()])
+        .filter(([id]: string[]) => id))
 }
 
 async function loadOperationPlanChartRouteTimes(
@@ -6592,6 +6938,198 @@ function scheduleSaveOperationOccupationTimeSubTableSettings(delay = 500) {
     }, delay)
 }
 
+function normalizeStationPlanSettings(data: any) {
+    const configured = Boolean(data?.isConfigured ?? data?.IsConfigured)
+    return {
+        cellIDs: configured ? readArray(data, 'cellIDs', 'CellIDs').map(String) : null,
+        endpointNodeIDs: configured ? readArray(data, 'endpointNodeIDs', 'EndpointNodeIDs').map(String) : null,
+    }
+}
+
+async function saveStationPlanSegmentEdit(edit: StationPlanSegmentEdit) {
+    if (!canEditOperationPlanChart.value || stationPlanActions.busy || stationPlanReadOnlyTrainIDs.value.includes(edit.trainID)) return
+    const train = stationPlanTrains.value.find(train => train.id === edit.trainID)
+    if (!train) return
+    const scopeKey = operationPlanScopeKey.value, saveVersion = ++operationPlanChartSaveVersion
+    const isCurrent = () => scopeKey === operationPlanScopeKey.value && saveVersion === operationPlanChartSaveVersion
+    savingTrainOperationPlanMovement.value = true
+    try {
+        let changed = editStationPlanSegment(train, edit, stationPlanMovements.value, stationPlanEditRoutes.value, stationPlanMovementTimes)
+        if (edit.mode === 'row') {
+            const trainType = trainOperationPlanTrainMap.value.get(edit.trainID)?.trainType || ''
+            const pairs = [...new Set(changed.map(movement => movement.routeID))].flatMap(routeID =>
+                [...new Set(['', trainType])].map(trainTypeID => ({ routeID, trainTypeID })))
+                .filter(pair => !Object.prototype.hasOwnProperty.call(stationRouteTimesByKey.value, getOperationPlanChartRouteTimeKey(pair.routeID, pair.trainTypeID)))
+            const scope = getOperationPlanScope()
+            const results = await Promise.allSettled(pairs.map(async pair => {
+                const response = await axios.get('/StationLayout/GetStationRouteTimes', { params: { ...scope, ...pair } })
+                const rows = (Array.isArray(response.data) ? response.data : []).map(normalizeStationRouteTimeOption)
+                    .filter((time): time is StationRouteTimeOption => time !== null)
+                return [getOperationPlanChartRouteTimeKey(pair.routeID, pair.trainTypeID), rows] as const
+            }))
+            if (!isCurrent()) return
+            const entries = results.flatMap(result => result.status === 'fulfilled' ? [result.value] : [])
+            stationRouteTimesByKey.value = { ...stationRouteTimesByKey.value, ...Object.fromEntries(entries) }
+            changed = editStationPlanSegment(train, edit, stationPlanMovements.value, stationPlanEditRoutes.value, stationPlanMovementTimes)
+        }
+        const items = changed.map(movement => {
+            const original = trainOperationPlanMovements.value.find(item => item.trainID === edit.trainID && item.movementID === movement.movementID)
+            if (!original || original.isDraft) throw new StationPlanEditingError()
+            return { original: { ...original }, updated: { ...original,
+                route: movement.routeID, routeIDList: movement.routeIDList || original.routeIDList,
+                earliestStartTime: stationPlanTimeLabel(movement.startMinutes), latestEndTime: stationPlanTimeLabel(movement.endMinutes),
+                cellOccupationOverridesJson: movement.cellOccupationOverridesJson,
+            } }
+        })
+        if (!isCurrent()) return
+        const action = new StationPlanMovementAction(edit.mode, items.map(item => item.original), items.map(item => item.updated),
+            (expected, desired) => persistStationPlanAction(expected, desired, scopeKey))
+        if (await stationPlanActions.execute(action)) showStationPlanSaveMessage('editSaved', items.map(item => item.original), trainOperationPlanMovements.value)
+    } catch (error) {
+        if (scopeKey !== operationPlanScopeKey.value) return
+        if (error instanceof StationPlanEditingError) ElMessage.warning(t('stationPlanView.editErrors.stale'))
+        else ElMessage.error(`${t('stationPlanView.editSaveFailed')} ${getApiErrorMessage(error, '')}`.trim())
+    } finally {
+        if (scopeKey === operationPlanScopeKey.value) savingTrainOperationPlanMovement.value = false
+    }
+}
+
+async function persistStationPlanAction(expected: TrainOperationPlanMovement[], desired: TrainOperationPlanMovement[], scopeKey: string) {
+    if (scopeKey !== operationPlanScopeKey.value) throw new StationPlanEditingError()
+    const items = expected.map((original, index) => {
+        const current = trainOperationPlanMovements.value.find(row => getTrainOperationPlanMovementIdentityKey(row) === getTrainOperationPlanMovementIdentityKey(original))
+        if (!current || current.isDraft || JSON.stringify(normalizeTrainOperationPlanMovement(current)) !== JSON.stringify(normalizeTrainOperationPlanMovement(original)))
+            throw new StationPlanEditingError()
+        // An empty document explicitly removes overrides; null means preserve them on older-client saves.
+        return { original: { ...current }, updated: { ...desired[index]!, cellOccupationOverridesJson: desired[index]!.cellOccupationOverridesJson ?? '' } }
+    })
+    const saveVersion = ++operationPlanChartSaveVersion
+    const isCurrent = () => scopeKey === operationPlanScopeKey.value && saveVersion === operationPlanChartSaveVersion
+    savingTrainOperationPlanMovement.value = true
+    if (operationAnalysisSnapshotSaveTimer) { window.clearTimeout(operationAnalysisSnapshotSaveTimer); operationAnalysisSnapshotSaveTimer = null }
+    items.forEach(item => replaceOperationPlanChartMovement(item.updated))
+    try {
+        const response = await axios.put('/OperationPlan/EditMovements', { items })
+        if (!isCurrent()) throw new StationPlanEditingError()
+        const saved: TrainOperationPlanMovement[] = (Array.isArray(response.data) ? response.data : items.map(item => item.updated))
+            .map(normalizeTrainOperationPlanMovement).filter((row: TrainOperationPlanMovement | null): row is TrainOperationPlanMovement => row !== null)
+        saved.forEach(replaceOperationPlanChartMovement)
+        clearOperationAnalysisSnapshotState()
+        scheduleSaveOperationAnalysisSnapshot(0)
+        return saved
+    } catch (error) {
+        if (isCurrent()) items.forEach(item => replaceOperationPlanChartMovement(item.original))
+        throw error
+    } finally {
+        if (isCurrent()) savingTrainOperationPlanMovement.value = false
+    }
+}
+
+async function replayStationPlanAction(operation: 'undo' | 'redo') {
+    if (!canEditOperationPlanChart.value || !(operation === 'undo' ? stationPlanActions.canUndo : stationPlanActions.canRedo)) return
+    const scopeKey = operationPlanScopeKey.value
+    const before = trainOperationPlanMovements.value.map(row => ({ ...row }))
+    try {
+        if (await stationPlanActions[operation]()) showStationPlanSaveMessage(`${operation}Saved`, before, trainOperationPlanMovements.value)
+    } catch (error) {
+        if (scopeKey !== operationPlanScopeKey.value) return
+        if (error instanceof StationPlanEditingError) ElMessage.warning(t('stationPlanView.editErrors.stale'))
+        else ElMessage.error(`${t('stationPlanView.historySaveFailed')} ${getApiErrorMessage(error, '')}`.trim())
+    }
+}
+
+function showStationPlanSaveMessage(messageKey: 'editSaved' | 'undoSaved' | 'redoSaved', before: TrainOperationPlanMovement[], after: TrainOperationPlanMovement[]) {
+    const saved = new Map(after.map(row => [getTrainOperationPlanMovementIdentityKey(row), row]))
+    const routeLabel = (id: string) => {
+        const name = stationRouteOptions.value.find(route => route.id === id)?.name
+        return name && name !== id ? `${name} (${id})` : id || '-'
+    }
+    const changes = before.flatMap(original => {
+        const updated = saved.get(getTrainOperationPlanMovementIdentityKey(original))
+        if (!updated) return []
+        const from = resolveStationPlanMovementRouteID(original.route, original.routeIDList)
+        const to = resolveStationPlanMovementRouteID(updated.route, updated.routeIDList)
+        if (from === to) return []
+        return [t('stationPlanView.routeChangeItem', {
+            train: trainOperationPlanTrainMap.value.get(updated.trainID)?.trainNumber || updated.trainID,
+            movement: updated.name || updated.movementID,
+            from: routeLabel(from), to: routeLabel(to),
+        })]
+    })
+    if (!changes.length) { ElMessage.success(t(`stationPlanView.${messageKey}`)); return }
+    ElMessage.success({
+        message: h('div', { class: 'station-plan-route-change-message', style: { maxWidth: 'min(760px, calc(100vw - 100px))', overflowWrap: 'anywhere' } }, [
+            h('div', t(`stationPlanView.${messageKey}`)),
+            h('div', { style: { marginTop: '6px', fontWeight: '600' } }, t('stationPlanView.routesChanged')),
+            ...changes.map(change => h('div', { style: { marginTop: '4px' } }, change)),
+        ]),
+        duration: 8000,
+        showClose: true,
+    })
+}
+
+async function refreshStationPlanView() {
+    await loadStationRoutes()
+    await loadTrainOperationPlan()
+}
+
+async function loadStationPlanSettings() {
+    const scope = getOperationPlanScope()
+    if (!scope.instanceID || !scope.stationSchemeID || !scope.operationPlanID) return
+    const scopeKey = operationPlanScopeKey.value
+    const version = ++stationPlanSettingsVersion
+    loadingStationPlanSettings.value = true
+    stationPlanSettingsError.value = false
+    try {
+        const response = await axios.get('/OperationPlan/GetStationPlanViewSettings', { params: scope })
+        if (version !== stationPlanSettingsVersion || scopeKey !== operationPlanScopeKey.value) return
+        stationPlanSettings.value = normalizeStationPlanSettings(response.data)
+    } catch {
+        if (version === stationPlanSettingsVersion && scopeKey === operationPlanScopeKey.value) stationPlanSettingsError.value = true
+    } finally {
+        if (version === stationPlanSettingsVersion) loadingStationPlanSettings.value = false
+    }
+}
+
+function openStationPlanSettings() {
+    const availableCells = operationOccupationTimeTableCells.value.map(cell => cell.id)
+    const availableEndpoints = stationPlanEndpointOptions.value.map(endpoint => endpoint.sourceID)
+    stationPlanCellDraft.value = availableCells.filter(id => stationPlanSettings.value.cellIDs === null || stationPlanSettings.value.cellIDs.includes(id))
+    stationPlanEndpointDraft.value = availableEndpoints.filter(id => stationPlanSettings.value.endpointNodeIDs === null || stationPlanSettings.value.endpointNodeIDs.includes(id))
+    stationPlanSettingsVisible.value = true
+}
+
+async function completeStationPlanEndpoints() {
+    if (savingStationPlanSettings.value || loadingStationPlanSettings.value || stationPlanSettingsError.value || !stationPlanMissingEndpoints.value.length) return
+    stationPlanCellDraft.value = [...(stationPlanSettings.value.cellIDs ?? operationOccupationTimeTableCells.value.map(cell => cell.id))]
+    stationPlanEndpointDraft.value = [...new Set([
+        ...(stationPlanSettings.value.endpointNodeIDs ?? stationPlanEndpointOptions.value.map(endpoint => endpoint.sourceID)),
+        ...stationPlanMissingEndpoints.value.map(endpoint => endpoint.sourceID),
+    ])]
+    await saveStationPlanSettings()
+}
+
+async function saveStationPlanSettings() {
+    if (savingStationPlanSettings.value || !hasScope.value) return
+    const scope = getOperationPlanScope()
+    const scopeKey = operationPlanScopeKey.value
+    const version = ++stationPlanSettingsVersion
+    savingStationPlanSettings.value = true
+    try {
+        const response = await axios.put('/OperationPlan/SaveStationPlanViewSettings', {
+            ...scope, cellIDs: [...stationPlanCellDraft.value], endpointNodeIDs: [...stationPlanEndpointDraft.value],
+        })
+        if (version !== stationPlanSettingsVersion || scopeKey !== operationPlanScopeKey.value) return
+        stationPlanSettings.value = normalizeStationPlanSettings(response.data)
+        stationPlanSettingsVisible.value = false
+        ElMessage.success(t('stationPlanView.settingsSaved'))
+    } catch {
+        if (version === stationPlanSettingsVersion && scopeKey === operationPlanScopeKey.value) ElMessage.error(t('stationPlanView.saveSettingsFailed'))
+    } finally {
+        if (version === stationPlanSettingsVersion) savingStationPlanSettings.value = false
+    }
+}
+
 async function loadOperationPlanChartData() {
     const { instanceID, stationSchemeID, operationPlanID } = getOperationPlanScope()
     if (!instanceID || !stationSchemeID || !operationPlanID) {
@@ -6613,6 +7151,7 @@ async function loadOperationPlanChartData() {
             loadOperationBottleneckSummaryCategories(instanceID, stationSchemeID, loadVersion),
         ])
         await loadOperationOccupationTimeSubTableSettings(instanceID, stationSchemeID, loadVersion)
+        if (activeOperationPlanTab.value === 'stationPlanView' && loadVersion === operationPlanChartLoadVersion) await loadStationPlanSettings()
         if (
             loadVersion !== operationPlanChartLoadVersion ||
             instanceID !== props.selectedInstanceId ||
@@ -7386,6 +7925,7 @@ watch(routePickerEndpointFilterKey, () => {
 })
 
 watch(activeOperationPlanTab, (tab) => {
+    cancelOperationPlanChartDrag()
     if (isOperationPlanChartDataTab(tab)) {
         void loadOperationPlanChartData()
     }
@@ -7421,7 +7961,23 @@ watch(selectedTrainProcessConstraints, snapshot => {
     if (!snapshot) processConstraintDrawerVisible.value = false
 })
 
+watch([trainOperationPlanStartTime, trainOperationPlanEndTime], () => {
+    cancelOperationPlanChartDrag()
+    operationPlanChartGeometry.value = null
+})
+
 watch(operationPlanScopeKey, () => {
+    stationPlanActions.clear()
+    stationPlanSettingsVersion++
+    stationPlanSettings.value = { cellIDs: null, endpointNodeIDs: null }
+    loadingStationPlanSettings.value = false
+    savingStationPlanSettings.value = false
+    stationPlanSettingsError.value = false
+    stationPlanSettingsVisible.value = false
+    stationPlanNodeNames.value = {}
+    cancelOperationPlanChartDrag()
+    operationPlanChartSaveVersion++
+    savingTrainOperationPlanMovement.value = false
     trainBatchDeleteVersion++
     confirmingTrainBatchDelete.value = false
     deletingTrainOperationPlanTrains.value = false
@@ -7439,6 +7995,11 @@ watch(operationPlanScopeKey, () => {
     processPlanResult.value = null
     trainProcessConstraints.value = []
     processConstraintDrawerVisible.value = false
+}, { flush: 'sync' })
+
+// Changes made elsewhere, including a different version returned by refresh, invalidate these snapshots.
+watch(() => JSON.stringify(trainOperationPlanMovements.value), () => {
+    if (!stationPlanActions.busy) stationPlanActions.clear()
 }, { flush: 'sync' })
 
 watch(processTrainScopeKey, () => {
@@ -7505,6 +8066,10 @@ watch(
 )
 
 onBeforeUnmount(() => {
+    stationPlanActions.clear()
+    stationPlanSettingsVersion++
+    cancelOperationPlanChartDrag()
+    operationPlanChartSaveVersion++
     trainBatchDeleteVersion++
     processPlanSourceRequestVersion++
     processPlanGenerationVersion++
@@ -8105,143 +8670,20 @@ onBeforeUnmount(() => {
     min-width: 0;
 }
 
-.operation-plan-chart-empty {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex: 1;
-    min-height: 220px;
-    color: #718096;
-    font-size: 13px;
-}
+.operation-plan-chart-hint { color: var(--el-text-color-secondary); font-size: 12px; }
+.station-plan-time-range { display: flex; align-items: center; gap: 8px; font-size: 12px; white-space: nowrap; }
+.station-plan-time-range :deep(.el-input) { width: 90px; }
+.station-plan-note { margin: 0; padding: 5px 12px; color: var(--el-text-color-secondary); font-size: 11px; }
+.station-plan-settings-hint { color: var(--el-text-color-secondary); font-size: 12px; }
+.station-plan-missing-endpoints { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
+.station-plan-used-endpoint { color: var(--el-color-primary); font-size: 11px; }
+.station-plan-settings-section + .station-plan-settings-section { margin-top: 20px; }
+.station-plan-settings-heading { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.station-plan-settings-heading strong { margin-right: auto; }
+.station-plan-settings-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); max-height: 240px; overflow: auto; padding: 4px 8px; background: var(--el-fill-color-light); border-radius: 6px; }
+.station-plan-settings-options :deep(.el-checkbox) { margin-right: 8px; min-width: 0; }
+.station-plan-settings-options :deep(.el-checkbox__label) { overflow: hidden; text-overflow: ellipsis; }
 
-.operation-plan-chart-scroll {
-    flex: 1;
-    min-height: 0;
-    overflow: auto;
-    background: #ffffff;
-}
-
-.operation-plan-chart-grid {
-    display: grid;
-    align-items: stretch;
-    min-height: 100%;
-}
-
-.operation-plan-chart-corner,
-.operation-plan-chart-time-head {
-    position: sticky;
-    top: 0;
-    z-index: 3;
-    height: 44px;
-    border-bottom: 1px solid #d8e3ef;
-    background: #f8fafc;
-}
-
-.operation-plan-chart-corner {
-    left: 0;
-    z-index: 5;
-    display: flex;
-    align-items: center;
-    padding: 0 12px;
-    border-right: 1px solid #d8e3ef;
-    color: #36506d;
-    font-size: 12px;
-    font-weight: 700;
-}
-
-.operation-plan-chart-time-head {
-    position: sticky;
-    overflow: hidden;
-}
-
-.operation-plan-chart-axis-title {
-    position: absolute;
-    top: 7px;
-    left: 12px;
-    color: #36506d;
-    font-size: 12px;
-    font-weight: 700;
-}
-
-.operation-plan-chart-tick-label {
-    position: absolute;
-    bottom: 6px;
-    transform: translateX(-50%);
-    color: #65758a;
-    font-size: 11px;
-    white-space: nowrap;
-}
-
-.operation-plan-chart-cell {
-    position: sticky;
-    left: 0;
-    z-index: 2;
-    display: flex;
-    align-items: center;
-    min-width: 0;
-    padding: 0 12px;
-    overflow: hidden;
-    border-right: 1px solid #d8e3ef;
-    border-bottom: 1px solid #edf2f7;
-    background: #ffffff;
-    color: #36506d;
-    font-size: 12px;
-    font-weight: 600;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.operation-plan-chart-track {
-    position: relative;
-    overflow: hidden;
-    border-bottom: 1px solid #edf2f7;
-    background:
-        linear-gradient(90deg, rgba(216, 227, 239, 0.42) 1px, transparent 1px) 0 0 / 120px 100%,
-        #ffffff;
-}
-
-.operation-plan-chart-track:nth-of-type(4n) {
-    background-color: #fbfdff;
-}
-
-.operation-plan-chart-grid-line {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    width: 1px;
-    background: #e4edf6;
-    pointer-events: none;
-}
-
-.operation-plan-chart-bar {
-    position: absolute;
-    display: flex;
-    align-items: center;
-    box-sizing: border-box;
-    height: 18px;
-    min-width: 0;
-    max-width: none;
-    padding: 0;
-    overflow: hidden;
-    border: 0;
-    border-radius: 0;
-    color: #ffffff;
-    box-shadow: none;
-}
-
-.operation-plan-chart-bar span {
-    box-sizing: border-box;
-    width: 100%;
-    min-width: 0;
-    padding: 0 7px;
-    overflow: hidden;
-    font-size: 11px;
-    font-weight: 600;
-    line-height: 18px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
 
 .operation-occupation-time-card {
     flex: 1;

@@ -1,67 +1,32 @@
 <template>
-    <div class="occupation-gantt" :class="{ 'is-disabled': disabled }">
-        <div v-if="rows.length === 0" class="occupation-gantt-empty">
-            {{ emptyText }}
-        </div>
-        <div v-else ref="scrollRef" class="occupation-gantt-scroll">
-            <div class="occupation-gantt-grid" :style="gridStyle">
-                <div class="occupation-gantt-corner">
-                    {{ cellAxisLabel }}
-                </div>
-                <div class="occupation-gantt-time-head">
-                    <span class="occupation-gantt-axis-title">{{ timeAxisLabel }}</span>
-                    <span
-                        v-for="tick in ticks"
-                        :key="`head-${tick}`"
-                        class="occupation-gantt-tick-label"
-                        :style="{ left: `${timeToX(tick)}px` }"
-                    >
-                        {{ tick }}
-                    </span>
-                </div>
-
-                <template v-for="row in rows" :key="row.key">
-                    <div class="occupation-gantt-cell" :title="row.cellName">
-                        {{ row.cellName }}
-                    </div>
-                    <div class="occupation-gantt-track">
-                        <span
-                            v-for="tick in ticks"
-                            :key="`${row.key}-${tick}`"
-                            :class="['occupation-gantt-grid-line', { 'is-zero': tick === 0 }]"
-                            :style="{ left: `${timeToX(tick)}px` }"
-                        />
-                        <div
-                            v-if="row.hasBar"
-                            class="occupation-gantt-bar"
-                            :style="getBarStyle(row)"
-                            @pointerdown="startDrag($event, row, 'move')"
-                        >
-                            <span
-                                class="occupation-gantt-handle is-start"
-                                role="separator"
-                                :aria-label="startHandleLabel"
-                                @pointerdown.stop.prevent="startDrag($event, row, 'start')"
-                            />
-                            <span class="occupation-gantt-bar-label">
-                                {{ row.start }} - {{ row.end }}
-                            </span>
-                            <span
-                                class="occupation-gantt-handle is-end"
-                                role="separator"
-                                :aria-label="endHandleLabel"
-                                @pointerdown.stop.prevent="startDrag($event, row, 'end')"
-                            />
-                        </div>
-                    </div>
-                </template>
-            </div>
-        </div>
-    </div>
+    <TrackOccupancyGantt
+        ref="ganttRef"
+        :rows="displayRows"
+        :ticks="displayTicks"
+        :timeline-width="timelineWidth"
+        :scale-x="scaleX"
+        :auto-fit="autoFit"
+        :controls-disabled="dragging"
+        :refresh-disabled="refreshDisabled || disabled"
+        :refresh-loading="disabled"
+        :disabled="disabled"
+        :empty-text="emptyText"
+        :cell-axis-label="cellAxisLabel"
+        :time-axis-label="timeAxisLabel"
+        :start-handle-label="startHandleLabel"
+        :end-handle-label="endHandleLabel"
+        editable
+        @drag-start="handleGanttDragStart"
+        @update:scale-x="emit('update:scaleX', $event)"
+        @update:auto-fit="emit('update:autoFit', $event)"
+        @refresh="emit('refresh')"
+    />
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
+import TrackOccupancyGantt from './TrackOccupancyGantt.vue'
+import { getTrackOccupancyGanttTimeScale, trackOccupancyGanttMetrics, type TrackOccupancyGanttDragStart, type TrackOccupancyGanttRow } from './trackOccupancyGantt'
 
 interface GanttCell {
     id: string
@@ -91,6 +56,8 @@ interface DragState {
     timeIndex: number
     cellID: string
     pointerStartX: number
+    scrollStartX: number
+    pixelsPerUnit: number
     start: number
     end: number
 }
@@ -101,6 +68,7 @@ const props = withDefaults(defineProps<{
     disabled?: boolean
     scaleX?: number
     autoFit?: boolean
+    refreshDisabled?: boolean
     emptyText?: string
     cellAxisLabel?: string
     timeAxisLabel?: string
@@ -112,6 +80,7 @@ const props = withDefaults(defineProps<{
     disabled: false,
     scaleX: 1,
     autoFit: false,
+    refreshDisabled: false,
     emptyText: '',
     cellAxisLabel: '',
     timeAxisLabel: '',
@@ -127,17 +96,16 @@ const emit = defineEmits<{
         endOccupationShift: number
     }): void
     (event: 'update:scaleX', value: number): void
+    (event: 'update:autoFit', value: boolean): void
+    (event: 'refresh'): void
 }>()
 
-const labelWidth = 168
 const minTimelineWidth = 520
-const minBarWidth = 8
-const minScaleX = 0.01
-const maxScaleX = 4
-const scaleChangeThreshold = 0.001
-const scrollRef = ref<HTMLElement | null>(null)
-const viewportWidth = ref(0)
-let resizeObserver: ResizeObserver | null = null
+const minBarWidth = trackOccupancyGanttMetrics.minBarWidth
+const ganttRef = ref<InstanceType<typeof TrackOccupancyGantt> | null>(null)
+const scrollRef = computed(() => ganttRef.value?.viewport || null)
+const dragging = ref(false)
+const dragDomain = ref<{ start: number; end: number } | null>(null)
 let dragState: DragState | null = null
 let previousBodyCursor = ''
 let previousBodyUserSelect = ''
@@ -175,6 +143,7 @@ const timeValues = computed(() => rows.value
     .filter((value): value is number => value !== null))
 
 const domain = computed(() => {
+    if (dragDomain.value) return dragDomain.value
     if (timeValues.value.length === 0) return { start: -2, end: 12 }
     const min = Math.min(0, ...timeValues.value)
     const max = Math.max(0, ...timeValues.value)
@@ -187,29 +156,12 @@ const timeSpan = computed(() => Math.max(1, domain.value.end - domain.value.star
 
 const basePixelsPerUnit = computed(() => {
     const span = timeSpan.value
-    if (span <= 12) return 52
-    if (span <= 30) return 36
-    if (span <= 80) return 24
-    return 16
+    const targetScale = span <= 12 ? 52 : span <= 30 ? 36 : span <= 80 ? 24 : 16
+    return getTrackOccupancyGanttTimeScale(span, minTimelineWidth, targetScale)
 })
 
 const normalizedScaleX = computed(() => clampScaleX(props.scaleX))
-const pixelsPerUnit = computed(() => basePixelsPerUnit.value * normalizedScaleX.value)
-const timelineWidth = computed(() => {
-    const minWidth = props.autoFit ? 1 : minTimelineWidth
-    return Math.max(minWidth, timeSpan.value * pixelsPerUnit.value)
-})
-const autoFitScaleX = computed(() => {
-    const availableWidth = viewportWidth.value - labelWidth - 2
-    if (availableWidth <= 0) return normalizedScaleX.value
-    return roundScale(clampScaleX(availableWidth / (timeSpan.value * basePixelsPerUnit.value)))
-})
-
-const gridStyle = computed(() => ({
-    gridTemplateColumns: `${labelWidth}px ${timelineWidth.value}px`,
-    minWidth: `${labelWidth + timelineWidth.value}px`,
-    '--gantt-unit-width': `${pixelsPerUnit.value}px`,
-}))
+const timelineWidth = computed(() => Math.max(minTimelineWidth, timeSpan.value * basePixelsPerUnit.value))
 
 const ticks = computed(() => {
     const step = getTickStep(domain.value.end - domain.value.start)
@@ -220,6 +172,29 @@ const ticks = computed(() => {
     }
     return values
 })
+
+const displayRows = computed<TrackOccupancyGanttRow[]>(() => rows.value.map((row) => ({
+    key: row.key,
+    label: row.cellName,
+    blocks: row.hasBar && row.start !== null && row.end !== null ? [{
+        key: row.key,
+        left: timeToX(Math.min(row.start, row.end)),
+        width: Math.max(minBarWidth, Math.abs(row.end - row.start) * basePixelsPerUnit.value),
+        label: `${row.start} - ${row.end}`,
+        title: `${row.cellName} · ${row.start} - ${row.end}`,
+    }] : [],
+})))
+const displayTicks = computed(() => ticks.value.map((tick) => ({
+    key: tick,
+    left: timeToX(tick),
+    label: tick,
+    zero: tick === 0,
+})))
+
+function handleGanttDragStart(payload: TrackOccupancyGanttDragStart) {
+    const row = rows.value.find((item) => item.key === payload.rowKey)
+    if (row) startDrag(payload.event, row, payload.mode)
+}
 
 function findTimeIndex(cellID: string, rowIndex: number, usedTimeIndexes: Set<number>) {
     const sameIndexTime = props.times[rowIndex]
@@ -238,11 +213,7 @@ function normalizeShift(value: unknown) {
 function clampScaleX(value: unknown) {
     const number = Number(value)
     if (!Number.isFinite(number)) return 1
-    return Math.max(minScaleX, Math.min(maxScaleX, number))
-}
-
-function roundScale(value: number) {
-    return Math.round(value * 100) / 100
+    return number > 0 ? number : 1
 }
 
 function getTickStep(span: number) {
@@ -254,27 +225,21 @@ function getTickStep(span: number) {
 }
 
 function timeToX(value: number) {
-    return (value - domain.value.start) * pixelsPerUnit.value
-}
-
-function getBarStyle(row: GanttRow) {
-    if (row.start === null || row.end === null) return {}
-    const start = Math.min(row.start, row.end)
-    const end = Math.max(row.start, row.end)
-    return {
-        left: `${timeToX(start)}px`,
-        width: `${Math.max(minBarWidth, timeToX(end) - timeToX(start))}px`,
-    }
+    return (value - domain.value.start) * basePixelsPerUnit.value
 }
 
 function startDrag(event: PointerEvent, row: GanttRow, mode: DragMode) {
     if (props.disabled || row.timeIndex < 0 || row.start === null || row.end === null) return
     event.preventDefault()
+    dragDomain.value = { ...domain.value }
+    dragging.value = true
     dragState = {
         mode,
         timeIndex: row.timeIndex,
         cellID: row.cellID,
         pointerStartX: event.clientX,
+        scrollStartX: scrollRef.value?.scrollLeft || 0,
+        pixelsPerUnit: basePixelsPerUnit.value * normalizedScaleX.value,
         start: row.start,
         end: row.end,
     }
@@ -289,7 +254,7 @@ function startDrag(event: PointerEvent, row: GanttRow, mode: DragMode) {
 
 function handlePointerMove(event: PointerEvent) {
     if (!dragState) return
-    const delta = Math.round((event.clientX - dragState.pointerStartX) / pixelsPerUnit.value)
+    const delta = Math.round((event.clientX - dragState.pointerStartX + (scrollRef.value?.scrollLeft || 0) - dragState.scrollStartX) / dragState.pixelsPerUnit)
     let nextStart = dragState.start
     let nextEnd = dragState.end
 
@@ -313,6 +278,8 @@ function handlePointerMove(event: PointerEvent) {
 function stopDrag() {
     if (!dragState) return
     dragState = null
+    dragging.value = false
+    dragDomain.value = null
     document.body.style.cursor = previousBodyCursor
     document.body.style.userSelect = previousBodyUserSelect
     window.removeEventListener('pointermove', handlePointerMove)
@@ -320,214 +287,5 @@ function stopDrag() {
     window.removeEventListener('pointercancel', stopDrag)
 }
 
-function updateViewportWidth() {
-    viewportWidth.value = scrollRef.value?.clientWidth || 0
-}
-
-function syncAutoFitScale() {
-    if (!props.autoFit) return
-    updateViewportWidth()
-    const nextScale = autoFitScaleX.value
-    if (Math.abs(nextScale - normalizedScaleX.value) > scaleChangeThreshold) {
-        emit('update:scaleX', nextScale)
-    }
-    void nextTick(() => {
-        if (props.autoFit && scrollRef.value) scrollRef.value.scrollLeft = 0
-    })
-}
-
-onMounted(() => {
-    updateViewportWidth()
-    if (typeof ResizeObserver !== 'undefined' && scrollRef.value) {
-        resizeObserver = new ResizeObserver(syncAutoFitScale)
-        resizeObserver.observe(scrollRef.value)
-    } else {
-        window.addEventListener('resize', syncAutoFitScale)
-    }
-    syncAutoFitScale()
-})
-
-watch([() => props.autoFit, autoFitScaleX], syncAutoFitScale, { flush: 'post' })
-
-onBeforeUnmount(() => {
-    stopDrag()
-    resizeObserver?.disconnect()
-    resizeObserver = null
-    window.removeEventListener('resize', syncAutoFitScale)
-})
+onBeforeUnmount(stopDrag)
 </script>
-
-<style scoped>
-.occupation-gantt {
-    display: flex;
-    width: 100%;
-    max-width: 100%;
-    min-width: 0;
-    min-height: 0;
-    height: 100%;
-    border: 1px solid #d8e2ef;
-    border-radius: 6px;
-    background: #fff;
-    overflow: hidden;
-}
-
-.occupation-gantt.is-disabled {
-    opacity: 0.72;
-}
-
-.occupation-gantt-empty {
-    display: flex;
-    flex: 1 1 auto;
-    align-items: center;
-    justify-content: center;
-    color: #7c8794;
-    font-size: 13px;
-}
-
-.occupation-gantt-scroll {
-    flex: 1 1 auto;
-    width: 100%;
-    max-width: 100%;
-    min-width: 0;
-    min-height: 0;
-    overflow: auto;
-}
-
-.occupation-gantt-grid {
-    display: grid;
-    grid-auto-rows: 38px;
-}
-
-.occupation-gantt-corner,
-.occupation-gantt-time-head {
-    position: sticky;
-    top: 0;
-    z-index: 3;
-    height: 36px;
-    border-bottom: 1px solid #d8e2ef;
-    background: #f6f9fc;
-}
-
-.occupation-gantt-corner {
-    left: 0;
-    z-index: 4;
-    display: flex;
-    align-items: center;
-    padding: 0 10px;
-    color: #44515f;
-    font-size: 12px;
-    font-weight: 600;
-}
-
-.occupation-gantt-time-head {
-    position: sticky;
-    overflow: hidden;
-}
-
-.occupation-gantt-tick-label {
-    position: absolute;
-    bottom: 8px;
-    transform: translateX(-50%);
-    color: #6b7785;
-    font-size: 11px;
-    line-height: 1;
-    white-space: nowrap;
-}
-
-.occupation-gantt-axis-title {
-    position: sticky;
-    left: 10px;
-    z-index: 1;
-    display: inline-flex;
-    align-items: center;
-    height: 100%;
-    color: #44515f;
-    font-size: 12px;
-    font-weight: 600;
-}
-
-.occupation-gantt-cell {
-    position: sticky;
-    left: 0;
-    z-index: 2;
-    display: flex;
-    align-items: center;
-    min-width: 0;
-    padding: 0 10px;
-    border-right: 1px solid #d8e2ef;
-    border-bottom: 1px solid #edf2f7;
-    background: #fff;
-    color: #25313d;
-    font-size: 12px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.occupation-gantt-track {
-    position: relative;
-    min-width: 0;
-    border-bottom: 1px solid #edf2f7;
-    background:
-        linear-gradient(90deg, rgba(216, 226, 239, 0.55) 1px, transparent 1px) 0 0 / var(--gantt-unit-width) 100%,
-        #fff;
-}
-
-.occupation-gantt-grid-line {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    width: 1px;
-    background: rgba(216, 226, 239, 0.9);
-}
-
-.occupation-gantt-grid-line.is-zero {
-    background: rgba(37, 99, 235, 0.45);
-}
-
-.occupation-gantt-bar {
-    position: absolute;
-    top: 7px;
-    bottom: 7px;
-    display: flex;
-    align-items: center;
-    min-width: 8px;
-    border: 1px solid #1d4ed8;
-    border-radius: 5px;
-    background: #2563eb;
-    box-shadow: 0 3px 10px rgba(37, 99, 235, 0.18);
-    color: #fff;
-    cursor: grab;
-    overflow: hidden;
-}
-
-.occupation-gantt-bar:active {
-    cursor: grabbing;
-}
-
-.occupation-gantt-handle {
-    flex: 0 0 8px;
-    align-self: stretch;
-    background: rgba(255, 255, 255, 0.22);
-    cursor: ew-resize;
-}
-
-.occupation-gantt-handle.is-start {
-    border-right: 1px solid rgba(255, 255, 255, 0.38);
-}
-
-.occupation-gantt-handle.is-end {
-    border-left: 1px solid rgba(255, 255, 255, 0.38);
-}
-
-.occupation-gantt-bar-label {
-    flex: 1 1 auto;
-    min-width: 0;
-    padding: 0 6px;
-    font-size: 11px;
-    font-weight: 600;
-    line-height: 1;
-    text-align: center;
-    white-space: nowrap;
-}
-</style>

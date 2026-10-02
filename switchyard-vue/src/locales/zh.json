@@ -1,4 +1,66 @@
 {
+    "capacityGantt": {
+        "toolbar": "占用图功能区",
+        "fit": "自适应缩放",
+        "fitHint": "将图形撑满窗口并随窗口变化调整；手动缩放可退出自适应",
+        "scaleX": "X 缩放",
+        "scaleY": "Y 缩放",
+        "refresh": "刷新",
+        "dragHint": "每次仅调整当前占用块，拖动两端调整占用起止时间；松开后自动保存",
+        "startHandle": "调整当前区段占用开始时间",
+        "endHandle": "调整当前区段占用结束时间",
+        "saveSuccess": "当前区段占用已更新",
+        "saveFailed": "保存区段占用时刻失败，已恢复原时刻"
+    },
+    "stationPlanView": {
+        "toolbar": "中观作业计划图功能区",
+        "chartLabel": "车站中观作业计划图，每条折线代表一列车",
+        "axis": "轨道区段 / 出入口",
+        "cell": "轨道电路区段",
+        "endpoint": "车站出入口",
+        "configure": "配置显示元素",
+        "settingsHint": "选择纵轴显示的区段和出入口。出入口候选来自当前车站方案进路的起终点，配置随当前作业计划保存。",
+        "missingEndpoints": "有 {count} 个列车起终点未选中，起点或终点连接线被隐藏",
+        "completeEndpoints": "补齐列车起终点",
+        "usedEndpoint": "本计划列车起终点",
+        "selectAll": "全选",
+        "clearSelection": "清空",
+        "saveSettings": "保存配置",
+        "settingsSaved": "中观作业计划图显示配置已保存",
+        "saveSettingsFailed": "保存显示配置失败，请重试",
+        "loadSettingsFailed": "显示配置加载失败，请刷新后重试",
+        "startTime": "中观图开始时间",
+        "endTime": "中观图结束时间",
+        "summary": "{trains} 列车，{rows} 个显示元素",
+        "trainLegend": "点击作业线或车次可多选；按 Esc 或点击图面空白处取消全部选择；悬停作业线临时加粗",
+        "trainLine": "列车作业线 {train}",
+        "startHandle": "调整 {train} 当前横段的开始时刻",
+        "endHandle": "调整 {train} 当前横段的结束时刻",
+        "handleInfo": {
+            "trainNumber": "车次号",
+            "cell": "作业轨道电路",
+            "time": "时刻"
+        },
+        "moveRow": "上下拖动当前横段，切换轨道电路及匹配进路",
+        "editSaved": "列车横段调整已保存到作业计划",
+        "routesChanged": "以下进路已调整：",
+        "routeChangeItem": "{train} · {movement}：{from} → {to}",
+        "editSaveFailed": "保存失败，已恢复原时刻和进路",
+        "undo": "撤销 (Ctrl+Z)",
+        "redo": "重做 (Ctrl+Y)",
+        "historyHint": "最多保留 20 个调整动作；撤销后执行新调整会清除重做记录",
+        "historyCount": "可撤销 {undo} 个动作，可重做 {redo} 个动作",
+        "undoSaved": "已撤销调整并保存到作业计划",
+        "redoSaved": "已重做调整并保存到作业计划",
+        "historySaveFailed": "撤销或重做保存失败，当前计划和动作栈保持原状",
+        "editErrors": {
+            "stale": "作业计划已变化，请刷新后重试"
+        },
+        "emptyRows": "未选择显示元素，请点击“配置显示元素”选择区段或出入口",
+        "emptyTrains": "当前显示元素没有列车轨迹",
+        "emptyEndpoints": "进路尚未配置起终点",
+        "note": "横线表示停留，竖线表示区段或出入口之间的移动。选中列车后，拖动横段两端方形抓手调整时刻，上下拖动横段切换区段，松开后保存。本图直接保存调整，不进行合法性检测。"
+    },
     "login": {
         "title": "用户登录",
         "usernamePlaceholder": "请输入用户名",
@@ -640,45 +702,61 @@
         },
         "hero": {
             "subtitle": "铁路站场与枢纽教学工具包",
-            "description": "提供驼峰作业计算、列车溜放仿真、站场布局设计等功能",
+            "description": "围绕驼峰纵断面设计与车站能力计算，开展建模、计算分析及二维、三维可视化",
             "btnHump": "驼峰纵断面",
+            "btnCapacity": "通过能力 Capacity",
             "btnSource": "查看源码"
         },
         "features": {
             "title": "核心功能",
-            "subtitle": "专业的铁路站场教学与仿真平台",
-            "cards": {
-                "layout": {
-                    "title": "站场布局",
-                    "desc": "可视化站场平纵断面图，直观展示驼峰站场结构"
+            "subtitle": "面向铁路站场教学与方案分析，设置驼峰纵断面设计和能力计算两类功能",
+            "modules": {
+                "hump": {
+                    "title": "驼峰纵断面设计",
+                    "description": "以驼峰平面布置、车辆参数及计算条件为基础，进行纵断面方案设计与车辆溜放过程分析。",
+                    "link": "进入驼峰纵断面设计",
+                    "items": {
+                        "profile": {
+                            "title": "平纵断面与坡度方案",
+                            "description": "建立驼峰平面布置与溜放线路，设置坡段长度和坡度，绘制纵断面方案。"
+                        },
+                        "energy": {
+                            "title": "车辆参数与能高计算",
+                            "description": "配置车辆参数、计算条件及减速器工作状态，计算阻力能高和动能高，分析溜放过程中的能量变化。"
+                        },
+                        "headway": {
+                            "title": "溜放曲线与间隔检验",
+                            "description": "计算速度、时间随溜放距离的变化曲线，检验前后钩车的追踪间隔，辅助评价纵断面方案。"
+                        },
+                        "simulation": {
+                            "title": "二维与三维溜放仿真",
+                            "description": "依据溜放计算结果，在二维和三维场景中展示车辆运行过程，对照线路位置与运行时序。"
+                        }
+                    }
                 },
-                "slope": {
-                    "title": "坡度设计",
-                    "desc": "驼峰坡度设计与优化，科学计算坡度参数"
-                },
-                "sim": {
-                    "title": "溜放仿真",
-                    "desc": "车辆溜放过程动态模拟，实时观察车辆运行"
-                },
-                "velocity": {
-                    "title": "速度曲线",
-                    "desc": "车辆速度-时间曲线计算与分析展示"
-                },
-                "time": {
-                    "title": "时间曲线",
-                    "desc": "车辆位移-时间曲线分析，精确计算运行时间"
-                },
-                "energy": {
-                    "title": "能量计算",
-                    "desc": "阻力能耗高度、动能高度精确计算"
-                },
-                "wagon": {
-                    "title": "车辆参数",
-                    "desc": "车辆概念及参数设置，灵活配置车辆信息"
-                },
-                "safety": {
-                    "title": "安全检验",
-                    "desc": "追踪间隔时间安全检验，确保作业安全"
+                "capacity": {
+                    "title": "能力计算",
+                    "description": "以站场拓扑、作业时序与区段占用为基础，开展车站作业计划编制、通过能力估算及瓶颈分析。",
+                    "preview": "分期开发中 · 第一期 Preview 预计于 2026 年底左右上线。",
+                    "link": "查看能力计算功能介绍",
+                    "items": {
+                        "layout": {
+                            "title": "站场拓扑与进路建模",
+                            "description": "绘制车站布置图，定义线路、道岔、信号机与轨道电路区段，建立进路及资源占用关系。"
+                        },
+                        "planning": {
+                            "title": "作业过程与计划编制",
+                            "description": "以活动、事件及次序约束描述作业过程，支持手工编制计划，并在后续阶段接入求解算法实现计划自动生成。"
+                        },
+                        "analysis": {
+                            "title": "区段占用与通过能力分析",
+                            "description": "依据作业计划统计区段占用时间与利用率，识别瓶颈区段，估算通过能力并按进路分类汇总。"
+                        },
+                        "playback": {
+                            "title": "二维与三维作业回放",
+                            "description": "展示列车接车、停留及发车过程，结合进路占用核对作业计划的时间与空间关系。"
+                        }
+                    }
                 }
             }
         },
@@ -730,8 +808,8 @@
                 "p": "SwitchYard 是一个专为铁路站场与枢纽教学设计的综合工具包。采用现代化的前后端分离架构，为教师和学生提供直观、高效的教学和学习平台。"
             },
             "modules": {
-                "title": "丰富的功能模块",
-                "p": "系统涵盖驼峰作业计算、列车溜放仿真、站场布局设计等核心功能，支持完整的驼峰作业流程模拟和分析。"
+                "title": "两类核心功能",
+                "p": "系统围绕驼峰纵断面设计与能力计算组织功能。驼峰模块用于纵断面方案、能高及溜放过程分析；能力计算模块按阶段开发，面向站场建模、作业计划编制、区段占用与通过能力分析。"
             },
             "open": {
                 "title": "开源与协作",
@@ -1384,6 +1462,7 @@
             "operationProcess": "作业过程编排",
             "trainOperationPlan": "列车作业计划",
             "trainOperationChart": "作业计划图",
+            "stationPlanView": "中观作业计划图",
             "operationOccupationTimeTable": "作业占用时间表",
             "operationBottleneckAnalysis": "作业瓶颈分析",
             "operationThroughputSummary": "能力分类汇总"
@@ -1612,8 +1691,8 @@
                 "expandTrain": "请先展开一列车",
                 "fields": {
                     "trainID": "列车 ID",
-                    "earliestStartTime": "最早开始时间",
-                    "latestEndTime": "最晚结束时间",
+                    "earliestStartTime": "开始时刻",
+                    "latestEndTime": "结束时刻",
                     "route": "进路",
                     "tag": "标签"
                 },

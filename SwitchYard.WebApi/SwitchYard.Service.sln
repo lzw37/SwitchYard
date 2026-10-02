@@ -19,12 +19,18 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SwitchYard.Service.StationL
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SwitchYard.OperationProcess.Tests", "SwitchYard.OperationProcess.Tests\SwitchYard.OperationProcess.Tests.csproj", "{D6897112-3E78-4E4B-96AF-A43EE8E21D24}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SwitchYard.Deletion.Tests", "SwitchYard.Deletion.Tests\SwitchYard.Deletion.Tests.csproj", "{F146A93E-D6F4-4F55-A312-9FE0CC33B9C1}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{F146A93E-D6F4-4F55-A312-9FE0CC33B9C1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F146A93E-D6F4-4F55-A312-9FE0CC33B9C1}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F146A93E-D6F4-4F55-A312-9FE0CC33B9C1}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F146A93E-D6F4-4F55-A312-9FE0CC33B9C1}.Release|Any CPU.Build.0 = Release|Any CPU
 		{59EA8A0C-C50F-501F-9EA9-7CB5BE9881A8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{59EA8A0C-C50F-501F-9EA9-7CB5BE9881A8}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{59EA8A0C-C50F-501F-9EA9-7CB5BE9881A8}.Release|Any CPU.ActiveCfg = Release|Any CPU

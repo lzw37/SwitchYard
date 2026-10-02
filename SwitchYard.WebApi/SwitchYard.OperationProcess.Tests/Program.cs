@@ -56,6 +56,8 @@ try
     await TestGeneratedProcessEventsAreEarliest();
     checks += await TrainBatchDeletionChecks.Run(client!);
     checks += await CellOccupancyImportChecks.Run(client!);
+    checks += await MovementCellOccupationChecks.Run(client!);
+    checks += await StationPlanViewSettingsChecks.Run(client!);
 
     // Restart the HTTP host to prove data is read back from SQLite rather than controller memory.
     client.Dispose();
@@ -1307,6 +1309,12 @@ async Task TestGenerateActualTrainsFromProcess()
     var mutable = JsonSerializer.Deserialize<MovementRow>(JsonSerializer.Serialize(firstMovement))!;
     mutable.MinDuration = (mutable.MinDuration ?? 0) + 1;
     await Request(HttpMethod.Put, "../OperationPlan/EditMovement", mutable, expected: HttpStatusCode.Conflict);
+    var occupied = JsonSerializer.Deserialize<MovementRow>(JsonSerializer.Serialize(firstMovement))!;
+    occupied.CellOccupationOverridesJson = JsonSerializer.Serialize(new Dictionary<string, object>
+    {
+        ["cell-a"] = new { routeID = firstMovement.Route ?? "route-a", startOccupationShift = 60, endOccupationShift = 60 }
+    });
+    await Request(HttpMethod.Put, "../OperationPlan/EditMovement", occupied, expected: HttpStatusCode.Conflict);
     await Request(HttpMethod.Delete, $"../OperationPlan/DeleteMovement?{targetScope}&trainID={first.TrainID}&movementID={firstMovement.MovementID}", expected: HttpStatusCode.Conflict);
     await Request(HttpMethod.Post, "../OperationPlan/CreateMovement", new MovementRow { InstanceID = "scope-a", StationSchemeID = "scheme-a", OperationPlanID = planID, TrainID = first.TrainID, Name = "不可插入" }, expected: HttpStatusCode.Conflict);
     await Request(HttpMethod.Put, "../OperationPlan/UpdateMovementOrder", new MovementOrderRequest { InstanceID = "scope-a", StationSchemeID = "scheme-a", OperationPlanID = planID, TrainID = first.TrainID, Items = [new() { MovementID = firstMovement.MovementID, SortOrder = 99 }] }, expected: HttpStatusCode.Conflict);

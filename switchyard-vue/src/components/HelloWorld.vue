@@ -11,6 +11,10 @@ const router = useRouter();
 const { t } = useI18n({ useScope: 'global' });
 const authStore = useAuthStore();
 const appVersion = ref('');
+const featureModules = [
+    { key: 'hump', icon: '📐', href: '/hump', items: ['profile', 'energy', 'headway', 'simulation'] },
+    { key: 'capacity', icon: '🔀', href: '/capacity-preview', items: ['layout', 'planning', 'analysis', 'playback'] },
+];
 
 authStore.hydrateFromStorage();
 
@@ -97,13 +101,17 @@ document.querySelectorAll('a[href^="#"]').forEach(anchor => {
 
 // 导航栏滚动效果
 let lastScroll = 0;
-const navbar = document.querySelector('.navbar');
 let ticking = false;
 
 window.addEventListener('scroll', () => {
     if (!ticking) {
         window.requestAnimationFrame(() => {
             const currentScroll = window.pageYOffset;
+            const navbar = document.querySelector('.navbar');
+            if (!navbar) {
+                ticking = false;
+                return;
+            }
 
             if (currentScroll <= 0) {
                 navbar.style.boxShadow = '0 2px 10px rgba(0, 0, 0, 0.1)';
@@ -134,7 +142,7 @@ const observer = new IntersectionObserver((entries) => {
 
 // 添加淡入动画到所有卡片
 document.addEventListener('DOMContentLoaded', () => {
-    const cards = document.querySelectorAll('.feature-card, .tech-section, .security-card, .stat-item, .contact-info, .contact-links');
+    const cards = document.querySelectorAll('.feature-module, .tech-section, .security-card, .stat-item, .contact-info, .contact-links');
     cards.forEach(card => {
         card.classList.add('fade-in');
         observer.observe(card);
@@ -306,6 +314,7 @@ console.log('欢迎访问 SwitchYard 项目主页！');
             <p class="hero-description">{{ t('home.hero.description') }}</p>
             <div class="hero-buttons">
                 <a href="/hump" class="btn btn-primary">{{ t('home.hero.btnHump') }}</a>
+                <a href="/capacity-preview" class="btn btn-primary">{{ t('home.hero.btnCapacity') }}</a>
                 <a href="https://gitee.com/lzw37/switchyard" class="btn btn-secondary" target="_blank">{{
                     t('home.hero.btnSource') }}</a>
             </div>
@@ -322,53 +331,26 @@ console.log('欢迎访问 SwitchYard 项目主页！');
             <p class="section-subtitle">{{ t('home.features.subtitle') }}</p>
 
             <div class="features-grid">
-                <div class="feature-card">
-                    <div class="feature-icon">🏗️</div>
-                    <h3>{{ t('home.features.cards.layout.title') }}</h3>
-                    <p>{{ t('home.features.cards.layout.desc') }}</p>
-                </div>
-
-                <div class="feature-card">
-                    <div class="feature-icon">📐</div>
-                    <h3>{{ t('home.features.cards.slope.title') }}</h3>
-                    <p>{{ t('home.features.cards.slope.desc') }}</p>
-                </div>
-
-                <div class="feature-card">
-                    <div class="feature-icon">🎬</div>
-                    <h3>{{ t('home.features.cards.sim.title') }}</h3>
-                    <p>{{ t('home.features.cards.sim.desc') }}</p>
-                </div>
-
-                <div class="feature-card">
-                    <div class="feature-icon">📊</div>
-                    <h3>{{ t('home.features.cards.velocity.title') }}</h3>
-                    <p>{{ t('home.features.cards.velocity.desc') }}</p>
-                </div>
-
-                <div class="feature-card">
-                    <div class="feature-icon">⏱️</div>
-                    <h3>{{ t('home.features.cards.time.title') }}</h3>
-                    <p>{{ t('home.features.cards.time.desc') }}</p>
-                </div>
-
-                <div class="feature-card">
-                    <div class="feature-icon">⚡</div>
-                    <h3>{{ t('home.features.cards.energy.title') }}</h3>
-                    <p>{{ t('home.features.cards.energy.desc') }}</p>
-                </div>
-
-                <div class="feature-card">
-                    <div class="feature-icon">🚃</div>
-                    <h3>{{ t('home.features.cards.wagon.title') }}</h3>
-                    <p>{{ t('home.features.cards.wagon.desc') }}</p>
-                </div>
-
-                <div class="feature-card">
-                    <div class="feature-icon">🔒</div>
-                    <h3>{{ t('home.features.cards.safety.title') }}</h3>
-                    <p>{{ t('home.features.cards.safety.desc') }}</p>
-                </div>
+                <article v-for="module in featureModules" :key="module.key" class="feature-module"
+                    :aria-labelledby="`feature-${module.key}-title`">
+                    <header class="feature-module-heading">
+                        <span class="feature-icon" aria-hidden="true">{{ module.icon }}</span>
+                        <h3 :id="`feature-${module.key}-title`">{{ t(`home.features.modules.${module.key}.title`) }}</h3>
+                    </header>
+                    <p class="feature-module-summary">{{ t(`home.features.modules.${module.key}.description`) }}</p>
+                    <ul class="feature-list">
+                        <li v-for="item in module.items" :key="item">
+                            <h4>{{ t(`home.features.modules.${module.key}.items.${item}.title`) }}</h4>
+                            <p>{{ t(`home.features.modules.${module.key}.items.${item}.description`) }}</p>
+                        </li>
+                    </ul>
+                    <footer class="feature-module-footer">
+                        <p v-if="module.key === 'capacity'" class="feature-preview-note">{{ t('home.features.modules.capacity.preview') }}</p>
+                        <a :href="module.href" class="feature-link">
+                            {{ t(`home.features.modules.${module.key}.link`) }} <span aria-hidden="true">→</span>
+                        </a>
+                    </footer>
+                </article>
             </div>
         </div>
     </section>
@@ -899,40 +881,91 @@ section {
 
 .features-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 2rem;
 }
 
-.feature-card {
+.feature-module {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
     background: white;
     padding: 2rem;
     border-radius: 15px;
-    text-align: center;
-    transition: all 0.3s ease;
     box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
-    border: 2px solid transparent;
+    border: 1px solid #dce7f5;
+    border-top: 3px solid var(--secondary-blue);
 }
 
-.feature-card:hover {
-    transform: translateY(-10px);
-    box-shadow: 0 10px 30px rgba(30, 58, 138, 0.15);
-    border-color: var(--light-blue);
-}
-
-.feature-icon {
-    font-size: 3rem;
+.feature-module-heading {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
     margin-bottom: 1rem;
 }
 
-.feature-card h3 {
-    color: var(--primary-blue);
-    margin-bottom: 0.5rem;
-    font-size: 1.3rem;
+.feature-icon {
+    flex-shrink: 0;
+    font-size: 2rem;
 }
 
-.feature-card p {
+.feature-module h3 {
+    color: var(--primary-blue);
+    font-size: 1.5rem;
+    line-height: 1.4;
+}
+
+.feature-module-summary,
+.feature-list p {
     color: var(--text-gray);
-    line-height: 1.6;
+    line-height: 1.8;
+}
+
+.feature-list {
+    display: grid;
+    gap: 1.25rem;
+    margin: 1.5rem 0 2rem;
+    list-style: none;
+}
+
+.feature-list li {
+    padding-top: 1rem;
+    border-top: 1px solid #e8eef6;
+}
+
+.feature-list h4 {
+    margin-bottom: 0.35rem;
+    color: var(--primary-blue);
+    font-size: 1.05rem;
+    font-weight: 600;
+}
+
+.feature-list p,
+.feature-preview-note {
+    font-size: 0.9rem;
+}
+
+.feature-module-footer {
+    margin-top: auto;
+}
+
+.feature-preview-note {
+    margin-bottom: 0.75rem;
+    color: var(--text-gray);
+}
+
+.feature-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--accent-blue);
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.feature-link:hover {
+    text-decoration: underline;
+    text-underline-offset: 4px;
 }
 
 /* 技术栈 */
@@ -1230,6 +1263,10 @@ section {
 
     .section-title {
         font-size: 1.5rem;
+    }
+
+    .feature-module {
+        padding: 1.5rem;
     }
 
     section {
