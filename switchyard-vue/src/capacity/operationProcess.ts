@@ -118,54 +118,63 @@ export function reconcileDwellingTracks(template: ProcessTemplate, catalog: Proc
     return changed
 }
 export function makeID(prefix: string) { return `${prefix}-${crypto.randomUUID()}` }
-export function createEmptyTemplate(scope: ProcessScope): ProcessTemplate {
-    return { instanceID: scope.instanceID, stationSchemeID: scope.stationSchemeID, id: makeID('process'), name: '新建作业过程模板', description: '', revision: 0,
+export type ProcessTranslate = (key: string, parameters?: Record<string, string | number>) => string
+function processText(translate: ProcessTranslate | undefined, key: string, fallback: string, parameters?: Record<string, string | number>) {
+    return translate?.(`operationProcess.defaults.${key}`, parameters) ?? fallback
+}
+export function createEmptyTemplate(scope: ProcessScope, translate?: ProcessTranslate): ProcessTemplate {
+    return { instanceID: scope.instanceID, stationSchemeID: scope.stationSchemeID, id: makeID('process'), name: processText(translate, 'newTemplate', '新建作业过程模板'), description: '', revision: 0,
         activities: [], events: [], precedences: [], anchors: [], routeAnchors: [] }
 }
 
-export const demoCatalog: ProcessCatalog = {
-    nodes: [
-        { id: 'N1', name: '西咽喉入口' }, { id: 'N2', name: 'Ⅰ道西端' },
-        { id: 'N3', name: 'Ⅰ道东端' }, { id: 'N4', name: '东咽喉出口' },
-        { id: 'N5', name: '机务段出口' }, { id: 'N6', name: '牵出线端' },
-    ],
-    tracks: [
-        { id: 'T1', name: '西咽喉', fromNodeID: 'N1', toNodeID: 'N2' },
-        { id: 'T2', name: 'Ⅰ道（到发线）', fromNodeID: 'N2', toNodeID: 'N3' },
-        { id: 'T3', name: '东咽喉', fromNodeID: 'N3', toNodeID: 'N4' },
-        { id: 'T4', name: '机车走行线', fromNodeID: 'N5', toNodeID: 'N6' },
-        { id: 'T5', name: '牵出线', fromNodeID: 'N6', toNodeID: 'N2' },
-    ],
-    routes: [
-        { id: 'R1', name: '西咽喉 → Ⅰ道接车', type: 'Arrival', startNodeID: 'N1', endNodeID: 'N2', trackIDs: ['T1', 'T2'] },
-        { id: 'R2', name: 'Ⅰ道 → 东咽喉发车', type: 'Departure', startNodeID: 'N3', endNodeID: 'N4', trackIDs: ['T2', 'T3'] },
-        { id: 'R3', name: '牵出线 → Ⅰ道调车', type: 'Shunting', startNodeID: 'N6', endNodeID: 'N2', trackIDs: ['T5', 'T2'] },
-        { id: 'R4', name: '机务段 → 牵出线', type: 'Locomotive', startNodeID: 'N5', endNodeID: 'N6', trackIDs: ['T4'] },
-    ],
+export function createDemoCatalog(translate?: ProcessTranslate): ProcessCatalog {
+    const text = (key: string, fallback: string) => processText(translate, key, fallback)
+    return {
+        nodes: [
+            { id: 'N1', name: text('nodes.westEntrance', '西咽喉入口') }, { id: 'N2', name: text('nodes.trackWest', 'Ⅰ道西端') },
+            { id: 'N3', name: text('nodes.trackEast', 'Ⅰ道东端') }, { id: 'N4', name: text('nodes.eastExit', '东咽喉出口') },
+            { id: 'N5', name: text('nodes.depotExit', '机务段出口') }, { id: 'N6', name: text('nodes.headshuntEnd', '牵出线端') },
+        ],
+        tracks: [
+            { id: 'T1', name: text('tracks.westThroat', '西咽喉'), fromNodeID: 'N1', toNodeID: 'N2' },
+            { id: 'T2', name: text('tracks.arrivalDeparture', 'Ⅰ道（到发线）'), fromNodeID: 'N2', toNodeID: 'N3' },
+            { id: 'T3', name: text('tracks.eastThroat', '东咽喉'), fromNodeID: 'N3', toNodeID: 'N4' },
+            { id: 'T4', name: text('tracks.locomotive', '机车走行线'), fromNodeID: 'N5', toNodeID: 'N6' },
+            { id: 'T5', name: text('tracks.headshunt', '牵出线'), fromNodeID: 'N6', toNodeID: 'N2' },
+        ],
+        routes: [
+            { id: 'R1', name: text('routes.arrival', '西咽喉 → Ⅰ道接车'), type: 'Arrival', startNodeID: 'N1', endNodeID: 'N2', trackIDs: ['T1', 'T2'] },
+            { id: 'R2', name: text('routes.departure', 'Ⅰ道 → 东咽喉发车'), type: 'Departure', startNodeID: 'N3', endNodeID: 'N4', trackIDs: ['T2', 'T3'] },
+            { id: 'R3', name: text('routes.shunting', '牵出线 → Ⅰ道调车'), type: 'Shunting', startNodeID: 'N6', endNodeID: 'N2', trackIDs: ['T5', 'T2'] },
+            { id: 'R4', name: text('routes.locomotive', '机务段 → 牵出线'), type: 'Locomotive', startNodeID: 'N5', endNodeID: 'N6', trackIDs: ['T4'] },
+        ],
+    }
 }
+export const demoCatalog = createDemoCatalog()
 
 /** Uses only references from the supplied station catalog. Never adds demo infrastructure to a real station. */
-export function createExampleTemplate(scope: ProcessScope, catalog: ProcessCatalog): ProcessTemplate {
-    const template = createEmptyTemplate(scope)
-    template.name = '接车—停留—发车（含机车与调车协同）'
-    template.description = '五类活动示例。时刻从模板起点起算，单位为分钟；次序间隔为最小间隔。可编辑后另存为当前车站方案共享的过程模板。'
+export function createExampleTemplate(scope: ProcessScope, catalog: ProcessCatalog, translate?: ProcessTranslate): ProcessTemplate {
+    const text = (key: string, fallback: string, parameters?: Record<string, string | number>) => processText(translate, key, fallback, parameters)
+    const template = createEmptyTemplate(scope, translate)
+    template.name = text('exampleName', '接车—停留—发车（含机车与调车协同）')
+    template.description = text('exampleDescription', '五类活动示例。时刻从模板起点起算，单位为分钟；次序间隔为最小间隔。可编辑后另存为当前车站方案共享的过程模板。')
     const anchorByTrack = new Map<string, string>()
     function anchorFor(trackID: string | undefined) {
         if (!trackID || !catalog.tracks.some(track => track.id === trackID)) return null
         if (!anchorByTrack.has(trackID)) {
             const id = makeID('anchor')
-            const trackName = catalog.tracks.find(track => track.id === trackID)!.name?.trim() || `轨道 ${trackID}`
-            template.anchors.push({ id, name: `${trackName}锚`, trackID })
+            const trackName = catalog.tracks.find(track => track.id === trackID)!.name?.trim() || text('trackName', `轨道 ${trackID}`, { id: trackID })
+            template.anchors.push({ id, name: text('anchorName', `${trackName}锚`, { name: trackName }), trackID })
             anchorByTrack.set(trackID, id)
         }
         return anchorByTrack.get(trackID)!
     }
     const specs: [ActivityType, string, number, number, number, number, number, number][] = [
-        ['Arrival', '列车接入', 0, 6, 4, 8, 65, 85],
-        ['Dwelling', '站内停留 / 技术作业', 6, 26, 15, 25, 395, 85],
-        ['Departure', '列车发出', 28, 34, 4, 8, 725, 85],
-        ['Locomotive', '机车出段', 6, 10, 3, 6, 65, 295],
-        ['Shunting', '调车转线', 12, 20, 5, 10, 395, 295],
+        ['Arrival', text('activities.arrival', '列车接入'), 0, 6, 4, 8, 65, 85],
+        ['Dwelling', text('activities.dwelling', '站内停留 / 技术作业'), 6, 26, 15, 25, 395, 85],
+        ['Departure', text('activities.departure', '列车发出'), 28, 34, 4, 8, 725, 85],
+        ['Locomotive', text('activities.locomotive', '机车出段'), 6, 10, 3, 6, 65, 295],
+        ['Shunting', text('activities.shunting', '调车转线'), 12, 20, 5, 10, 395, 295],
     ]
     for (const [type, name, start, end, minDuration, maxDuration, x, y] of specs) {
         const candidates = catalog.routes.filter(route => route.type.toLowerCase() === type.toLowerCase())
@@ -180,9 +189,9 @@ export function createExampleTemplate(scope: ProcessScope, catalog: ProcessCatal
         const endAnchor = anchorFor(isDwell ? dwellTrack?.id : endpointTrack(route?.endNodeID))
         const startEvent = makeID('event'), endEvent = makeID('event')
         template.events.push(
-            { id: startEvent, name: `${name}开始`, time: start, nodeID: (isDwell ? dwellTrack?.fromNodeID : route?.startNodeID) || null,
+            { id: startEvent, name: text('startEvent', `${name}开始`, { name }), time: start, nodeID: (isDwell ? dwellTrack?.fromNodeID : route?.startNodeID) || null,
                 anchorList: startAnchor ? [startAnchor] : [], selectedAnchor: startAnchor },
-            { id: endEvent, name: `${name}结束`, time: end, nodeID: (isDwell ? dwellTrack?.toNodeID : route?.endNodeID) || null,
+            { id: endEvent, name: text('endEvent', `${name}结束`, { name }), time: end, nodeID: (isDwell ? dwellTrack?.toNodeID : route?.endNodeID) || null,
                 anchorList: endAnchor ? [endAnchor] : [], selectedAnchor: endAnchor },
         )
         template.activities.push({ id: makeID('activity'), name, type, minDuration, maxDuration,
@@ -204,14 +213,14 @@ export function createExampleTemplate(scope: ProcessScope, catalog: ProcessCatal
 }
 
 /** Renaming an activity updates its existing endpoint labels without replacing their identities. */
-export function renameActivity(template: ProcessTemplate, activityID: string, name: string): boolean {
+export function renameActivity(template: ProcessTemplate, activityID: string, name: string, translate?: ProcessTranslate): boolean {
     const activity = template.activities.find(item => item.id === activityID)
     if (!activity || activity.name === name) return false
     activity.name = name
     const start = template.events.find(item => item.id === activity.startEvent)
     const end = template.events.find(item => item.id === activity.endEvent)
-    if (start) start.name = `${name}开始`
-    if (end) end.name = `${name}结束`
+    if (start) start.name = processText(translate, 'startEvent', `${name}开始`, { name })
+    if (end) end.name = processText(translate, 'endEvent', `${name}结束`, { name })
     return true
 }
 

@@ -255,32 +255,38 @@
             </template>
         </el-dialog>
 
-        <el-dialog v-model="processPlanDialogVisible" :title="t('operationPlan.trainOperationPlan.fromProcess.title')" width="620px" :close-on-click-modal="false" :close-on-press-escape="!generatingPlanFromProcess" :show-close="!generatingPlanFromProcess">
+        <el-dialog v-model="processPlanDialogVisible" :title="t('operationPlan.trainOperationPlan.fromProcess.title')" width="min(900px, 94vw)" :close-on-click-modal="false" :close-on-press-escape="!generatingPlanFromProcess" :show-close="!generatingPlanFromProcess">
             <div class="operation-process-generation-dialog">
                 <el-alert :title="t('operationPlan.trainOperationPlan.fromProcess.appendHint')" type="info" show-icon :closable="false" />
                 <el-alert v-if="processPlanLoadError" :title="processPlanLoadError" type="error" show-icon :closable="false" />
                 <el-alert v-if="processPlanGenerateError" :title="processPlanGenerateError" type="error" show-icon :closable="false" />
                 <el-form label-position="top" size="small" :disabled="loadingProcessPlanSources || generatingPlanFromProcess">
-                    <el-form-item :label="t('operationPlan.train.fromProcess.sourceLabel')">
-                        <el-select v-model="processPlanSourceID" filterable :loading="loadingProcessPlanSources" :placeholder="t('operationPlan.train.fromProcess.placeholder')" class="operation-process-generation-select">
-                            <el-option v-for="source in processPlanSources" :key="source.id" :value="source.id" :label="source.name" />
-                        </el-select>
-                    </el-form-item>
+                    <el-table :data="processPlanSources" row-key="id" size="small" border :max-height="360" v-loading="loadingProcessPlanSources" :empty-text="t('operationPlan.train.fromProcess.empty')">
+                        <el-table-column prop="name" :label="t('operationPlan.train.fromProcess.sourceLabel')" min-width="180" show-overflow-tooltip />
+                        <el-table-column prop="description" :label="t('operationPlan.planObject.fields.description')" min-width="200" show-overflow-tooltip />
+                        <el-table-column prop="revision" :label="t('operationPlan.trainOperationPlan.fromProcess.revision')" width="90" align="center" />
+                        <el-table-column :label="t('operationPlan.trainOperationPlan.fromProcess.activities')" width="70" align="center">
+                            <template #default="{ row }">{{ row.activities.length }}</template>
+                        </el-table-column>
+                        <el-table-column :label="t('operationPlan.trainOperationPlan.fromProcess.trainCount')" width="180" align="center">
+                            <template #default="{ row }">
+                                <el-input-number v-model="row.trainCount" :min="0" :max="1000" :precision="0" controls-position="right" :aria-label="`${row.name} — ${t('operationPlan.trainOperationPlan.fromProcess.trainCount')}`" />
+                            </template>
+                        </el-table-column>
+                    </el-table>
+                    <p class="operation-process-generation-help operation-process-plan-summary">{{ t('operationPlan.trainOperationPlan.fromProcess.batchSummary', { processes: processPlanSources.length, trains: processPlanTrainCount }) }}</p>
                     <div class="operation-process-plan-parameters">
-                        <el-form-item :label="t('operationPlan.trainOperationPlan.fromProcess.trainCount')"><el-input-number v-model="processPlanTrainCount" :min="1" :max="1000" :precision="0" controls-position="right" /></el-form-item>
                         <el-form-item :label="t('operationPlan.trainOperationPlan.startTime')"><el-input v-model="processPlanStartTime" placeholder="00:00" /></el-form-item>
                         <el-form-item :label="t('operationPlan.trainOperationPlan.endTime')"><el-input v-model="processPlanEndTime" placeholder="24:00" /></el-form-item>
                     </div>
                 </el-form>
-                <p v-if="selectedProcessPlanSource?.description" class="operation-process-generation-help">{{ selectedProcessPlanSource.description }}</p>
-                <el-empty v-if="!loadingProcessPlanSources && !processPlanLoadError && processPlanSources.length === 0" :description="t('operationPlan.train.fromProcess.empty')" :image-size="60" />
                 <p class="operation-process-generation-help">{{ t('operationPlan.trainOperationPlan.fromProcess.distributionHint') }}</p>
             </div>
             <template #footer>
                 <div class="dialog-actions">
                     <ActionButton variant="text" :icon="Refresh" :disabled="loadingProcessPlanSources || generatingPlanFromProcess" @click="loadProcessPlanSources" :label="t('operationPlan.train.fromProcess.reload')" />
                     <ActionButton variant="text" :disabled="generatingPlanFromProcess" @click="processPlanDialogVisible = false" :icon="Close" :label="t('operationPlan.actions.cancel')" />
-                    <ActionButton variant="text" type="primary" :icon="MagicStick" :loading="generatingPlanFromProcess" :disabled="!selectedProcessPlanSource || !validProcessPlanParameters || !canGeneratePlanFromProcess" @click="generatePlanFromProcess" :label="t('operationPlan.trainOperationPlan.fromProcess.generate')" />
+                    <ActionButton variant="text" type="primary" :icon="MagicStick" :loading="generatingPlanFromProcess" :disabled="!validProcessPlanParameters || !canGeneratePlanFromProcess" @click="generatePlanFromProcess" :label="t('operationPlan.trainOperationPlan.fromProcess.generate')" />
                 </div>
             </template>
         </el-dialog>
@@ -293,7 +299,7 @@
                     <el-descriptions-item :label="t('operationPlan.trainOperationPlan.train.fields.trainNumber')">{{ selectedTrainOperationPlanTrain?.trainNumber }}</el-descriptions-item>
                     <el-descriptions-item :label="t('operationPlan.trainOperationPlan.fromProcess.origin')">{{ formatProcessSeconds(selectedTrainProcessConstraints.originSeconds) }}</el-descriptions-item>
                 </el-descriptions>
-                <el-alert :title="t('operationPlan.trainOperationPlan.fromProcess.lockedHint')" type="info" :closable="false" show-icon />
+                <el-alert :title="t('operationPlan.trainOperationPlan.fromProcess.generatedHint')" type="info" :closable="false" show-icon />
                 <p v-if="selectedTrainProcessConstraints.process.description" class="operation-process-generation-help">{{ selectedTrainProcessConstraints.process.description }}</p>
                 <div v-if="processConstraintCatalogError" class="operation-process-catalog-error"><span>{{ processConstraintCatalogError }}</span><ActionButton :loading="loadingProcessConstraintCatalog" @click="loadProcessConstraintCatalog" :icon="Refresh" :label="t('operationPlan.actions.refresh')" /></div>
                 <el-tabs v-loading="loadingProcessConstraintCatalog">
@@ -945,7 +951,7 @@
                                     <span class="operation-plan-hover-name">{{ selectedTrainOperationPlanTrain.name || selectedTrainOperationPlanTrain.id }}</span>
                                 </el-tooltip>
                             </div>
-                            <el-alert v-if="selectedTrainProcessConstraints" :title="t('operationPlan.trainOperationPlan.fromProcess.lockedHint')" type="info" :closable="false" class="operation-process-locked-hint" />
+                            <el-alert v-if="selectedTrainProcessConstraints" :title="t('operationPlan.trainOperationPlan.fromProcess.generatedHint')" type="info" :closable="false" class="operation-process-locked-hint" />
                             <el-table
                                 :data="visibleTrainOperationPlanMovements"
                                 class="operation-plan-table"
@@ -1071,7 +1077,7 @@
                                                 @click.stop="moveTrainOperationPlanMovement(row, 1)" :label="t('operationPlan.actions.moveDown')" />
                                             <ActionButton
                                                 :icon="Edit"
-                                                :disabled="!canEditTrainOperationPlan || operationPlanInlineActive || processConstraintsByTrain.has(row.trainID)"
+                                                :disabled="!canEditTrainOperationPlan || operationPlanInlineActive"
                                                 @click.stop="startEditTrainOperationPlanMovementInline(row)" :label="t('operationPlan.actions.edit')" />
                                             <ActionButton
                                                 :icon="Delete"
@@ -1098,7 +1104,17 @@
                 >
                     <header class="operation-plan-card-header">
                         <span class="operation-plan-panel-summary" :title="operationPlanChartCountText">{{ operationPlanChartCountText }}</span>
-                        <span class="operation-plan-chart-hint">{{ t('capacityGantt.dragHint') }}</span>
+                        <div class="operation-plan-card-actions">
+                            <span class="operation-plan-chart-hint">{{ t('capacityGantt.trackDragHint') }}</span>
+                            <ActionButton
+                                variant="text"
+                                :label="t('operationPlan.trainOperationChart.recalculate')"
+                                :title="t('operationPlan.trainOperationChart.recalculateHint')"
+                                :loading="recalculatingCellOccupations"
+                                :disabled="!canRecalculateCellOccupations"
+                                @click="recalculateCellOccupations"
+                            />
+                        </div>
                     </header>
 
                     <TrackOccupancyGantt
@@ -1106,6 +1122,7 @@
                         v-model:scale-x="operationPlanChartScaleX"
                         v-model:auto-fit="operationPlanChartAutoFit"
                         :rows="operationPlanChartDisplayRows"
+                        :highlighted-row-key="operationPlanChartTrackTargetCellID || null"
                         :ticks="operationPlanChartDisplayTicks"
                         :timeline-width="operationPlanChartTimelineWidth"
                         :empty-text="operationPlanChartEmptyText"
@@ -1119,6 +1136,7 @@
                         :refresh-loading="loadingOperationPlanChart || loadingTrainOperationPlan"
                         editable
                         @drag-start="startOperationPlanChartDrag"
+                        @viewport-scroll="scrollOperationPlanChartDrag"
                         @refresh="loadTrainOperationPlan"
                     />
                 </section>
@@ -1141,34 +1159,82 @@
                         </div>
                     </header>
                     <el-alert v-if="stationPlanSettingsError" :title="t('stationPlanView.loadSettingsFailed')" type="error" :closable="false" />
-                    <el-alert v-if="!loadingOperationPlanChart && !loadingTrainOperationPlan && !loadingStationPlanSettings && !stationPlanSettingsError && stationPlanMissingEndpoints.length" :title="t('stationPlanView.missingEndpoints', { count: stationPlanMissingEndpoints.length })" type="warning" :closable="false" show-icon>
-                        <div class="station-plan-missing-endpoints">
-                            <span>{{ stationPlanMissingEndpoints.map(endpoint => endpoint.label).join('、') }}</span>
-                            <el-button type="primary" link :loading="savingStationPlanSettings" :disabled="!hasScope || operationPlanInlineActive" @click="completeStationPlanEndpoints">{{ t('stationPlanView.completeEndpoints') }}</el-button>
-                        </div>
-                    </el-alert>
+                    <el-alert v-if="!loadingOperationPlanChart && !loadingTrainOperationPlan && !loadingProcessConstraintCatalog && stationPlanUnresolvedMovements.length" :title="t('stationPlanView.unresolvedMovements', { count: stationPlanUnresolvedMovements.length })" type="warning" :closable="false" show-icon />
                     <StationPlanView
-                        :rows="stationPlanRows"
+                        :rows="stationPlanPickMode ? stationPlanAxisOptions : stationPlanRows"
+                        :tracks="stationPlanTracks"
                         :trains="stationPlanTrains"
+                        :movements="stationPlanMovements"
+                        :routes="stationPlanEditRoutes"
+                        :dwellingMovementIDs="stationPlanDwellingMovementIDs"
+                        :pick-mode="stationPlanPickMode"
+                        :draft-points="stationPlanPickedPreview"
                         :selection-scope="operationPlanScopeKey"
-                        :editable="canEditOperationPlanChart && !stationPlanActions.busy"
+                        :editable="canEditOperationPlanChart && !stationPlanActions.busy && !stationPlanCreationActive && !stationProcessTrainVisible"
                         :readOnlyTrainIDs="stationPlanReadOnlyTrainIDs"
                         :undo-count="stationPlanActions.undoCount"
                         :redo-count="stationPlanActions.redoCount"
                         :start-minutes="parseOperationPlanTime(trainOperationPlanStartTime)"
                         :end-minutes="parseOperationPlanTime(trainOperationPlanEndTime)"
                         :loading="loadingOperationPlanChart || loadingTrainOperationPlan"
-                        :refresh-disabled="!canLoadOperationPlanChart || operationPlanInlineActive"
+                        :refresh-disabled="!canLoadOperationPlanChart || operationPlanInlineActive || stationPlanCreationActive || stationProcessTrainVisible"
                         :empty-text="hasScope ? t('stationPlanView.emptyRows') : t('operationPlan.empty.selectScheme')"
                         @refresh="refreshStationPlanView"
                         @edit="saveStationPlanSegmentEdit"
+                        @track-edit="saveStationPlanTrackEdit"
+                        @align="alignStationPlanSegment"
+                        @dwelling-edit="saveStationPlanDwellingEdit"
                         @undo="replayStationPlanAction('undo')"
                         @redo="replayStationPlanAction('redo')"
+                        @point-pick="pickStationPlanPoint"
+                        @pick-cancel="cancelStationPlanPicking"
                     >
                         <template #actions>
-                            <ActionButton :icon="Setting" :label="t('stationPlanView.configure')" :loading="loadingStationPlanSettings" :disabled="!hasScope || loadingStationPlanSettings || stationPlanSettingsError || savingStationPlanSettings" @click="openStationPlanSettings" />
+                            <template v-if="stationPlanPickMode">
+                                <span class="station-plan-pick-status" role="status">{{ stationPlanPickPrompt }}</span>
+                                <ActionButton v-if="!stationPlanRepick" :label="t('stationPlanView.creation.undoPoint')" :disabled="!stationPlanPickedPoints.length" @click="undoStationPlanPickedPoint" />
+                                <ActionButton v-if="!stationPlanRepick" type="primary" :label="t('stationPlanView.creation.finishPicking')" :disabled="stationPlanPickedPoints.length < 2 || stationPlanPickedPoints.length % 2 !== 0" @click="finishStationPlanPicking" />
+                                <ActionButton :label="t(stationPlanRepick ? 'stationPlanView.creation.returnToDialog' : 'stationPlanView.creation.cancel')" @click="cancelStationPlanPicking" />
+                            </template>
+                            <ActionButton v-else :icon="Plus" :label="t('stationPlanView.creation.startPicking')" :disabled="!canStartStationPlanCreation" @click="startStationPlanCreation" />
+                            <ActionButton v-if="!stationPlanPickMode" :icon="MagicStick" :label="t('stationPlanView.fromProcess.open')" :disabled="!canOpenStationProcessTrain" @click="openStationProcessTrain" />
+                            <ActionButton
+                                variant="text"
+                                :label="t('operationPlan.trainOperationChart.recalculate')"
+                                :title="t('operationPlan.trainOperationChart.recalculateHint')"
+                                :loading="recalculatingCellOccupations"
+                                :disabled="!canRecalculateCellOccupations"
+                                @click="recalculateCellOccupations"
+                            />
+                            <ActionButton :icon="Setting" :label="t('stationPlanView.configure')" :loading="loadingStationPlanSettings" :disabled="!hasScope || loadingStationPlanSettings || stationPlanSettingsError || savingStationPlanSettings || stationPlanCreationActive" @click="openStationPlanSettings" />
                         </template>
                     </StationPlanView>
+                    <StationPlanCreationDialog
+                        v-model="stationPlanCreationDialogVisible"
+                        v-model:movements="stationPlanCreationMovements"
+                        v-model:train="stationPlanCreationTrain"
+                        :nodes="stationPlanNodeOptions.map(node => ({ id: node.sourceID, label: node.label }))"
+                        :routes="stationPlanEditRoutes"
+                        :train-types="stationPlanCreationTrainTypes"
+                        :saving="stationPlanCreationSaving"
+                        @repick="repickStationPlanEndpoint"
+                        @confirm="confirmStationPlanCreation"
+                        @cancel="cancelStationPlanCreation"
+                    />
+                    <StationPlanProcessTrainDialog
+                        :model-value="stationProcessTrainVisible"
+                        :sources="stationProcessTrainSources" :sourceID="stationProcessTrainSourceID"
+                        :form="stationProcessTrainForm" :catalog="stationProcessTrainCatalog"
+                        :selections="stationProcessTrainSelections" :train-types="stationPlanCreationTrainTypes"
+                        :loading="stationProcessTrainLoading" :load-error="stationProcessTrainLoadError"
+                        :previewing="stationProcessTrainPreviewing" :saving="stationProcessTrainSaving"
+                        :preview="stationProcessTrainPreview" :preview-fresh="stationProcessTrainPreviewFresh" :error="stationProcessTrainError"
+                        @update:sourceID="selectStationProcessTrainSource"
+                        @update:form="updateStationProcessTrainForm"
+                        @update:selections="updateStationProcessTrainSelections"
+                        @reload="loadStationProcessTrainSources" @preview="previewStationProcessTrain"
+                        @confirm="confirmStationProcessTrain" @cancel="cancelStationProcessTrain"
+                    />
                     <p class="station-plan-note">{{ t('stationPlanView.note') }}</p>
                 </section>
             </el-tab-pane>
@@ -1875,23 +1941,20 @@
         <el-dialog v-model="stationPlanSettingsVisible" :title="t('stationPlanView.configure')" width="720px" :close-on-click-modal="!savingStationPlanSettings" :close-on-press-escape="!savingStationPlanSettings" :show-close="!savingStationPlanSettings" append-to-body>
             <p class="station-plan-settings-hint">{{ t('stationPlanView.settingsHint') }}</p>
             <section class="station-plan-settings-section">
-                <div class="station-plan-settings-heading"><strong>{{ t('stationPlanView.cell') }}</strong>
-                    <el-button text size="small" :disabled="savingStationPlanSettings" @click="stationPlanCellDraft = operationOccupationTimeTableCells.map(cell => cell.id)">{{ t('stationPlanView.selectAll') }}</el-button>
-                    <el-button text size="small" :disabled="savingStationPlanSettings" @click="stationPlanCellDraft = []">{{ t('stationPlanView.clearSelection') }}</el-button>
+                <div class="station-plan-settings-heading"><strong>{{ t('stationPlanView.displayOrder') }}</strong>
+                    <el-button text size="small" :disabled="savingStationPlanSettings" @click="stationPlanNodeDraft = stationPlanNodeOptions.map(node => node.sourceID)">{{ t('stationPlanView.selectAll') }}</el-button>
+                    <el-button text size="small" :disabled="savingStationPlanSettings" @click="stationPlanNodeDraft = [...stationPlanUsedNodeIDs]">{{ t('stationPlanView.clearSelection') }}</el-button>
                 </div>
-                <el-checkbox-group v-model="stationPlanCellDraft" :disabled="savingStationPlanSettings" class="station-plan-settings-options">
-                    <el-checkbox v-for="cell in operationOccupationTimeTableCells" :key="cell.id" :value="cell.id">{{ cell.name }}<span v-if="cell.name !== cell.id"> ({{ cell.id }})</span></el-checkbox>
-                </el-checkbox-group>
-            </section>
-            <section class="station-plan-settings-section">
-                <div class="station-plan-settings-heading"><strong>{{ t('stationPlanView.endpoint') }}</strong>
-                    <el-button text size="small" :disabled="savingStationPlanSettings" @click="stationPlanEndpointDraft = stationPlanEndpointOptions.map(endpoint => endpoint.sourceID)">{{ t('stationPlanView.selectAll') }}</el-button>
-                    <el-button text size="small" :disabled="savingStationPlanSettings" @click="stationPlanEndpointDraft = []">{{ t('stationPlanView.clearSelection') }}</el-button>
+                <div class="station-plan-settings-options">
+                    <div v-for="(row, index) in stationPlanAxisDraft" :key="row.key" class="station-plan-settings-row">
+                        <el-checkbox :model-value="isStationPlanRowSelected(row)" :disabled="savingStationPlanSettings || isStationPlanRowUsed(row)" @change="toggleStationPlanRowSelection(row, Boolean($event))">
+                            <span :title="row.label">{{ row.label }}</span><span v-if="isStationPlanRowUsed(row)" class="station-plan-used-endpoint"> · {{ t('stationPlanView.usedNode') }}</span>
+                        </el-checkbox>
+                        <el-button text size="small" :disabled="savingStationPlanSettings || index === 0" :aria-label="`${t('stationPlanView.moveUp')} ${row.label}`" @click="moveStationPlanAxisRow(row.key, -1)">{{ t('stationPlanView.moveUp') }}</el-button>
+                        <el-button text size="small" :disabled="savingStationPlanSettings || index === stationPlanAxisDraft.length - 1" :aria-label="`${t('stationPlanView.moveDown')} ${row.label}`" @click="moveStationPlanAxisRow(row.key, 1)">{{ t('stationPlanView.moveDown') }}</el-button>
+                    </div>
                 </div>
-                <el-checkbox-group v-model="stationPlanEndpointDraft" :disabled="savingStationPlanSettings" class="station-plan-settings-options">
-                    <el-checkbox v-for="endpoint in stationPlanEndpointOptions" :key="endpoint.key" :value="endpoint.sourceID">{{ endpoint.label }}<span v-if="stationPlanBoundaryIDs.has(endpoint.sourceID)" class="station-plan-used-endpoint"> · {{ t('stationPlanView.usedEndpoint') }}</span></el-checkbox>
-                </el-checkbox-group>
-                <p v-if="stationPlanEndpointOptions.length === 0" class="station-plan-settings-hint">{{ t('stationPlanView.emptyEndpoints') }}</p>
+                <p v-if="stationPlanNodeOptions.length === 0" class="station-plan-settings-hint">{{ t('stationPlanView.emptyNodes') }}</p>
             </section>
             <template #footer>
                 <el-button :disabled="savingStationPlanSettings" @click="stationPlanSettingsVisible = false">{{ t('operationPlan.actions.cancel') }}</el-button>
@@ -1908,14 +1971,22 @@ import ActionButton from '@/components/ui/ActionButton.vue'
 import PaneDivider from '@/components/ui/PaneDivider.vue'
 import TrackOccupancyGantt from './components/TrackOccupancyGantt.vue'
 import StationPlanView from './components/StationPlanView.vue'
-import { buildStationPlanTrains, resolveStationPlanMovementRouteID, stationPlanBoundaryEndpointIDs, stationPlanTimeLabel, type StationPlanAxisRow, type StationPlanMovement, type StationPlanSegmentEdit } from './components/stationPlanView'
-import { editStationPlanSegment, StationPlanEditingError } from './components/stationPlanEditing'
+import StationPlanCreationDialog from './components/StationPlanCreationDialog.vue'
+import StationPlanProcessTrainDialog from './components/StationPlanProcessTrainDialog.vue'
+import { createProcessTrainSelections, validateProcessTrainSelections, type ProcessTrainActivitySelection, type ProcessTrainCreationForm } from './components/processTrainCreation'
+import { createStationPlanDraftMovements, rematchStationPlanDraftMovement, canConfirmStationPlanDraft, parseStationPlanDraftTime,
+    type StationPlanDraftMovement, type StationPlanDraftPoint } from './components/stationPlanCreation'
+import { buildStationPlanAxisGroups, buildStationPlanTrains, resolveStationPlanMovementRouteID, stationPlanTimeLabel, type StationPlanAxisRow, type StationPlanMovement, type StationPlanSegmentEdit, type StationPlanTrack, type StationPlanTrackEdit } from './components/stationPlanView'
+import { alignStationPlanSegmentToAdjacent, editStationPlanSegment, editStationPlanTrack, StationPlanEditingError, StationPlanTrackEditingError } from './components/stationPlanEditing'
+import { operationPlanCellTracks, resolveOperationPlanTrackSource, planOperationPlanTrackEdit, OperationPlanTrackEditingError, type OperationPlanTrackSource } from './components/operationPlanTrackEditing'
+import { namedTrackCellNames } from './components/chartRowKinds'
+import { editStationPlanDwelling, type StationPlanDwellingTarget } from './components/stationPlanDwelling'
 import { ActionStack } from '@/utils/actionStack'
 import { StationPlanMovementAction } from './components/stationPlanActions'
 import { getTrackOccupancyGanttTimeScale, trackOccupancyGanttMetrics, type TrackOccupancyGanttRow, type TrackOccupancyGanttDragStart } from './components/trackOccupancyGantt'
 import { adjustOperationPlanGanttWindow, type OperationPlanGanttWindow } from './operationPlanGantt'
-import { getMovementCellOccupationShifts, setMovementCellOccupationOverride } from './movementCellOccupation'
-import { computed, defineAsyncComponent, h, nextTick, onBeforeUnmount, ref, shallowReactive, shallowRef, watch } from 'vue'
+import { normalizeMovementCellOccupations, type MovementCellOccupation } from './movementCellOccupation'
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, ref, shallowReactive, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox, type TableInstance } from 'element-plus'
 import { ArrowDown, ArrowRight, ArrowUp, Check, Close, CopyDocument, Delete, Edit, Filter, List, MagicStick, Plus, Refresh, Search, Setting, UploadFilled } from '@element-plus/icons-vue'
@@ -1924,6 +1995,7 @@ import StationLayoutEditor from './components/StationLayoutEditor.vue'
 import StationLayoutViewToolbar from './components/StationLayoutViewToolbar.vue'
 import CellOccupancyImportDialog, { type CellOccupancyImportResult, type CellOccupancyImportScope } from './components/CellOccupancyImportDialog.vue'
 import { api as processTemplateAPI, type ProcessScope, type ProcessTemplate, type ProcessCatalog, type ProcessActivity } from './operationProcess'
+import { createProcessPlanSources, buildProcessPlanBatch, type ProcessPlanSource } from './processPlanBatch'
 
 const OperationProcessEditor = defineAsyncComponent(() => import('./components/OperationProcessEditor.vue'))
 
@@ -2016,6 +2088,13 @@ interface TrainProcessConstraints {
     selectedTrackIDs: Record<string, string>
 }
 
+interface StationProcessTrainResult {
+    train: TrainOperationPlanTrain
+    movements: TrainOperationPlanMovement[]
+    processConstraint: TrainProcessConstraints
+    warnings: string[]
+}
+
 interface ProcessPlanGenerationResponse {
     trains: unknown[]
     movements: unknown[]
@@ -2063,7 +2142,10 @@ interface TrainOperationPlanMovement {
     earliestStartTime: string
     latestEndTime: string
     cellOccupationOverridesJson?: string | null
+    cellOccupations?: MovementCellOccupation[]
     route: string
+    startNodeID?: string
+    endNodeID?: string
     tag: string
     sortOrder: number | null
     isDraft?: boolean
@@ -2111,6 +2193,7 @@ interface StationRouteTimeOption {
 interface OperationPlanChartCell {
     id: string
     name: string
+    linkIDs?: string[]
 }
 
 interface OperationPlanChartBar {
@@ -2144,8 +2227,6 @@ interface OperationPlanChartDragState {
     blockKey: string
     cellID: string
     routeID: string
-    baseStartMinutes: number
-    baseEndMinutes: number
     laneAssignments: Record<string, number>
     rowLaneCounts: Record<string, number>
     window: OperationPlanGanttWindow
@@ -2155,6 +2236,11 @@ interface OperationPlanChartDragState {
     pixelsPerMinute: number
     pointerId: number
     pointerStartX: number
+    pointerStartY: number
+    pointerX: number
+    pointerY: number
+    intent: 'pending' | 'time' | 'track'
+    trackSource: OperationPlanTrackSource | null
     scrollStartX: number
     previousCursor: string
     previousUserSelect: string
@@ -2292,13 +2378,68 @@ const trainOperationPlanTrains = ref<TrainOperationPlanTrain[]>([])
 const trainOperationPlanMovements = ref<TrainOperationPlanMovement[]>([])
 const stationRouteTimesByKey = ref<Record<string, StationRouteTimeOption[]>>({})
 const stationPlanNodeNames = ref<Record<string, string>>({})
-const stationPlanSettings = ref<{ cellIDs: string[] | null; endpointNodeIDs: string[] | null }>({ cellIDs: null, endpointNodeIDs: null })
+const stationPlanTracks = ref<StationPlanTrack[]>([])
+const stationPlanCreationScope = ref('')
+const stationPlanCreationDialogVisible = ref(false)
+const stationPlanCreationSaving = ref(false)
+let stationPlanCreationVersion = 0
+const stationPlanPickMode = ref(false)
+const stationPlanPickedPoints = ref<StationPlanDraftPoint[]>([])
+const stationPlanCreationMovements = ref<StationPlanDraftMovement[]>([])
+const stationPlanCreationTrain = ref({ id: '', trainNumber: '', name: '', trainType: '' })
+const stationPlanRepick = ref<{ movementID: string; edge: 'start' | 'end' } | null>(null)
+const stationPlanCreationActive = computed(() => !!stationPlanCreationScope.value)
+const stationPlanCreationTrainTypes = computed(() => [...new Set(trainOperationPlanTrains.value.map(train => train.trainType).filter(Boolean))].map(id => ({ id, name: id })))
+const canStartStationPlanCreation = computed(() => canEditOperationPlanChart.value && !stationPlanCreationActive.value &&
+    !stationProcessTrainVisible.value && !stationPlanActions.busy && stationPlanNodeOptions.value.length > 0)
+const stationProcessTrainVisible = ref(false)
+const stationProcessTrainSources = ref<ProcessTemplate[]>([])
+const stationProcessTrainSourceID = ref('')
+const stationProcessTrainCatalog = ref<ProcessCatalog>({ nodes: [], tracks: [], routes: [] })
+const stationProcessTrainSelections = ref<ProcessTrainActivitySelection[]>([])
+const stationProcessTrainForm = ref<ProcessTrainCreationForm>({ id: '', trainNumber: '', name: '', trainType: '', originTime: '00:00', endTime: '24:00' })
+const stationProcessTrainLoading = ref(false)
+const stationProcessTrainLoadError = ref('')
+const stationProcessTrainError = ref('')
+const stationProcessTrainPreviewing = ref(false)
+const stationProcessTrainSaving = ref(false)
+const stationProcessTrainPreview = ref<StationProcessTrainResult | null>(null)
+const stationProcessTrainPreviewSignature = ref('')
+const stationProcessTrainScope = ref('')
+let stationProcessTrainVersion = 0
+let stationProcessTrainLoadVersion = 0
+let stationProcessTrainPreviewVersion = 0
+const selectedStationProcessTrainSource = computed(() => stationProcessTrainSources.value.find(source => source.id === stationProcessTrainSourceID.value))
+const stationProcessTrainRequest = computed(() => {
+    const source = selectedStationProcessTrainSource.value, form = stationProcessTrainForm.value
+    return source ? { ...getOperationPlanScope(), processTemplateID: source.id, revision: source.revision,
+        train: { id: form.id, trainNumber: form.trainNumber.trim(), name: form.name.trim(), trainType: form.trainType.trim() },
+        originTime: form.originTime.trim(), endTime: form.endTime.trim(),
+        selections: stationProcessTrainSelections.value.map(selection => ({ ...selection })),
+    } : null
+})
+const stationProcessTrainSignature = computed(() => JSON.stringify(stationProcessTrainRequest.value))
+const stationProcessTrainPreviewFresh = computed(() => stationProcessTrainPreview.value !== null &&
+    stationProcessTrainPreviewSignature.value === stationProcessTrainSignature.value && !stationProcessTrainLoading.value)
+const canOpenStationProcessTrain = computed(() => canEditOperationPlanChart.value && !stationPlanActions.busy &&
+    !stationPlanCreationActive.value && !stationProcessTrainVisible.value)
+const stationPlanPickPrompt = computed(() => stationPlanRepick.value
+    ? t(`stationPlanView.creation.repick${stationPlanRepick.value.edge === 'start' ? 'Start' : 'End'}`)
+    : t(stationPlanPickedPoints.value.length % 2 ? 'stationPlanView.creation.pickEnd' : 'stationPlanView.creation.pickStart',
+        { index: Math.floor(stationPlanPickedPoints.value.length / 2) + 1 }))
+const stationPlanPickedPreview = computed(() => {
+    if (!stationPlanRepick.value) return stationPlanPickedPoints.value
+    const row = stationPlanCreationMovements.value.find(row => row.id === stationPlanRepick.value?.movementID)
+    return row ? [row.start, row.end].filter((point): point is StationPlanDraftPoint =>
+        !!point?.nodeID && Number.isFinite(point.timeMinutes)) : []
+})
+const stationPlanSettings = ref<{ nodeIDs: string[] | null }>({ nodeIDs: null })
 const loadingStationPlanSettings = ref(false)
 const savingStationPlanSettings = ref(false)
 const stationPlanSettingsError = ref(false)
 const stationPlanSettingsVisible = ref(false)
-const stationPlanCellDraft = ref<string[]>([])
-const stationPlanEndpointDraft = ref<string[]>([])
+const stationPlanNodeDraft = ref<string[]>([])
+const stationPlanAxisOrderDraft = ref<string[]>([])
 let stationPlanSettingsVersion = 0
 const selectedTrainTemplateId = ref('')
 const selectedTrainOperationPlanTrainId = ref('')
@@ -2345,6 +2486,7 @@ const loadingStationRouteEnds = ref(false)
 const loadingTrainTemplates = ref(false)
 const loadingMovementTemplates = ref(false)
 const loadingTrainOperationPlan = ref(false)
+const recalculatingCellOccupations = ref(false)
 const loadingOperationPlanChart = ref(false)
 const operationPlanChartGanttRef = ref<InstanceType<typeof TrackOccupancyGantt> | null>(null)
 const operationPlanChartScaleX = ref(1)
@@ -2352,6 +2494,7 @@ const operationPlanChartAutoFit = ref(false)
 const operationPlanChartGeometry = ref<{ domain: { start: number; end: number }; pixelsPerMinute: number } | null>(null)
 const operationPlanChartDrag = shallowRef<OperationPlanChartDragState | null>(null)
 const operationPlanChartDragPreview = ref<{ startMinutes: number; endMinutes: number } | null>(null)
+const operationPlanChartTrackTargetCellID = ref('')
 const operationPlanChartLaneAssignments = ref<Record<string, number>>({})
 const operationPlanChartRowLaneCounts = ref<Record<string, number>>({})
 const loadingOperationBottleneckSummaryCategories = ref(false)
@@ -2376,9 +2519,9 @@ const processTrainLoadError = ref('')
 const processTrainGenerateError = ref('')
 const processTrainResult = ref<{ name: string; movementCount: number; warnings: string[] } | null>(null)
 const processPlanDialogVisible = ref(false)
-const processPlanSources = ref<ProcessTemplate[]>([])
-const processPlanSourceID = ref('')
-const processPlanTrainCount = ref(1)
+const processPlanSources = ref<ProcessPlanSource[]>([])
+const processPlanTrainCount = computed(() => processPlanSources.value.reduce((count, source) => count + (source.trainCount || 0), 0))
+const processPlanBatch = computed(() => buildProcessPlanBatch(processPlanSources.value))
 const processPlanStartTime = ref('00:00')
 const processPlanEndTime = ref('24:00')
 const loadingProcessPlanSources = ref(false)
@@ -2451,6 +2594,7 @@ let stationRouteEndLoadVersion = 0
 let trainTemplateLoadVersion = 0
 let movementTemplateLoadVersion = 0
 let trainOperationPlanLoadVersion = 0
+let cellOccupationRecalculationVersion = 0
 let trainSelectionVersion = 0
 let trainBatchDeleteVersion = 0
 let operationPlanChartLoadVersion = 0
@@ -2498,10 +2642,11 @@ const canEditTrainTemplates = computed(() => hasSchemeScope.value && !savingTrai
 const processTrainScopeKey = computed(() => JSON.stringify(getStationSchemeScope()))
 const operationPlanScopeKey = computed(() => JSON.stringify(getOperationPlanScope()))
 const selectedProcessTrainSource = computed(() => processTrainSources.value.find(source => source.id === processTrainSourceID.value) || null)
-const selectedProcessPlanSource = computed(() => processPlanSources.value.find(source => source.id === processPlanSourceID.value) || null)
 const processConstraintsByTrain = computed(() => new Map(trainProcessConstraints.value.map(snapshot => [snapshot.trainID, snapshot])))
 const selectedTrainProcessConstraints = computed(() => processConstraintsByTrain.value.get(selectedTrainOperationPlanTrainId.value) || null)
 const canGeneratePlanFromProcess = computed(() => (
+    !stationProcessTrainSaving.value &&
+    !recalculatingCellOccupations.value &&
     !deletingTrainOperationPlanTrains.value &&
     hasScope.value && !operationPlanInlineActive.value && !operationPlanObjectInlineActive.value &&
     !loadingTrainOperationPlan.value && !savingTrainOperationPlanTrain.value && !savingTrainOperationPlanMovement.value &&
@@ -2509,7 +2654,7 @@ const canGeneratePlanFromProcess = computed(() => (
     !generatingSaturatedPlan.value && !loadingProcessPlanSources.value
 ))
 const validProcessPlanParameters = computed(() => (
-    Number.isInteger(processPlanTrainCount.value) && processPlanTrainCount.value >= 1 && processPlanTrainCount.value <= 1000 &&
+    processPlanBatch.value !== null &&
     parseOperationPlanTime(processPlanStartTime.value) !== null && parseOperationPlanTime(processPlanEndTime.value) !== null
 ))
 const canGenerateTrainFromProcess = computed(() => (
@@ -2520,9 +2665,12 @@ const canGenerateTrainFromProcess = computed(() => (
 ))
 const canLoadMovementTemplates = computed(() => hasSchemeScope.value && selectedTrainTemplate.value !== null && !loadingMovementTemplates.value && !deletingTrainOperationPlanTrains.value)
 const canEditMovementTemplates = computed(() => canLoadMovementTemplates.value && !savingMovementTemplate.value && !trainTemplateInlineActive.value)
-const canLoadTrainOperationPlan = computed(() => hasScope.value && !loadingTrainOperationPlan.value && !generatingPlanFromProcess.value && !deletingTrainOperationPlanTrains.value && !savingTrainOperationPlanMovement.value)
+const canLoadTrainOperationPlan = computed(() => hasScope.value && !stationPlanCreationSaving.value && !stationProcessTrainSaving.value && !recalculatingCellOccupations.value && !loadingTrainOperationPlan.value && !generatingPlanFromProcess.value && !deletingTrainOperationPlanTrains.value && !savingTrainOperationPlanMovement.value)
 const canLoadOperationPlanChart = computed(() => (
     hasScope.value &&
+    !stationPlanCreationSaving.value &&
+    !stationProcessTrainSaving.value &&
+    !recalculatingCellOccupations.value &&
     !deletingTrainOperationPlanTrains.value &&
     !loadingOperationPlanChart.value &&
     !savingTrainOperationPlanMovement.value &&
@@ -2533,6 +2681,8 @@ const canLoadOperationPlanChart = computed(() => (
 ))
 const canGenerateTrainOperationPlan = computed(() => (
     hasScope.value &&
+    !stationProcessTrainSaving.value &&
+    !recalculatingCellOccupations.value &&
     !deletingTrainOperationPlanTrains.value &&
     !generatingPlanFromProcess.value &&
     !generatingTrainOperationPlan.value &&
@@ -2543,6 +2693,8 @@ const canGenerateTrainOperationPlan = computed(() => (
 ))
 const canGenerateSaturatedPlan = computed(() => (
     hasScope.value &&
+    !stationProcessTrainSaving.value &&
+    !recalculatingCellOccupations.value &&
     !deletingTrainOperationPlanTrains.value &&
     !generatingPlanFromProcess.value &&
     Boolean(selectedSaturatedPresetId.value) &&
@@ -2559,6 +2711,9 @@ const saturatedPlanButtonText = computed(() => (
 ))
 const canEditTrainOperationPlan = computed(() => (
     hasScope.value &&
+    !stationPlanCreationSaving.value &&
+    !stationProcessTrainSaving.value &&
+    !recalculatingCellOccupations.value &&
     !deletingTrainOperationPlanTrains.value &&
     !generatingPlanFromProcess.value &&
     !loadingTrainOperationPlan.value &&
@@ -2570,6 +2725,10 @@ const canEditOperationPlanChart = computed(() => (
     canEditTrainOperationPlan.value && !operationPlanInlineActive.value && !operationPlanObjectInlineActive.value &&
     !loadingOperationPlanChart.value && !loadingStationRoutes.value && !loadingStationRouteEnds.value &&
     !cellOccupancyImportBusy.value && !refreshingCellOccupancyImport.value && !generatingSaturatedPlan.value
+))
+const canRecalculateCellOccupations = computed(() => (
+    canEditOperationPlanChart.value && !stationPlanCreationActive.value && !stationProcessTrainVisible.value && operationPlanChartDrag.value === null && !stationPlanActions.busy &&
+    !savingOperationPlanObject.value && !confirmingTrainBatchDelete.value && !savingOperationAnalysisSnapshot.value
 ))
 const canDeleteSelectedTrainOperationPlanTrains = computed(() => (
     canEditTrainOperationPlan.value && !operationPlanInlineActive.value && !operationPlanObjectInlineActive.value &&
@@ -2721,46 +2880,18 @@ const operationPlanChartCells = computed<OperationPlanChartCell[]>(() => {
 const operationPlanChartBars = computed<OperationPlanChartBar[]>(() => {
     const bars: OperationPlanChartBar[] = []
     trainOperationPlanMovements.value.forEach((movement) => {
-        const routeID = resolveStationPlanMovementRouteID(movement.route, movement.routeIDList)
-        if (!routeID) return
-
-        const route = stationRouteOptionMap.value.get(routeID)
         const train = trainOperationPlanTrainMap.value.get(movement.trainID)
-        const baseStartMinutes = parseOperationPlanTime(movement.earliestStartTime)
-        const baseEndMinutes = parseOperationPlanTime(movement.latestEndTime)
-        if (baseStartMinutes === null || baseEndMinutes === null) return
-
-        const routeTimeRows = getOperationPlanChartRouteTimes(routeID, train?.trainType || '')
-        const routeTimeByCellID = new Map<string, StationRouteTimeOption>()
-        routeTimeRows.forEach((time) => {
-            if (time.cellID && !routeTimeByCellID.has(time.cellID)) {
-                routeTimeByCellID.set(time.cellID, time)
-            }
-        })
-
-        const routeCellIDs = normalizeRoutePickerValues(parseRouteReferenceList(route?.cellList || ''))
-        const routeCellIDSet = new Set(routeCellIDs.map((cellID) => cellID.toLowerCase()))
-        const interruptCellIDs = normalizeRoutePickerValues(parseRouteReferenceList(route?.interruptCellList || ''))
-            .filter((cellID) => !routeCellIDSet.has(cellID.toLowerCase()))
-        const timeCellIDs = normalizeRoutePickerValues(routeTimeRows.map((time) => time.cellID))
-        const routeConfiguredCellIDs = normalizeRoutePickerValues([...routeCellIDs, ...interruptCellIDs])
-        const cellIDs = routeConfiguredCellIDs.length > 0 ? routeConfiguredCellIDs : timeCellIDs
-        const interruptCellIDSet = new Set([
-            ...interruptCellIDs,
-            ...routeTimeRows.filter((time) => time.isInterruptCell).map((time) => time.cellID),
-        ].map((cellID) => cellID.toLowerCase()))
+        const routeID = movement.cellOccupations?.[0]?.routeID || resolveStationPlanMovementRouteID(movement.route, movement.routeIDList)
         const trainLabel = train?.trainNumber || movement.trainID
         const movementLabel = movement.name || movement.movementID
-        const routeName = getRouteDisplayName(routeID)
+        const routeName = stationRouteOptionMap.value.has(routeID) ? getRouteDisplayName(routeID) : movementLabel
         const chartLabel = `${trainLabel}-${routeName}`
         const color = getOperationPlanChartTrainColor(movement.trainID)
 
-        cellIDs.forEach((cellID) => {
-            const time = routeTimeByCellID.get(cellID)
-            const shifts = getMovementCellOccupationShifts(movement.cellOccupationOverridesJson, routeID, cellID, time || {})
-            const isInterruptCell = interruptCellIDSet.has(cellID.toLowerCase())
-            const startMinutes = baseStartMinutes + shifts.startOccupationShift / 60
-            const endMinutes = Math.max(startMinutes, baseEndMinutes + shifts.endOccupationShift / 60)
+        ;(movement.cellOccupations || []).forEach(occupation => {
+            const { cellID, isInterruptCell } = occupation
+            const startMinutes = occupation.startSeconds / 60
+            const endMinutes = occupation.endSeconds / 60
             bars.push({
                 key: `${movement.trainID}-${movement.movementID}-${routeID}-${cellID}`,
                 cellID,
@@ -2791,11 +2922,13 @@ const operationPlanChartRows = computed<OperationPlanChartRow[]>(() => {
         barsByCellID.set(bar.cellID, bars)
     })
 
-    const sourceCells = operationPlanChartCells.value.length > 0
-        ? operationPlanChartCells.value
-        : Array.from(barsByCellID.keys()).map((cellID) => ({ id: cellID, name: cellID }))
+    const sourceCells = new Map(operationPlanChartCells.value.map(cell => [cell.id, cell]))
+    // A server recalculation can return cells that were added since the layout was loaded.
+    barsByCellID.forEach((_, cellID) => {
+        if (!sourceCells.has(cellID)) sourceCells.set(cellID, { id: cellID, name: cellID })
+    })
 
-    return sourceCells
+    return Array.from(sourceCells.values())
         .map((cell) => {
             const bars = assignOperationPlanChartBarLanes(barsByCellID.get(cell.id) || [])
             return {
@@ -2819,56 +2952,131 @@ const operationOccupationTimeTableCells = computed<OperationPlanChartCell[]>(() 
     })
     return Array.from(cellsByID.values())
 })
-const stationPlanEndpointOptions = computed<StationPlanAxisRow[]>(() => {
+const stationPlanNodeOptions = computed<StationPlanAxisRow[]>(() => {
     const nodes = new Map<string, StationPlanAxisRow>()
-    stationRouteOptions.value.forEach(route => {
-        ;[route.startNodeID, route.endNodeID].filter(Boolean).forEach(id => {
-            if (nodes.has(id)) return
-            const boundary = stationRouteEndByBindingNodeId.value.get(id)
-            const name = boundary?.segmentTag || boundary?.sidingTag || stationPlanNodeNames.value[id] || id
-            nodes.set(id, { key: `node:${id}`, sourceID: id, label: name === id ? id : `${name} (${id})`, kind: 'endpoint' })
-        })
-    })
+    const names = new Map((processConstraintCatalog.value.nodes || []).map(node => [node.id, node.name]))
+    const add = (id: string) => {
+        if (!id || nodes.has(id)) return
+        const boundary = stationRouteEndByBindingNodeId.value.get(id)
+        const boundaryName = boundary
+            ? [boundary.segmentTag, boundary.sidingTag].map(tag => String(tag || '').trim()).filter(Boolean).join(' / ') || boundary.id
+            : ''
+        const name = boundaryName || stationPlanNodeNames.value[id] || names.get(id) || id
+        nodes.set(id, { key: `node:${id}`, sourceID: id, label: boundary || name !== id ? `${name} (${id})` : id, kind: 'node' })
+    }
+    stationPlanTrains.value.forEach(train => train.visits.forEach(visit => add(visit.rowKey.slice(5))))
+    stationRouteOptions.value.forEach(route => { add(route.startNodeID); add(route.endNodeID) })
+    Object.keys(stationPlanNodeNames.value).forEach(add)
+    names.forEach((_, id) => add(id))
+    stationPlanTracks.value.forEach(track => { add(track.fromNodeID); add(track.toNodeID) })
     return [...nodes.values()]
 })
+const stationPlanAxisOptions = computed(() => buildStationPlanAxisGroups(
+    stationPlanNodeOptions.value, stationPlanTracks.value, stationPlanSettings.value.nodeIDs,
+))
+function stationPlanRowNodeIDs(row: StationPlanAxisRow) {
+    return row.nodeIDs || [row.sourceID]
+}
+function isStationPlanRowUsed(row: StationPlanAxisRow) {
+    return stationPlanRowNodeIDs(row).some(id => stationPlanUsedNodeIDs.value.has(id))
+}
 const stationPlanRows = computed<StationPlanAxisRow[]>(() => {
-    const settings = stationPlanSettings.value
-    const endpoints = stationPlanEndpointOptions.value.filter(row => settings.endpointNodeIDs === null || settings.endpointNodeIDs.includes(row.sourceID))
-    const starts = new Set(stationRouteOptions.value.map(route => route.startNodeID))
-    const cells: StationPlanAxisRow[] = operationOccupationTimeTableCells.value
-        .filter(cell => settings.cellIDs === null || settings.cellIDs.includes(cell.id))
-        .map(cell => ({ key: `cell:${cell.id}`, sourceID: cell.id, label: cell.name || cell.id, kind: 'cell' }))
-    return [...endpoints.filter(row => starts.has(row.sourceID)), ...cells, ...endpoints.filter(row => !starts.has(row.sourceID))]
+    const selected = new Set(stationPlanSettings.value.nodeIDs || [])
+    return stationPlanAxisOptions.value.filter(row => isStationPlanRowUsed(row) || stationPlanRowNodeIDs(row).some(id => selected.has(id)))
+})
+const stationPlanAxisDraft = computed(() => {
+    const order = new Map(stationPlanAxisOrderDraft.value.map((key, index) => [key, index]))
+    return [...stationPlanAxisOptions.value].sort((a, b) => (order.get(a.key) ?? Infinity) - (order.get(b.key) ?? Infinity))
 })
 const stationPlanActions = shallowReactive(new ActionStack())
 const stationPlanReadOnlyTrainIDs = computed(() => [...new Set(trainOperationPlanMovements.value.filter(movement => movement.isDraft).map(movement => movement.trainID))])
-const stationPlanMovements = computed(() => trainOperationPlanMovements.value.flatMap(movement => {
+const stationPlanProcessMovementNodes = computed(() => {
+    const nodes = new Map<string, { startNodeID: string; endNodeID: string }>()
+    const movements = new Map(trainOperationPlanMovements.value.map(movement => [`${movement.trainID}\0${movement.movementID}`, movement]))
+    const tracks = new Map((processConstraintCatalog.value.tracks || []).map(track => [track.id, track]))
+    for (const snapshot of trainProcessConstraints.value) {
+        const activities = snapshot.process?.activities || []
+        const events = new Map((snapshot.process?.events || []).map(event => [event.id, event]))
+        const eventNodes = new Map<string, Set<string>>()
+        const addEventNode = (eventID: string, nodeID: string) => {
+            if (!nodeID) return
+            const candidates = eventNodes.get(eventID) || new Set<string>()
+            candidates.add(nodeID)
+            eventNodes.set(eventID, candidates)
+        }
+        // Current routes resolve shared process events even if the source snapshot has several candidates.
+        for (const activity of activities) {
+            const movementID = snapshot.activityMovementMap[activity.id]
+            const movement = movements.get(`${snapshot.trainID}\0${movementID}`)
+            const route = movement && stationRouteOptionMap.value.get(resolveStationPlanMovementRouteID(movement.route, movement.routeIDList))
+            if (route) { addEventNode(activity.startEvent, route.startNodeID); addEventNode(activity.endEvent, route.endNodeID) }
+        }
+        const resolveNode = (eventID: string, trackNodeID = '') => {
+            const candidates = eventNodes.get(eventID)
+            if (candidates?.size === 1) return [...candidates][0]!
+            const event = events.get(eventID)
+            return event?.nodeID || (event?.nodeList?.length === 1 ? event.nodeList[0]! : '') || trackNodeID
+        }
+        for (const activity of activities) {
+            const movementID = snapshot.activityMovementMap[activity.id]
+            if (!movementID) continue
+            const track = tracks.get(snapshot.selectedTrackIDs[activity.id] || activity.selectedTrack || '')
+            nodes.set(`${snapshot.trainID}\0${movementID}`, {
+                startNodeID: resolveNode(activity.startEvent, track?.fromNodeID),
+                endNodeID: resolveNode(activity.endEvent, track?.toNodeID),
+            })
+        }
+    }
+    return nodes
+})
+const stationPlanMovements = computed(() => trainOperationPlanMovements.value.flatMap((movement, index) => {
         const startMinutes = parseOperationPlanTime(movement.earliestStartTime)
         const endMinutes = parseOperationPlanTime(movement.latestEndTime)
         return startMinutes === null || endMinutes === null ? [] : [{
             trainID: movement.trainID, movementID: movement.movementID, name: movement.name,
-            routeID: movement.route.trim(), routeIDList: movement.routeIDList, startMinutes, endMinutes, sortOrder: movement.sortOrder,
+            routeID: movement.route.trim(), routeIDList: movement.routeIDList, startMinutes, endMinutes, sortOrder: movement.sortOrder ?? index,
+            ...stationPlanProcessMovementNodes.value.get(`${movement.trainID}\0${movement.movementID}`),
+            ...(movement.startNodeID ? { startNodeID: movement.startNodeID } : {}),
+            ...(movement.endNodeID ? { endNodeID: movement.endNodeID } : {}),
             cellOccupationOverridesJson: movement.cellOccupationOverridesJson,
+            cellOccupations: movement.cellOccupations,
             minDuration: movement.minDuration,
         }]
     }))
 const stationPlanEditRoutes = computed(() => stationRouteOptions.value.map(route => ({
     id: route.id, name: route.name, type: route.type, cellIDs: parseRouteReferenceList(route.cellList),
+    linkIDs: route.linkList?.trim() ? parseRouteReferenceList(route.linkList) : undefined,
     startNodeID: route.startNodeID, endNodeID: route.endNodeID,
 })))
+const stationPlanDwellingMovementIDs = computed<Record<string, string[]>>(() => Object.fromEntries(trainProcessConstraints.value.map(snapshot => [
+    snapshot.trainID, (snapshot.process?.activities || []).filter(activity => activity.type === 'Dwelling')
+        .map(activity => snapshot.activityMovementMap[activity.id]).filter((id): id is string => Boolean(id)),
+])))
+const operationPlanTrackCells = computed(() => stationLayoutCells.value.map(cell => ({ id: cell.id, linkIDs: cell.linkIDs || [] })))
+const operationPlanTrackCellNames = computed(() => namedTrackCellNames(stationLayoutCells.value, stationPlanTracks.value))
+const operationPlanTrackTargetCellIDs = computed(() => new Set(operationPlanTrackCells.value
+    .filter(cell => operationPlanCellTracks(cell.id, operationPlanTrackCells.value, stationPlanTracks.value).length === 1)
+    .map(cell => cell.id)))
 const stationPlanTrains = computed(() => {
     const movements = stationPlanMovements.value
     const ids = [...new Set([...trainOperationPlanTrains.value.map(train => train.id), ...movements.map(movement => movement.trainID)])]
-    return buildStationPlanTrains(ids.map(id => ({ id, label: trainOperationPlanTrainMap.value.get(id)?.trainNumber || id, color: getOperationPlanChartTrainColor(id) })),
-        movements, stationPlanEditRoutes.value, stationPlanMovementTimes)
+    const movementOrder = new Map<string, string[]>()
+    trainOperationPlanMovements.value.map((movement, index) => ({ movement, index }))
+        .sort((a, b) => (a.movement.sortOrder ?? a.index) - (b.movement.sortOrder ?? b.index) || a.index - b.index)
+        .forEach(({ movement }) => {
+            const order = movementOrder.get(movement.trainID) || []
+            order.push(movement.movementID)
+            movementOrder.set(movement.trainID, order)
+        })
+    return buildStationPlanTrains(ids.map(id => ({ id, label: trainOperationPlanTrainMap.value.get(id)?.trainNumber || id,
+        color: getOperationPlanChartTrainColor(id), movementOrder: movementOrder.get(id) || [] })),
+        movements, stationPlanEditRoutes.value)
 })
-function stationPlanMovementTimes(movement: StationPlanMovement) {
-    return getOperationPlanChartRouteTimes(movement.routeID, trainOperationPlanTrainMap.value.get(movement.trainID)?.trainType || '')
-}
-const stationPlanBoundaryIDs = computed(() => new Set(stationPlanBoundaryEndpointIDs(stationPlanTrains.value)))
-const stationPlanMissingEndpoints = computed(() => stationPlanEndpointOptions.value.filter(endpoint =>
-    stationPlanBoundaryIDs.value.has(endpoint.sourceID) && stationPlanSettings.value.endpointNodeIDs !== null &&
-    !stationPlanSettings.value.endpointNodeIDs.includes(endpoint.sourceID)))
+const stationPlanUsedNodeIDs = computed(() => new Set(stationPlanTrains.value.flatMap(train => train.visits.map(visit => visit.rowKey.slice(5)))))
+const stationPlanUnresolvedMovements = computed(() => {
+    const drawn = new Set(stationPlanTrains.value.flatMap(train => train.visits.map(visit => `${train.id}\0${visit.movementID}`)))
+    return trainOperationPlanMovements.value.filter(movement => !movement.isDraft && !drawn.has(`${movement.trainID}\0${movement.movementID}`))
+})
 const operationOccupationRouteRows = computed<OperationOccupationTimeTableRow[]>(() => {
     const routeStats = new Map<string, OperationOccupationRouteStats>()
 
@@ -3248,10 +3456,12 @@ const operationPlanChartTicks = computed(() => {
     }
     return ticks
 })
-const operationPlanChartDisplayRows = computed<TrackOccupancyGanttRow[]>(() => (
-    operationPlanChartBars.value.length === 0 ? [] : operationPlanChartRows.value.map((row) => ({
+const operationPlanChartDisplayRows = computed<TrackOccupancyGanttRow[]>(() => {
+    const rows: TrackOccupancyGanttRow[] = operationPlanChartBars.value.length === 0 ? [] : operationPlanChartRows.value.map((row) => ({
         key: row.cellID,
         label: row.cellName,
+        kind: operationPlanTrackCellNames.value.has(row.cellID) ? 'track' : 'cell',
+        trackNames: operationPlanTrackCellNames.value.get(row.cellID) || [],
         height: trackOccupancyGanttMetrics.rowHeight + (row.laneCount - 1) * trackOccupancyGanttMetrics.lanePitch,
         blocks: row.bars.map((bar) => ({
             key: bar.key,
@@ -3259,13 +3469,21 @@ const operationPlanChartDisplayRows = computed<TrackOccupancyGanttRow[]>(() => (
             width: operationPlanChartTimeToX(getOperationPlanChartDisplayWindow(bar).endMinutes) - operationPlanChartTimeToX(getOperationPlanChartDisplayWindow(bar).startMinutes),
             top: trackOccupancyGanttMetrics.barInset + bar.lane * trackOccupancyGanttMetrics.lanePitch,
             label: bar.label,
-            title: processConstraintsByTrain.value.has(bar.trainID) ? `${bar.title}\n${t('operationPlan.trainOperationPlan.fromProcess.lockedHint')}` : getOperationPlanChartDisplayTitle(bar),
+            title: getOperationPlanChartDisplayTitle(bar),
             color: bar.color,
-            editable: !processConstraintsByTrain.value.has(bar.trainID),
+            editable: true,
             className: operationPlanChartDrag.value?.blockKey === bar.key ? 'is-active' : '',
         })),
     }))
-))
+    const drag = operationPlanChartDrag.value
+    const target = rows.find(row => row.key === operationPlanChartTrackTargetCellID.value)
+    if (drag?.intent === 'track' && target && target.key !== drag.cellID) {
+        const source = rows.find(row => row.key === drag.cellID)?.blocks.find(block => block.key === drag.blockKey)
+        if (source) target.blocks.push({ ...source, key: `${source.key}:track-preview`,
+            top: trackOccupancyGanttMetrics.barInset, editable: false, className: 'is-track-preview' })
+    }
+    return rows
+})
 const operationPlanChartDisplayTicks = computed(() => operationPlanChartTicks.value.map((tick) => ({
     key: tick,
     left: operationPlanChartTimeToX(tick),
@@ -3674,7 +3892,10 @@ function normalizeTrainOperationPlanMovement(item: any): TrainOperationPlanMovem
         earliestStartTime: readString(item, 'earliestStartTime', 'EarliestStartTime').trim(),
         latestEndTime: readString(item, 'latestEndTime', 'LatestEndTime').trim(),
         cellOccupationOverridesJson: readString(item, 'cellOccupationOverridesJson', 'CellOccupationOverridesJson'),
+        cellOccupations: normalizeMovementCellOccupations(item.cellOccupations ?? item.CellOccupations),
         route: readString(item, 'route', 'Route').trim(),
+        startNodeID: readString(item, 'startNodeID', 'StartNodeID').trim(),
+        endNodeID: readString(item, 'endNodeID', 'EndNodeID').trim(),
         tag: readString(item, 'tag', 'Tag').trim(),
         sortOrder: readOptionalInteger(item, 'sortOrder', 'SortOrder'),
     }
@@ -4745,6 +4966,7 @@ function clearOperationAnalysisSnapshotState() {
 }
 
 async function saveOperationAnalysisSnapshotNow() {
+    if (recalculatingCellOccupations.value) return
     const payload = buildOperationAnalysisSnapshotPayload()
     if (!payload || savingOperationAnalysisSnapshot.value) return
 
@@ -4777,6 +4999,7 @@ async function saveOperationAnalysisSnapshotNow() {
 }
 
 function scheduleSaveOperationAnalysisSnapshot(delay = 400) {
+    if (recalculatingCellOccupations.value) return
     if (usingOperationAnalysisSnapshot.value) return
     if (operationPlanChartBars.value.length === 0) return
     if (operationAnalysisSnapshotSaveTimer) {
@@ -4890,15 +5113,25 @@ function getOperationPlanChartDisplayTitle(bar: OperationPlanChartBar) {
     return window === bar ? bar.title : `${bar.label}\n${bar.movementName}\n${formatOperationPlanChartTime(window.startMinutes)} - ${formatOperationPlanChartTime(window.endMinutes)}`
 }
 
+function getOperationPlanChartTrackSource(bar: OperationPlanChartBar) {
+    if (bar.isInterruptCell || stationPlanReadOnlyTrainIDs.value.includes(bar.trainID)) return null
+    const train = stationPlanTrains.value.find(item => item.id === bar.trainID)
+    if (!train) return null
+    const snapshot = processConstraintsByTrain.value.get(bar.trainID)
+    const activity = snapshot?.process?.activities.find(item => snapshot.activityMovementMap[item.id] === bar.movementID)
+    const dwellingTrackID = activity?.type === 'Dwelling'
+        ? snapshot?.selectedTrackIDs[activity.id] || activity.selectedTrack || '' : ''
+    return resolveOperationPlanTrackSource(train, bar.movementID, bar.cellID, stationPlanMovements.value,
+        stationPlanEditRoutes.value, stationPlanTracks.value, operationPlanTrackCells.value, dwellingTrackID)
+}
+
 function startOperationPlanChartDrag({ event, blockKey, mode }: TrackOccupancyGanttDragStart) {
-    if (!canEditOperationPlanChart.value || operationPlanChartDrag.value || event.button !== 0) return
+    if (!canEditOperationPlanChart.value || stationPlanActions.busy || operationPlanChartDrag.value || event.button !== 0) return
     const bar = operationPlanChartBars.value.find((item) => item.key === blockKey)
-    if (!bar || processConstraintsByTrain.value.has(bar.trainID)) return
+    if (!bar) return
     const movement = trainOperationPlanMovements.value.find((item) => item.trainID === bar.trainID && item.movementID === bar.movementID)
     if (!movement || movement.isDraft) return
-    const startMinutes = parseOperationPlanTime(movement.earliestStartTime)
-    const endMinutes = parseOperationPlanTime(movement.latestEndTime)
-    if (startMinutes === null || endMinutes === null || endMinutes < startMinutes) return
+    const trackSource = mode === 'move' ? getOperationPlanChartTrackSource(bar) : null
     event.preventDefault()
     const domain = { ...operationPlanChartDomain.value }
     const pixelsPerMinute = operationPlanChartPixelsPerMinute.value
@@ -4912,8 +5145,6 @@ function startOperationPlanChartDrag({ event, blockKey, mode }: TrackOccupancyGa
         blockKey,
         cellID: bar.cellID,
         routeID: bar.routeID,
-        baseStartMinutes: startMinutes,
-        baseEndMinutes: endMinutes,
         laneAssignments: { ...operationPlanChartLaneAssignments.value },
         rowLaneCounts: { ...operationPlanChartRowLaneCounts.value },
         window: { startMinutes: bar.startMinutes, endMinutes: bar.endMinutes, minDurationSeconds: 0, minimumStartMinutes: null },
@@ -4923,6 +5154,11 @@ function startOperationPlanChartDrag({ event, blockKey, mode }: TrackOccupancyGa
         pixelsPerMinute: pixelsPerMinute * operationPlanChartScaleX.value,
         pointerId: event.pointerId,
         pointerStartX: event.clientX,
+        pointerStartY: event.clientY,
+        pointerX: event.clientX,
+        pointerY: event.clientY,
+        intent: trackSource ? 'pending' : 'time',
+        trackSource,
         scrollStartX: operationPlanChartGanttRef.value?.viewport?.scrollLeft || 0,
         previousCursor: document.body.style.cursor,
         previousUserSelect: document.body.style.userSelect,
@@ -4938,6 +5174,7 @@ function startOperationPlanChartDrag({ event, blockKey, mode }: TrackOccupancyGa
     window.addEventListener('pointerup', finishOperationPlanChartDrag)
     window.addEventListener('pointercancel', cancelOperationPlanChartDrag)
     window.addEventListener('keydown', handleOperationPlanChartDragKey)
+    window.addEventListener('blur', cancelOperationPlanChartDrag)
 }
 
 function replaceOperationPlanChartMovement(movement: TrainOperationPlanMovement) {
@@ -4948,12 +5185,34 @@ function replaceOperationPlanChartMovement(movement: TrainOperationPlanMovement)
 }
 
 function moveOperationPlanChartDrag(event: PointerEvent) {
-    const drag = operationPlanChartDrag.value
+    let drag = operationPlanChartDrag.value
     if (!drag || event.pointerId !== drag.pointerId) return
     if (drag.scopeKey !== operationPlanScopeKey.value) { cancelOperationPlanChartDrag(); return }
+    const dx = event.clientX - drag.pointerStartX, dy = event.clientY - drag.pointerStartY
+    let intent = drag.intent
+    if (intent === 'pending' && Math.max(Math.abs(dx), Math.abs(dy)) >= 6) {
+        intent = Math.abs(dy) > Math.abs(dx) ? 'track' : 'time'
+    }
+    drag = { ...drag, pointerX: event.clientX, pointerY: event.clientY, intent }
+    operationPlanChartDrag.value = drag
+    if (intent === 'track') { updateOperationPlanChartTrackTarget(); return }
+    if (intent === 'pending') return
     const scrollDelta = (operationPlanChartGanttRef.value?.viewport?.scrollLeft || 0) - drag.scrollStartX
     const deltaMinutes = (event.clientX - drag.pointerStartX + scrollDelta) / drag.pixelsPerMinute
     operationPlanChartDragPreview.value = adjustOperationPlanGanttWindow(drag.window, drag.mode, deltaMinutes)
+}
+
+function updateOperationPlanChartTrackTarget() {
+    const drag = operationPlanChartDrag.value
+    if (!drag || drag.intent !== 'track') return
+    operationPlanChartDragPreview.value = { startMinutes: drag.window.startMinutes, endMinutes: drag.window.endMinutes }
+    const hit = operationPlanChartGanttRef.value?.hitTestRow(drag.pointerX, drag.pointerY, operationPlanTrackTargetCellIDs.value)
+    operationPlanChartTrackTargetCellID.value = hit?.rowKey || ''
+    document.body.style.cursor = hit ? 'grabbing' : 'not-allowed'
+}
+
+function scrollOperationPlanChartDrag() {
+    updateOperationPlanChartTrackTarget()
 }
 
 function stopOperationPlanChartDrag() {
@@ -4961,12 +5220,14 @@ function stopOperationPlanChartDrag() {
     if (!drag) return null
     operationPlanChartDrag.value = null
     operationPlanChartDragPreview.value = null
+    operationPlanChartTrackTargetCellID.value = ''
     document.body.style.cursor = drag.previousCursor
     document.body.style.userSelect = drag.previousUserSelect
     window.removeEventListener('pointermove', moveOperationPlanChartDrag)
     window.removeEventListener('pointerup', finishOperationPlanChartDrag)
     window.removeEventListener('pointercancel', cancelOperationPlanChartDrag)
     window.removeEventListener('keydown', handleOperationPlanChartDragKey)
+    window.removeEventListener('blur', cancelOperationPlanChartDrag)
     return drag
 }
 
@@ -4983,16 +5244,21 @@ function finishOperationPlanChartDrag(event: PointerEvent) {
     if (!drag || event.pointerId !== drag.pointerId) return
     moveOperationPlanChartDrag(event)
     const preview = operationPlanChartDragPreview.value
+    const targetCellID = operationPlanChartTrackTargetCellID.value
     const finished = stopOperationPlanChartDrag()
     if (!finished || !preview || finished.scopeKey !== operationPlanScopeKey.value) return
+    if (finished.intent === 'track') {
+        if (!targetCellID) ElMessage.warning(t('capacityGantt.invalidTrackTarget'))
+        else if (targetCellID !== finished.cellID) void saveOperationPlanChartTrackEdit(finished, targetCellID)
+        return
+    }
+    if (finished.intent === 'pending') return
     if (preview.startMinutes === finished.window.startMinutes && preview.endMinutes === finished.window.endMinutes) return
     const movement = {
         ...finished.movement,
-        cellOccupationOverridesJson: setMovementCellOccupationOverride(finished.movement.cellOccupationOverridesJson, finished.cellID, {
-            routeID: finished.routeID,
-            startOccupationShift: Math.round((preview.startMinutes - finished.baseStartMinutes) * 60),
-            endOccupationShift: Math.round((preview.endMinutes - finished.baseEndMinutes) * 60),
-        }),
+        cellOccupations: (finished.movement.cellOccupations || []).map(cell => cell.cellID === finished.cellID ? {
+            ...cell, startSeconds: preview.startMinutes * 60, endSeconds: preview.endMinutes * 60, isEdited: true,
+        } : { ...cell }),
     }
     const row = operationPlanChartRows.value.find(item => item.cellID === finished.cellID)
     if (row) {
@@ -5024,14 +5290,35 @@ function finishOperationPlanChartDrag(event: PointerEvent) {
     void saveOperationPlanChartMovement(movement, finished)
 }
 
+async function saveOperationPlanChartTrackEdit(drag: OperationPlanChartDragState, targetCellID: string) {
+    if (!drag.trackSource || drag.scopeKey !== operationPlanScopeKey.value || !canEditOperationPlanChart.value || stationPlanActions.busy) return
+    try {
+        const current = trainOperationPlanMovements.value.find(row => getTrainOperationPlanMovementIdentityKey(row) === getTrainOperationPlanMovementIdentityKey(drag.movement))
+        const train = stationPlanTrains.value.find(item => item.id === drag.movement.trainID)
+        if (!train || !current || JSON.stringify(current) !== JSON.stringify(drag.movement)) throw new StationPlanEditingError()
+        const plan = planOperationPlanTrackEdit(train, drag.trackSource, targetCellID, stationPlanMovements.value,
+            stationPlanEditRoutes.value, stationPlanTracks.value, operationPlanTrackCells.value)
+        if (await saveStationPlanTrackEdit(plan.edit)) {
+            if (drag.scopeKey !== operationPlanScopeKey.value) return
+            operationPlanChartLaneAssignments.value = {}
+            operationPlanChartRowLaneCounts.value = {}
+        }
+    } catch (error) {
+        if (drag.scopeKey !== operationPlanScopeKey.value) return
+        if (error instanceof OperationPlanTrackEditingError && error.reason !== 'stale') {
+            ElMessage.warning(t('capacityGantt.invalidTrackTarget'))
+        } else showStationPlanTrackEditError(error)
+    }
+}
+
 async function saveOperationPlanChartMovement(movement: TrainOperationPlanMovement, drag: OperationPlanChartDragState) {
     const saveVersion = ++operationPlanChartSaveVersion
     const isCurrent = () => saveVersion === operationPlanChartSaveVersion && drag.scopeKey === operationPlanScopeKey.value
     savingTrainOperationPlanMovement.value = true
     try {
-        const response = await axios.put('/OperationPlan/EditMovement', movement)
+        const response = await axios.put('/OperationPlan/EditMovements', { items: [{ original: drag.movement, updated: movement }] })
         if (!isCurrent()) return
-        replaceOperationPlanChartMovement(normalizeTrainOperationPlanMovement(response.data) || movement)
+        replaceOperationPlanChartMovement(normalizeTrainOperationPlanMovement(Array.isArray(response.data) ? response.data[0] : response.data) || movement)
         clearOperationAnalysisSnapshotState()
         scheduleSaveOperationAnalysisSnapshot(0)
         ElMessage.success(t('capacityGantt.saveSuccess'))
@@ -5822,6 +6109,7 @@ function processActivityTypeName(type: string) {
 
 function processReferenceNames(ids: string[], kind: 'nodes' | 'tracks' | 'routes') {
     return ids.map(id => processConstraintCatalog.value[kind].find(item => item.id === id)?.name ||
+        (kind === 'tracks' ? stationPlanTracks.value.find(track => track.id === id)?.name : '') ||
         (kind === 'routes' ? stationRouteOptions.value.find(route => route.id === id)?.name : '') || id).join('、') || '—'
 }
 
@@ -5829,11 +6117,22 @@ function processCandidateNames(activity: ProcessActivity) {
     return activity.type === 'Dwelling' ? processReferenceNames(activity.trackList, 'tracks') : processReferenceNames(activity.routeList, 'routes')
 }
 
+function currentDwellingTrackID(movement: TrainOperationPlanMovement | undefined) {
+    if (!movement) return ''
+    const route = stationRouteOptionMap.value.get(resolveStationPlanMovementRouteID(movement.route, movement.routeIDList))
+    if (!route || route.type.trim().toLowerCase() !== 'dwelling') return ''
+    const links = parseRouteReferenceList(route.linkList)
+    const tracks = [...stationPlanTracks.value, ...(processConstraintCatalog.value.tracks || [])]
+    return tracks.find(track => (links.length ? links.length === 1 && links[0] === track.id :
+        (route.startNodeID === track.fromNodeID && route.endNodeID === track.toNodeID) ||
+        (route.startNodeID === track.toNodeID && route.endNodeID === track.fromNodeID)))?.id || ''
+}
+
 function processActivitySelection(activity: ProcessActivity, snapshot: TrainProcessConstraints | null) {
     if (!snapshot) return '—'
     const movementID = snapshot.activityMovementMap[activity.id]
     const movement = trainOperationPlanMovements.value.find(row => row.trainID === snapshot.trainID && row.movementID === movementID)
-    const id = activity.type === 'Dwelling' ? snapshot.selectedTrackIDs[activity.id] || activity.selectedTrack : movement?.route || activity.selectedRoute
+    const id = activity.type === 'Dwelling' ? currentDwellingTrackID(movement) || snapshot.selectedTrackIDs[activity.id] || activity.selectedTrack : movement?.route || activity.selectedRoute
     return processReferenceNames(id ? [id] : [], activity.type === 'Dwelling' ? 'tracks' : 'routes')
 }
 
@@ -5857,7 +6156,7 @@ function processMovementLocation(row: TrainOperationPlanMovement) {
     const snapshot = processConstraintsByTrain.value.get(row.trainID)
     const activity = snapshot?.process.activities.find(item => snapshot.activityMovementMap[item.id] === row.movementID)
     if (snapshot && activity?.type === 'Dwelling') {
-        const selectedTrackID = snapshot.selectedTrackIDs[activity.id] || activity.selectedTrack
+        const selectedTrackID = currentDwellingTrackID(row) || snapshot.selectedTrackIDs[activity.id] || activity.selectedTrack
         return `${processActivityTypeName('Dwelling')} · ${processReferenceNames(selectedTrackID ? [selectedTrackID] : activity.trackList, 'tracks')}`
     }
     return getRouteDisplayName(row.route)
@@ -6231,6 +6530,8 @@ function clearOperationPlanChart() {
         operationBottleneckSummaryCategorySaveTimer = null
     }
     stationLayoutCells.value = []
+    stationPlanTracks.value = []
+    stationPlanNodeNames.value = {}
     stationRouteTimesByKey.value = {}
     stationRouteEndOptions.value = []
     operationBottleneckSummaryCategories.value = []
@@ -6374,8 +6675,6 @@ async function loadStationRouteEnds() {
 function openProcessPlanDialog() {
     if (!canGeneratePlanFromProcess.value) return
     processPlanSources.value = []
-    processPlanSourceID.value = ''
-    processPlanTrainCount.value = 1
     processPlanStartTime.value = trainOperationPlanStartTime.value
     processPlanEndTime.value = trainOperationPlanEndTime.value
     processPlanLoadError.value = ''
@@ -6394,12 +6693,10 @@ async function loadProcessPlanSources() {
     try {
         const sources = await processTemplateAPI.list(getStationSchemeScope())
         if (requestVersion !== processPlanSourceRequestVersion || !processPlanDialogVisible.value || !matchesOperationPlanScope(scope)) return
-        processPlanSources.value = sources.filter(source => source.instanceID === scope.instanceID && source.stationSchemeID === scope.stationSchemeID)
-        if (!processPlanSources.value.some(source => source.id === processPlanSourceID.value)) processPlanSourceID.value = ''
+        processPlanSources.value = createProcessPlanSources(sources, processPlanSources.value, scope)
     } catch (error) {
         if (requestVersion !== processPlanSourceRequestVersion || !processPlanDialogVisible.value || !matchesOperationPlanScope(scope)) return
         processPlanSources.value = []
-        processPlanSourceID.value = ''
         processPlanLoadError.value = getApiErrorMessage(error, t('operationPlan.train.fromProcess.loadFailed'))
     } finally {
         if (requestVersion === processPlanSourceRequestVersion) loadingProcessPlanSources.value = false
@@ -6407,8 +6704,8 @@ async function loadProcessPlanSources() {
 }
 
 async function generatePlanFromProcess() {
-    const source = selectedProcessPlanSource.value
-    if (!source || !processPlanDialogVisible.value || !canGeneratePlanFromProcess.value || !validProcessPlanParameters.value) return
+    const processes = processPlanBatch.value
+    if (!processes || !processPlanDialogVisible.value || !canGeneratePlanFromProcess.value || !validProcessPlanParameters.value) return
     const scope = getOperationPlanScope()
     const runVersion = ++processPlanGenerationVersion
     const isCurrentRun = () => runVersion === processPlanGenerationVersion && matchesOperationPlanScope(scope)
@@ -6419,8 +6716,7 @@ async function generatePlanFromProcess() {
     processPlanResult.value = null
     try {
         const response = await axios.post<ProcessPlanGenerationResponse>('/OperationPlan/GenerateTrainOperationPlanFromProcess', {
-            ...scope, processTemplateID: source.id, revision: source.revision,
-            trainCount: processPlanTrainCount.value, startTime, endTime,
+            ...scope, processes, startTime, endTime,
         })
         if (!isCurrentRun()) return
         const data = response.data
@@ -6641,7 +6937,45 @@ async function loadMovementTemplates() {
     }
 }
 
+async function recalculateCellOccupations() {
+    if (!canRecalculateCellOccupations.value) return
+    const scope = getOperationPlanScope()
+    const version = ++cellOccupationRecalculationVersion
+    const isCurrent = () => version === cellOccupationRecalculationVersion && matchesOperationPlanScope(scope)
+    if (operationAnalysisSnapshotSaveTimer) {
+        window.clearTimeout(operationAnalysisSnapshotSaveTimer)
+        operationAnalysisSnapshotSaveTimer = null
+    }
+    recalculatingCellOccupations.value = true
+    try {
+        const response = await axios.post('/OperationPlan/RecalculateCellOccupations', scope)
+        if (!isCurrent()) return
+        const data = response.data
+        if (!Array.isArray(data?.trains) || !Array.isArray(data?.movements) || !Array.isArray(data?.processConstraints) ||
+            !data.movements.every((row: any) => Array.isArray(row?.cellOccupations))) {
+            throw new Error(t('operationPlan.trainOperationChart.messages.recalculateFailed'))
+        }
+        // Apply the complete persisted plan returned by the server without sending cached movement times.
+        trainOperationPlanLoadVersion++
+        operationPlanChartLoadVersion++
+        loadingOperationPlanChart.value = false
+        normalizeTrainOperationPlanResponse(data)
+        stationPlanActions.clear()
+        clearOperationAnalysisSnapshotState()
+        ElMessage.success(t('operationPlan.trainOperationChart.messages.recalculateSuccess'))
+    } catch (error) {
+        if (!isCurrent()) return
+        ElMessage.error(getApiErrorMessage(error, t('operationPlan.trainOperationChart.messages.recalculateFailed')))
+    } finally {
+        if (version === cellOccupationRecalculationVersion) {
+            recalculatingCellOccupations.value = false
+            if (isCurrent()) scheduleSaveOperationAnalysisSnapshot(0)
+        }
+    }
+}
+
 async function loadTrainOperationPlan() {
+    if (recalculatingCellOccupations.value) return
     clearTrainOperationPlanSelection()
     const { instanceID, stationSchemeID, operationPlanID } = getOperationPlanScope()
     if (!instanceID || !stationSchemeID || !operationPlanID) {
@@ -6737,11 +7071,21 @@ async function loadOperationPlanChartCells(
     }
 
     stationLayoutCells.value = getLayoutCells(response.data)
-        .map((cell: OperationPlanChartCell) => ({ id: cell.id, name: cell.name || cell.id }))
+        .map((cell: { id: string; name: string; linkIDList: string }) => ({
+            id: cell.id, name: cell.name || cell.id, linkIDs: parseRouteReferenceList(cell.linkIDList),
+        }))
         .filter((cell: OperationPlanChartCell) => cell.id)
     stationPlanNodeNames.value = Object.fromEntries((Array.isArray(response.data?.nodes) ? response.data.nodes : [])
         .map((node: any) => [readString(node, 'id', 'ID').trim(), readString(node, 'name', 'Name', 'description', 'Description').trim()])
         .filter(([id]: string[]) => id))
+    stationPlanTracks.value = readArray(response.data, 'tracks', 'Tracks')
+        .map((track: any) => ({
+            id: readString(track, 'id', 'ID').trim(),
+            name: readString(track, 'name', 'Name').trim(),
+            fromNodeID: readString(track, 'fromNodeID', 'FromNodeID').trim(),
+            toNodeID: readString(track, 'toNodeID', 'ToNodeID').trim(),
+        }))
+        .filter(track => track.id && track.name && track.fromNodeID && track.toNodeID)
 }
 
 async function loadOperationPlanChartRouteTimes(
@@ -6941,8 +7285,311 @@ function scheduleSaveOperationOccupationTimeSubTableSettings(delay = 500) {
 function normalizeStationPlanSettings(data: any) {
     const configured = Boolean(data?.isConfigured ?? data?.IsConfigured)
     return {
-        cellIDs: configured ? readArray(data, 'cellIDs', 'CellIDs').map(String) : null,
-        endpointNodeIDs: configured ? readArray(data, 'endpointNodeIDs', 'EndpointNodeIDs').map(String) : null,
+        nodeIDs: configured ? readArray(data, 'endpointNodeIDs', 'EndpointNodeIDs').map(String) : null,
+    }
+}
+
+function resetStationProcessTrain() {
+    stationProcessTrainVersion++
+    stationProcessTrainLoadVersion++
+    stationProcessTrainPreviewVersion++
+    stationProcessTrainVisible.value = false
+    stationProcessTrainScope.value = ''
+    stationProcessTrainSources.value = []
+    stationProcessTrainSourceID.value = ''
+    stationProcessTrainSelections.value = []
+    stationProcessTrainLoading.value = false
+    stationProcessTrainPreviewing.value = false
+    stationProcessTrainSaving.value = false
+    stationProcessTrainPreview.value = null
+    stationProcessTrainPreviewSignature.value = ''
+    stationProcessTrainLoadError.value = ''
+    stationProcessTrainError.value = ''
+}
+
+async function openStationProcessTrain() {
+    if (!canOpenStationProcessTrain.value) return
+    resetStationProcessTrain()
+    stationProcessTrainScope.value = operationPlanScopeKey.value
+    stationProcessTrainForm.value = { id: stationPlanDraftID(), trainNumber: '', name: '', trainType: '',
+        originTime: trainOperationPlanStartTime.value || '00:00', endTime: trainOperationPlanEndTime.value || '24:00' }
+    stationProcessTrainVisible.value = true
+    await loadStationProcessTrainSources()
+}
+
+function invalidateStationProcessTrainPreview() {
+    stationProcessTrainPreviewVersion++
+    stationProcessTrainPreviewing.value = false
+    stationProcessTrainPreviewSignature.value = ''
+    stationProcessTrainError.value = ''
+}
+
+async function loadStationProcessTrainSources() {
+    if (!stationProcessTrainVisible.value || stationProcessTrainSaving.value || stationProcessTrainLoading.value) return
+    const scope = getStationSchemeScope(), scopeKey = stationProcessTrainScope.value, version = ++stationProcessTrainLoadVersion
+    const isCurrent = () => version === stationProcessTrainLoadVersion && stationProcessTrainVisible.value && scopeKey === operationPlanScopeKey.value
+    const previous = selectedStationProcessTrainSource.value
+    invalidateStationProcessTrainPreview()
+    stationProcessTrainLoading.value = true
+    stationProcessTrainLoadError.value = ''
+    try {
+        const [sources, catalog] = await Promise.all([processTemplateAPI.list(scope), processTemplateAPI.catalog(scope)])
+        if (!isCurrent()) return
+        if (!Array.isArray(sources) || !catalog || ![catalog.nodes, catalog.tracks, catalog.routes].every(Array.isArray))
+            throw new Error(t('stationPlanView.fromProcess.loadFailed'))
+        stationProcessTrainSources.value = sources.filter(source => source.instanceID === scope.instanceID && source.stationSchemeID === scope.stationSchemeID)
+        stationProcessTrainCatalog.value = catalog
+        processConstraintCatalog.value = catalog
+        processConstraintCatalogScopeKey.value = processTrainScopeKey.value
+        const source = selectedStationProcessTrainSource.value
+        if (!source) {
+            stationProcessTrainSourceID.value = ''
+            stationProcessTrainSelections.value = []
+        } else if (previous?.revision !== source.revision || validateProcessTrainSelections(source, catalog, stationProcessTrainSelections.value).length) {
+            stationProcessTrainSelections.value = createProcessTrainSelections(source, catalog)
+        }
+    } catch (error) {
+        if (isCurrent()) stationProcessTrainLoadError.value = getApiErrorMessage(error, t('stationPlanView.fromProcess.loadFailed'))
+    } finally {
+        if (isCurrent()) stationProcessTrainLoading.value = false
+    }
+}
+
+function selectStationProcessTrainSource(sourceID: string) {
+    if (stationProcessTrainSaving.value || stationProcessTrainLoading.value) return
+    const source = stationProcessTrainSources.value.find(source => source.id === sourceID)
+    invalidateStationProcessTrainPreview()
+    stationProcessTrainSourceID.value = source?.id || ''
+    stationProcessTrainSelections.value = source ? createProcessTrainSelections(source, stationProcessTrainCatalog.value) : []
+    stationProcessTrainForm.value = { ...stationProcessTrainForm.value, name: source?.name || '' }
+    stationProcessTrainPreview.value = null
+}
+
+function updateStationProcessTrainForm(form: ProcessTrainCreationForm) {
+    if (stationProcessTrainSaving.value) return
+    stationProcessTrainForm.value = { ...form, id: stationProcessTrainForm.value.id }
+    invalidateStationProcessTrainPreview()
+}
+
+function updateStationProcessTrainSelections(selections: ProcessTrainActivitySelection[]) {
+    if (stationProcessTrainSaving.value) return
+    stationProcessTrainSelections.value = selections.map(selection => ({ ...selection }))
+    invalidateStationProcessTrainPreview()
+}
+
+function stationProcessTrainCanPreview() {
+    const source = selectedStationProcessTrainSource.value, form = stationProcessTrainForm.value
+    const start = parseStationPlanDraftTime(form.originTime), end = parseStationPlanDraftTime(form.endTime)
+    return !!source && stationProcessTrainVisible.value && stationProcessTrainScope.value === operationPlanScopeKey.value &&
+        !stationProcessTrainLoading.value && !stationProcessTrainLoadError.value && !stationProcessTrainSaving.value &&
+        !!form.trainNumber.trim() && start !== null && end !== null && start >= 0 && start < 10080 && end >= 0 && end <= 10080 &&
+        validateProcessTrainSelections(source, stationProcessTrainCatalog.value, stationProcessTrainSelections.value).length === 0
+}
+
+function readStationProcessTrainResult(data: any): StationProcessTrainResult {
+    const source = selectedStationProcessTrainSource.value
+    const train = normalizeTrainOperationPlanTrain(data?.train ?? data?.Train)
+    const movements = readArray(data, 'movements', 'Movements').map(normalizeTrainOperationPlanMovement)
+    const snapshot = data?.processConstraint ?? data?.ProcessConstraint
+    if (!source || !train || train.id !== stationProcessTrainForm.value.id || !isTrainProcessConstraints(snapshot) ||
+        snapshot.trainID !== train.id || snapshot.sourceTemplateID !== source.id || snapshot.sourceRevision !== source.revision ||
+        movements.length !== source.activities.length || new Set(movements.map(row => row?.movementID)).size !== movements.length ||
+        movements.some(row => !row || row.trainID !== train.id || parseOperationPlanTime(row.earliestStartTime) === null || parseOperationPlanTime(row.latestEndTime) === null) ||
+        Object.keys(snapshot.activityMovementMap).length !== source.activities.length ||
+        new Set(Object.values(snapshot.activityMovementMap)).size !== movements.length ||
+        source.activities.some(activity => !movements.some(row => row?.movementID === snapshot.activityMovementMap[activity.id])))
+        throw new Error(t('stationPlanView.fromProcess.invalidResponse'))
+    return { train, movements: movements.filter((row): row is TrainOperationPlanMovement => row !== null),
+        processConstraint: snapshot, warnings: readArray(data, 'warnings', 'Warnings').filter((warning): warning is string => typeof warning === 'string') }
+}
+
+function stationProcessTrainFailure(error: any) {
+    const detail = getApiErrorMessage(error, error instanceof Error ? error.message : t('stationPlanView.fromProcess.failed'))
+    const errors = readArray(error?.response?.data, 'errors', 'Errors').filter(item => typeof item === 'string')
+    return [detail, ...errors].filter(Boolean).join('\n')
+}
+
+async function previewStationProcessTrain() {
+    if (!stationProcessTrainCanPreview() || stationProcessTrainPreviewing.value || !canEditOperationPlanChart.value || stationPlanActions.busy) return
+    const request = stationProcessTrainRequest.value!, signature = stationProcessTrainSignature.value
+    const version = ++stationProcessTrainPreviewVersion, lifecycle = stationProcessTrainVersion
+    const isCurrent = () => version === stationProcessTrainPreviewVersion && lifecycle === stationProcessTrainVersion &&
+        stationProcessTrainVisible.value && stationProcessTrainScope.value === operationPlanScopeKey.value && signature === stationProcessTrainSignature.value
+    stationProcessTrainPreviewing.value = true
+    stationProcessTrainError.value = ''
+    stationProcessTrainPreviewSignature.value = ''
+    try {
+        const response = await axios.post('/OperationPlan/PreviewProcessTrain', request)
+        if (!isCurrent()) return
+        stationProcessTrainPreview.value = readStationProcessTrainResult(response.data)
+        stationProcessTrainPreviewSignature.value = signature
+    } catch (error) {
+        if (isCurrent()) stationProcessTrainError.value = stationProcessTrainFailure(error)
+    } finally {
+        if (version === stationProcessTrainPreviewVersion && lifecycle === stationProcessTrainVersion) stationProcessTrainPreviewing.value = false
+    }
+}
+
+async function confirmStationProcessTrain() {
+    if (!stationProcessTrainCanPreview() || !stationProcessTrainPreviewFresh.value || stationProcessTrainPreviewing.value ||
+        !canEditOperationPlanChart.value || stationPlanActions.busy) return
+    const request = stationProcessTrainRequest.value!, version = stationProcessTrainVersion
+    const isCurrent = () => version === stationProcessTrainVersion && stationProcessTrainVisible.value && stationProcessTrainScope.value === operationPlanScopeKey.value
+    stationProcessTrainSaving.value = true
+    stationProcessTrainError.value = ''
+    try {
+        const response = await axios.post('/OperationPlan/CreateProcessTrain', request)
+        if (!isCurrent()) return
+        const result = readStationProcessTrainResult(response.data)
+        trainOperationPlanTrains.value = [...trainOperationPlanTrains.value.filter(row => row.id !== result.train.id), result.train]
+        trainOperationPlanMovements.value = [...trainOperationPlanMovements.value.filter(row => row.trainID !== result.train.id), ...result.movements]
+        trainProcessConstraints.value = [...trainProcessConstraints.value.filter(row => row.trainID !== result.train.id), result.processConstraint]
+        selectedTrainOperationPlanTrainId.value = result.train.id
+        stationPlanActions.clear()
+        clearOperationAnalysisSnapshotState()
+        scheduleSaveOperationAnalysisSnapshot(0)
+        resetStationProcessTrain()
+        ElMessage.success(t('stationPlanView.fromProcess.saved'))
+    } catch (error) {
+        if (isCurrent()) {
+            stationProcessTrainError.value = stationProcessTrainFailure(error)
+            stationProcessTrainPreviewSignature.value = ''
+        }
+    } finally {
+        if (isCurrent()) stationProcessTrainSaving.value = false
+    }
+}
+
+function cancelStationProcessTrain() { if (!stationProcessTrainSaving.value) resetStationProcessTrain() }
+
+function resetStationPlanCreation() {
+    stationPlanCreationVersion++
+    stationPlanCreationScope.value = ''
+    stationPlanCreationDialogVisible.value = false
+    stationPlanCreationSaving.value = false
+    stationPlanPickMode.value = false
+    stationPlanPickedPoints.value = []
+    stationPlanCreationMovements.value = []
+    stationPlanRepick.value = null
+    stationPlanCreationTrain.value = { id: '', trainNumber: '', name: '', trainType: '' }
+}
+
+function stationPlanDraftID() {
+    return (globalThis.crypto?.randomUUID?.() || `draft-${Date.now()}-${Math.random().toString(36).slice(2)}`).replace(/-/g, '')
+}
+
+function startStationPlanCreation() {
+    if (!canStartStationPlanCreation.value) return
+    resetStationPlanCreation()
+    cancelOperationPlanChartDrag()
+    stationPlanCreationScope.value = operationPlanScopeKey.value
+    stationPlanCreationTrain.value.id = stationPlanDraftID()
+    stationPlanPickMode.value = true
+}
+
+function pickStationPlanPoint(point: StationPlanDraftPoint) {
+    if (!stationPlanPickMode.value || stationPlanCreationSaving.value || stationPlanCreationScope.value !== operationPlanScopeKey.value ||
+        !Number.isFinite(point.timeMinutes) || !stationPlanNodeOptions.value.some(node => node.sourceID === point.nodeID)) return
+    const selection = stationPlanRepick.value
+    if (selection) {
+        stationPlanCreationMovements.value = stationPlanCreationMovements.value.map(row => row.id === selection.movementID
+            ? rematchStationPlanDraftMovement({ ...row, [selection.edge]: { ...point } }, stationPlanEditRoutes.value) : row)
+        stationPlanPickMode.value = false
+        stationPlanRepick.value = null
+        stationPlanCreationDialogVisible.value = true
+    } else if (stationPlanPickedPoints.value.length < 2000) stationPlanPickedPoints.value.push({ ...point })
+    else ElMessage.warning(t('stationPlanView.creation.tooManyMovements'))
+}
+
+function undoStationPlanPickedPoint() {
+    if (stationPlanPickMode.value && !stationPlanRepick.value) stationPlanPickedPoints.value.pop()
+}
+
+function finishStationPlanPicking() {
+    if (!stationPlanPickMode.value || stationPlanRepick.value || stationPlanPickedPoints.value.length < 2 ||
+        stationPlanPickedPoints.value.length % 2 !== 0 || stationPlanCreationScope.value !== operationPlanScopeKey.value) return
+    stationPlanCreationMovements.value = createStationPlanDraftMovements(stationPlanPickedPoints.value, stationPlanEditRoutes.value, stationPlanDraftID)
+        .map((row, index) => ({ ...row, name: row.name || t('stationPlanView.creation.defaultMovement', { index: index + 1 }) }))
+    stationPlanPickMode.value = false
+    stationPlanCreationDialogVisible.value = true
+}
+
+function repickStationPlanEndpoint(selection: { movementID: string; edge: 'start' | 'end' }) {
+    if (stationPlanCreationSaving.value || !stationPlanCreationActive.value ||
+        !stationPlanCreationMovements.value.some(row => row.id === selection.movementID)) return
+    stationPlanRepick.value = { ...selection }
+    stationPlanCreationDialogVisible.value = false
+    stationPlanPickMode.value = true
+}
+
+function cancelStationPlanPicking() {
+    if (stationPlanCreationSaving.value) return
+    if (stationPlanRepick.value) {
+        stationPlanRepick.value = null
+        stationPlanPickMode.value = false
+        stationPlanCreationDialogVisible.value = true
+    } else resetStationPlanCreation()
+}
+
+function cancelStationPlanCreation() {
+    if (!stationPlanCreationSaving.value && !stationPlanRepick.value) resetStationPlanCreation()
+}
+
+async function confirmStationPlanCreation() {
+    if (stationPlanCreationSaving.value || !stationPlanCreationDialogVisible.value || stationPlanCreationScope.value !== operationPlanScopeKey.value ||
+        !canEditOperationPlanChart.value || stationPlanActions.busy) return
+    const draft = stationPlanCreationTrain.value, rows = stationPlanCreationMovements.value
+    if (!canConfirmStationPlanDraft(rows, draft.trainNumber) || rows.length > 1000) {
+        ElMessage.warning(t('stationPlanView.creation.invalidDraft')); return
+    }
+    const scope = getOperationPlanScope(), version = stationPlanCreationVersion
+    const isCurrent = () => version === stationPlanCreationVersion && stationPlanCreationScope.value === operationPlanScopeKey.value
+    const train = { ...createEmptyTrainOperationPlanTrain(), ...scope, ...draft, trainNumber: draft.trainNumber.trim(), isFixedOperation: 0 }
+    const movements = rows.map((row, index) => ({ ...createEmptyTrainOperationPlanMovement(), ...scope,
+        trainID: train.id, movementID: row.id, name: row.name.trim() || t('stationPlanView.creation.defaultMovement', { index: index + 1 }),
+        route: row.routeID, routeIDList: row.routeID, startNodeID: row.start!.nodeID, endNodeID: row.end!.nodeID,
+        earliestStartTime: stationPlanTimeLabel(row.start!.timeMinutes), latestEndTime: stationPlanTimeLabel(row.end!.timeMinutes),
+        sortOrder: index,
+    }))
+    stationPlanCreationSaving.value = true
+    try {
+        const response = await axios.post('/OperationPlan/CreateTrainWithMovements', { train, movements })
+        if (!isCurrent()) return
+        const savedTrain = normalizeTrainOperationPlanTrain(response.data?.train ?? response.data?.Train)
+        const savedMovements = readArray(response.data, 'movements', 'Movements').map(normalizeTrainOperationPlanMovement)
+        if (!savedTrain || savedTrain.id !== train.id || savedMovements.length !== movements.length ||
+            savedMovements.some(row => !row || row.trainID !== train.id || !movements.some(item => item.movementID === row.movementID)) ||
+            new Set(savedMovements.map(row => row?.movementID)).size !== movements.length)
+            throw new Error(t('stationPlanView.creation.invalidResponse'))
+        stationPlanActions.clear()
+        trainOperationPlanTrains.value = [...trainOperationPlanTrains.value.filter(row => row.id !== train.id), savedTrain]
+        trainOperationPlanMovements.value = [...trainOperationPlanMovements.value.filter(row => row.trainID !== train.id),
+            ...savedMovements.filter((row): row is TrainOperationPlanMovement => row !== null)]
+        selectedTrainOperationPlanTrainId.value = train.id
+        clearOperationAnalysisSnapshotState()
+        scheduleSaveOperationAnalysisSnapshot(0)
+        resetStationPlanCreation()
+        ElMessage.success(t('stationPlanView.creation.saved'))
+    } catch (error) {
+        if (isCurrent()) ElMessage.error(getApiErrorMessage(error, t('stationPlanView.creation.saveFailed')))
+    } finally {
+        if (isCurrent()) stationPlanCreationSaving.value = false
+    }
+}
+
+async function alignStationPlanSegment(edit: StationPlanSegmentEdit) {
+    if (!canEditOperationPlanChart.value || stationPlanActions.busy || stationPlanReadOnlyTrainIDs.value.includes(edit.trainID)) return
+    const train = stationPlanTrains.value.find(train => train.id === edit.trainID)
+    if (!train) return
+    try {
+        const aligned = alignStationPlanSegmentToAdjacent(train, edit, trainOperationPlanMovements.value.map(movement => ({
+            trainID: movement.trainID, movementID: movement.movementID, sortOrder: movement.sortOrder,
+            startMinutes: parseOperationPlanTime(movement.earliestStartTime),
+            endMinutes: parseOperationPlanTime(movement.latestEndTime),
+        })))
+        if (aligned) await saveStationPlanSegmentEdit(aligned)
+    } catch {
+        ElMessage.warning(t('stationPlanView.editErrors.stale'))
     }
 }
 
@@ -6954,37 +7601,21 @@ async function saveStationPlanSegmentEdit(edit: StationPlanSegmentEdit) {
     const isCurrent = () => scopeKey === operationPlanScopeKey.value && saveVersion === operationPlanChartSaveVersion
     savingTrainOperationPlanMovement.value = true
     try {
-        let changed = editStationPlanSegment(train, edit, stationPlanMovements.value, stationPlanEditRoutes.value, stationPlanMovementTimes)
-        if (edit.mode === 'row') {
-            const trainType = trainOperationPlanTrainMap.value.get(edit.trainID)?.trainType || ''
-            const pairs = [...new Set(changed.map(movement => movement.routeID))].flatMap(routeID =>
-                [...new Set(['', trainType])].map(trainTypeID => ({ routeID, trainTypeID })))
-                .filter(pair => !Object.prototype.hasOwnProperty.call(stationRouteTimesByKey.value, getOperationPlanChartRouteTimeKey(pair.routeID, pair.trainTypeID)))
-            const scope = getOperationPlanScope()
-            const results = await Promise.allSettled(pairs.map(async pair => {
-                const response = await axios.get('/StationLayout/GetStationRouteTimes', { params: { ...scope, ...pair } })
-                const rows = (Array.isArray(response.data) ? response.data : []).map(normalizeStationRouteTimeOption)
-                    .filter((time): time is StationRouteTimeOption => time !== null)
-                return [getOperationPlanChartRouteTimeKey(pair.routeID, pair.trainTypeID), rows] as const
-            }))
-            if (!isCurrent()) return
-            const entries = results.flatMap(result => result.status === 'fulfilled' ? [result.value] : [])
-            stationRouteTimesByKey.value = { ...stationRouteTimesByKey.value, ...Object.fromEntries(entries) }
-            changed = editStationPlanSegment(train, edit, stationPlanMovements.value, stationPlanEditRoutes.value, stationPlanMovementTimes)
-        }
+        const changed = editStationPlanSegment(train, edit, stationPlanMovements.value, stationPlanEditRoutes.value)
         const items = changed.map(movement => {
             const original = trainOperationPlanMovements.value.find(item => item.trainID === edit.trainID && item.movementID === movement.movementID)
             if (!original || original.isDraft) throw new StationPlanEditingError()
             return { original: { ...original }, updated: { ...original,
-                route: movement.routeID, routeIDList: movement.routeIDList || original.routeIDList,
-                earliestStartTime: stationPlanTimeLabel(movement.startMinutes), latestEndTime: stationPlanTimeLabel(movement.endMinutes),
-                cellOccupationOverridesJson: movement.cellOccupationOverridesJson,
+                ...(movement.startMinutes !== parseOperationPlanTime(original.earliestStartTime)
+                    ? { earliestStartTime: stationPlanTimeLabel(movement.startMinutes) } : {}),
+                ...(movement.endMinutes !== parseOperationPlanTime(original.latestEndTime)
+                    ? { latestEndTime: stationPlanTimeLabel(movement.endMinutes) } : {}),
             } }
         })
-        if (!isCurrent()) return
+        if (!items.length || !isCurrent()) return
         const action = new StationPlanMovementAction(edit.mode, items.map(item => item.original), items.map(item => item.updated),
             (expected, desired) => persistStationPlanAction(expected, desired, scopeKey))
-        if (await stationPlanActions.execute(action)) showStationPlanSaveMessage('editSaved', items.map(item => item.original), trainOperationPlanMovements.value)
+        if (await stationPlanActions.execute(action)) ElMessage.success(t('stationPlanView.editSaved'))
     } catch (error) {
         if (scopeKey !== operationPlanScopeKey.value) return
         if (error instanceof StationPlanEditingError) ElMessage.warning(t('stationPlanView.editErrors.stale'))
@@ -6994,14 +7625,78 @@ async function saveStationPlanSegmentEdit(edit: StationPlanSegmentEdit) {
     }
 }
 
+async function saveStationPlanDwellingEdit(target: StationPlanDwellingTarget) {
+    if (!canEditOperationPlanChart.value || stationPlanActions.busy || operationPlanChartDrag.value ||
+        stationPlanCreationActive.value || stationProcessTrainVisible.value || stationPlanReadOnlyTrainIDs.value.includes(target.trainID)) return
+    const train = stationPlanTrains.value.find(train => train.id === target.trainID)
+    if (!train) return
+    const scopeKey = operationPlanScopeKey.value
+    try {
+        const changed = editStationPlanDwelling(train, target, stationPlanMovements.value, stationPlanEditRoutes.value,
+            stationPlanTracks.value, stationPlanDwellingMovementIDs.value[target.trainID] || [])
+        const original = trainOperationPlanMovements.value.find(row => row.trainID === target.trainID && row.movementID === changed.movementID)
+        if (!original || original.isDraft) throw new StationPlanEditingError()
+        const updated = { ...original,
+            ...(changed.startMinutes !== parseOperationPlanTime(original.earliestStartTime)
+                ? { earliestStartTime: stationPlanTimeLabel(changed.startMinutes) } : {}),
+            ...(changed.endMinutes !== parseOperationPlanTime(original.latestEndTime)
+                ? { latestEndTime: stationPlanTimeLabel(changed.endMinutes) } : {}),
+        }
+        const action = new StationPlanMovementAction('dwelling', [{ ...original }], [updated],
+            (expected, desired) => persistStationPlanAction(expected, desired, scopeKey))
+        if (await stationPlanActions.execute(action)) ElMessage.success(t('stationPlanView.dwelling.saved'))
+    } catch (error) {
+        if (scopeKey !== operationPlanScopeKey.value) return
+        if (error instanceof StationPlanEditingError) ElMessage.warning(t('stationPlanView.editErrors.stale'))
+        else ElMessage.error(`${t('stationPlanView.editSaveFailed')} ${getApiErrorMessage(error, '')}`.trim())
+    }
+}
+
+async function saveStationPlanTrackEdit(edit: StationPlanTrackEdit) {
+    if (!canEditOperationPlanChart.value || stationPlanActions.busy || stationPlanReadOnlyTrainIDs.value.includes(edit.trainID)) return
+    const train = stationPlanTrains.value.find(train => train.id === edit.trainID)
+    if (!train) return
+    const scopeKey = operationPlanScopeKey.value
+    try {
+        const changed = editStationPlanTrack(train, edit, stationPlanMovements.value, stationPlanEditRoutes.value, stationPlanTracks.value)
+        const items = changed.map(movement => {
+            const original = trainOperationPlanMovements.value.find(row => row.trainID === edit.trainID && row.movementID === movement.movementID)
+            if (!original || original.isDraft) throw new StationPlanEditingError()
+            return { original: { ...original }, updated: { ...original,
+                route: movement.routeID, routeIDList: movement.routeIDList || movement.routeID,
+                cellOccupations: movement.cellOccupations, cellOccupationOverridesJson: movement.cellOccupationOverridesJson,
+            } }
+        })
+        if (!items.length) return
+        const action = new StationPlanMovementAction('track', items.map(item => item.original), items.map(item => item.updated),
+            (expected, desired) => persistStationPlanAction(expected, desired, scopeKey))
+        if (await stationPlanActions.execute(action)) {
+            ElMessage.success(t('stationPlanView.trackEditSaved'))
+            return true
+        }
+    } catch (error) {
+        if (scopeKey !== operationPlanScopeKey.value) return
+        showStationPlanTrackEditError(error)
+    }
+}
+
+function showStationPlanTrackEditError(error: unknown) {
+    if (error instanceof StationPlanTrackEditingError && error.reason === 'missing-route') {
+        ElMessage.warning(t('stationPlanView.editErrors.missingTrackRoute', {
+            track: error.targetTrackName, movements: error.movementNames.join('、'),
+        }))
+    } else if (error instanceof StationPlanEditingError || error instanceof StationPlanTrackEditingError || error instanceof OperationPlanTrackEditingError) {
+        ElMessage.warning(t('stationPlanView.editErrors.stale'))
+    } else ElMessage.error(`${t('stationPlanView.editSaveFailed')} ${getApiErrorMessage(error, '')}`.trim())
+}
+
 async function persistStationPlanAction(expected: TrainOperationPlanMovement[], desired: TrainOperationPlanMovement[], scopeKey: string) {
     if (scopeKey !== operationPlanScopeKey.value) throw new StationPlanEditingError()
     const items = expected.map((original, index) => {
         const current = trainOperationPlanMovements.value.find(row => getTrainOperationPlanMovementIdentityKey(row) === getTrainOperationPlanMovementIdentityKey(original))
         if (!current || current.isDraft || JSON.stringify(normalizeTrainOperationPlanMovement(current)) !== JSON.stringify(normalizeTrainOperationPlanMovement(original)))
             throw new StationPlanEditingError()
-        // An empty document explicitly removes overrides; null means preserve them on older-client saves.
-        return { original: { ...current }, updated: { ...desired[index]!, cellOccupationOverridesJson: desired[index]!.cellOccupationOverridesJson ?? '' } }
+        return { original: { ...current }, updated: { ...desired[index]! } }
     })
     const saveVersion = ++operationPlanChartSaveVersion
     const isCurrent = () => scopeKey === operationPlanScopeKey.value && saveVersion === operationPlanChartSaveVersion
@@ -7028,44 +7723,13 @@ async function persistStationPlanAction(expected: TrainOperationPlanMovement[], 
 async function replayStationPlanAction(operation: 'undo' | 'redo') {
     if (!canEditOperationPlanChart.value || !(operation === 'undo' ? stationPlanActions.canUndo : stationPlanActions.canRedo)) return
     const scopeKey = operationPlanScopeKey.value
-    const before = trainOperationPlanMovements.value.map(row => ({ ...row }))
     try {
-        if (await stationPlanActions[operation]()) showStationPlanSaveMessage(`${operation}Saved`, before, trainOperationPlanMovements.value)
+        if (await stationPlanActions[operation]()) ElMessage.success(t(`stationPlanView.${operation}Saved`))
     } catch (error) {
         if (scopeKey !== operationPlanScopeKey.value) return
         if (error instanceof StationPlanEditingError) ElMessage.warning(t('stationPlanView.editErrors.stale'))
         else ElMessage.error(`${t('stationPlanView.historySaveFailed')} ${getApiErrorMessage(error, '')}`.trim())
     }
-}
-
-function showStationPlanSaveMessage(messageKey: 'editSaved' | 'undoSaved' | 'redoSaved', before: TrainOperationPlanMovement[], after: TrainOperationPlanMovement[]) {
-    const saved = new Map(after.map(row => [getTrainOperationPlanMovementIdentityKey(row), row]))
-    const routeLabel = (id: string) => {
-        const name = stationRouteOptions.value.find(route => route.id === id)?.name
-        return name && name !== id ? `${name} (${id})` : id || '-'
-    }
-    const changes = before.flatMap(original => {
-        const updated = saved.get(getTrainOperationPlanMovementIdentityKey(original))
-        if (!updated) return []
-        const from = resolveStationPlanMovementRouteID(original.route, original.routeIDList)
-        const to = resolveStationPlanMovementRouteID(updated.route, updated.routeIDList)
-        if (from === to) return []
-        return [t('stationPlanView.routeChangeItem', {
-            train: trainOperationPlanTrainMap.value.get(updated.trainID)?.trainNumber || updated.trainID,
-            movement: updated.name || updated.movementID,
-            from: routeLabel(from), to: routeLabel(to),
-        })]
-    })
-    if (!changes.length) { ElMessage.success(t(`stationPlanView.${messageKey}`)); return }
-    ElMessage.success({
-        message: h('div', { class: 'station-plan-route-change-message', style: { maxWidth: 'min(760px, calc(100vw - 100px))', overflowWrap: 'anywhere' } }, [
-            h('div', t(`stationPlanView.${messageKey}`)),
-            h('div', { style: { marginTop: '6px', fontWeight: '600' } }, t('stationPlanView.routesChanged')),
-            ...changes.map(change => h('div', { style: { marginTop: '4px' } }, change)),
-        ]),
-        duration: 8000,
-        showClose: true,
-    })
 }
 
 async function refreshStationPlanView() {
@@ -7092,21 +7756,31 @@ async function loadStationPlanSettings() {
 }
 
 function openStationPlanSettings() {
-    const availableCells = operationOccupationTimeTableCells.value.map(cell => cell.id)
-    const availableEndpoints = stationPlanEndpointOptions.value.map(endpoint => endpoint.sourceID)
-    stationPlanCellDraft.value = availableCells.filter(id => stationPlanSettings.value.cellIDs === null || stationPlanSettings.value.cellIDs.includes(id))
-    stationPlanEndpointDraft.value = availableEndpoints.filter(id => stationPlanSettings.value.endpointNodeIDs === null || stationPlanSettings.value.endpointNodeIDs.includes(id))
+    stationPlanNodeDraft.value = stationPlanRows.value.flatMap(stationPlanRowNodeIDs)
+    stationPlanAxisOrderDraft.value = stationPlanAxisOptions.value.map(row => row.key)
     stationPlanSettingsVisible.value = true
 }
 
-async function completeStationPlanEndpoints() {
-    if (savingStationPlanSettings.value || loadingStationPlanSettings.value || stationPlanSettingsError.value || !stationPlanMissingEndpoints.value.length) return
-    stationPlanCellDraft.value = [...(stationPlanSettings.value.cellIDs ?? operationOccupationTimeTableCells.value.map(cell => cell.id))]
-    stationPlanEndpointDraft.value = [...new Set([
-        ...(stationPlanSettings.value.endpointNodeIDs ?? stationPlanEndpointOptions.value.map(endpoint => endpoint.sourceID)),
-        ...stationPlanMissingEndpoints.value.map(endpoint => endpoint.sourceID),
-    ])]
-    await saveStationPlanSettings()
+function isStationPlanRowSelected(row: StationPlanAxisRow) {
+    return isStationPlanRowUsed(row) || stationPlanRowNodeIDs(row).some(id => stationPlanNodeDraft.value.includes(id))
+}
+
+function toggleStationPlanRowSelection(row: StationPlanAxisRow, selected: boolean) {
+    if (savingStationPlanSettings.value || isStationPlanRowUsed(row)) return
+    const ids = stationPlanRowNodeIDs(row)
+    stationPlanNodeDraft.value = selected
+        ? [...new Set([...stationPlanNodeDraft.value, ...ids])]
+        : stationPlanNodeDraft.value.filter(id => !ids.includes(id))
+}
+
+function moveStationPlanAxisRow(key: string, direction: -1 | 1) {
+    if (savingStationPlanSettings.value) return
+    const keys = stationPlanAxisDraft.value.map(row => row.key)
+    const index = keys.indexOf(key)
+    const target = index + direction
+    if (index < 0 || target < 0 || target >= keys.length) return
+    keys.splice(target, 0, ...keys.splice(index, 1))
+    stationPlanAxisOrderDraft.value = keys
 }
 
 async function saveStationPlanSettings() {
@@ -7117,7 +7791,8 @@ async function saveStationPlanSettings() {
     savingStationPlanSettings.value = true
     try {
         const response = await axios.put('/OperationPlan/SaveStationPlanViewSettings', {
-            ...scope, cellIDs: [...stationPlanCellDraft.value], endpointNodeIDs: [...stationPlanEndpointDraft.value],
+            ...scope, cellIDs: [], endpointNodeIDs: [...new Set(stationPlanAxisDraft.value
+                .filter(isStationPlanRowSelected).flatMap(stationPlanRowNodeIDs))],
         })
         if (version !== stationPlanSettingsVersion || scopeKey !== operationPlanScopeKey.value) return
         stationPlanSettings.value = normalizeStationPlanSettings(response.data)
@@ -7445,7 +8120,7 @@ function startCreateTrainOperationPlanMovementInline() {
 }
 
 function startEditTrainOperationPlanMovementInline(row: TrainOperationPlanMovement) {
-    if (row.isDraft || !canEditTrainOperationPlan.value || operationPlanInlineActive.value || processConstraintsByTrain.value.has(row.trainID)) return
+    if (row.isDraft || !canEditTrainOperationPlan.value || operationPlanInlineActive.value) return
 
     trainOperationPlanMovementMode.value = 'edit'
     trainOperationPlanMovementEditingKey.value = getTrainOperationPlanMovementIdentityKey(row)
@@ -7465,7 +8140,6 @@ function cancelTrainOperationPlanMovementInline(row: TrainOperationPlanMovement)
 }
 
 async function saveTrainOperationPlanMovement() {
-    if (processConstraintsByTrain.value.has(trainOperationPlanMovementForm.value.trainID)) return
     syncTrainOperationPlanScope()
     if (!trainOperationPlanMovementForm.value.trainID.trim()) {
         ElMessage.warning(t('operationPlan.trainOperationPlan.movement.messages.trainRequired'))
@@ -7925,6 +8599,7 @@ watch(routePickerEndpointFilterKey, () => {
 })
 
 watch(activeOperationPlanTab, (tab) => {
+    if (tab !== 'stationPlanView') { resetStationPlanCreation(); resetStationProcessTrain() }
     cancelOperationPlanChartDrag()
     if (isOperationPlanChartDataTab(tab)) {
         void loadOperationPlanChartData()
@@ -7967,14 +8642,21 @@ watch([trainOperationPlanStartTime, trainOperationPlanEndTime], () => {
 })
 
 watch(operationPlanScopeKey, () => {
+    resetStationProcessTrain()
+    resetStationPlanCreation()
+    cellOccupationRecalculationVersion++
+    recalculatingCellOccupations.value = false
     stationPlanActions.clear()
     stationPlanSettingsVersion++
-    stationPlanSettings.value = { cellIDs: null, endpointNodeIDs: null }
+    stationPlanSettings.value = { nodeIDs: null }
     loadingStationPlanSettings.value = false
     savingStationPlanSettings.value = false
     stationPlanSettingsError.value = false
     stationPlanSettingsVisible.value = false
     stationPlanNodeNames.value = {}
+    stationPlanTracks.value = []
+    stationPlanNodeDraft.value = []
+    stationPlanAxisOrderDraft.value = []
     cancelOperationPlanChartDrag()
     operationPlanChartSaveVersion++
     savingTrainOperationPlanMovement.value = false
@@ -7987,7 +8669,6 @@ watch(operationPlanScopeKey, () => {
     processPlanGenerationVersion++
     processPlanDialogVisible.value = false
     processPlanSources.value = []
-    processPlanSourceID.value = ''
     loadingProcessPlanSources.value = false
     generatingPlanFromProcess.value = false
     processPlanLoadError.value = ''
@@ -8066,6 +8747,9 @@ watch(
 )
 
 onBeforeUnmount(() => {
+    resetStationProcessTrain()
+    resetStationPlanCreation()
+    cellOccupationRecalculationVersion++
     stationPlanActions.clear()
     stationPlanSettingsVersion++
     cancelOperationPlanChartDrag()
@@ -8354,7 +9038,9 @@ onBeforeUnmount(() => {
 }
 
 .operation-process-generation-dialog { display: flex; flex-direction: column; gap: 14px; }
-.operation-process-plan-parameters { display: grid; grid-template-columns: 1.15fr 1fr 1fr; gap: 16px; margin-top: 18px; }
+.operation-process-plan-parameters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 18px; }
+.operation-process-plan-summary { margin-top: 8px; }
+.operation-process-generation-dialog :deep(.el-table .el-input-number) { width: 148px; }
 .operation-process-plan-parameters :deep(.el-input-number) { width: 100%; }
 .operation-process-generation-dialog :deep(.el-alert__title) { white-space: pre-line; }
 .operation-process-constraints { display: flex; flex-direction: column; gap: 16px; }
@@ -8674,13 +9360,17 @@ onBeforeUnmount(() => {
 .station-plan-time-range { display: flex; align-items: center; gap: 8px; font-size: 12px; white-space: nowrap; }
 .station-plan-time-range :deep(.el-input) { width: 90px; }
 .station-plan-note { margin: 0; padding: 5px 12px; color: var(--el-text-color-secondary); font-size: 11px; }
+.station-plan-pick-status { color: var(--el-color-primary); font-size: 13px; font-weight: 600; }
 .station-plan-settings-hint { color: var(--el-text-color-secondary); font-size: 12px; }
 .station-plan-missing-endpoints { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
 .station-plan-used-endpoint { color: var(--el-color-primary); font-size: 11px; }
 .station-plan-settings-section + .station-plan-settings-section { margin-top: 20px; }
 .station-plan-settings-heading { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
 .station-plan-settings-heading strong { margin-right: auto; }
-.station-plan-settings-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); max-height: 240px; overflow: auto; padding: 4px 8px; background: var(--el-fill-color-light); border-radius: 6px; }
+.station-plan-settings-options { max-height: 360px; overflow: auto; padding: 4px 8px; background: var(--el-fill-color-light); border-radius: 6px; }
+.station-plan-settings-row { display: flex; align-items: center; gap: 6px; min-height: 36px; }
+.station-plan-settings-row > .el-checkbox { flex: 1; }
+.station-plan-settings-row > .el-button { margin-left: 0; flex-shrink: 0; }
 .station-plan-settings-options :deep(.el-checkbox) { margin-right: 8px; min-width: 0; }
 .station-plan-settings-options :deep(.el-checkbox__label) { overflow: hidden; text-overflow: ellipsis; }
 

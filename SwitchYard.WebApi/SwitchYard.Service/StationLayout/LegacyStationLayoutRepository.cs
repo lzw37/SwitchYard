@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using SwitchYard.Capacity;
 using SwitchYard.Service.Services;
@@ -313,6 +314,117 @@ public sealed class LegacyStationLayoutRepository : IStationLayoutRepository
             throw;
         }
     }
+
+    public Task<bool> TryCopySchemeAsync(
+        string sourceSchemeId,
+        StationSchemeRecord targetScheme,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var database = OpenDatabase();
+        database.BeginTransaction();
+        try
+        {
+            var scopeId = targetScheme.ScopeId;
+            var targetSchemeId = targetScheme.SchemeId;
+            if (!SchemeExists(database, scopeId, sourceSchemeId))
+            {
+                throw new StationLayoutNotFoundException($"Station scheme '{sourceSchemeId}' was not found.");
+            }
+            if (SchemeExists(database, scopeId, targetSchemeId))
+            {
+                database.Rollback();
+                return Task.FromResult(false);
+            }
+
+            EnsureRevisionRowLocked(database, new StationLayoutWriteRequest(
+                scopeId, sourceSchemeId, new StationLayoutDocument(), null, null));
+
+            var source = (database.Query<SchemeRow>(
+                $"SELECT DisplayStyles, GridSettings FROM {Q("stationscheme")} " +
+                "WHERE InstanceID = @scopeId AND ID = @sourceSchemeId",
+                new { scopeId, sourceSchemeId }) ?? []).FirstOrDefault();
+            database.ExecuteNonQuery(
+                $"INSERT INTO {Q("stationscheme")} (InstanceID, ID, Name, DisplayStyles, GridSettings) " +
+                "VALUES (@scopeId, @targetSchemeId, @Name, @DisplayStyles, @GridSettings)",
+                new
+                {
+                    scopeId, targetSchemeId, targetScheme.Name,
+                    source?.DisplayStyles,
+                    GridSettings = source?.GridSettings ?? DefaultGridSettings
+                });
+
+            // Child identifiers are scoped by InstanceID and StationSchemeID, so retaining
+            // them preserves all route, track, template and plan references in the copy.
+            foreach (var table in CapacityDataLifecycle.SchemeTables.Reverse()
+                         .Where(table => table != "stationlayoutrevision"))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!CapacityDataLifecycle.TableExists(database, table)) continue;
+                var columns = (database.Query<ColumnRow>(
+                    DBConnector.IsMySql(DBConnector.CapacityDatabaseSectionName)
+                        ? "SELECT COLUMN_NAME AS Name FROM information_schema.columns " +
+                          "WHERE table_schema = DATABASE() AND table_name = @table ORDER BY ORDINAL_POSITION"
+                        : $"PRAGMA table_info({Q(table)})",
+                    new { table }) ?? []).Select(column => column.Name).ToArray();
+                var insertColumns = string.Join(", ", columns.Select(Q));
+                var selectColumns = string.Join(", ", columns.Select(column =>
+                    string.Equals(column, "StationSchemeID", StringComparison.OrdinalIgnoreCase)
+                        ? "@targetSchemeId" : Q(column)));
+                database.ExecuteNonQuery(
+                    $"INSERT INTO {Q(table)} ({insertColumns}) SELECT {selectColumns} FROM {Q(table)} " +
+                    "WHERE InstanceID = @scopeId AND StationSchemeID = @sourceSchemeId",
+                    new { scopeId, sourceSchemeId, targetSchemeId });
+
+                if (table is "operationprocesstemplate" or "trainprocesssnapshot")
+                {
+                    foreach (var row in database.Query<CopyDocumentRow>(
+                                 $"SELECT DISTINCT Document FROM {Q(table)} " +
+                                 "WHERE InstanceID = @scopeId AND StationSchemeID = @targetSchemeId",
+                                 new { scopeId, targetSchemeId }) ?? [])
+                    {
+                        var document = JsonNode.Parse(row.Document)
+                            ?? throw new InvalidDataException("Stored process document is empty.");
+                        RewriteSchemeScope(document, targetSchemeId);
+                        database.ExecuteNonQuery(
+                            $"UPDATE {Q(table)} SET Document = @document " +
+                            "WHERE InstanceID = @scopeId AND StationSchemeID = @targetSchemeId AND Document = @original",
+                            new { scopeId, targetSchemeId, document = document.ToJsonString(), original = row.Document });
+                    }
+                }
+            }
+            cancellationToken.ThrowIfCancellationRequested();
+            database.Commit();
+            return Task.FromResult(true);
+        }
+        catch
+        {
+            database.Rollback();
+            throw;
+        }
+    }
+
+    private static void RewriteSchemeScope(JsonNode node, string schemeId)
+    {
+        if (node is JsonObject obj)
+        {
+            foreach (var key in obj.Select(property => property.Key).ToArray())
+            {
+                if (string.Equals(key, "StationSchemeID", StringComparison.OrdinalIgnoreCase))
+                    obj[key] = schemeId;
+                else if (obj[key] is { } child)
+                    RewriteSchemeScope(child, schemeId);
+            }
+        }
+        else if (node is JsonArray array)
+        {
+            foreach (var child in array)
+                if (child is not null) RewriteSchemeScope(child, schemeId);
+        }
+    }
+
+    private sealed class ColumnRow { public string Name { get; set; } = string.Empty; }
+    private sealed class CopyDocumentRow { public string Document { get; set; } = string.Empty; }
 
     public Task<bool> RenameSchemeAsync(
         string scopeId,

@@ -56,6 +56,16 @@ public static class StationLayoutEndpointExtensions
                     cancellationToken));
             }));
 
+        group.MapPost("/CopyStationScheme", (HttpContext context, IStationLayoutService service) =>
+            ExecuteAsync(context, async cancellationToken =>
+            {
+                var request = await ReadJsonAsync<StationSchemeCopyRequest>(context, cancellationToken);
+                return Results.Json(await service.CopyStationSchemeAsync(
+                    context.User,
+                    request,
+                    cancellationToken));
+            }));
+
         group.MapPut("/EditStationScheme", (HttpContext context, IStationLayoutService service) =>
             ExecuteAsync(context, async cancellationToken =>
             {

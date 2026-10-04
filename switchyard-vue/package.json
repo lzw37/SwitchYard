@@ -15,7 +15,8 @@
         "preview": "vite preview",
         "preview:prod": "vite preview --mode production",
         "build-only": "vite build",
-        "type-check": "vue-tsc --build"
+        "type-check": "vue-tsc --build",
+        "check:i18n": "node checks/i18n.mjs"
     },
     "dependencies": {
         "@element-plus/icons-vue": "^2.3.2",

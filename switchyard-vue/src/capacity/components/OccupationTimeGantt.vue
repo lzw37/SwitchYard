@@ -31,6 +31,8 @@ import { getTrackOccupancyGanttTimeScale, trackOccupancyGanttMetrics, type Track
 interface GanttCell {
     id: string
     name: string
+    kind?: 'track' | 'cell'
+    trackNames?: string[]
 }
 
 interface GanttTime {
@@ -43,6 +45,8 @@ interface GanttRow {
     key: string
     cellID: string
     cellName: string
+    kind?: 'track' | 'cell'
+    trackNames?: string[]
     timeIndex: number
     start: number | null
     end: number | null
@@ -112,12 +116,12 @@ let previousBodyUserSelect = ''
 
 const rows = computed<GanttRow[]>(() => {
     const usedTimeIndexes = new Set<number>()
-    const sourceCells = props.cells.length > 0
+    const sourceCells: GanttCell[] = props.cells.length > 0
         ? props.cells
         : props.times.map((time) => ({ id: time.cellID, name: time.cellID }))
 
     return sourceCells
-        .map((cell, rowIndex) => {
+        .map((cell, rowIndex): GanttRow | null => {
             const cellID = String(cell.id || '').trim()
             if (!cellID) return null
             const timeIndex = findTimeIndex(cellID, rowIndex, usedTimeIndexes)
@@ -129,6 +133,8 @@ const rows = computed<GanttRow[]>(() => {
                 key: `${cellID}-${rowIndex}`,
                 cellID,
                 cellName: String(cell.name || cellID),
+                kind: cell.kind,
+                trackNames: cell.trackNames,
                 timeIndex,
                 start,
                 end,
@@ -176,6 +182,8 @@ const ticks = computed(() => {
 const displayRows = computed<TrackOccupancyGanttRow[]>(() => rows.value.map((row) => ({
     key: row.key,
     label: row.cellName,
+    kind: row.kind || 'cell',
+    trackNames: row.trackNames,
     blocks: row.hasBar && row.start !== null && row.end !== null ? [{
         key: row.key,
         left: timeToX(Math.min(row.start, row.end)),

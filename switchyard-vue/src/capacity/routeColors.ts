@@ -3,6 +3,7 @@ export const routeHighlightColors = {
     departure: '#2563eb',
     locomotive: '#16a34a',
     shunting: '#facc15',
+    dwelling: '#a855f7',
 } as const
 
 export function getStationRouteHighlightColor(type: string): string {
@@ -15,6 +16,9 @@ export function getStationRouteHighlightColor(type: string): string {
     }
     if (['locomotive', '机车出入段', '机车出入段进路', '机车走行'].includes(normalizedType)) {
         return routeHighlightColors.locomotive
+    }
+    if (['dwelling', '停留', '停留进路'].includes(normalizedType)) {
+        return routeHighlightColors.dwelling
     }
     return routeHighlightColors.shunting
 }

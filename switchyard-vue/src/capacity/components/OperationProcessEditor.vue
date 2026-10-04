@@ -203,11 +203,12 @@ import { useI18n } from 'vue-i18n'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Edit, Refresh, CirclePlus, Check, Close, Connection, Delete, DocumentCopy, List, Location, Plus, ZoomIn, ZoomOut } from '@element-plus/icons-vue'
-import { activityLabels, activityTypes, api, createEmptyTemplate, createExampleTemplate, demoCatalog, deriveEventNodeLists, dwellingTrackNames, getPrecedenceEndCandidates, getPrecedenceStartCandidates, makeID, namedTracks, reconcileDwellingTracks, removeActivity, removeAnchor, removeEvent, renameActivity, syncEventNodeLists, validateTemplate, type ActivityType, type PrecedenceEndpoint, type ProcessActivity, type ProcessCatalog, type ProcessEvent, type ProcessScope, type ProcessTemplate } from '../operationProcess'
+import { activityLabels, activityTypes, api, createEmptyTemplate, createExampleTemplate, createDemoCatalog, deriveEventNodeLists, dwellingTrackNames, getPrecedenceEndCandidates, getPrecedenceStartCandidates, makeID, namedTracks, reconcileDwellingTracks, removeActivity, removeAnchor, removeEvent, renameActivity, syncEventNodeLists, validateTemplate, type ActivityType, type PrecedenceEndpoint, type ProcessActivity, type ProcessCatalog, type ProcessEvent, type ProcessScope, type ProcessTemplate, type ProcessTranslate } from '../operationProcess'
 
 const inspectorWidth = ref(300)
 const objectListWidth = ref(360)
-const { locale } = useI18n()
+const { locale, t } = useI18n()
+const translateProcess: ProcessTranslate = (key, parameters) => parameters ? t(key, parameters) : t(key)
 function ui(zh: string, en: string) { return locale.value.startsWith('en') ? en : zh }
 function activityLabel(type: ActivityType) { return ui(activityLabels[type], type === 'Locomotive' ? 'Locomotive' : type) }
 
@@ -456,8 +457,8 @@ async function loadScope() {
     selection.value = current.value ? { kind: 'template', id: current.value.id } : null
     if (!hasScope.value) { loading.value = false; return }
     if (props.preview) {
-        catalog.value = clone(demoCatalog)
-        if (!current.value) { const example = createExampleTemplate(capturedScope, catalog.value); templates.value = [example]; current.value = templates.value[0] || null; selection.value = { kind: 'template', id: example.id } }
+        catalog.value = createDemoCatalog(translateProcess)
+        if (!current.value) { const example = createExampleTemplate(capturedScope, catalog.value, translateProcess); templates.value = [example]; current.value = templates.value[0] || null; selection.value = { kind: 'template', id: example.id } }
         loading.value = false
         return
     }
@@ -479,8 +480,8 @@ async function loadScope() {
     } catch (error) { if (epoch === requestEpoch) loadError.value = errorMessage(error, ui('加载作业编排模板失败，请稍后重试。', 'Could not load operation templates. Try again.')) }
     finally { if (epoch === requestEpoch) loading.value = false }
 }
-function newTemplate() { if (busy.value) return; const item = createEmptyTemplate(scope.value); templates.value.push(item); selectTemplate(item.id) }
-function loadExample() { if (busy.value) return; const item = createExampleTemplate(scope.value, catalog.value); item.name = `${item.name} ${templates.value.filter(template => template.name.startsWith(item.name)).length + 1}`; templates.value.push(item); selectTemplate(item.id); ElMessage.success(ui('测试案例已载入为新草稿，可点击图形查看或修改。', 'Example loaded as a new draft.')) }
+function newTemplate() { if (busy.value) return; const item = createEmptyTemplate(scope.value, translateProcess); templates.value.push(item); selectTemplate(item.id) }
+function loadExample() { if (busy.value) return; const item = createExampleTemplate(scope.value, catalog.value, translateProcess); item.name = `${item.name} ${templates.value.filter(template => template.name.startsWith(item.name)).length + 1}`; templates.value.push(item); selectTemplate(item.id); ElMessage.success(ui('测试案例已载入为新草稿，可点击图形查看或修改。', 'Example loaded as a new draft.')) }
 function errorMessage(error: unknown, fallback: string) {
     const value = error as { response?: { data?: { message?: string; errors?: string[] | Record<string, string[]> } }; message?: string }
     const errors = value?.response?.data?.errors
@@ -557,7 +558,7 @@ async function deleteTemplate() {
 
 function makeEvent(name: string): ProcessEvent { return { id: makeID('event'), name, time: null, nodeID: null, nodeList: [], anchorList: [], selectedAnchor: null } }
 function changeActivityName(name: string) {
-    if (current.value && selectedActivity.value && !busy.value) renameActivity(current.value, selectedActivity.value.id, name)
+    if (current.value && selectedActivity.value && !busy.value) renameActivity(current.value, selectedActivity.value.id, name, translateProcess)
 }
 function addActivity(type: ActivityType) {
     const model = current.value

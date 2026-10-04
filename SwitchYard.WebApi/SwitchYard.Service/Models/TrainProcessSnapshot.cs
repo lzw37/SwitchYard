@@ -22,6 +22,14 @@ public sealed class GenerateTrainOperationPlanFromProcessRequest
     public string? ProcessTemplateID { get; set; }
     public int? Revision { get; set; }
     public int TrainCount { get; set; }
+    public List<ProcessPlanGenerationItem>? Processes { get; set; }
     public string? StartTime { get; set; }
     public string? EndTime { get; set; }
+}
+
+public sealed class ProcessPlanGenerationItem
+{
+    public string? ProcessTemplateID { get; set; }
+    public int? Revision { get; set; }
+    public int TrainCount { get; set; }
 }

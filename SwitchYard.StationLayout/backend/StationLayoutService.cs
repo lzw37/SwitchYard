@@ -20,6 +20,11 @@ public interface IStationLayoutService
         StationSchemeUpdateRequest request,
         CancellationToken cancellationToken = default);
 
+    Task<StationSchemeDto> CopyStationSchemeAsync(
+        ClaimsPrincipal user,
+        StationSchemeCopyRequest request,
+        CancellationToken cancellationToken = default);
+
     Task DeleteStationSchemeAsync(
         ClaimsPrincipal user,
         string scopeId,
@@ -114,6 +119,39 @@ public sealed class StationLayoutService : IStationLayoutService
 
         throw new StationLayoutConflictException(
             "Could not allocate a unique station scheme ID.");
+    }
+
+    public async Task<StationSchemeDto> CopyStationSchemeAsync(
+        ClaimsPrincipal user,
+        StationSchemeCopyRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var scopeId = RequireId(request.InstanceID, "instanceID");
+        var sourceSchemeId = RequireId(request.SourceStationSchemeID, "sourceStationSchemeID");
+        await AuthorizeScopeAsync(user, scopeId, StationLayoutPermission.ManageSchemes, cancellationToken);
+        var source = (await _repository.ListSchemesAsync(scopeId, cancellationToken))
+            .FirstOrDefault(item => string.Equals(item.SchemeId, sourceSchemeId, StringComparison.Ordinal));
+        if (source is null)
+        {
+            throw new StationLayoutNotFoundException($"Station scheme '{sourceSchemeId}' was not found.");
+        }
+
+        var defaultName = source.Name + " 副本";
+        if (defaultName.Length > _options.MaximumSchemeNameLength)
+            defaultName = defaultName[.._options.MaximumSchemeNameLength];
+        var name = NormalizeName(request.Name, defaultName);
+        for (var attempt = 0; attempt < MaximumSchemeCreateAttempts; attempt++)
+        {
+            var schemeId = RequireId(_idGenerator.NextId(), "generated stationSchemeID");
+            var target = new StationSchemeRecord(scopeId, schemeId, name);
+            if (await _repository.TryCopySchemeAsync(sourceSchemeId, target, cancellationToken))
+            {
+                return new StationSchemeDto(schemeId, name);
+            }
+        }
+
+        throw new StationLayoutConflictException("Could not allocate a unique station scheme ID.");
     }
 
     public async Task<StationSchemeDto> EditStationSchemeAsync(

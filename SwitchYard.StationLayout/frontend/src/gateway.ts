@@ -99,6 +99,11 @@ export interface ExtractDwgFileResult {
 export interface StationLayoutGateway {
   getStationSchemes(request: { instanceId: string }): Promise<StationScheme[]>;
   createStationScheme(request: { instanceId: string; name: string }): Promise<StationScheme>;
+  copyStationScheme(request: {
+    instanceId: string;
+    sourceStationSchemeId: string;
+    name: string;
+  }): Promise<StationScheme>;
   editStationScheme(request: {
     instanceId: string;
     originalId: string;

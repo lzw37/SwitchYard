@@ -3,15 +3,16 @@ import type { StationPlanSegmentEdit } from './stationPlanView.ts'
 
 interface MovementIdentity { trainID: string; movementID: string }
 type SaveMovements<T> = (expected: T[], desired: T[]) => Promise<T[]>
+type StationPlanActionKind = StationPlanSegmentEdit['mode'] | 'track' | 'dwelling'
 
-/** Snapshot the complete affected batch so route choices and raw times are replayed exactly. */
+/** Keep server-returned movement snapshots for concurrency checks when undoing or redoing plan edits. */
 export class StationPlanMovementAction<T extends MovementIdentity> implements Action {
-    readonly kind: StationPlanSegmentEdit['mode']
+    readonly kind: StationPlanActionKind
     private before: T[]
     private after: T[]
     private save: SaveMovements<T>
 
-    constructor(kind: StationPlanSegmentEdit['mode'], before: T[], after: T[], save: SaveMovements<T>) {
+    constructor(kind: StationPlanActionKind, before: T[], after: T[], save: SaveMovements<T>) {
         this.kind = kind
         this.before = before.map(row => ({ ...row }))
         this.after = after.map(row => ({ ...row }))

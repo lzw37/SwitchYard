@@ -21,6 +21,13 @@ public sealed class StationSchemeUpdateRequest
     public string? Name { get; set; }
 }
 
+public sealed class StationSchemeCopyRequest
+{
+    public string InstanceID { get; set; } = string.Empty;
+    public string SourceStationSchemeID { get; set; } = string.Empty;
+    public string? Name { get; set; }
+}
+
 public sealed class StationRouteSearchRequest
 {
     public string? InstanceID { get; set; }

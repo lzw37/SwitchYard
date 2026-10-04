@@ -21,6 +21,39 @@
     paint-order: stroke fill;
 }
 
+.inline-rename {
+    overflow: visible;
+}
+
+.inline-rename-content {
+    font: 13px Arial, "Microsoft YaHei", sans-serif;
+}
+
+.inline-rename-input {
+    box-sizing: border-box;
+    width: 100%;
+    height: 32px;
+    padding: 4px 8px;
+    color: #172033;
+    background: #fff;
+    border: 2px solid #409eff;
+    border-radius: 4px;
+    outline: none;
+    box-shadow: 0 2px 8px #0004;
+    font: inherit;
+    user-select: text;
+    -webkit-user-select: text;
+}
+
+.inline-rename-hint {
+    padding: 3px 4px;
+    color: #f1f5f9;
+    background: #172033;
+    border-radius: 0 0 4px 4px;
+    font-size: 11px;
+    white-space: nowrap;
+}
+
 .griddot {
     fill: #858d9a;
 }

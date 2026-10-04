@@ -333,6 +333,7 @@ public sealed class OperationProcessController : ControllerBase
         "departure" or "发车" or "发车进路" => "Departure",
         "shunting" or "调车" or "调车进路" => "Shunting",
         "locomotive" or "机车出入段" or "机车出入段进路" or "机车走行" => "Locomotive",
+        "dwelling" or "停留" or "停留进路" => "Dwelling",
         _ => value?.Trim() ?? ""
     };
 

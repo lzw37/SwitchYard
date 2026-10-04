@@ -5,7 +5,7 @@
 `SwitchYard.StationLayout` is the single reusable station-layout module shared by
 SwitchYard and offline NSTD deployments. It contains the compatible document and
 HTTP contracts, layout validation, route search, DWG extraction, application
-service, and the eight legacy-compatible endpoint mappings.
+service, and the nine legacy-compatible endpoint mappings.
 
 The module lives at the repository root beside `switchyard-vue`; it is deliberately
 kept outside the backend-only `SwitchYard.WebApi` directory. Its source is split by

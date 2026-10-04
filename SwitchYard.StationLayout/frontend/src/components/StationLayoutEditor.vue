@@ -1,4 +1,5 @@
 <script setup>
+import { createStationLayoutTranslator } from "../messages";
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import {
     DEFAULT_BUFFER_STOP_DIRECTION,
@@ -9,7 +10,11 @@ import {
 } from "../assets/stationLayoutBufferStopStyles";
 import { DEFAULT_SIGNAL_TYPE, getSignalStyleAsset, normalizeSignalType } from "../assets/stationLayoutSignalStyles";
 
+const fallbackTranslate = createStationLayoutTranslator("zh");
+const t = (key, parameters) => props.translate?.(key, parameters) ?? fallbackTranslate(key, parameters);
+
 const props = defineProps({
+    translate: { type: Function, default: null },
     width: { type: Number, default: 1920 },
     height: { type: Number, default: 1080 },
     displayScaleX: { type: Number, default: 1 },
@@ -39,11 +44,15 @@ const emit = defineEmits([
     "selected-equipment-change",
     "route-node-pick",
     "cell-name-click",
+    "cell-rename",
     "delete-selection-request",
     "topology-rebuilt",
 ]);
 
 const svgRef = ref(null);
+const inlineRename = ref(null);
+const inlineRenameInputRef = ref(null);
+const inlineRenameContainerRef = ref(null);
 const defaultEditorDisplayStyles = {
     switchName: { fontSize: 8, fontFamily: "Arial", fontWeight: "normal", fontStyle: "normal", color: "#ffffff" },
     platformName: { fontSize: 10, fontFamily: "Arial", fontWeight: "normal", fontStyle: "normal", color: "#ffffff" },
@@ -1263,6 +1272,99 @@ function emitCellNameClick(cellName) {
     });
 }
 
+function getInlineRenameTarget(kind, id) {
+    if (kind === "cell") return props.cells.find((cell) => String(getCellId(cell)) === String(id)) || null;
+    if (kind === "annotation") return getAnnotationById(id);
+    if (!["link", "signal", "switch", "platform"].includes(kind)) return null;
+    return getEquipmentById(kind, id);
+}
+
+function inlineRenameValue(kind, target) {
+    return String(kind === "annotation" ? target.text ?? "" : target.name ?? target.Name ?? "");
+}
+
+function canInlineRename() {
+    return !props.readonly && editModeCode.value === 0 && !props.routePickTarget;
+}
+
+function beginInlineRename(event, kind, id) {
+    if (!canInlineRename() || (event.button != null && event.button !== 0)) return;
+    const target = getInlineRenameTarget(kind, id);
+    if (!target) return;
+    event.preventDefault();
+    event.stopPropagation();
+    cancelInlineRename();
+    cancelSelectionBox();
+    finishAnchorInteraction();
+    finishNodeInteraction();
+    finishAnnotationInteraction();
+    if (kind !== "cell") selectElement(kind, id);
+
+    // The input uses SVG screen coordinates, so zooming and scrolling do not
+    // change its text size. Keep it within the currently visible canvas area.
+    const rect = svgRef.value?.getBoundingClientRect();
+    const frame = svgRef.value?.parentElement?.getBoundingClientRect();
+    const left = Math.max(0, (frame?.left ?? rect?.left ?? 0) - (rect?.left ?? 0));
+    const top = Math.max(0, (frame?.top ?? rect?.top ?? 0) - (rect?.top ?? 0));
+    const right = Math.min(svgScreenWidth.value, (frame?.right ?? rect?.right ?? svgScreenWidth.value) - (rect?.left ?? 0));
+    const bottom = Math.min(svgScreenHeight.value, (frame?.bottom ?? rect?.bottom ?? svgScreenHeight.value) - (rect?.top ?? 0));
+    const width = Math.min(240, Math.max(80, right - left - 12));
+    const originalValue = inlineRenameValue(kind, target);
+    inlineRename.value = {
+        kind, id, originalValue, value: originalValue, width,
+        x: Math.max(left + 6, Math.min(event.clientX - (rect?.left ?? 0), right - width - 6)),
+        y: Math.max(top + 6, Math.min(event.clientY - (rect?.top ?? 0) - 16, bottom - 58)),
+    };
+    const session = inlineRename.value;
+    nextTick(() => {
+        if (inlineRename.value !== session) return;
+        inlineRenameInputRef.value?.focus({ preventScroll: true });
+        inlineRenameInputRef.value?.select();
+    });
+}
+
+function cancelInlineRename() {
+    inlineRename.value = null;
+}
+
+function commitInlineRename() {
+    const editing = inlineRename.value;
+    if (!editing) return;
+    // Vue defers v-model updates during IME composition. An outside mousedown
+    // can precede compositionend, so keep the text already visible in the input.
+    const inputValue = inlineRenameInputRef.value?.value ?? editing.value;
+    cancelInlineRename();
+    if (!canInlineRename()) return;
+    const target = getInlineRenameTarget(editing.kind, editing.id);
+    if (!target || inlineRenameValue(editing.kind, target) !== editing.originalValue) return;
+    let value = editing.kind === "annotation" ? inputValue : inputValue.trim();
+    if (["signal", "switch", "platform"].includes(editing.kind)) value ||= String(target.id);
+    if (value === editing.originalValue) return;
+    if (editing.kind === "cell") {
+        // Cells belong to the host; it also owns the selected Cell form and saving.
+        emit("cell-rename", { id: editing.id, name: value });
+    } else if (editing.kind === "annotation") {
+        executeMutation(() => { target.text = value; });
+        emitSelectedAnnotationChange();
+    } else {
+        updateSelectedEquipment(editing.kind, editing.id, { name: value });
+    }
+}
+
+function handleInlineRenameKeydown(event) {
+    event.stopPropagation();
+    if (event.isComposing || event.keyCode === 229) return;
+    if (event.key !== "Enter" && event.key !== "Escape") return;
+    event.preventDefault();
+    if (event.key === "Enter") commitInlineRename();
+    else cancelInlineRename();
+    svgRef.value?.focus({ preventScroll: true });
+}
+
+function handleInlineRenameOutside(event) {
+    if (inlineRename.value && !inlineRenameContainerRef.value?.contains(event.target)) commitInlineRename();
+}
+
 function cloneState() {
     return JSON.parse(
         JSON.stringify({
@@ -1290,6 +1392,7 @@ function cloneState() {
 }
 
 function applyState(state) {
+    cancelInlineRename();
     latestElementID.value = state.latestElementID;
     tracks.value = state.tracks || [];
     curves.value = (state.curves || []).map((curve) => normalizeCurve(curve));
@@ -1507,6 +1610,7 @@ function clearTemporaryDrawingState() {
 }
 
 function setEditMode(code) {
+    cancelInlineRename();
     clearHoveredElement();
     const nextEditModeCode = props.readonly ? 0 : Number(code);
     if (nextEditModeCode !== 1 || editModeCode.value !== 1) {
@@ -3310,6 +3414,7 @@ function buildJsonData() {
 }
 
 function clearElements() {
+    cancelInlineRename();
     layoutMetadata.value = {};
     tracks.value = [];
     curves.value = [];
@@ -3486,7 +3591,8 @@ function updateSelectedEquipmentBatch(kind, ids, patch) {
 }
 
 function applyEquipmentPatch(kind, target, patch, options = {}) {
-    const allowIdUpdate = options.allowIdUpdate !== false;
+    const allowIdUpdate = !["signal", "switch", "insulationJoint", "bufferStop"].includes(kind)
+        && options.allowIdUpdate !== false;
     const previousId = target.id;
     const previousLinkState = kind === "link"
         ? {
@@ -3627,11 +3733,11 @@ function getBindingCorrectionEquipmentCollection(kind) {
 }
 
 function getBindingCorrectionKindLabel(kind) {
-    if (kind === "signal") return "信号机";
-    if (kind === "insulationJoint") return "钢轨绝缘";
-    if (kind === "bufferStop") return "车挡";
-    if (kind === "switch") return "道岔";
-    return "设备";
+    if (kind === "signal") return t('stationLayout.draw.signal');
+    if (kind === "insulationJoint") return t('stationLayout.draw.insulation');
+    if (kind === "bufferStop") return t('stationLayout.draw.buffer');
+    if (kind === "switch") return t('stationLayout.draw.switch');
+    return t('stationLayout.equipment.generic');
 }
 
 function getEquipmentBindingNodeCorrectionPlan() {
@@ -4222,6 +4328,7 @@ function onAnchorInteractionWindowMouseUp(event) {
 }
 
 function onMouseMove(event) {
+    if (inlineRename.value) return;
     updateCursorPosition(event.clientX, event.clientY);
     svgRef.value?.focus({ preventScroll: true });
     const x = cursorParam.value.x;
@@ -4292,11 +4399,17 @@ function onMouseUp(event) {
 }
 
 function onKeydown(event) {
+    if (inlineRename.value || event.target?.closest?.("input, textarea, [contenteditable='true']")) return;
     if (event.key === "Delete") {
         event.preventDefault();
         emit("delete-selection-request");
     }
     if (event.key === "Escape") {
+        event.preventDefault();
+        if (isDrawingMode.value) {
+            clearTemporaryDrawingState();
+            setDrawingObject(drawingObject.value);
+        }
         cancelSelectionBox();
         finishNodeInteraction();
         finishAnnotationInteraction();
@@ -5076,7 +5189,10 @@ watch(() => props.readonly, (readonly) => {
     }
 });
 
+watch(() => [props.routePickTarget, props.editorState, props.displayScaleX, props.displayScaleY], cancelInlineRename);
+
 onBeforeUnmount(() => {
+    cancelInlineRename();
     removeSelectionBoxWindowListeners();
     removeAnchorInteractionWindowListeners();
     removeNodeInteractionWindowListeners();
@@ -5135,6 +5251,7 @@ defineExpose({
 
 <template>
     <svg id="layout-editor-svg" ref="svgRef" tabindex="0" :width="svgScreenWidth" :height="svgScreenHeight"
+        @mousedown.capture="handleInlineRenameOutside"
         :style="svgStyle" @mousemove="onMouseMove" @mousedown="onMouseDown" @mouseup="onMouseUp"
         @mouseleave="clearHoveredElement()" @keydown="onKeydown" @selectstart.prevent @dragstart.prevent>
         <g id="grid">
@@ -5149,13 +5266,15 @@ defineExpose({
                 :style="trackDisplayStyle(segment.line)"
                 @mouseenter="setHoveredElement('link', segment.line.id)"
                 @mouseleave="clearHoveredElement('link', segment.line.id)"
-                @mousedown.stop @click.stop="handleLineClick($event, segment.line.id)" />
+                @mousedown.stop @click.stop="handleLineClick($event, segment.line.id)"
+                @dblclick.stop.prevent="beginInlineRename($event, 'link', segment.line.id)" />
             <text v-for="lineName in lineNameViews" v-show="getLineName(lineName.line)" :key="`line-name-${lineName.id}`"
                 class="trackname" :class="{ 'name-selected': isLineHighlighted(lineName.line.id) }"
                 :style="textDisplayStyle('lineName', isLineHighlighted(lineName.line.id), elementHighlightColor('link', lineName.line.id))" :x="screenX(lineName.x)"
                 :y="screenY(lineName.y)" @mouseenter="setHoveredElement('link', lineName.line.id)"
                 @mouseleave="clearHoveredElement('link', lineName.line.id)"
-                @mousedown.stop @click.stop="handleLineClick($event, lineName.line.id)">
+                @mousedown.stop @click.stop="handleLineClick($event, lineName.line.id)"
+                @dblclick.stop.prevent="beginInlineRename($event, 'link', lineName.line.id)">
                 {{ getLineName(lineName.line) }}
             </text>
 
@@ -5223,7 +5342,8 @@ defineExpose({
                 :x="screenX(cellName.x)" :y="screenY(cellName.y)"
                 @mouseenter="setHoveredElement('cellName', cellName.key)"
                 @mouseleave="clearHoveredElement('cellName', cellName.key)"
-                @mousedown.stop.prevent @click.stop.prevent="emitCellNameClick(cellName)">
+                @mousedown.stop.prevent @click.stop.prevent="emitCellNameClick(cellName)"
+                @dblclick.stop.prevent="beginInlineRename($event, 'cell', cellName.id)">
                 {{ cellName.name }}
             </text>
         </g>
@@ -5234,7 +5354,8 @@ defineExpose({
                 :transform="signalTransform(signal)" :style="elementHighlightStyle('signal', signal.id)"
                 @mouseenter="setHoveredElement('signal', signal.id)"
                 @mouseleave="clearHoveredElement('signal', signal.id)"
-                @mousedown="handleSignalClick($event, signal.id)">
+                @mousedown="handleSignalClick($event, signal.id)"
+                @dblclick.stop.prevent="beginInlineRename($event, 'signal', signal.id)">
                 <component :is="element.tag" v-for="(element, index) in signalStyleElements(signal)"
                     :key="`signal-element-${signal.id}-${index}`" v-bind="element.attrs" />
             </g>
@@ -5246,7 +5367,8 @@ defineExpose({
                 dominant-baseline="middle"
                 @mouseenter="setHoveredElement('signal', signal.id)"
                 @mouseleave="clearHoveredElement('signal', signal.id)"
-                @mousedown="handleSignalClick($event, signal.id)">
+                @mousedown="handleSignalClick($event, signal.id)"
+                @dblclick.stop.prevent="beginInlineRename($event, 'signal', signal.id)">
                 {{ getEquipmentDisplayName(signal, "SIGNAL") }}
             </text>
 
@@ -5310,7 +5432,8 @@ defineExpose({
                 :class="{ 'switch-selected': isSwitchHighlighted(sw.id) }" :transform="switchTransform(sw)"
                 @mouseenter="setHoveredElement('switch', sw.id)"
                 @mouseleave="clearHoveredElement('switch', sw.id)"
-                @mousedown="handleSwitchClick($event, sw.id)">
+                @mousedown="handleSwitchClick($event, sw.id)"
+                @dblclick.stop.prevent="beginInlineRename($event, 'switch', sw.id)">
                 <line v-for="(lineVec, idx) in sw.branchVectorList" :key="`sw-line-${sw.id}-${idx}`"
                     class="switchbranch" :x1="switchBranch(sw, lineVec).x1" :y1="switchBranch(sw, lineVec).y1"
                     :x2="switchBranch(sw, lineVec).x2" :y2="switchBranch(sw, lineVec).y2"
@@ -5327,7 +5450,8 @@ defineExpose({
                 :class="{ 'platform-selected': isPlatformHighlighted(platform.id) }"
                 @mouseenter="setHoveredElement('platform', platform.id)"
                 @mouseleave="clearHoveredElement('platform', platform.id)"
-                @mousedown="handlePlatformClick($event, platform.id)">
+                @mousedown="handlePlatformClick($event, platform.id)"
+                @dblclick.stop.prevent="beginInlineRename($event, 'platform', platform.id)">
                 <rect :x="screenX(platform.x)" :y="screenY(platform.y)" :width="screenDeltaX(platform.width)"
                     :height="screenDeltaY(platform.height)" :style="platformLineDisplayStyle(platform.id)" />
                 <text class="platformname" :x="screenCenterX(platform.x, platform.width)"
@@ -5351,12 +5475,14 @@ defineExpose({
                 @mouseleave="clearHoveredElement('annotation', annotation.id)"
                 @mousedown="handleAnnotationClick($event, annotation.id)">
                 <text class="annotation-text" x="0" y="0" :font-family="annotation.fontFamily"
+                    @dblclick.stop.prevent="beginInlineRename($event, 'annotation', annotation.id)"
                     :font-size="annotation.fontSize" :font-weight="annotation.fontWeight" :font-style="annotation.fontStyle"
                     :class="{ 'name-selected': isAnnotationHighlighted(annotation.id) }"
                     :fill="elementHighlightColor('annotation', annotation.id) || annotation.textColor">
                     {{ annotation.text }}
                 </text>
-                <circle v-if="shouldShowAnnotationControls(annotation)" class="annotation-text-anchor" cx="0" cy="0"
+                <circle v-if="shouldShowAnnotationControls(annotation)" class="annotation-text-anchor" cx="0"
+                    :cy="Math.max(8, toFiniteNumber(annotation.fontSize)) / 2 + annotationTextAnchorRadius + 4"
                     :r="annotationTextAnchorRadius" @mousedown="beginAnnotationTextMove($event, annotation.id)" />
             </g>
         </g>
@@ -5366,7 +5492,7 @@ defineExpose({
                 :y="selectionBoxView.y" :width="selectionBoxView.width" :height="selectionBoxView.height" />
             <g v-if="isDrawingMode && drawingObject === 's'" class="drawing-hint signal-direction-hint">
                 <rect x="12" y="12" width="245" height="28" rx="4" />
-                <text x="24" y="31">方向: 按 w / e / s / d 设置</text>
+                <text x="24" y="31">{{ t('stationLayout.editor.equipment.directionHint') }}</text>
             </g>
             <template v-if="isDrawingMode">
                 <rect class="cursor" :x="screenX(cursorParam.x) - cursorParam.size / 2"
@@ -5387,6 +5513,17 @@ defineExpose({
                 </g>
             </template>
         </g>
+        <foreignObject v-if="inlineRename" ref="inlineRenameContainerRef" class="inline-rename"
+            :x="inlineRename.x" :y="inlineRename.y" :width="inlineRename.width" height="54"
+            @mousedown.stop @mousemove.stop @mouseup.stop @click.stop @dblclick.stop
+            @selectstart.stop @dragstart.stop>
+            <div xmlns="http://www.w3.org/1999/xhtml" class="inline-rename-content">
+                <input ref="inlineRenameInputRef" v-model="inlineRename.value" class="inline-rename-input"
+                    :aria-label="t('stationLayout.editor.rename.label')" :title="t('stationLayout.editor.rename.hint')"
+                    @keydown="handleInlineRenameKeydown" @blur="commitInlineRename" />
+                <div class="inline-rename-hint">{{ t('stationLayout.editor.rename.hint') }}</div>
+            </div>
+        </foreignObject>
     </svg>
 </template>
 

@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using SwitchYard.Capacity;
+using SwitchYard.Service.Services;
 using System.Text.Json;
 
 namespace SwitchYard.Service.Controllers;
@@ -49,16 +50,22 @@ public partial class OperationPlanController
                     WHERE InstanceID=@InstanceID AND StationSchemeID=@StationSchemeID AND OperationPlanID=@OperationPlanID
                       AND TrainID=@TrainID AND MovementID=@MovementID{lockSuffix}", item.Updated)?.SingleOrDefault();
                 if (current is null) { db.Rollback(); inTransaction = false; return NotFound("Movement not found."); }
+                current.CellOccupations = MovementCellOccupations.Read(current.CellOccupationsJson);
                 var normalized = NormalizeMovementRowRequest(current, false, limitOccupationOffsets: false).Movement!;
                 // The UI represents an absent override document as an empty string.
                 normalized.CellOccupationOverridesJson ??= "{}";
                 item.Original.CellOccupationOverridesJson ??= "{}";
+                // Compatibility: an older client has no absolute occupation array to compare.
+                if (item.Original.CellOccupations is null) normalized.CellOccupations = null;
+                if (string.IsNullOrEmpty(item.Original.StartNodeID)) normalized.StartNodeID = string.Empty;
+                if (string.IsNullOrEmpty(item.Original.EndNodeID)) normalized.EndNodeID = string.Empty;
                 if (JsonSerializer.Serialize(normalized) != JsonSerializer.Serialize(item.Original))
                 { db.Rollback(); inTransaction = false; return Conflict("The plan has changed. Refresh before editing."); }
                 item.Updated.CellOccupationOverridesJson ??= current.CellOccupationOverridesJson;
             }
+            var occupations = new MovementCellOccupationStore(db, first.InstanceID!, first.StationSchemeID!, first.OperationPlanID!);
             foreach (var item in items)
-                if (UpdateMovement(db, item.Updated) != 1) throw new InvalidOperationException("Movement edit was not saved.");
+                if (UpdateMovement(db, item.Updated, occupations) != 1) throw new InvalidOperationException("Movement edit was not saved.");
             db.Commit();
             inTransaction = false;
             return Ok(items.Select(item => item.Updated).ToList());

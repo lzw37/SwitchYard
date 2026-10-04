@@ -1,6 +1,7 @@
 <template>
     <section class="route-design-page" v-loading="loadingData">
         <StationLayoutViewToolbar
+            display-controls-first
             v-model:density="viewToolbarDensity"
             v-model:show-grid="showLayoutGrid"
             v-model:show-nodes="showLayoutNodes"
@@ -32,24 +33,35 @@
                     </el-select>
                 </div>
             </template>
-            <template #primary>
+            <template #actions>
                 <div class="route-design-panel-toggle">
                     <ActionButton
-                        :label="t('routeDesign.toolbar.stationRoute')"
-                        :type="showStationRouteCard ? 'primary' : 'default'"
-                        :active="showStationRouteCard"
-                        @click="toggleRouteDataPanel('stationRoute')"
-                        :icon="Guide"
-                    />
-                    <ActionButton
+                        variant="text"
                         :label="t('routeDesign.toolbar.routeEnd')"
                         :type="showRouteEndCard ? 'primary' : 'default'"
                         :active="showRouteEndCard"
                         @click="toggleRouteDataPanel('routeEnd')"
                         :icon="Location"
                     />
+                    <ActionButton
+                        variant="text"
+                        :label="t('routeDesign.toolbar.stationRoute')"
+                        :type="showStationRouteCard ? 'primary' : 'default'"
+                        :active="showStationRouteCard"
+                        @click="toggleRouteDataPanel('stationRoute')"
+                        :icon="Guide"
+                    />
                 </div>
                 <ActionButton
+                    variant="text"
+                    :label="t('routeDesign.toolbar.generateDwellingRoutes')"
+                    :icon="MagicStick"
+                    :loading="generatingDwellingRoutes"
+                    :disabled="!canGenerateDwellingRoutes"
+                    @click="generateStationDwellingRoutes"
+                />
+                <ActionButton
+                    variant="text"
                     :label="t('routeDesign.toolbar.generateInterruptCells')"
                     :icon="MagicStick"
                     :loading="generatingInterruptCells"
@@ -198,7 +210,7 @@
                     v-if="showStationRouteCard"
                     v-show="!showAutoRouteGenerateCard"
                     class="station-route-card"
-                    v-loading="loadingRoutes || savingRoute || routeSearchLoading || generatingInterruptCells"
+                    v-loading="loadingRoutes || savingRoute || routeSearchLoading || generatingInterruptCells || generatingDwellingRoutes"
                 >
                     <header class="station-route-card-header">
                         <div class="station-route-title-group">
@@ -789,7 +801,9 @@
                                     <template #default="{ row }">
                                         <div class="route-list-identity">
                                             <strong :title="row.id">{{ row.id }}</strong>
-                                            <span class="route-type-badge">{{ getRouteEndTypeLabel(row.type) }}</span>
+                                            <span class="route-type-badge" :style="getRouteEndTypeBadgeStyle(row.type)">
+                                                {{ getRouteEndTypeLabel(row.type) }}
+                                            </span>
                                         </div>
                                         <div class="route-list-description" :title="[row.segmentTag, row.sidingTag].filter(Boolean).join(' / ')">
                                             {{ [row.segmentTag, row.sidingTag].filter(Boolean).join(' / ') || '—' }}
@@ -1070,6 +1084,7 @@ const loadingRoutes = ref(false)
 const savingRoute = ref(false)
 const generatingRouteDescription = ref(false)
 const generatingInterruptCells = ref(false)
+const generatingDwellingRoutes = ref(false)
 const routeSearchLoading = ref(false)
 const stationSchemeOptions = ref<StationSchemeOption[]>([])
 const layoutDisplayStyles = ref<Record<string, unknown>>({})
@@ -1159,17 +1174,30 @@ const routeEndTypeOptions: RouteEndTypeOption[] = [
     { value: 'bufferStop', labelKey: 'routeDesign.routeEnd.types.bufferStop' },
     { value: 'Others', labelKey: 'routeDesign.routeEnd.types.others' },
 ]
+const routeEndTypeBadgeStyles: Record<string, { backgroundColor: string; color: string }> = {
+    stationentrance: { backgroundColor: '#fee2e2', color: '#991b1b' },
+    stationexit: { backgroundColor: '#dbeafe', color: '#1e40af' },
+    stationentranceandexit: { backgroundColor: '#ede9fe', color: '#5b21b6' },
+    departuresignal: { backgroundColor: '#cffafe', color: '#155e75' },
+    shuntingsignal: { backgroundColor: '#fef3c7', color: '#92400e' },
+    locomotivedepot: { backgroundColor: '#dcfce7', color: '#166534' },
+    locomotivewaitingline: { backgroundColor: '#ccfbf1', color: '#115e59' },
+    bufferstop: { backgroundColor: '#fce7f3', color: '#9d174d' },
+    others: { backgroundColor: '#f1f5f9', color: '#475569' },
+}
 const routeTypeOptions = [
     'Arrival',
     'Departure',
     'Shunting',
     'Locomotive',
+    'Dwelling',
 ]
 const routeBadgeStyles: Record<string, { backgroundColor: string; color: string }> = {
     [routeHighlightColors.arrival]: { backgroundColor: '#f5e7e7', color: '#8f4e4e' },
     [routeHighlightColors.departure]: { backgroundColor: '#e8eef7', color: '#49658c' },
     [routeHighlightColors.locomotive]: { backgroundColor: '#e6f0e9', color: '#4b7158' },
     [routeHighlightColors.shunting]: { backgroundColor: '#f4efda', color: '#7b672f' },
+    [routeHighlightColors.dwelling]: { backgroundColor: '#f3e8ff', color: '#7e22ce' },
 }
 const stationRouteTypeLabelKeys: Record<string, string> = {
     arrival: 'routeDesign.stationRoute.types.arrival',
@@ -1185,6 +1213,9 @@ const stationRouteTypeLabelKeys: Record<string, string> = {
     shunting: 'routeDesign.stationRoute.types.shunting',
     '调车': 'routeDesign.stationRoute.types.shunting',
     '调车进路': 'routeDesign.stationRoute.types.shunting',
+    dwelling: 'routeDesign.stationRoute.types.dwelling',
+    '停留': 'routeDesign.stationRoute.types.dwelling',
+    '停留进路': 'routeDesign.stationRoute.types.dwelling',
 }
 const routeListFieldControls: RouteListFieldControl[] = [
     {
@@ -1320,8 +1351,9 @@ const routeEndContentStyle = computed((): Record<string, string> => {
     return { '--route-end-list-height': `${routeEndStackListHeight.value}px` }
 })
 const canLoadRoutes = computed(() => Boolean(selectedInstanceId.value && currentStationSchemeId.value.trim()))
-const canEditRoutes = computed(() => canLoadRoutes.value && !loadingData.value)
-const canGenerateInterruptCells = computed(() => canEditRoutes.value && !loadingRoutes.value && !savingRoute.value && !generatingInterruptCells.value)
+const canEditRoutes = computed(() => canLoadRoutes.value && !loadingData.value && !generatingDwellingRoutes.value)
+const canGenerateInterruptCells = computed(() => canEditRoutes.value && !loadingRoutes.value && !savingRoute.value && !generatingInterruptCells.value && !generatingDwellingRoutes.value)
+const canGenerateDwellingRoutes = computed(() => canEditRoutes.value && !loadingRoutes.value && !savingRoute.value && !routeSearchLoading.value && !generatingRouteDescription.value && !generatingInterruptCells.value && !generatingDwellingRoutes.value && !autoRouteGenerationLoading.value)
 const canLoadRouteEnds = computed(() => Boolean(selectedInstanceId.value && currentStationSchemeId.value.trim()))
 const canEditRouteEnds = computed(() => canLoadRouteEnds.value && !loadingData.value)
 const autoRoutePairCount = computed(() => autoRouteStartNodeIds.value.length * autoRouteEndNodeIds.value.length)
@@ -1447,6 +1479,8 @@ const selectedRouteCandidate = computed(() => (
     routeSearchCandidates.value.find((item) => item.index === selectedRouteCandidateIndex.value) || null
 ))
 const highlightedRoutePathNodeIds = computed(() => {
+    if (showRouteEndCard.value || showAutoRouteGenerateCard.value) return []
+
     const candidate = routeSearchDialogVisible.value ? selectedRouteCandidate.value : null
     const routeNodeIds = normalizeRouteListValues(candidate?.nodeIds || parseRouteIdText(routeForm.value.nodeList))
     if (routeNodeIds.length > 0) return routeNodeIds
@@ -1456,6 +1490,16 @@ const highlightedRoutePathNodeIds = computed(() => {
     return normalizeRouteListValues([startNodeID, endNodeID])
 })
 const highlightedRouteNodeIds = computed(() => {
+    // Hidden panels retain their form state, but must not contribute highlights.
+    if (showRouteEndCard.value) {
+        return normalizeRouteListValues([
+            routeEndForm.value.bindingNodeID || selectedRouteEnd.value?.bindingNodeID || '',
+        ])
+    }
+    if (showAutoRouteGenerateCard.value) {
+        return normalizeRouteListValues([...autoRouteStartNodeIds.value, ...autoRouteEndNodeIds.value])
+    }
+
     const ids = new Set<string>()
     for (const id of highlightedRoutePathNodeIds.value) {
         if (id) ids.add(id)
@@ -1466,17 +1510,12 @@ const highlightedRouteNodeIds = computed(() => {
     if (startNodeID) ids.add(startNodeID)
     if (endNodeID) ids.add(endNodeID)
 
-    const routeEndNodeId = routeEndForm.value.bindingNodeID || selectedRouteEnd.value?.bindingNodeID || ''
-    if (routeEndNodeId) ids.add(routeEndNodeId)
-
-    for (const id of [...autoRouteStartNodeIds.value, ...autoRouteEndNodeIds.value]) {
-        if (id) ids.add(id)
-    }
-
     return Array.from(ids)
 })
 const highlightedRouteArrowNodeIds = computed(() => highlightedRoutePathNodeIds.value)
 const highlightedRouteLinkIds = computed(() => {
+    if (showRouteEndCard.value || showAutoRouteGenerateCard.value) return []
+
     const candidate = routeSearchDialogVisible.value ? selectedRouteCandidate.value : null
     return candidate?.linkIds || parseRouteIdText(routeForm.value.linkList)
 })
@@ -1650,6 +1689,10 @@ function getRouteEndTypeLabel(type: string) {
 
     const option = routeEndTypeOptions.find((item) => item.value === normalizedType)
     return option ? t(option.labelKey) : normalizedType
+}
+
+function getRouteEndTypeBadgeStyle(type: string) {
+    return routeEndTypeBadgeStyles[type.trim().toLowerCase()] || routeEndTypeBadgeStyles.others
 }
 
 function getRouteEndDisplayTag(routeEnd: StationRouteEnd | null): string {
@@ -3025,6 +3068,41 @@ async function autoGenerateStationRoutes() {
     }
 }
 
+async function generateStationDwellingRoutes() {
+    if (!canGenerateDwellingRoutes.value) return
+
+    const instanceID = selectedInstanceId.value.trim()
+    const stationSchemeID = currentStationSchemeId.value.trim()
+    generatingDwellingRoutes.value = true
+    try {
+        const response = await axios.post('/StationLayout/GenerateStationDwellingRoutes', { instanceID, stationSchemeID })
+        if (instanceID !== selectedInstanceId.value.trim() || stationSchemeID !== currentStationSchemeId.value.trim()) return
+
+        await loadStationRoutes()
+        if (instanceID !== selectedInstanceId.value.trim() || stationSchemeID !== currentStationSchemeId.value.trim()) return
+        const created = Number(response.data?.created ?? 0)
+        if (created > 0) {
+            showRouteEndCard.value = false
+            showAutoRouteGenerateCard.value = false
+            showStationRouteCard.value = true
+            clearRouteFilters()
+            const firstCreated = normalizeStationRoute(response.data?.routes?.[0])
+            if (firstCreated) selectStationRouteById(firstCreated.id)
+        }
+        const message = t('routeDesign.stationRoute.messages.dwellingRoutesGenerated', {
+            created,
+            skipped: Number(response.data?.skipped ?? 0),
+            invalid: Number(response.data?.invalid ?? 0),
+        })
+        if (Number(response.data?.invalid ?? 0) > 0) ElMessage.warning(message)
+        else ElMessage.success(message)
+    } catch (error) {
+        ElMessage.error(getHttpErrorMessage(error, t('routeDesign.stationRoute.messages.dwellingRoutesGenerateFailed')))
+    } finally {
+        generatingDwellingRoutes.value = false
+    }
+}
+
 async function generateStationRouteInterruptCells() {
     if (!canEditRoutes.value) {
         ElMessage.warning(t('routeDesign.stationRoute.messages.selectScheme'))
@@ -4036,7 +4114,6 @@ onBeforeUnmount(() => {
     flex-direction: column;
     min-width: 0;
     min-height: 0;
-    border-right: 1px solid var(--sy-border);
 }
 
 .station-route-divider {
@@ -4500,6 +4577,7 @@ onBeforeUnmount(() => {
 
 .route-end-content {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     grid-template-rows: clamp(120px, var(--route-end-list-height, 34%), calc(100% - 188px)) 8px minmax(0, 1fr);
     flex: 1 1 auto;
     min-height: 0;
@@ -4777,21 +4855,30 @@ onBeforeUnmount(() => {
     }
 }
 
-@container route-card (max-width: 700px) {
+@container route-card (min-width: 701px) {
     .station-route-content {
-        grid-template-columns: minmax(0, 1fr);
-        grid-template-rows: clamp(120px, var(--station-route-list-height, 34%), calc(100% - 188px)) 8px minmax(0, 1fr);
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+        grid-template-rows: minmax(0, 1fr);
     }
 
     .station-route-list-panel {
-        border-right: 0;
+        border-right: 1px solid var(--sy-border);
     }
 
-    .station-route-divider { display: flex; }
+    .station-route-divider { display: none; }
+}
 
-    .station-route-filter-panel {
-        grid-template-columns: minmax(0, 1fr);
+@container route-end-card (min-width: 701px) {
+    .route-end-content {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+        grid-template-rows: minmax(0, 1fr);
     }
+
+    .route-end-table-wrap {
+        border-right: 1px solid var(--sy-border);
+    }
+
+    .route-end-divider { display: none; }
 }
 
 @media (max-width: 768px) {

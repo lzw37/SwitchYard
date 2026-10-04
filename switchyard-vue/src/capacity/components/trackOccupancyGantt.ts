@@ -46,8 +46,56 @@ export interface TrackOccupancyGanttBlock {
 export interface TrackOccupancyGanttRow {
     key: string
     label: string
+    kind?: 'track' | 'cell'
+    trackNames?: string[]
     height?: number
     blocks: TrackOccupancyGanttBlock[]
+}
+
+export interface TrackOccupancyGanttRowHit {
+    rowKey: string
+    rowIndex: number
+    /** Scaled content coordinates, including the fixed-height time axis. */
+    rowTop: number
+    rowHeight: number
+}
+
+export interface TrackOccupancyGanttViewportGeometry {
+    left: number
+    top: number
+    /** The viewport's client dimensions exclude its scrollbars. */
+    width: number
+    height: number
+    scrollLeft: number
+    scrollTop: number
+    scaleX: number
+    scaleY: number
+    timelineWidth: number
+}
+
+/** Hit the visible timeline only; sticky labels, the time axis and empty space are never row targets. */
+export function hitTestTrackOccupancyGanttRow(
+    rows: TrackOccupancyGanttRow[], geometry: TrackOccupancyGanttViewportGeometry,
+    clientX: number, clientY: number, allowedRowKeys?: ReadonlySet<string>,
+): TrackOccupancyGanttRowHit | null {
+    const { left, top, width, height, scrollLeft, scrollTop, scaleX, scaleY, timelineWidth } = geometry
+    if (![clientX, clientY, left, top, width, height, scrollLeft, scrollTop, scaleX, scaleY, timelineWidth].every(Number.isFinite) ||
+        width <= 0 || height <= 0 || scaleX <= 0 || scaleY <= 0 || timelineWidth <= 0) return null
+    const x = clientX - left, y = clientY - top
+    if (x < trackOccupancyGanttMetrics.sidebarWidth || x >= width || y < trackOccupancyGanttMetrics.axisHeight || y >= height) return null
+    const timelineX = x + scrollLeft - trackOccupancyGanttMetrics.sidebarWidth
+    if (timelineX < 0 || timelineX >= timelineWidth * scaleX) return null
+    const contentY = y + scrollTop
+    let rowTop: number = trackOccupancyGanttMetrics.axisHeight
+    for (const [rowIndex, row] of rows.entries()) {
+        const rowHeight = (row.height ?? trackOccupancyGanttMetrics.rowHeight) * scaleY
+        if (!Number.isFinite(rowHeight) || rowHeight < 0) return null
+        if (contentY >= rowTop && contentY < rowTop + rowHeight) {
+            return !allowedRowKeys || allowedRowKeys.has(row.key) ? { rowKey: row.key, rowIndex, rowTop, rowHeight } : null
+        }
+        rowTop += rowHeight
+    }
+    return null
 }
 
 export type TrackOccupancyGanttDragMode = 'start' | 'end' | 'move'

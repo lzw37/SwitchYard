@@ -25,6 +25,7 @@ namespace SwitchYard.Capacity
         Departure,
         Shunting,
         Locomotive,
+        Dwelling,
     }
 
     public enum RouteEndTypes

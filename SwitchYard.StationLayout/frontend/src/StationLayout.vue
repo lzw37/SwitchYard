@@ -7,7 +7,7 @@ import {
     bufferStopDirectionOptions as baseBufferStopDirectionOptions,
     bufferStopTypeOptions as baseBufferStopTypeOptions,
 } from "./assets/stationLayoutBufferStopStyles";
-import { DEFAULT_SIGNAL_TYPE, signalTypeMenuOptions } from "./assets/stationLayoutSignalStyles";
+import { DEFAULT_SIGNAL_TYPE, normalizeSignalType, signalTypeMenuOptions, signalTypeOptions } from "./assets/stationLayoutSignalStyles";
 import StationLayoutEditor from "./components/StationLayoutEditor.vue";
 import StationLayoutEditToolbar from "./components/StationLayoutEditToolbar.vue";
 import { createStationLayoutTranslator } from "./messages";
@@ -24,6 +24,7 @@ import {
 const DEFAULT_GRID_SPACING = 20;
 const MAX_GRID_SPACING = 500;
 const TEMP_CELL_ID_PREFIX = "TEMP_CELL_";
+const BOUND_EQUIPMENT_KINDS = ["signal", "switch", "insulationJoint", "bufferStop"];
 const props = defineProps({
     selectedInstanceId: {
         type: String,
@@ -110,6 +111,9 @@ const selectedDwgFile = ref(null);
 const dwgLayerName = ref("0");
 const extractingDwg = ref(false);
 const loadingData = ref(false);
+let layoutLoadVersion = 0;
+let pendingLoadedLayoutFit = false;
+let loadedLayoutResizeObserver = null;
 const savingData = ref(false);
 const editToolbarDensity = ref("compact");
 const currentStationSchemeId = ref("");
@@ -117,7 +121,11 @@ const loadingStationSchemes = ref(false);
 const stationSchemeOptions = ref([]);
 const stationSchemeManagerVisible = ref(false);
 const stationSchemeManagerSaving = ref(false);
-const stationSchemeDraft = ref({ name: "" });
+const stationSchemeDraft = ref(null);
+const stationSchemeDraftInputRef = ref(null);
+const stationSchemeManagerRows = computed(() => stationSchemeDraft.value
+    ? [stationSchemeDraft.value, ...stationSchemeOptions.value]
+    : stationSchemeOptions.value);
 const editingStationSchemeOriginalId = ref("");
 const editingStationSchemeForm = ref({ name: "" });
 const layoutScaleX = ref(1);
@@ -161,6 +169,31 @@ function fitFullLayout() {
     fitDataRectInLayout(rect, { screenMargin: 48, padding: 160 });
 }
 
+function cancelLoadedLayoutFit() {
+    pendingLoadedLayoutFit = false;
+    loadedLayoutResizeObserver?.disconnect();
+    loadedLayoutResizeObserver = null;
+}
+
+function tryFitLoadedLayout() {
+    const viewport = stationLayoutEditorFrameRef.value;
+    if (!pendingLoadedLayoutFit || !viewport || viewport.clientWidth <= 0 || viewport.clientHeight <= 0) return;
+    cancelLoadedLayoutFit();
+    fitFullLayout();
+}
+
+function scheduleLoadedLayoutFit() {
+    pendingLoadedLayoutFit = true;
+    tryFitLoadedLayout();
+    const viewport = stationLayoutEditorFrameRef.value;
+    // A hidden tab has no usable viewport yet. Fit once when it becomes visible,
+    // then disconnect so later resizing does not override the user's zoom.
+    if (pendingLoadedLayoutFit && viewport && typeof ResizeObserver !== "undefined") {
+        loadedLayoutResizeObserver = new ResizeObserver(tryFitLoadedLayout);
+        loadedLayoutResizeObserver.observe(viewport);
+    }
+}
+
 const selectedAnnotation = ref(null);
 const selectedEquipment = ref(null);
 const equipmentDrawerVisible = ref(false);
@@ -193,6 +226,16 @@ const layoutSnapshot = ref({
     tracks: [],
     nodes: [],
     insulationJoints: [],
+});
+const currentLayoutNodeById = computed(() => new Map((layoutSnapshot.value.nodes || [])
+    .map((node) => [String(node.id ?? "").trim(), node])));
+const equipmentBindingNodeOptions = computed(() => [...currentLayoutNodeById.value]
+    .filter(([id]) => id)
+    .map(([id, node]) => ({ value: id, label: node.name ? `${id} (${node.name})` : id })));
+const isEquipmentNodePositionLocked = computed(() =>
+    BOUND_EQUIPMENT_KINDS.includes(equipmentForm.value.kind));
+watch([() => equipmentForm.value.bindingNodeID, currentLayoutNodeById], () => {
+    syncEquipmentFormPositionToBindingNode(equipmentForm.value);
 });
 const selectedRoute = computed(() => {
     if (selectedRouteIndex.value < 0) return null;
@@ -272,6 +315,22 @@ function signalOptionLabel(option) {
         match[3] ? t(`stationLayout.signal.poles.${match[3]}`) : '',
     ].filter(Boolean).join(' ');
 }
+const equipmentSignalTypeOptions = computed(() => signalTypeOptions.map((option) => ({
+    value: option.value,
+    label: signalOptionLabel(option),
+})));
+const signalDirectionOptions = computed(() => ["w", "e", "s", "d"].map((value) => ({
+    value,
+    label: `${value} - ${t(`stationLayout.signal.directions.${value}`)}`,
+})));
+const insulationJointTypeOptions = computed(() => ["normal", "oversize"].map((value) => ({
+    value,
+    label: `${value} - ${t(`stationLayout.insulationJoint.types.${value}`)}`,
+})));
+const switchTypeOptions = computed(() => ["single", "slip", "diamond", "symmetric"].map((value) => ({
+    value,
+    label: `${value} - ${t(`stationLayout.switch.types.${value}`)}`,
+})));
 const selectedDrawingBufferStopDirection = ref(DEFAULT_BUFFER_STOP_DIRECTION);
 const selectedDrawingBufferStopType = ref(DEFAULT_BUFFER_STOP_TYPE);
 const selectedDrawingSignalType = ref(DEFAULT_SIGNAL_TYPE);
@@ -323,21 +382,21 @@ function getDrawingButtonType(drawingObj) {
 }
 
 const annotationFontFamilyOptions = ["Arial", "Microsoft YaHei", "SimSun", "SimHei", "Times New Roman", "Consolas"];
-const annotationFontWeightOptions = [
-    { label: "常规", value: "normal" },
-    { label: "加粗", value: "bold" },
-];
-const annotationFontStyleOptions = [
-    { label: "常规", value: "normal" },
-    { label: "斜体", value: "italic" },
-];
-const layoutTextStyleRows = [
-    { key: "switchName", label: "道岔编号" },
-    { key: "platformName", label: "站台名称" },
-    { key: "signalName", label: "信号机名称" },
-    { key: "lineName", label: "线路名称" },
-    { key: "cellName", label: "轨道电路名称" },
-];
+const annotationFontWeightOptions = computed(() => [
+    { label: t('stationLayout.editor.common.normal'), value: "normal" },
+    { label: t('stationLayout.editor.common.bold'), value: "bold" },
+]);
+const annotationFontStyleOptions = computed(() => [
+    { label: t('stationLayout.editor.common.normal'), value: "normal" },
+    { label: t('stationLayout.editor.common.italic'), value: "italic" },
+]);
+const layoutTextStyleRows = computed(() => [
+    { key: "switchName", label: t('stationLayout.editor.styles.switchName') },
+    { key: "platformName", label: t('stationLayout.editor.styles.platformName') },
+    { key: "signalName", label: t('stationLayout.editor.styles.signalName') },
+    { key: "lineName", label: t('stationLayout.editor.styles.lineName') },
+    { key: "cellName", label: t('stationLayout.editor.styles.cellName') },
+]);
 const defaultLayoutDisplayStyles = {
     switchName: { fontSize: 8, fontFamily: "Arial", fontWeight: "normal", fontStyle: "normal", color: "#ffffff" },
     platformName: { fontSize: 10, fontFamily: "Arial", fontWeight: "normal", fontStyle: "normal", color: "#ffffff" },
@@ -352,23 +411,23 @@ const defaultLayoutDisplayStyles = {
     node: { radius: 5, color: "#ffffff" },
 };
 const layoutDisplayStyles = ref(createDefaultLayoutDisplayStyles());
-const linkArrowDirectionOptions = [
-    { label: "不绘制", value: "" },
-    { label: "左侧", value: "L" },
-    { label: "右侧", value: "R" },
-    { label: "左右两侧", value: "LR" },
-];
-const linkArrowTypeOptions = [
-    { label: "不绘制", value: "" },
-    { label: "旅客列车进路", value: "P" },
-    { label: "货物列车进路", value: "F" },
-    { label: "客货列车进路", value: "PF" },
-    { label: "机车出段", value: "LO" },
-    { label: "机车入段", value: "LI" },
-    { label: "机车出入段（左入右出）", value: "LIRO" },
-    { label: "机车出入段（左出右入）", value: "LORI" },
-    { label: "超限货物列车进路", value: "OF" },
-];
+const linkArrowDirectionOptions = computed(() => [
+    { label: t('stationLayout.editor.arrows.none'), value: "" },
+    { label: t('stationLayout.editor.arrows.left'), value: "L" },
+    { label: t('stationLayout.editor.arrows.right'), value: "R" },
+    { label: t('stationLayout.editor.arrows.both'), value: "LR" },
+]);
+const linkArrowTypeOptions = computed(() => [
+    { label: t('stationLayout.editor.arrows.none'), value: "" },
+    { label: t('stationLayout.editor.arrows.passenger'), value: "P" },
+    { label: t('stationLayout.editor.arrows.freight'), value: "F" },
+    { label: t('stationLayout.editor.arrows.mixed'), value: "PF" },
+    { label: t('stationLayout.editor.arrows.outbound'), value: "LO" },
+    { label: t('stationLayout.editor.arrows.inbound'), value: "LI" },
+    { label: t('stationLayout.editor.arrows.leftInRightOut'), value: "LIRO" },
+    { label: t('stationLayout.editor.arrows.leftOutRightIn'), value: "LORI" },
+    { label: t('stationLayout.editor.arrows.oversize'), value: "OF" },
+]);
 const equipmentKindLabels = computed(() => ({
     link: t('stationLayout.draw.line'),
     signal: t('stationLayout.draw.signal'),
@@ -506,15 +565,11 @@ function showTopologyRepairReminderAfterSave() {
     if (!topologyRepairPending.value) return;
 
     topologyRepairPending.value = false;
-    void ElMessageBox.alert(
-        "已保存最新拓扑。线路分段、节点生成或节点合并可能已影响设备绑定、道岔/曲线关联、Cell 构成以及既有进路。请使用“修正设备绑定节点”检查设备，并在 Cell 面板中重新检查或生成 Cell；如已配置进路，也请重新校验进路。",
-        "请检查拓扑关联",
-        {
-            type: "warning",
-            confirmButtonText: "知道了",
-            closeOnClickModal: false,
-        }
-    ).catch(() => {});
+    ElMessage.warning({
+        message: t('stationLayout.editor.topology.recheck'),
+        duration: 8000,
+        showClose: true,
+    });
 }
 
 function createEmptyCellForm() {
@@ -585,7 +640,7 @@ function generateTemporaryCellId(reservedIds = new Set()) {
 
 function getCellDisplayId(cell) {
     const id = String(cell?.id ?? cell?.ID ?? "").trim();
-    return !id || isCellPendingBackendId(cell) ? "保存后生成" : id;
+    return !id || isCellPendingBackendId(cell) ? t('stationLayout.editor.cells.idPending') : id;
 }
 
 function normalizeCell(cell, reservedIds = new Set()) {
@@ -682,6 +737,21 @@ function handleCellNameClick(cellName) {
     }
 }
 
+function handleCellRename(payload) {
+    if (!ensureWritable() || loadingData.value || savingData.value) return;
+    const id = String(payload?.id ?? "").trim();
+    if (!id || typeof payload?.name !== "string" || !cells.value.some((cell) => cell.id === id)) return;
+    if (!applyCellFormToSelected({ showWarning: true })) return;
+
+    const index = cells.value.findIndex((cell) => cell.id === id);
+    if (index < 0) return;
+    const renamedCell = normalizeCell({ ...cells.value[index], name: payload.name });
+    cells.value[index] = renamedCell;
+    if (selectedCellId.value === id) {
+        cellForm.value = buildCellForm(renamedCell);
+    }
+}
+
 function getCellLinkCount(cell) {
     return parseLinkIdList(cell?.linkIDList).length;
 }
@@ -693,13 +763,13 @@ function applyCellFormToSelected(options = {}) {
 
     const nextCell = normalizeCell(cellForm.value);
     if (!nextCell.id) {
-        if (options.showWarning) ElMessage.warning("Cell 保存标识不能为空");
+        if (options.showWarning) ElMessage.warning(t('stationLayout.editor.cells.idRequired'));
         return false;
     }
 
     const duplicated = cells.value.some((cell) => cell.id === nextCell.id && cell.id !== previousId);
     if (duplicated) {
-        if (options.showWarning) ElMessage.warning(`Cell ID ${nextCell.id} 已存在`);
+        if (options.showWarning) ElMessage.warning(t('stationLayout.editor.cells.idExists', { id: nextCell.id }));
         return false;
     }
 
@@ -750,11 +820,11 @@ async function deleteSelectedCell() {
 
     try {
         await ElMessageBox.confirm(
-            `确定删除 Cell ${cellLabel} 吗？`,
-            "删除 Cell",
+            t('stationLayout.editor.cells.deleteConfirm', { name: cellLabel }),
+            t('stationLayout.editor.cells.deleteTitle'),
             {
-                confirmButtonText: "删除",
-                cancelButtonText: "取消",
+                confirmButtonText: t('stationLayout.editor.common.delete'),
+                cancelButtonText: t('stationLayout.editor.common.cancel'),
                 type: "warning",
             }
         );
@@ -791,7 +861,7 @@ function setCellFormLinkIds(linkIds) {
 function addLinkToCell(linkId) {
     if (!ensureWritable()) return;
     if (!selectedCellId.value) {
-        ElMessage.warning("请先选择或新建一个 Cell");
+        ElMessage.warning(t('stationLayout.editor.cells.selectFirst'));
         return;
     }
 
@@ -802,14 +872,14 @@ function addLinkToCell(linkId) {
     if (linkIds.includes(normalizedLinkId)) {
         selectedCellLinkId.value = normalizedLinkId;
         cellLinkHighlightScope.value = "link";
-        ElMessage.info(`Link ${normalizedLinkId} 已在当前 Cell 中`);
+        ElMessage.info(t('stationLayout.editor.cells.linkExists', { id: normalizedLinkId }));
         return;
     }
 
     setCellFormLinkIds([...linkIds, normalizedLinkId]);
     selectedCellLinkId.value = normalizedLinkId;
     cellLinkHighlightScope.value = "link";
-    ElMessage.success(`已加入 Link ${normalizedLinkId}`);
+    ElMessage.success(t('stationLayout.editor.cells.linkAdded', { id: normalizedLinkId }));
 }
 
 function removeSelectedCellLink() {
@@ -835,7 +905,7 @@ function handleCellLinkTabClick() {
 function toggleCellLinkPickMode() {
     if (!ensureWritable()) return;
     if (!selectedCellId.value) {
-        ElMessage.warning("请先选择或新建一个 Cell");
+        ElMessage.warning(t('stationLayout.editor.cells.selectFirst'));
         return;
     }
 
@@ -943,7 +1013,7 @@ function getLinkLabel(linkId) {
 
 function getLinkEndpointSummary(linkId) {
     const link = currentLayoutLinkById.value.get(String(linkId ?? "").trim());
-    if (!link) return "当前图中未找到该 Link";
+    if (!link) return t('stationLayout.editor.cells.linkNotFound');
     const fromNode = link.fromNodeID || "-";
     const toNode = link.toNodeID || "-";
     return `${fromNode} -> ${toNode}`;
@@ -1008,18 +1078,18 @@ async function autoGenerateCells() {
     if (!ensureWritable()) return;
     const components = buildCellComponentsFromCurrentLayout();
     if (components.length === 0) {
-        ElMessage.warning("当前车站布置图中没有可生成 Cell 的 Link");
+        ElMessage.warning(t('stationLayout.editor.cells.noLinks'));
         return;
     }
 
     if (cells.value.length > 0) {
         try {
             await ElMessageBox.confirm(
-                "自动生成会覆盖当前 Cell 列表，是否继续？",
-                "自动生成 Cell",
+                t('stationLayout.editor.cells.overwriteConfirm'),
+                t('stationLayout.editor.cells.generateTitle'),
                 {
-                    confirmButtonText: "生成",
-                    cancelButtonText: "取消",
+                    confirmButtonText: t('stationLayout.editor.common.generate'),
+                    cancelButtonText: t('stationLayout.editor.common.cancel'),
                     type: "warning",
                 }
             );
@@ -1043,7 +1113,7 @@ async function autoGenerateCells() {
     });
     selectCell(cells.value[0]);
     cellPanelVisible.value = true;
-    ElMessage.success(`已生成 ${cells.value.length} 个 Cell`);
+    ElMessage.success(t('stationLayout.editor.cells.generated', { count: cells.value.length }));
 }
 
 async function saveCellForm() {
@@ -1052,8 +1122,8 @@ async function saveCellForm() {
 
     await saveData({
         silent: true,
-        successMessage: "Cell 已保存",
-        failurePrefix: "Cell 保存失败：",
+        successMessage: t('stationLayout.editor.cells.saved'),
+        failurePrefix: t('stationLayout.editor.cells.saveFailed'),
     });
 }
 
@@ -1082,8 +1152,8 @@ function normalizeSearchRoute(route, index) {
 }
 
 function getRouteDirectionLabel(direction) {
-    if (direction === "LeftToRight") return "左向右";
-    if (direction === "RightToLeft") return "右向左";
+    if (direction === "LeftToRight") return t('stationLayout.editor.routes.leftToRight');
+    if (direction === "RightToLeft") return t('stationLayout.editor.routes.rightToLeft');
     return direction || "-";
 }
 
@@ -1103,13 +1173,13 @@ async function searchStationRoutes() {
     const startNodeId = String(routeSearchForm.value.startNodeId || "").trim();
     const endNodeId = String(routeSearchForm.value.endNodeId || "").trim();
     if (!startNodeId || !endNodeId) {
-        ElMessage.warning("请输入起点和终点 Node ID");
+        ElMessage.warning(t('stationLayout.editor.routes.endpointsRequired'));
         return;
     }
     const startNodeNumber = Number(startNodeId);
     const endNodeNumber = Number(endNodeId);
     if (!Number.isInteger(startNodeNumber) || !Number.isInteger(endNodeNumber)) {
-        ElMessage.warning("Node ID 必须为整数");
+        ElMessage.warning(t('stationLayout.editor.routes.integerRequired'));
         return;
     }
 
@@ -1128,11 +1198,11 @@ async function searchStationRoutes() {
                 : [];
         routeSearchRoutes.value = routes.map((route, index) => normalizeSearchRoute(route, index));
         selectedRouteIndex.value = routeSearchRoutes.value.length > 0 ? 0 : -1;
-        ElMessage.success(`搜索完成，共 ${routeSearchRoutes.value.length} 条路径`);
+        ElMessage.success(t('stationLayout.editor.routes.found', { count: routeSearchRoutes.value.length }));
     } catch (err) {
         routeSearchRoutes.value = [];
         selectedRouteIndex.value = -1;
-        ElMessage.error(getHttpErrorMessage(err, "路径搜索失败"));
+        ElMessage.error(getHttpErrorMessage(err, t('stationLayout.editor.routes.searchFailed')));
     } finally {
         routeSearchLoading.value = false;
     }
@@ -1143,7 +1213,7 @@ function createDefaultLayoutDisplayStyles() {
 function normalizeLayoutDisplayStyles(styles) {
     const normalized = createDefaultLayoutDisplayStyles();
     const source = styles && typeof styles === "object" && !Array.isArray(styles) ? styles : {};
-    for (const row of layoutTextStyleRows) {
+    for (const row of layoutTextStyleRows.value) {
         if (source[row.key] && typeof source[row.key] === "object" && !Array.isArray(source[row.key])) {
             normalized[row.key] = { ...normalized[row.key], ...source[row.key] };
         }
@@ -1213,8 +1283,8 @@ async function saveLayoutDisplayStyles() {
     if (!ensureWritable()) return;
     const saved = await saveData({
         silent: true,
-        successMessage: "显示样式已保存",
-        failurePrefix: "显示样式保存失败：",
+        successMessage: t('stationLayout.editor.styles.saved'),
+        failurePrefix: t('stationLayout.editor.styles.saveFailed'),
     });
     if (saved) {
         layoutStyleDialogVisible.value = false;
@@ -1225,32 +1295,32 @@ function clearSelection() {
     stationLayoutEditorRef.value?.clearSelectedNodes();
     stationLayoutEditorRef.value?.clearSelectedEquipment();
 }
-const boundNodeEquipmentDeleteLabels = {
-    signal: "信号机",
-    insulationJoint: "钢轨绝缘",
-    switch: "道岔",
-    bufferStop: "车挡",
-};
+const boundNodeEquipmentDeleteLabels = computed(() => ({
+    signal: t('stationLayout.draw.signal'),
+    insulationJoint: t('stationLayout.draw.insulation'),
+    switch: t('stationLayout.draw.switch'),
+    bufferStop: t('stationLayout.draw.buffer'),
+}));
 
 function formatBoundNodeEquipmentDeleteMessage(plan) {
     const countText = Object.entries(plan?.counts || {})
         .filter(([, count]) => Number(count) > 0)
-        .map(([kind, count]) => `${boundNodeEquipmentDeleteLabels[kind] || kind} ${count} 个`)
+        .map(([kind, count]) => t('stationLayout.editor.deleteNodes.count', { type: boundNodeEquipmentDeleteLabels.value[kind] || kind, count }))
         .join("、");
     const detailText = (plan?.boundEquipment || [])
         .slice(0, 8)
         .map((equipment) => {
-            const label = boundNodeEquipmentDeleteLabels[equipment.kind] || equipment.kind;
+            const label = boundNodeEquipmentDeleteLabels.value[equipment.kind] || equipment.kind;
             const name = equipment.name || equipment.id || "";
             return `${label}${name ? ` ${name}` : ""}`;
         })
         .join("、");
     const moreCount = Math.max(0, (plan?.boundEquipment?.length || 0) - 8);
     const detailSuffix = detailText
-        ? `\n\n绑定设备：${detailText}${moreCount > 0 ? ` 等 ${plan.boundEquipment.length} 个` : ""}`
+        ? t('stationLayout.editor.deleteNodes.details', { details: detailText, more: moreCount > 0 ? t('stationLayout.editor.deleteNodes.more', { count: plan.boundEquipment.length }) : '' })
         : "";
 
-    return `所选 ${plan?.nodeIds?.length || 0} 个节点上绑定了 ${countText || "设备"}。确认删除节点，并一并删除这些绑定设备吗？${detailSuffix}`;
+    return t('stationLayout.editor.deleteNodes.confirm', { count: plan?.nodeIds?.length || 0, equipment: countText || t('stationLayout.equipment.generic'), details: detailSuffix });
 }
 
 async function confirmDeleteNodesWithBoundEquipment(plan) {
@@ -1259,10 +1329,10 @@ async function confirmDeleteNodesWithBoundEquipment(plan) {
     try {
         await ElMessageBox.confirm(
             formatBoundNodeEquipmentDeleteMessage(plan),
-            "删除节点及绑定设备",
+            t('stationLayout.editor.deleteNodes.title'),
             {
-                confirmButtonText: "删除",
-                cancelButtonText: "取消",
+                confirmButtonText: t('stationLayout.editor.common.delete'),
+                cancelButtonText: t('stationLayout.editor.common.cancel'),
                 type: "warning",
             }
         );
@@ -1432,7 +1502,7 @@ function loadStationSchemes(options = {}) {
 }
 
 function resetStationSchemeDraft() {
-    stationSchemeDraft.value = { name: "" };
+    stationSchemeDraft.value = null;
 }
 
 function cancelStationSchemeEdit() {
@@ -1452,31 +1522,68 @@ async function openStationSchemeManager() {
     await loadStationSchemes();
 }
 
+async function startNewStationScheme() {
+    if (!ensureWritable() || stationSchemeManagerSaving.value || stationSchemeDraft.value) return;
+    cancelStationSchemeEdit();
+    stationSchemeDraft.value = { id: "", name: "", isDraft: true };
+    await nextTick();
+    stationSchemeDraftInputRef.value?.focus();
+}
+
+async function activateSavedStationScheme(result, instanceId) {
+    const option = normalizeStationSchemeOption(result);
+    if (!option?.id) throw new Error(t('stationLayout.schemeManager.invalidResponse'));
+    if (props.selectedInstanceId !== instanceId) return;
+    currentStationSchemeId.value = option.id;
+    ensureCurrentStationSchemeOption(option.name, option.revision);
+    await loadStationSchemes();
+    if (props.selectedInstanceId === instanceId) {
+        getData({ stationSchemeId: option.id });
+    }
+}
+
 async function createStationScheme() {
-    if (!ensureWritable()) return;
+    if (!ensureWritable() || stationSchemeManagerSaving.value || !stationSchemeDraft.value) return;
     const name = stationSchemeDraft.value.name.trim();
     if (!name) {
         ElMessage.warning(t('stationLayout.schemeManager.nameRequired'));
         return;
     }
 
+    const instanceId = props.selectedInstanceId;
     stationSchemeManagerSaving.value = true;
     try {
         const result = await props.gateway.createStationScheme({
-            instanceId: props.selectedInstanceId,
+            instanceId,
             name,
         });
-        const createdOption = normalizeStationSchemeOption(result);
-        const createdStationSchemeId = createdOption?.id || "";
+        await activateSavedStationScheme(result, instanceId);
+        if (props.selectedInstanceId !== instanceId) return;
         resetStationSchemeDraft();
-        currentStationSchemeId.value = createdStationSchemeId;
-        await loadStationSchemes();
-        if (createdStationSchemeId) {
-            getData({ stationSchemeId: createdStationSchemeId });
-        }
         ElMessage.success(t('stationLayout.schemeManager.createSuccess'));
     } catch (err) {
         ElMessage.error(getHttpErrorMessage(err, t('stationLayout.schemeManager.createFailed')));
+    } finally {
+        stationSchemeManagerSaving.value = false;
+    }
+}
+
+async function copyStationScheme(row) {
+    if (!ensureWritable() || stationSchemeManagerSaving.value || !row?.id) return;
+    const instanceId = props.selectedInstanceId;
+    stationSchemeManagerSaving.value = true;
+    try {
+        const result = await props.gateway.copyStationScheme({
+            instanceId,
+            sourceStationSchemeId: row.id,
+            name: t('stationLayout.schemeManager.copyName', { name: formatStationSchemeLabel(row) }).slice(0, 100),
+        });
+        await activateSavedStationScheme(result, instanceId);
+        if (props.selectedInstanceId === instanceId) {
+            ElMessage.success(t('stationLayout.schemeManager.copySuccess'));
+        }
+    } catch (err) {
+        ElMessage.error(getHttpErrorMessage(err, t('stationLayout.schemeManager.copyFailed')));
     } finally {
         stationSchemeManagerSaving.value = false;
     }
@@ -1496,6 +1603,10 @@ async function saveStationSchemeEdit() {
     const name = editingStationSchemeForm.value.name.trim();
     if (!originalID) {
         ElMessage.warning(t('stationLayout.schemeManager.idRequired'));
+        return;
+    }
+    if (!name) {
+        ElMessage.warning(t('stationLayout.schemeManager.nameRequired'));
         return;
     }
 
@@ -1580,7 +1691,7 @@ function saveData(options = {}) {
 
     var dataStr = stationLayoutEditorRef.value?.buildJsonData();
     if (!dataStr) {
-        ElMessage.warning("当前没有可保存的车站布置图数据");
+        ElMessage.warning(t('stationLayout.editor.equipment.noLayout'));
         return Promise.resolve(false);
     }
 
@@ -1592,12 +1703,12 @@ function saveData(options = {}) {
         dataStr = buildLayoutJsonWithDisplayStyles(dataStr);
     } catch (err) {
         console.error("Failed to attach layout display styles:", err);
-        ElMessage.error("显示样式保存失败，请检查车站布置图数据");
+        ElMessage.error(t('stationLayout.editor.styles.invalidLayout'));
         return Promise.resolve(false);
     }
 
-    const silentSuccessMessage = options?.successMessage || "设备信息已保存";
-    const silentFailurePrefix = options?.failurePrefix || "设备信息保存失败：";
+    const silentSuccessMessage = options?.successMessage || t('stationLayout.editor.equipment.saved');
+    const silentFailurePrefix = options?.failurePrefix || t('stationLayout.editor.equipment.saveFailed');
     const shouldReloadGeneratedCellIds = cells.value.some(isCellPendingBackendId);
     savingData.value = true;
     const saveRequest = {
@@ -1621,7 +1732,7 @@ function saveData(options = {}) {
             if (silent) {
                 ElMessage.success(silentSuccessMessage);
             } else {
-                alert(t('stationLayout.messages.saveSuccess') + (result?.message || result));
+                ElMessage.success(t('stationLayout.messages.saveSuccess') + (result?.message || result));
             }
             if (shouldReloadGeneratedCellIds) {
                 getData({ stationSchemeId: savedStationSchemeId });
@@ -1634,7 +1745,7 @@ function saveData(options = {}) {
             if (silent) {
                 ElMessage.error(silentFailurePrefix + serverMsg);
             } else {
-                alert(t('stationLayout.messages.saveFailed') + serverMsg);
+                ElMessage.error(t('stationLayout.messages.saveFailed') + serverMsg);
             }
             return false;
         })
@@ -1643,7 +1754,10 @@ function saveData(options = {}) {
         });
 }
 function getData(options = {}) {
+    const loadVersion = ++layoutLoadVersion;
+    cancelLoadedLayoutFit();
     if (!props.selectedInstanceId) {
+        loadingData.value = false;
         currentStationSchemeId.value = "";
         stationSchemeOptions.value = [];
         resetLayoutDisplayStyles();
@@ -1665,7 +1779,7 @@ function getData(options = {}) {
             stationSchemeId: requestedStationSchemeId,
         })
         .then(async (layout) => {
-            if (props.selectedInstanceId !== instanceId) {
+            if (loadVersion !== layoutLoadVersion || props.selectedInstanceId !== instanceId) {
                 return;
             }
 
@@ -1674,7 +1788,7 @@ function getData(options = {}) {
             applyLayoutGridSettings(layout?.metadata?.gridSettings);
             ensureCurrentStationSchemeOption(undefined, layout?.metadata?.revision ?? layout?.metadata?.Revision);
             await nextTick();
-            if (props.selectedInstanceId !== instanceId) {
+            if (loadVersion !== layoutLoadVersion || props.selectedInstanceId !== instanceId) {
                 return;
             }
 
@@ -1683,17 +1797,20 @@ function getData(options = {}) {
             setCellsFromLayout(layout);
             routeNodePickTarget.value = "";
             clearRouteSearchResult();
+            // Fit only after the loaded geometry and surrounding panels render.
+            await nextTick();
+            if (loadVersion === layoutLoadVersion && props.selectedInstanceId === instanceId) scheduleLoadedLayoutFit();
         })
         .catch((err) => {
-            if (props.selectedInstanceId !== instanceId) {
+            if (loadVersion !== layoutLoadVersion || props.selectedInstanceId !== instanceId) {
                 return;
             }
 
             const serverMsg = getHttpErrorMessage(err, t('stationLayout.messages.loadFailed'));
-            alert(t('stationLayout.messages.loadFailed') + serverMsg);
+            ElMessage.error(t('stationLayout.messages.loadFailed') + serverMsg);
         })
         .finally(() => {
-            if (props.selectedInstanceId === instanceId) {
+            if (loadVersion === layoutLoadVersion && props.selectedInstanceId === instanceId) {
                 loadingData.value = false;
             }
         });
@@ -1710,7 +1827,7 @@ function handleStationSchemeChange(stationSchemeId) {
 function exportJsonFile() {
     const dataStr = stationLayoutEditorRef.value?.buildJsonData();
     if (!dataStr) {
-        ElMessage.warning("当前没有可导出的车站布置图数据");
+        ElMessage.warning(t('stationLayout.editor.json.noLayout'));
         return;
     }
 
@@ -1726,10 +1843,10 @@ function exportJsonFile() {
         link.click();
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
-        ElMessage.success("JSON 文件已导出");
+        ElMessage.success(t('stationLayout.editor.json.exported'));
     } catch (err) {
         console.error("Failed to export station layout JSON:", err);
-        ElMessage.error("导出 JSON 文件失败");
+        ElMessage.error(t('stationLayout.editor.json.exportFailed'));
     }
 }
 
@@ -1782,22 +1899,40 @@ function buildEquipmentForm(equipment) {
     return buildSingleEquipmentForm(equipment);
 }
 
+function syncEquipmentFormPositionToBindingNode(form) {
+    if (!BOUND_EQUIPMENT_KINDS.includes(form.kind)) return;
+    const node = currentLayoutNodeById.value.get(normalizedString(form.bindingNodeID));
+    if (!node) return;
+    form.x = toNumber(node.x);
+    form.y = toNumber(node.y);
+}
+
+function handleEquipmentBindingDropdownVisible(visible) {
+    if (visible) refreshLayoutSnapshot();
+}
+
 function buildSingleEquipmentForm(equipment) {
     const data = equipment?.data || {};
     const shouldFallbackNameToId = ["signal", "switch", "platform"].includes(equipment?.kind);
     const equipmentType = equipment?.kind === "signal"
-        ? readSignalType(data)
+        ? normalizeSignalType(readSignalType(data) || DEFAULT_SIGNAL_TYPE)
         : equipment?.kind === "bufferStop"
             ? readEquipmentType(data) || DEFAULT_BUFFER_STOP_TYPE
-            : readEquipmentType(data);
+            : equipment?.kind === "insulationJoint"
+                ? normalizedString(readEquipmentType(data) || "normal").toLowerCase()
+                : equipment?.kind === "switch"
+                    ? normalizedString(readEquipmentType(data) || "single").toLowerCase()
+                    : readEquipmentType(data);
     const form = {
         kind: equipment?.kind || "",
         originalId: data.id || equipment?.id || "",
         id: data.id || "",
         name: data.name ?? (shouldFallbackNameToId ? data.id || "" : ""),
         type: equipmentType,
-        direction: readEquipmentDirection(data),
-        bindingNodeID: data.bindingNodeID || "",
+        direction: equipment?.kind === "signal"
+            ? normalizedString(readEquipmentDirection(data) || "e").toLowerCase()
+            : readEquipmentDirection(data),
+        bindingNodeID: normalizedString(data.bindingNodeID ?? data.BindingNodeID ?? ""),
         x: Number(data.x ?? data.position?.x ?? 0),
         y: Number(data.y ?? data.position?.y ?? 0),
         x1: Number(data.x1 ?? 0),
@@ -1817,6 +1952,7 @@ function buildSingleEquipmentForm(equipment) {
         form.branchVectorListText = JSON.stringify(data.branchVectorList || [], null, 2);
     }
 
+    syncEquipmentFormPositionToBindingNode(form);
     return form;
 }
 
@@ -1908,7 +2044,7 @@ function assignEquipmentPositionPatch(patch, form, options = {}) {
 function buildEquipmentPatchFromForm() {
     const form = equipmentForm.value;
     const patch = {
-        id: String(form.id || "").trim(),
+        id: normalizedString(BOUND_EQUIPMENT_KINDS.includes(form.kind) ? form.originalId : form.id),
     };
 
     if (form.kind === "signal") {
@@ -1916,12 +2052,10 @@ function buildEquipmentPatchFromForm() {
         patch.type = String(form.type || "").trim();
         patch.direction = String(form.direction || "").trim();
         patch.bindingNodeID = String(form.bindingNodeID || "").trim();
-        patch.position = { x: toNumber(form.x), y: toNumber(form.y) };
     } else if (form.kind === "switch") {
         patch.name = String(form.name || "").trim();
         patch.type = String(form.type || "").trim();
         patch.bindingNodeID = String(form.bindingNodeID || "").trim();
-        patch.position = { x: toNumber(form.x), y: toNumber(form.y) };
         try {
             const branchVectorList = form.branchVectorListText?.trim()
                 ? JSON.parse(form.branchVectorListText)
@@ -1931,7 +2065,7 @@ function buildEquipmentPatchFromForm() {
             }
             patch.branchVectorList = branchVectorList;
         } catch (err) {
-            ElMessage.error("道岔分支向量 JSON 格式不正确");
+            ElMessage.error(t('stationLayout.editor.equipment.branchJsonInvalid'));
             return null;
         }
     } else if (form.kind === "platform") {
@@ -1943,12 +2077,10 @@ function buildEquipmentPatchFromForm() {
     } else if (form.kind === "insulationJoint") {
         patch.type = String(form.type || "").trim();
         patch.bindingNodeID = String(form.bindingNodeID || "").trim();
-        patch.position = { x: toNumber(form.x), y: toNumber(form.y) };
     } else if (form.kind === "bufferStop") {
         patch.type = String(form.type || DEFAULT_BUFFER_STOP_TYPE).trim();
         patch.direction = String(form.direction || DEFAULT_BUFFER_STOP_DIRECTION).trim();
         patch.bindingNodeID = String(form.bindingNodeID || "").trim();
-        patch.position = { x: toNumber(form.x), y: toNumber(form.y) };
     } else if (form.kind === "link") {
         patch.name = String(form.name || "").trim();
         patch.x1 = toNumber(form.x1);
@@ -1969,7 +2101,7 @@ function buildEquipmentPatchFromFormForSave(options = {}) {
     const patch = {};
     const includeId = options.includeId !== false;
     if (includeId) {
-        patch.id = normalizedString(form.id);
+        patch.id = normalizedString(BOUND_EQUIPMENT_KINDS.includes(form.kind) ? form.originalId : form.id);
     }
 
     if (form.kind === "signal") {
@@ -1977,12 +2109,10 @@ function buildEquipmentPatchFromFormForSave(options = {}) {
         assignEquipmentPatchField(patch, "type", "type", form.type, { ...options, normalize: normalizedString });
         assignEquipmentPatchField(patch, "direction", "direction", form.direction, { ...options, normalize: normalizedString });
         assignEquipmentPatchField(patch, "bindingNodeID", "bindingNodeID", form.bindingNodeID, { ...options, normalize: normalizedString });
-        assignEquipmentPositionPatch(patch, form, options);
     } else if (form.kind === "switch") {
         assignEquipmentPatchField(patch, "name", "name", form.name, { ...options, normalize: normalizedString });
         assignEquipmentPatchField(patch, "type", "type", form.type, { ...options, normalize: normalizedString });
         assignEquipmentPatchField(patch, "bindingNodeID", "bindingNodeID", form.bindingNodeID, { ...options, normalize: normalizedString });
-        assignEquipmentPositionPatch(patch, form, options);
         if (shouldApplyEquipmentField("branchVectorListText", form.branchVectorListText, {
             ...options,
             normalize: (value) => String(value ?? "").trim(),
@@ -1996,7 +2126,7 @@ function buildEquipmentPatchFromFormForSave(options = {}) {
                 }
                 patch.branchVectorList = branchVectorList;
             } catch (err) {
-                ElMessage.error("道岔分支向量 JSON 格式不正确");
+                ElMessage.error(t('stationLayout.editor.equipment.branchJsonInvalid'));
                 return null;
             }
         }
@@ -2009,12 +2139,10 @@ function buildEquipmentPatchFromFormForSave(options = {}) {
     } else if (form.kind === "insulationJoint") {
         assignEquipmentPatchField(patch, "type", "type", form.type, { ...options, normalize: normalizedString });
         assignEquipmentPatchField(patch, "bindingNodeID", "bindingNodeID", form.bindingNodeID, { ...options, normalize: normalizedString });
-        assignEquipmentPositionPatch(patch, form, options);
     } else if (form.kind === "bufferStop") {
         assignEquipmentPatchField(patch, "type", "type", form.type || DEFAULT_BUFFER_STOP_TYPE, { ...options, normalize: normalizedString });
         assignEquipmentPatchField(patch, "direction", "direction", form.direction || DEFAULT_BUFFER_STOP_DIRECTION, { ...options, normalize: normalizedString });
         assignEquipmentPatchField(patch, "bindingNodeID", "bindingNodeID", form.bindingNodeID, { ...options, normalize: normalizedString });
-        assignEquipmentPositionPatch(patch, form, options);
     } else if (form.kind === "link") {
         assignEquipmentPatchField(patch, "name", "name", form.name, { ...options, normalize: normalizedString });
         assignEquipmentPatchField(patch, "x1", "x1", form.x1, { ...options, normalize: toNumber });
@@ -2039,12 +2167,12 @@ async function saveEquipmentForm() {
     );
     if (!patch) return;
     if (!isEquipmentBatchMode.value && !patch.id) {
-        ElMessage.warning("设备 ID 不能为空");
+        ElMessage.warning(t('stationLayout.editor.equipment.idRequired'));
         return;
     }
 
     if (isEquipmentBatchMode.value && Object.keys(patch).length === 0) {
-        ElMessage.warning("请先修改需要批处理的字段");
+        ElMessage.warning(t('stationLayout.editor.equipment.batchChangeRequired'));
         return;
     }
 
@@ -2130,7 +2258,7 @@ async function handleImportJsonFileChange(event) {
 
     if (!file.name.toLowerCase().endsWith(".json")) {
         event.target.value = "";
-        ElMessage.error("请选择 JSON 格式文件");
+        ElMessage.error(t('stationLayout.editor.json.fileRequired'));
         return;
     }
 
@@ -2146,10 +2274,10 @@ async function handleImportJsonFileChange(event) {
         stationLayoutEditorRef.value?.loadDataFromJson(jsonObj);
         setLayoutSnapshotFromJson(jsonObj);
         setCellsFromLayout(jsonObj);
-        ElMessage.success("JSON 文件已导入");
+        ElMessage.success(t('stationLayout.editor.json.imported'));
     } catch (err) {
         console.error("Failed to import station layout JSON:", err);
-        ElMessage.error("导入 JSON 文件失败，请检查文件格式");
+        ElMessage.error(t('stationLayout.editor.json.importFailed'));
     } finally {
         event.target.value = "";
     }
@@ -2253,17 +2381,17 @@ function correctEquipmentBindingNodes() {
     if (!result) return;
 
     if (result.totalCount === 0) {
-        ElMessage.info("当前没有需要修正绑定节点的设备");
+        ElMessage.info(t('stationLayout.editor.binding.none'));
         return;
     }
 
-    const unmatchedText = result.unmatchedCount > 0 ? `，${result.unmatchedCount} 个设备当前位置没有节点` : "";
+    const unmatchedText = result.unmatchedCount > 0 ? t('stationLayout.editor.binding.unmatchedSuffix', { count: result.unmatchedCount }) : "";
     if (result.fixedCount > 0) {
-        ElMessage.success(`已修正 ${result.fixedCount} 个设备绑定节点${unmatchedText}`);
+        ElMessage.success(t('stationLayout.editor.binding.fixed', { count: result.fixedCount, details: unmatchedText }));
     } else if (result.unmatchedCount > 0 && result.alreadyCorrectCount === 0) {
-        ElMessage.warning(`未修正：${result.unmatchedCount} 个设备当前位置没有节点`);
+        ElMessage.warning(t('stationLayout.editor.binding.unmatched', { count: result.unmatchedCount }));
     } else {
-        ElMessage.info(`设备绑定节点已正确${unmatchedText}`);
+        ElMessage.info(t('stationLayout.editor.binding.correct', { details: unmatchedText }));
     }
 }
 
@@ -2273,13 +2401,13 @@ function openEquipmentBindingCorrectionDialog() {
     if (!plan) return;
 
     if (plan.totalCount === 0) {
-        ElMessage.info("当前没有需要修正绑定节点的设备");
+        ElMessage.info(t('stationLayout.editor.binding.none'));
         return;
     }
 
     if (!Array.isArray(plan.items) || plan.items.length === 0) {
-        const unmatchedText = plan.unmatchedCount > 0 ? `，${plan.unmatchedCount} 个设备当前位置没有节点` : "";
-        ElMessage.info(`设备绑定节点已正确${unmatchedText}`);
+        const unmatchedText = plan.unmatchedCount > 0 ? t('stationLayout.editor.binding.unmatchedSuffix', { count: plan.unmatchedCount }) : "";
+        ElMessage.info(t('stationLayout.editor.binding.correct', { details: unmatchedText }));
         return;
     }
 
@@ -2312,7 +2440,7 @@ function handleBindingCorrectionDialogClosed() {
 function applySelectedBindingCorrections() {
     if (!ensureWritable()) return;
     if (selectedBindingCorrectionRows.value.length === 0) {
-        ElMessage.warning("请先勾选需要修正的设备");
+        ElMessage.warning(t('stationLayout.editor.binding.selectFirst'));
         return;
     }
 
@@ -2321,18 +2449,18 @@ function applySelectedBindingCorrections() {
 
     bindingCorrectionDialogVisible.value = false;
 
-    const skippedText = result.unmatchedCount > 0 ? `，${result.unmatchedCount} 个设备当前位置没有节点或已不存在` : "";
+    const skippedText = result.unmatchedCount > 0 ? t('stationLayout.editor.binding.skippedSuffix', { count: result.unmatchedCount }) : "";
     if (result.fixedCount > 0) {
-        ElMessage.success(`已修正 ${result.fixedCount} 个设备绑定节点${skippedText}`);
+        ElMessage.success(t('stationLayout.editor.binding.fixed', { count: result.fixedCount, details: skippedText }));
     } else if (result.alreadyCorrectCount > 0) {
-        ElMessage.info(`所选设备绑定节点已正确${skippedText}`);
+        ElMessage.info(t('stationLayout.editor.binding.selectedCorrect', { details: skippedText }));
     } else {
-        ElMessage.warning(`未修正设备绑定节点${skippedText}`);
+        ElMessage.warning(t('stationLayout.editor.binding.notFixed', { details: skippedText }));
     }
 }
 
 function formatSwitchLineIds(lineIds) {
-    return Array.isArray(lineIds) && lineIds.length > 0 ? lineIds.join(", ") : "无";
+    return Array.isArray(lineIds) && lineIds.length > 0 ? lineIds.join(", ") : t('stationLayout.editor.common.none');
 }
 
 function formatSwitchRebuildMessage(plan) {
@@ -2340,14 +2468,14 @@ function formatSwitchRebuildMessage(plan) {
     const details = items
         .slice(0, 8)
         .map((item) => {
-            const switchLabel = item.switchName || item.switchId || "未命名道岔";
-            return `${switchLabel}（节点 ${item.nodeName || item.nodeId}：${formatSwitchLineIds(item.previousLineIds)} -> ${formatSwitchLineIds(item.nextLineIds)}）`;
+            const switchLabel = item.switchName || item.switchId || t('stationLayout.editor.switches.untitled');
+            return t('stationLayout.editor.switches.change', { name: switchLabel, node: item.nodeName || item.nodeId, from: formatSwitchLineIds(item.previousLineIds), to: formatSwitchLineIds(item.nextLineIds) });
         })
         .join("\n");
-    const moreText = items.length > 8 ? `\n等 ${items.length} 组道岔` : "";
-    const createText = plan?.createCount > 0 ? `\n\n同时将新增生成 ${plan.createCount} 组道岔。` : "";
+    const moreText = items.length > 8 ? t('stationLayout.editor.switches.more', { count: items.length }) : "";
+    const createText = plan?.createCount > 0 ? t('stationLayout.editor.switches.alsoCreate', { count: plan.createCount }) : "";
 
-    return `检测到 ${items.length} 组道岔绑定节点的邻接边发生变化，需要重新构造。确认后将保留原道岔 ID，并按当前邻接边重构。${details ? `\n\n${details}${moreText}` : ""}${createText}`;
+    return t('stationLayout.editor.switches.confirm', { count: items.length, details: details ? `\n\n${details}${moreText}` : "", create: createText });
 }
 
 async function confirmSwitchRebuild(plan) {
@@ -2356,10 +2484,10 @@ async function confirmSwitchRebuild(plan) {
     try {
         await ElMessageBox.confirm(
             formatSwitchRebuildMessage(plan),
-            "重构道岔",
+            t('stationLayout.editor.switches.reconstructTitle'),
             {
-                confirmButtonText: "重构",
-                cancelButtonText: "取消",
+                confirmButtonText: t('stationLayout.editor.switches.reconstruct'),
+                cancelButtonText: t('stationLayout.editor.common.cancel'),
                 type: "warning",
             }
         );
@@ -2382,20 +2510,20 @@ async function autoGenerateSwitch() {
 
     const result = editor.autoGenerateSwitches({ plan, confirmed: true });
     if (!result?.applied) {
-        ElMessage.info("没有需要生成或重构的道岔");
+        ElMessage.info(t('stationLayout.editor.switches.noChanges'));
         return;
     }
 
     const messageParts = [];
-    if (result.reconstructCount > 0) messageParts.push(`重构 ${result.reconstructCount} 组`);
-    if (result.createCount > 0) messageParts.push(`新增 ${result.createCount} 组`);
-    ElMessage.success(`道岔生成完成：${messageParts.join("，")}`);
+    if (result.reconstructCount > 0) messageParts.push(t('stationLayout.editor.switches.reconstructed', { count: result.reconstructCount }));
+    if (result.createCount > 0) messageParts.push(t('stationLayout.editor.switches.created', { count: result.createCount }));
+    ElMessage.success(t('stationLayout.editor.switches.generated', { details: messageParts.join(", ") }));
 }
 
 function autoGenerateCurve() {
     if (!ensureWritable()) return;
     const count = stationLayoutEditorRef.value?.autoGenerateCurves?.() ?? 0;
-    ElMessage.success(`已生成 ${count} 条曲线`);
+    ElMessage.success(t('stationLayout.editor.topology.curvesGenerated', { count }));
 }
 
 function openExtractDwgDialog() {
@@ -2423,7 +2551,7 @@ function handleDwgFileChange(event) {
     if (!file.name.toLowerCase().endsWith(".dwg")) {
         selectedDwgFile.value = null;
         event.target.value = "";
-        ElMessage.error("请选择 DWG 格式文件");
+        ElMessage.error(t('stationLayout.editor.dwg.invalidFile'));
         return;
     }
 
@@ -2433,7 +2561,7 @@ function handleDwgFileChange(event) {
 function extractDwgFile() {
     if (!ensureWritable()) return;
     if (!selectedDwgFile.value) {
-        ElMessage.warning("请先选择 DWG 文件");
+        ElMessage.warning(t('stationLayout.editor.dwg.fileRequired'));
         return;
     }
 
@@ -2447,7 +2575,7 @@ function extractDwgFile() {
             extractDwgDialogVisible.value = false;
             const layout = result?.layout;
             if (!layout) {
-                ElMessage.error("DWG 提取失败：服务器未返回图形数据");
+                ElMessage.error(t('stationLayout.editor.dwg.noData'));
                 return;
             }
 
@@ -2460,10 +2588,10 @@ function extractDwgFile() {
             stationLayoutEditorRef.value?.loadDataFromJson(layout);
             setLayoutSnapshotFromJson(layout);
             setCellsFromLayout(layout);
-            ElMessage.success(`DWG 提取完成，共生成 ${result?.segmentCount || 0} 条线段`);
+            ElMessage.success(t('stationLayout.editor.dwg.completed', { count: result?.segmentCount || 0 }));
         })
         .catch((err) => {
-            ElMessage.error("DWG 提取失败：" + getHttpErrorMessage(err, "未知错误"));
+            ElMessage.error(t('stationLayout.editor.dwg.failed') + getHttpErrorMessage(err, t('stationLayout.editor.common.unknownError')));
         })
         .finally(() => {
             extractingDwg.value = false;
@@ -2479,6 +2607,8 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+    layoutLoadVersion += 1;
+    cancelLoadedLayoutFit();
     document.removeEventListener("keydown", handleStationLayoutKeydown);
     document.removeEventListener("keyup", handleStationLayoutKeyup);
     window.removeEventListener("blur", restoreF4HoldEditMode);
@@ -2487,6 +2617,9 @@ onBeforeUnmount(() => {
 watch(
     () => props.selectedInstanceId,
     () => {
+        stationSchemeManagerVisible.value = false;
+        resetStationSchemeDraft();
+        cancelStationSchemeEdit();
         currentStationSchemeId.value = "";
         stationSchemeOptions.value = [];
         routeNodePickTarget.value = "";
@@ -2507,6 +2640,7 @@ watch(
         cellLinkPickMode.value = false;
         bindingCorrectionDialogVisible.value = false;
         extractDwgDialogVisible.value = false;
+        resetStationSchemeDraft();
         cancelStationSchemeEdit();
     },
     { immediate: true }
@@ -2547,6 +2681,9 @@ watch(
                         <span>{{ t('stationLayout.mode.draw') }}</span>
                     </el-radio-button>
                 </el-radio-group>
+            </template>
+
+            <template #actions>
                 <el-button-group>
                     <el-button size="small" :icon="RefreshLeft" :disabled="props.readonly" @click="revoke">
                         {{ t('stationLayout.menu.undo') }}
@@ -2555,9 +2692,6 @@ watch(
                         {{ t('stationLayout.menu.redo') }}
                     </el-button>
                 </el-button-group>
-            </template>
-
-            <template #actions>
                 <el-button size="small" :icon="Aim" @click="fitFullLayout">
                     {{ t('stationLayout.tools.fitFullView') }}
                 </el-button>
@@ -2767,48 +2901,61 @@ watch(
             @change="handleImportJsonFileChange" />
 
         <el-dialog v-model="stationSchemeManagerVisible" :title="t('stationLayout.schemeManager.title')" width="760px"
-            :close-on-click-modal="false">
+            :close-on-click-modal="false" :close-on-press-escape="!stationSchemeManagerSaving"
+            :show-close="!stationSchemeManagerSaving" @closed="resetStationSchemeDraft(); cancelStationSchemeEdit()">
             <div class="station-scheme-manager">
                 <div class="station-scheme-create-row">
-                    <el-input v-model="stationSchemeDraft.name" size="small" class="station-scheme-name-input"
-                        :disabled="props.readonly" :placeholder="t('stationLayout.schemeManager.namePlaceholder')" />
-                    <el-button type="primary" size="small" :loading="stationSchemeManagerSaving"
-                        :disabled="props.readonly"
-                        @click="createStationScheme">
+                    <el-button type="primary" size="small"
+                        :disabled="props.readonly || loadingStationSchemes || stationSchemeManagerSaving || !!stationSchemeDraft || !!editingStationSchemeOriginalId"
+                        @click="startNewStationScheme">
                         {{ t('stationLayout.schemeManager.add') }}
                     </el-button>
                 </div>
-                <el-table :data="stationSchemeOptions" v-loading="loadingStationSchemes || stationSchemeManagerSaving"
-                    height="360" class="station-scheme-table">
+                <el-table :data="stationSchemeManagerRows" v-loading="loadingStationSchemes || stationSchemeManagerSaving"
+                    :row-key="row => row.isDraft ? 'draft' : row.id" height="360" class="station-scheme-table">
                     <el-table-column prop="id" :label="t('stationLayout.schemeManager.id')" width="220">
                         <template #default="{ row }">
-                            <span>{{ row.id }}</span>
+                            <el-tag v-if="row.isDraft" type="info" size="small">{{ t('stationLayout.schemeManager.pendingSave') }}</el-tag>
+                            <span v-else>{{ row.id }}</span>
                         </template>
                     </el-table-column>
                     <el-table-column prop="name" :label="t('stationLayout.schemeManager.name')">
                         <template #default="{ row }">
-                            <el-input v-if="editingStationSchemeOriginalId === row.id"
-                                v-model="editingStationSchemeForm.name" size="small" :disabled="props.readonly" />
+                            <el-input v-if="row.isDraft" ref="stationSchemeDraftInputRef"
+                                v-model="row.name" size="small" maxlength="100"
+                                :disabled="props.readonly || stationSchemeManagerSaving"
+                                :placeholder="t('stationLayout.schemeManager.namePlaceholder')" @keyup.enter="createStationScheme" />
+                            <el-input v-else-if="editingStationSchemeOriginalId === row.id"
+                                v-model="editingStationSchemeForm.name" size="small" maxlength="100"
+                                :disabled="props.readonly || stationSchemeManagerSaving" @keyup.enter="saveStationSchemeEdit" />
                             <span v-else>{{ row.name || row.id }}</span>
                         </template>
                     </el-table-column>
-                    <el-table-column :label="t('stationLayout.schemeManager.operation')" width="220">
+                    <el-table-column :label="t('stationLayout.schemeManager.operation')" width="240">
                         <template #default="{ row }">
-                            <div v-if="editingStationSchemeOriginalId === row.id" class="station-scheme-actions">
-                                <el-button type="success" size="small" :disabled="props.readonly"
+                            <div v-if="row.isDraft" class="station-scheme-actions">
+                                <el-button type="success" size="small" :disabled="props.readonly || stationSchemeManagerSaving"
+                                    @click="createStationScheme">{{ t('stationLayout.schemeManager.save') }}</el-button>
+                                <el-button size="small" :disabled="stationSchemeManagerSaving"
+                                    @click="resetStationSchemeDraft">{{ t('stationLayout.schemeManager.cancel') }}</el-button>
+                            </div>
+                            <div v-else-if="editingStationSchemeOriginalId === row.id" class="station-scheme-actions">
+                                <el-button type="success" size="small" :disabled="props.readonly || stationSchemeManagerSaving"
                                     @click="saveStationSchemeEdit">
                                     {{ t('stationLayout.schemeManager.save') }}
                                 </el-button>
-                                <el-button size="small" @click="cancelStationSchemeEdit">
+                                <el-button size="small" :disabled="stationSchemeManagerSaving" @click="cancelStationSchemeEdit">
                                     {{ t('stationLayout.schemeManager.cancel') }}
                                 </el-button>
                             </div>
                             <div v-else class="station-scheme-actions">
-                                <el-button type="primary" size="small" :disabled="props.readonly"
+                                <el-button type="primary" size="small" :disabled="props.readonly || stationSchemeManagerSaving || !!stationSchemeDraft || !!editingStationSchemeOriginalId"
                                     @click="startEditStationScheme(row)">
                                     {{ t('stationLayout.schemeManager.edit') }}
                                 </el-button>
-                                <el-button type="danger" size="small" :disabled="props.readonly"
+                                <el-button size="small" :disabled="props.readonly || stationSchemeManagerSaving || !!stationSchemeDraft || !!editingStationSchemeOriginalId"
+                                    @click="copyStationScheme(row)">{{ t('stationLayout.schemeManager.copy') }}</el-button>
+                                <el-button type="danger" size="small" :disabled="props.readonly || stationSchemeManagerSaving || !!stationSchemeDraft || !!editingStationSchemeOriginalId"
                                     @click="deleteStationScheme(row)">
                                     {{ t('stationLayout.schemeManager.delete') }}
                                 </el-button>
@@ -2818,33 +2965,35 @@ watch(
                 </el-table>
             </div>
             <template #footer>
-                <el-button @click="stationSchemeManagerVisible = false">
+                <el-button :disabled="stationSchemeManagerSaving" @click="stationSchemeManagerVisible = false">
                     {{ t('stationLayout.schemeManager.close') }}
                 </el-button>
             </template>
         </el-dialog>
 
-        <el-dialog v-model="bindingCorrectionDialogVisible" title="修正设备绑定节点" width="860px"
+        <el-dialog v-model="bindingCorrectionDialogVisible" :title="t('stationLayout.editor.binding.title')" width="860px"
             :close-on-click-modal="false" @closed="handleBindingCorrectionDialogClosed">
             <div class="binding-correction-dialog">
                 <div class="binding-correction-summary">
-                    检测到 {{ bindingCorrectionRows.length }} 个设备的 binding node 将被修改，请勾选确认需要修正的项。
+                    {{ t('stationLayout.editor.binding.summary', { count: bindingCorrectionRows.length }) }}
                     <span v-if="bindingCorrectionPlan?.unmatchedCount > 0">
-                        另有 {{ bindingCorrectionPlan.unmatchedCount }} 个设备当前位置没有节点，已跳过。
+                        {{ t('stationLayout.editor.binding.skipped', { count: bindingCorrectionPlan.unmatchedCount }) }}
                     </span>
                 </div>
                 <el-table ref="bindingCorrectionTableRef" :data="bindingCorrectionRows" row-key="key" size="small"
                     height="360" @selection-change="handleBindingCorrectionSelectionChange">
                     <el-table-column type="selection" width="48" />
-                    <el-table-column prop="kindLabel" :label="t('stationLayout.equipment.type')" width="110" />
+                    <el-table-column :label="t('stationLayout.equipment.type')" width="110">
+                        <template #default="{ row }">{{ equipmentKindLabels[row.kind] || row.kindLabel }}</template>
+                    </el-table-column>
                     <el-table-column :label="t('stationLayout.equipment.generic')" min-width="160" show-overflow-tooltip>
                         <template #default="{ row }">
                             <span>{{ row.equipmentName || row.equipmentId }}</span>
                         </template>
                     </el-table-column>
-                    <el-table-column prop="previousBindingNodeID" label="原 binding node" width="150" />
-                    <el-table-column prop="nextBindingNodeID" label="修正为 node" width="140" />
-                    <el-table-column label="设备位置" width="150">
+                    <el-table-column prop="previousBindingNodeID" :label="t('stationLayout.editor.binding.previous')" width="150" />
+                    <el-table-column prop="nextBindingNodeID" :label="t('stationLayout.editor.binding.next')" width="140" />
+                    <el-table-column :label="t('stationLayout.editor.binding.position')" width="150">
                         <template #default="{ row }">
                             <span>({{ row.position?.x }}, {{ row.position?.y }})</span>
                         </template>
@@ -2853,30 +3002,30 @@ watch(
             </div>
             <template #footer>
                 <div class="binding-correction-footer">
-                    <span>已选择 {{ selectedBindingCorrectionRows.length }} / {{ bindingCorrectionRows.length }}</span>
+                    <span>{{ t('stationLayout.editor.binding.selected', { selected: selectedBindingCorrectionRows.length, total: bindingCorrectionRows.length }) }}</span>
                     <div class="binding-correction-actions">
-                        <el-button @click="closeBindingCorrectionDialog">取消</el-button>
+                        <el-button @click="closeBindingCorrectionDialog">{{ t('stationLayout.editor.common.cancel') }}</el-button>
                         <el-button type="primary" :disabled="props.readonly || selectedBindingCorrectionRows.length === 0"
                             @click="applySelectedBindingCorrections">
-                            确认修正
+                            {{ t('stationLayout.editor.binding.confirm') }}
                         </el-button>
                     </div>
                 </div>
             </template>
         </el-dialog>
 
-        <el-dialog v-model="layoutStyleDialogVisible" title="显示样式配置" width="920px" class="layout-style-dialog"
+        <el-dialog v-model="layoutStyleDialogVisible" :title="t('stationLayout.editor.styles.title')" width="920px" class="layout-style-dialog"
             :close-on-click-modal="false">
             <el-form :disabled="props.readonly">
             <el-tabs>
-                <el-tab-pane label="文字">
+                <el-tab-pane :label="t('stationLayout.editor.styles.text')">
                     <div class="layout-style-table">
-                        <div class="layout-style-table-header">对象</div>
-                        <div class="layout-style-table-header">大小</div>
-                        <div class="layout-style-table-header">字体</div>
-                        <div class="layout-style-table-header">粗细</div>
-                        <div class="layout-style-table-header">样式</div>
-                        <div class="layout-style-table-header">颜色</div>
+                        <div class="layout-style-table-header">{{ t('stationLayout.editor.styles.object') }}</div>
+                        <div class="layout-style-table-header">{{ t('stationLayout.editor.styles.size') }}</div>
+                        <div class="layout-style-table-header">{{ t('stationLayout.editor.styles.font') }}</div>
+                        <div class="layout-style-table-header">{{ t('stationLayout.editor.styles.weight') }}</div>
+                        <div class="layout-style-table-header">{{ t('stationLayout.editor.styles.style') }}</div>
+                        <div class="layout-style-table-header">{{ t('stationLayout.editor.styles.color') }}</div>
                         <template v-for="row in layoutTextStyleRows" :key="row.key">
                             <div class="layout-style-label">{{ row.label }}</div>
                             <el-input-number v-model="layoutDisplayStyles[row.key].fontSize" size="small" :min="6"
@@ -2898,73 +3047,73 @@ watch(
                         </template>
                     </div>
                 </el-tab-pane>
-                <el-tab-pane label="线条与设备">
+                <el-tab-pane :label="t('stationLayout.editor.styles.equipment')">
                     <div class="layout-style-grid">
                         <section class="layout-style-section">
-                            <h4>轨道线条</h4>
+                            <h4>{{ t('stationLayout.editor.styles.track') }}</h4>
                             <div class="layout-style-field">
-                                <span>粗细</span>
+                                <span>{{ t('stationLayout.editor.styles.weight') }}</span>
                                 <el-input-number v-model="layoutDisplayStyles.track.strokeWidth" size="small" :min="0.5"
                                     :max="12" :step="0.5" controls-position="right" />
                             </div>
                             <div class="layout-style-field">
-                                <span>颜色</span>
+                                <span>{{ t('stationLayout.editor.styles.color') }}</span>
                                 <el-color-picker v-model="layoutDisplayStyles.track.color" size="small" show-alpha />
                             </div>
                         </section>
                         <section class="layout-style-section">
-                            <h4>曲线线条</h4>
+                            <h4>{{ t('stationLayout.editor.styles.curve') }}</h4>
                             <div class="layout-style-field">
-                                <span>粗细</span>
+                                <span>{{ t('stationLayout.editor.styles.weight') }}</span>
                                 <el-input-number v-model="layoutDisplayStyles.curve.strokeWidth" size="small" :min="0.5"
                                     :max="12" :step="0.5" controls-position="right" />
                             </div>
                             <div class="layout-style-field">
-                                <span>颜色</span>
+                                <span>{{ t('stationLayout.editor.styles.color') }}</span>
                                 <el-color-picker v-model="layoutDisplayStyles.curve.color" size="small" show-alpha />
                             </div>
                         </section>
                         <section class="layout-style-section">
-                            <h4>站台线条</h4>
+                            <h4>{{ t('stationLayout.editor.styles.platform') }}</h4>
                             <div class="layout-style-field">
-                                <span>粗细</span>
+                                <span>{{ t('stationLayout.editor.styles.weight') }}</span>
                                 <el-input-number v-model="layoutDisplayStyles.platform.strokeWidth" size="small"
                                     :min="0.5" :max="12" :step="0.5" controls-position="right" />
                             </div>
                             <div class="layout-style-field">
-                                <span>颜色</span>
+                                <span>{{ t('stationLayout.editor.styles.color') }}</span>
                                 <el-color-picker v-model="layoutDisplayStyles.platform.color" size="small" show-alpha />
                             </div>
                         </section>
                         <section class="layout-style-section">
-                            <h4>信号机</h4>
+                            <h4>{{ t('stationLayout.draw.signal') }}</h4>
                             <div class="layout-style-field">
-                                <span>大小</span>
+                                <span>{{ t('stationLayout.editor.styles.size') }}</span>
                                 <el-input-number v-model="layoutDisplayStyles.signal.scale" size="small" :min="0.2"
                                     :max="2" :step="0.05" controls-position="right" />
                             </div>
                         </section>
                         <section class="layout-style-section">
-                            <h4>道岔</h4>
+                            <h4>{{ t('stationLayout.draw.switch') }}</h4>
                             <div class="layout-style-field">
-                                <span>线条粗细</span>
+                                <span>{{ t('stationLayout.editor.styles.strokeWidth') }}</span>
                                 <el-input-number v-model="layoutDisplayStyles.switch.strokeWidth" size="small" :min="1"
                                     :max="16" :step="0.5" controls-position="right" />
                             </div>
                             <div class="layout-style-field">
-                                <span>颜色</span>
+                                <span>{{ t('stationLayout.editor.styles.color') }}</span>
                                 <el-color-picker v-model="layoutDisplayStyles.switch.color" size="small" show-alpha />
                             </div>
                         </section>
                         <section class="layout-style-section">
                             <h4>{{ t('stationLayout.draw.node') }}</h4>
                             <div class="layout-style-field">
-                                <span>大小</span>
+                                <span>{{ t('stationLayout.editor.styles.size') }}</span>
                                 <el-input-number v-model="layoutDisplayStyles.node.radius" size="small" :min="1"
                                     :max="24" :step="1" controls-position="right" />
                             </div>
                             <div class="layout-style-field">
-                                <span>颜色</span>
+                                <span>{{ t('stationLayout.editor.styles.color') }}</span>
                                 <el-color-picker v-model="layoutDisplayStyles.node.color" size="small" show-alpha />
                             </div>
                         </section>
@@ -2974,15 +3123,15 @@ watch(
             </el-form>
             <template #footer>
                 <el-button :disabled="props.readonly"
-                    @click="ensureWritable() && resetLayoutDisplayStyles()">恢复默认</el-button>
+                    @click="ensureWritable() && resetLayoutDisplayStyles()">{{ t('stationLayout.editor.styles.reset') }}</el-button>
                 <el-button type="primary" :loading="savingData" :disabled="props.readonly"
-                    @click="saveLayoutDisplayStyles">保存</el-button>
+                    @click="saveLayoutDisplayStyles">{{ t('stationLayout.editor.common.save') }}</el-button>
                 <el-button @click="layoutStyleDialogVisible = false">{{ t('stationLayout.schemeManager.close') }}</el-button>
             </template>
         </el-dialog>
 
         <div v-if="selectedAnnotation" class="annotation-editor-row">
-            <span class="toolbar-group-label">注释</span>
+            <span class="toolbar-group-label">{{ t('stationLayout.editor.annotation.title') }}</span>
             <el-input v-model="selectedAnnotation.text" size="small" class="annotation-text-input"
                 :disabled="props.readonly"
                 @input="updateSelectedAnnotation({ text: selectedAnnotation.text })" />
@@ -3007,7 +3156,7 @@ watch(
                 <el-option v-for="item in annotationFontStyleOptions" :key="item.value" :label="item.label"
                     :value="item.value" />
             </el-select>
-            <span class="annotation-field-label">角度</span>
+            <span class="annotation-field-label">{{ t('stationLayout.editor.annotation.angle') }}</span>
             <el-input-number v-model="selectedAnnotation.angle" size="small" :min="-180" :max="180" :step="5"
                 controls-position="right" :disabled="props.readonly"
                 @change="updateSelectedAnnotation({ angle: selectedAnnotation.angle })" />
@@ -3022,7 +3171,7 @@ watch(
         </div>
         <div class="station-layout-workspace">
             <div ref="stationLayoutEditorFrameRef" class="station-layout-editor-frame">
-                <StationLayoutEditor ref="stationLayoutEditorRef" :display-scale-x="layoutScaleX"
+                <StationLayoutEditor :translate="t" ref="stationLayoutEditorRef" :display-scale-x="layoutScaleX"
                     :display-scale-y="layoutScaleY" :show-curve-arc="showCurveArc" :show-nodes="showNodes"
                     :show-grid="showGrid" :object-snap-distance="objectSnapDistance"
                     :readonly="props.readonly"
@@ -3040,29 +3189,30 @@ watch(
                     @selected-equipment-change="handleSelectedEquipmentChange"
                     @route-node-pick="handleRouteNodePick"
                     @cell-name-click="handleCellNameClick"
+                    @cell-rename="handleCellRename"
                     @topology-rebuilt="handleTopologyRebuilt"
                     @delete-selection-request="deleteSelection" />
             </div>
             <aside v-if="cellPanelVisible" class="cell-side-panel">
                 <div class="cell-side-panel-header">
                     <div>
-                        <div class="cell-side-panel-title">轨道电路区段（Cell）</div>
-                        <div class="cell-side-panel-subtitle">{{ currentStationSchemeId || "当前方案" }}</div>
+                        <div class="cell-side-panel-title">{{ t('stationLayout.editor.cells.title') }}</div>
+                        <div class="cell-side-panel-subtitle">{{ currentStationSchemeId || t('stationLayout.editor.common.currentScheme') }}</div>
                     </div>
                     <el-button text size="small" @click="toggleCellPanel">{{ t('stationLayout.schemeManager.close') }}</el-button>
                 </div>
                 <div class="cell-side-panel-body">
                     <section class="cell-panel-section">
                         <div class="cell-panel-section-header">
-                            <span>Cell 列表</span>
+                            <span>{{ t('stationLayout.editor.cells.list') }}</span>
                             <div class="cell-panel-actions">
                                 <el-button size="small" :icon="Magnet" :disabled="props.readonly"
-                                    @click="autoGenerateCells">自动生成</el-button>
+                                    @click="autoGenerateCells">{{ t('stationLayout.editor.cells.autoGenerate') }}</el-button>
                                 <el-button size="small" type="primary" :disabled="props.readonly"
-                                    @click="createCell">新增</el-button>
+                                    @click="createCell">{{ t('stationLayout.editor.common.add') }}</el-button>
                                 <el-button size="small" type="danger" :disabled="props.readonly || !selectedCellId"
                                     @click="deleteSelectedCell">
-                                    删除
+                                    {{ t('stationLayout.editor.common.delete') }}
                                 </el-button>
                             </div>
                         </div>
@@ -3073,8 +3223,8 @@ watch(
                                     {{ getCellDisplayId(row) }}
                                 </template>
                             </el-table-column>
-                            <el-table-column prop="name" label="Name" min-width="120" show-overflow-tooltip />
-                            <el-table-column label="Links" width="72">
+                            <el-table-column prop="name" :label="t('stationLayout.editor.cells.name')" min-width="120" show-overflow-tooltip />
+                            <el-table-column :label="t('stationLayout.editor.cells.links')" width="72">
                                 <template #default="{ row }">
                                     {{ getCellLinkCount(row) }}
                                 </template>
@@ -3084,48 +3234,48 @@ watch(
 
                     <section class="cell-panel-section cell-detail-section">
                         <div class="cell-panel-section-header">
-                            <span>Cell 信息</span>
+                            <span>{{ t('stationLayout.editor.cells.info') }}</span>
                             <el-button size="small" type="primary" :disabled="props.readonly || !selectedCellId"
                                 :loading="savingData"
                                 @click="saveCellForm">
-                                保存
+                                {{ t('stationLayout.editor.common.save') }}
                             </el-button>
                         </div>
                         <div v-if="selectedCellId" class="cell-detail-content">
                             <el-form class="cell-form" label-width="116px" size="small" :disabled="props.readonly">
-                                <el-form-item label="InstanceID">
+                                <el-form-item :label="t('stationLayout.editor.cells.instance')">
                                     <el-input v-model="cellForm.instanceID" disabled />
                                 </el-form-item>
-                                <el-form-item label="StationSchemeID">
+                                <el-form-item :label="t('stationLayout.editor.cells.scheme')">
                                     <el-input v-model="cellForm.stationSchemeID" disabled />
                                 </el-form-item>
                                 <el-form-item label="ID">
-                                    <el-input :model-value="getCellDisplayId(cellForm)" disabled placeholder="保存后由后端生成" />
+                                    <el-input :model-value="getCellDisplayId(cellForm)" disabled :placeholder="t('stationLayout.editor.cells.idPlaceholder')" />
                                 </el-form-item>
-                                <el-form-item label="Name">
+                                <el-form-item :label="t('stationLayout.editor.cells.name')">
                                     <el-input v-model="cellForm.name" />
                                 </el-form-item>
-                                <el-form-item label="LinkIDList">
+                                <el-form-item :label="t('stationLayout.editor.cells.links')">
                                     <el-input v-model="cellForm.linkIDList" type="textarea" :rows="2"
                                         @change="setCellFormLinkIds(parseLinkIdList(cellForm.linkIDList))" />
                                 </el-form-item>
                             </el-form>
 
                             <div class="cell-link-toolbar">
-                                <span class="cell-link-toolbar-title">包含 Link</span>
+                                <span class="cell-link-toolbar-title">{{ t('stationLayout.editor.cells.links') }}</span>
                                 <div class="cell-link-toolbar-actions">
                                     <el-button size="small" :type="cellLinkPickMode ? 'primary' : 'default'"
                                         :disabled="props.readonly"
                                         @click="toggleCellLinkPickMode">
-                                        点选新增
+                                        {{ t('stationLayout.editor.cells.pickAdd') }}
                                     </el-button>
                                     <el-button size="small" :disabled="props.readonly || !selectedCellLinkId"
                                         @click="removeSelectedCellLink">
-                                        移除当前
+                                        {{ t('stationLayout.editor.cells.removeCurrent') }}
                                     </el-button>
                                     <el-button size="small" :disabled="props.readonly || cellFormLinkIds.length === 0"
                                         @click="clearCellLinks">
-                                        清空
+                                        {{ t('stationLayout.editor.common.clear') }}
                                     </el-button>
                                 </div>
                             </div>
@@ -3140,15 +3290,15 @@ watch(
                                             <span class="cell-link-detail-value">{{ linkId }}</span>
                                         </div>
                                         <div>
-                                            <span class="cell-link-detail-label">端点</span>
+                                            <span class="cell-link-detail-label">{{ t('stationLayout.editor.cells.endpoints') }}</span>
                                             <span class="cell-link-detail-value">{{ getLinkEndpointSummary(linkId) }}</span>
                                         </div>
                                     </div>
                                 </el-tab-pane>
                             </el-tabs>
-                            <el-empty v-else class="cell-link-empty" description="当前 Cell 尚未包含 Link" />
+                            <el-empty v-else class="cell-link-empty" :description="t('stationLayout.editor.cells.emptyLinks')" />
                         </div>
-                        <el-empty v-else class="cell-empty" description="请新建或选择一个 Cell" />
+                        <el-empty v-else class="cell-empty" :description="t('stationLayout.editor.cells.empty')" />
                     </section>
                 </div>
             </aside>
@@ -3166,101 +3316,126 @@ watch(
                         <el-form-item :label="t('stationLayout.equipment.type')">
                             <el-tag type="info">{{ equipmentKindLabels[equipmentForm.kind] || t('stationLayout.equipment.generic') }}</el-tag>
                         </el-form-item>
-                        <el-form-item label="ID">
-                            <el-input v-model="equipmentForm.id" :disabled="isEquipmentBatchMode" />
+                        <el-form-item :label="t('stationLayout.equipment.fields.id')">
+                            <el-input v-model="equipmentForm.id"
+                                :disabled="isEquipmentBatchMode || isEquipmentNodePositionLocked" />
                         </el-form-item>
                         <el-form-item v-if="['link', 'signal', 'switch', 'platform'].includes(equipmentForm.kind)"
-                            label="Name">
+                            :label="t('stationLayout.equipment.fields.name')">
                             <el-input v-model="equipmentForm.name" />
                         </el-form-item>
-                        <el-form-item v-if="equipmentForm.kind === 'link'" label="ArrowDirection">
+                        <el-form-item v-if="equipmentForm.kind === 'link'" :label="t('stationLayout.equipment.fields.arrowDirection')">
                             <el-select v-model="equipmentForm.arrowDirection">
                                 <el-option v-for="option in linkArrowDirectionOptions" :key="option.value"
                                     :label="option.label" :value="option.value" />
                             </el-select>
                         </el-form-item>
-                        <el-form-item v-if="equipmentForm.kind === 'link'" label="ArrowType">
+                        <el-form-item v-if="equipmentForm.kind === 'link'" :label="t('stationLayout.equipment.fields.arrowType')">
                             <el-select v-model="equipmentForm.arrowType">
                                 <el-option v-for="option in linkArrowTypeOptions" :key="option.value"
                                     :label="option.label" :value="option.value" />
                             </el-select>
                         </el-form-item>
-                        <el-form-item v-if="['signal', 'switch', 'insulationJoint'].includes(equipmentForm.kind)"
-                            label="Type">
-                            <el-input v-model="equipmentForm.type" />
+                        <el-form-item v-if="equipmentForm.kind === 'switch'" :label="t('stationLayout.equipment.fields.type')">
+                            <el-select v-model="equipmentForm.type">
+                                <el-option v-for="option in switchTypeOptions" :key="option.value"
+                                    :label="option.label" :value="option.value" />
+                            </el-select>
                         </el-form-item>
-                        <el-form-item v-if="equipmentForm.kind === 'bufferStop'" label="Type">
+                        <el-form-item v-if="equipmentForm.kind === 'signal'" :label="t('stationLayout.equipment.fields.type')">
+                            <el-select v-model="equipmentForm.type">
+                                <el-option v-for="option in equipmentSignalTypeOptions" :key="option.value"
+                                    :label="option.label" :value="option.value" />
+                            </el-select>
+                        </el-form-item>
+                        <el-form-item v-if="equipmentForm.kind === 'insulationJoint'" :label="t('stationLayout.equipment.fields.type')">
+                            <el-select v-model="equipmentForm.type">
+                                <el-option v-for="option in insulationJointTypeOptions" :key="option.value"
+                                    :label="option.label" :value="option.value" />
+                            </el-select>
+                        </el-form-item>
+                        <el-form-item v-if="equipmentForm.kind === 'bufferStop'" :label="t('stationLayout.equipment.fields.type')">
                             <el-select v-model="equipmentForm.type">
                                 <el-option v-for="option in bufferStopTypeOptions" :key="option.value"
                                     :label="option.label" :value="option.value" />
                             </el-select>
                         </el-form-item>
-                        <el-form-item v-if="equipmentForm.kind === 'signal'" label="Direction">
+                        <el-form-item v-if="equipmentForm.kind === 'signal'" :label="t('stationLayout.equipment.fields.direction')">
                             <el-select v-model="equipmentForm.direction">
-                                <el-option label="e" value="e" />
-                                <el-option label="w" value="w" />
-                                <el-option label="s" value="s" />
-                                <el-option label="d" value="d" />
+                                <el-option v-for="option in signalDirectionOptions" :key="option.value"
+                                    :label="option.label" :value="option.value" />
                             </el-select>
                         </el-form-item>
-                        <el-form-item v-if="equipmentForm.kind === 'bufferStop'" label="Direction">
+                        <el-form-item v-if="equipmentForm.kind === 'bufferStop'" :label="t('stationLayout.equipment.fields.direction')">
                             <el-select v-model="equipmentForm.direction">
                                 <el-option v-for="option in bufferStopDirectionOptions" :key="option.value"
                                     :label="option.label" :value="option.value" />
                             </el-select>
                         </el-form-item>
                         <el-form-item v-if="['signal', 'switch', 'insulationJoint', 'bufferStop'].includes(equipmentForm.kind)"
-                            label="BindingNodeID">
-                            <el-input v-model="equipmentForm.bindingNodeID" />
+                            :label="t('stationLayout.equipment.fields.bindingNodeID')">
+                            <el-select v-if="isEquipmentNodePositionLocked" v-model="equipmentForm.bindingNodeID"
+                                filterable @change="syncEquipmentFormPositionToBindingNode(equipmentForm)"
+                                @visible-change="handleEquipmentBindingDropdownVisible">
+                                <el-option v-for="option in equipmentBindingNodeOptions" :key="option.value"
+                                    :label="option.label" :value="option.value" />
+                            </el-select>
+                            <el-input v-else v-model="equipmentForm.bindingNodeID" />
                         </el-form-item>
                         <div v-if="['signal', 'switch', 'insulationJoint', 'bufferStop'].includes(equipmentForm.kind)"
                             class="equipment-form-grid">
-                            <el-form-item label="X">
-                                <el-input-number v-model="equipmentForm.x" controls-position="right" :step="10" />
+                            <el-form-item :label="t('stationLayout.equipment.fields.x')">
+                                <el-input-number v-model="equipmentForm.x" controls-position="right" :step="10"
+                                    :disabled="isEquipmentNodePositionLocked" :controls="!isEquipmentNodePositionLocked" />
                             </el-form-item>
-                            <el-form-item label="Y">
-                                <el-input-number v-model="equipmentForm.y" controls-position="right" :step="10" />
+                            <el-form-item :label="t('stationLayout.equipment.fields.y')">
+                                <el-input-number v-model="equipmentForm.y" controls-position="right" :step="10"
+                                    :disabled="isEquipmentNodePositionLocked" :controls="!isEquipmentNodePositionLocked" />
                             </el-form-item>
                         </div>
                         <div v-if="equipmentForm.kind === 'platform'" class="equipment-form-grid">
-                            <el-form-item label="X">
+                            <el-form-item :label="t('stationLayout.equipment.fields.x')">
                                 <el-input-number v-model="equipmentForm.x" controls-position="right" :step="10" />
                             </el-form-item>
-                            <el-form-item label="Y">
+                            <el-form-item :label="t('stationLayout.equipment.fields.y')">
                                 <el-input-number v-model="equipmentForm.y" controls-position="right" :step="10" />
                             </el-form-item>
-                            <el-form-item label="Width">
+                            <el-form-item :label="t('stationLayout.equipment.fields.width')">
                                 <el-input-number v-model="equipmentForm.width" controls-position="right" :min="0"
                                     :step="10" />
                             </el-form-item>
-                            <el-form-item label="Height">
+                            <el-form-item :label="t('stationLayout.equipment.fields.height')">
                                 <el-input-number v-model="equipmentForm.height" controls-position="right" :min="0"
                                     :step="10" />
                             </el-form-item>
                         </div>
                         <div v-if="equipmentForm.kind === 'link'" class="equipment-form-grid">
-                            <el-form-item label="X1">
+                            <el-form-item :label="t('stationLayout.equipment.fields.x1')">
                                 <el-input-number v-model="equipmentForm.x1" controls-position="right" :step="10" />
                             </el-form-item>
-                            <el-form-item label="Y1">
+                            <el-form-item :label="t('stationLayout.equipment.fields.y1')">
                                 <el-input-number v-model="equipmentForm.y1" controls-position="right" :step="10" />
                             </el-form-item>
-                            <el-form-item label="X2">
+                            <el-form-item :label="t('stationLayout.equipment.fields.x2')">
                                 <el-input-number v-model="equipmentForm.x2" controls-position="right" :step="10" />
                             </el-form-item>
-                            <el-form-item label="Y2">
+                            <el-form-item :label="t('stationLayout.equipment.fields.y2')">
                                 <el-input-number v-model="equipmentForm.y2" controls-position="right" :step="10" />
                             </el-form-item>
                         </div>
-                        <el-form-item v-if="equipmentForm.kind === 'link'" label="FromNodeID">
+                        <el-form-item v-if="equipmentForm.kind === 'link'" :label="t('stationLayout.equipment.fields.fromNodeID')">
                             <el-input v-model="equipmentForm.fromNodeID" />
                         </el-form-item>
-                        <el-form-item v-if="equipmentForm.kind === 'link'" label="ToNodeID">
+                        <el-form-item v-if="equipmentForm.kind === 'link'" :label="t('stationLayout.equipment.fields.toNodeID')">
                             <el-input v-model="equipmentForm.toNodeID" />
                         </el-form-item>
-                        <el-form-item v-if="equipmentForm.kind === 'switch'" label="BranchVectorList">
-                            <el-input v-model="equipmentForm.branchVectorListText" type="textarea" :rows="8" />
-                        </el-form-item>
+                        <el-collapse v-if="equipmentForm.kind === 'switch'"
+                            :key="selectedEquipment.ids?.join(',') || selectedEquipment.id">
+                            <el-collapse-item :title="t('stationLayout.equipment.fields.branchVectorList')" name="branchVectorList">
+                                <el-input v-model="equipmentForm.branchVectorListText" type="textarea" :rows="8"
+                                    :aria-label="t('stationLayout.equipment.fields.branchVectorList')" />
+                            </el-collapse-item>
+                        </el-collapse>
                     </el-form>
                     <el-empty v-else class="equipment-empty" :description="t('stationLayout.equipment.selectOne')" />
                 </div>
@@ -3269,42 +3444,42 @@ watch(
                     <el-button type="primary" :disabled="props.readonly || !selectedEquipment"
                         :loading="equipmentSaving || savingData"
                         @click="saveEquipmentForm">
-                        保存
+                        {{ t('stationLayout.schemeManager.save') }}
                     </el-button>
                 </div>
             </aside>
             <aside v-if="routeTesterVisible" class="route-search-panel">
                 <div class="route-search-panel-header">
                     <div>
-                        <div class="route-search-panel-title">路径搜索测试</div>
-                        <div class="route-search-panel-subtitle">{{ currentStationSchemeId || "当前方案" }}</div>
+                        <div class="route-search-panel-title">{{ t('stationLayout.editor.routes.title') }}</div>
+                        <div class="route-search-panel-subtitle">{{ currentStationSchemeId || t('stationLayout.editor.common.currentScheme') }}</div>
                     </div>
                     <el-button text size="small" @click="toggleRouteTester">{{ t('stationLayout.schemeManager.close') }}</el-button>
                 </div>
                 <div class="route-search-panel-body">
                     <div class="route-search-form">
-                        <label class="route-search-label">起点 Node ID</label>
+                        <label class="route-search-label">{{ t('stationLayout.editor.routes.start') }}</label>
                         <div class="route-search-input-row">
                             <el-input v-model="routeSearchForm.startNodeId" size="small" clearable />
                             <el-button size="small" :type="routeNodePickTarget === 'start' ? 'primary' : 'default'"
                                 @click="setRouteNodePickTarget('start')">
-                                点选
+                                {{ t('stationLayout.editor.routes.pick') }}
                             </el-button>
                         </div>
-                        <label class="route-search-label">终点 Node ID</label>
+                        <label class="route-search-label">{{ t('stationLayout.editor.routes.end') }}</label>
                         <div class="route-search-input-row">
                             <el-input v-model="routeSearchForm.endNodeId" size="small" clearable />
                             <el-button size="small" :type="routeNodePickTarget === 'end' ? 'primary' : 'default'"
                                 @click="setRouteNodePickTarget('end')">
-                                点选
+                                {{ t('stationLayout.editor.routes.pick') }}
                             </el-button>
                         </div>
                         <div class="route-search-actions">
                             <el-button type="primary" size="small" :loading="routeSearchLoading"
                                 @click="searchStationRoutes">
-                                搜索
+                                {{ t('stationLayout.editor.routes.search') }}
                             </el-button>
-                            <el-button size="small" @click="clearRouteSearchResult">清空</el-button>
+                            <el-button size="small" @click="clearRouteSearchResult">{{ t('stationLayout.editor.common.clear') }}</el-button>
                         </div>
                     </div>
                     <el-table :data="routeSearchRoutes" v-loading="routeSearchLoading" size="small"
@@ -3315,12 +3490,12 @@ watch(
                                 {{ row.index + 1 }}
                             </template>
                         </el-table-column>
-                        <el-table-column label="方向" width="72">
+                        <el-table-column :label="t('stationLayout.editor.routes.direction')" width="72">
                             <template #default="{ row }">
                                 {{ getRouteDirectionLabel(row.direction) }}
                             </template>
                         </el-table-column>
-                        <el-table-column label="路径">
+                        <el-table-column :label="t('stationLayout.editor.routes.path')">
                             <template #default="{ row }">
                                 <div class="route-search-summary" :class="{ 'is-active': row.index === selectedRouteIndex }">
                                     {{ getRouteSummary(row) }}
@@ -3331,19 +3506,19 @@ watch(
                 </div>
             </aside>
         </div>
-        <el-dialog v-model="extractDwgDialogVisible" title="从DWG文件提取" width="420px" :close-on-click-modal="false">
+        <el-dialog v-model="extractDwgDialogVisible" :title="t('stationLayout.editor.dwg.title')" width="420px" :close-on-click-modal="false">
             <div class="dwg-extract-form">
-                <label class="dwg-extract-label">DWG 文件</label>
+                <label class="dwg-extract-label">{{ t('stationLayout.editor.dwg.file') }}</label>
                 <input ref="dwgFileInputRef" type="file" accept=".dwg" :disabled="props.readonly"
                     @change="handleDwgFileChange" />
-                <label class="dwg-extract-label">图层名称</label>
-                <el-input v-model="dwgLayerName" :disabled="props.readonly" placeholder="请输入要提取的图层名称" />
+                <label class="dwg-extract-label">{{ t('stationLayout.editor.dwg.layer') }}</label>
+                <el-input v-model="dwgLayerName" :disabled="props.readonly" :placeholder="t('stationLayout.editor.dwg.layerPlaceholder')" />
             </div>
             <template #footer>
-                <el-button @click="extractDwgDialogVisible = false">取消</el-button>
+                <el-button @click="extractDwgDialogVisible = false">{{ t('stationLayout.editor.common.cancel') }}</el-button>
                 <el-button type="primary" :loading="extractingDwg" :disabled="props.readonly"
                     @click="extractDwgFile">
-                    上传并提取
+                    {{ t('stationLayout.editor.dwg.upload') }}
                 </el-button>
             </template>
         </el-dialog>
@@ -3403,11 +3578,6 @@ watch(
     display: flex;
     align-items: center;
     gap: 8px;
-}
-
-.station-scheme-name-input {
-    flex: 1;
-    min-width: 180px;
 }
 
 .station-scheme-table {
@@ -3676,6 +3846,8 @@ watch(
 }
 
 .annotation-editor-row {
+    /* Keep the canvas origin fixed between the two clicks that start renaming. */
+    order: 2;
     flex: 0 0 auto;
     display: flex;
     align-items: center;
@@ -3713,6 +3885,7 @@ watch(
 }
 
 .station-layout-workspace {
+    order: 1;
     display: flex;
     flex: 1 1 auto;
     align-items: stretch;

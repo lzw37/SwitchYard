@@ -6,6 +6,7 @@ import { useI18n } from 'vue-i18n'
 
 const props = defineProps({
     showDisplayControls: { type: Boolean, default: true },
+    displayControlsFirst: { type: Boolean, default: false },
     showGrid: { type: Boolean, default: true },
     showNodes: { type: Boolean, default: true },
     showCurveArc: { type: Boolean, default: true },
@@ -44,7 +45,7 @@ function toggleDensity() {
 <template>
     <section
         class="station-layout-toolbar station-layout-view-toolbar"
-        :class="{ 'is-full': isFull, 'is-compact': !isFull }"
+        :class="{ 'is-full': isFull, 'is-compact': !isFull, 'display-controls-first': displayControlsFirst }"
         :aria-label="t('stationLayout.toolbar.view')"
     >
         <div class="station-layout-toolbar__row station-layout-toolbar__row--main">
@@ -53,7 +54,7 @@ function toggleDensity() {
             </div>
 
             <div class="station-layout-toolbar__primary">
-                <slot name="primary" />
+                <slot v-if="!displayControlsFirst" name="primary" />
                 <template v-if="showDisplayControls">
                     <ActionButton
                         :label="t('routeDesign.toolbar.showGrid')"
@@ -77,6 +78,7 @@ function toggleDensity() {
                         @click="emit('fit')"
                     />
                 </template>
+                <slot v-if="displayControlsFirst" name="primary" />
             </div>
 
             <div class="station-layout-toolbar__actions">
@@ -194,6 +196,10 @@ function toggleDensity() {
 
 .station-layout-toolbar__identity {
     flex: 1 1 320px;
+}
+
+.display-controls-first .station-layout-toolbar__identity {
+    flex: 0 1 auto;
 }
 
 .station-layout-toolbar__primary {

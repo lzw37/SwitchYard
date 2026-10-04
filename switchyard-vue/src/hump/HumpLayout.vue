@@ -565,22 +565,22 @@ async function handleLayoutSelectionChange(payload: LayoutSelectionChangePayload
 
 const switchFrogNumberDefinitions: SwitchFrogNumberOption[] = [
     {
-        label: '9号单开',
+        label: 'frontend.frogNumbers.single9',
         value: '9',
         curveDegree: dmsToDecimal(6, 20, 25)
     },
     {
-        label: '12号单开',
+        label: 'frontend.frogNumbers.single12',
         value: '12',
         curveDegree: dmsToDecimal(4, 45, 49)
     },
     {
-        label: '6号对称',
+        label: 'frontend.frogNumbers.symmetric6',
         value: 'symmetric-6',
         curveDegree: dmsToDecimal(9, 27, 44) / 2
     },
     {
-        label: '6.5号对称道岔',
+        label: 'frontend.frogNumbers.symmetric65',
         value: 'symmetric-6-5',
         curveDegree: dmsToDecimal(8, 44, 46) / 2
     }
@@ -724,7 +724,7 @@ async function copySlopeLineInManager(row: EditableSlopeLine) {
     try {
         await axios.post('/Hump/CopySlopeLine', {
             SourceSlopeLineID: row.id,
-            NewName: `${row.name}副本`
+            NewName: t('frontend.copyName', { name: row.name })
         })
         ElMessage.success(t('hump.messages.slopeLineCopied'))
         await loadSlopeLines()
@@ -853,7 +853,10 @@ const switchTypeOptions = computed(() => [
     { label: getSwitchTypeLabel(SwitchTypes.None), value: SwitchTypes.None }
 ])
 
-const switchFrogNumberOptions = computed(() => switchFrogNumberDefinitions)
+const switchFrogNumberOptions = computed(() => switchFrogNumberDefinitions.map(option => ({
+    ...option,
+    label: t(option.label)
+})))
 
 const switchDirectionOptions = computed(() => [
     { label: getSwitchDirectionLabel(SwitchDirections.Reverse), value: SwitchDirections.Reverse },

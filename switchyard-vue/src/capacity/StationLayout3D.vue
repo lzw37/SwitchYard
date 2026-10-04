@@ -347,7 +347,8 @@
 import ActionButton from '@/components/ui/ActionButton.vue'
 import TrackOccupancyGantt from './components/TrackOccupancyGantt.vue'
 import { trackOccupancyGanttMetrics, type TrackOccupancyGanttRow } from './components/trackOccupancyGantt'
-import { getMovementCellOccupationShifts, mergeMovementCellOccupationTimes } from './movementCellOccupation'
+import { namedTrackCellNames } from './components/chartRowKinds'
+import { normalizeMovementCellOccupations, type MovementCellOccupation } from './movementCellOccupation'
 import PaneDivider from '@/components/ui/PaneDivider.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -561,6 +562,7 @@ interface TrainOperationPlanMovement {
     earliestStartTime: string
     latestEndTime: string
     cellOccupationOverridesJson?: string | null
+    cellOccupations?: MovementCellOccupation[]
     route: string
     tag: string
     sortOrder: number | null
@@ -993,9 +995,12 @@ const activeGanttSubTableCells = computed<LayoutCell[]>(() => {
     return ganttAvailableCells.value.filter((cell) => selectedCellIds.has(cell.id))
 })
 const ganttLanes = computed<GanttLane[]>(() => buildGanttLanes())
+const ganttTrackNamesByCell = computed(() => namedTrackCellNames(layoutCells.value, layoutData.value.tracks))
 const ganttDisplayRows = computed<TrackOccupancyGanttRow[]>(() => ganttLanes.value.map((lane) => ({
     key: lane.key,
     label: lane.label,
+    kind: ganttTrackNamesByCell.value.has(lane.key) ? 'track' : 'cell',
+    trackNames: ganttTrackNamesByCell.value.get(lane.key) || [],
     blocks: lane.blocks.map((block) => ({
         ...block,
         className: getGanttBlockClassName(block),
@@ -1248,6 +1253,7 @@ function normalizeMovement(item: unknown): TrainOperationPlanMovement | null {
         earliestStartTime: readString(item, 'earliestStartTime', 'EarliestStartTime').trim(),
         latestEndTime: readString(item, 'latestEndTime', 'LatestEndTime').trim(),
         cellOccupationOverridesJson: readString(item, 'cellOccupationOverridesJson', 'CellOccupationOverridesJson'),
+        cellOccupations: normalizeMovementCellOccupations(readArray(item, 'cellOccupations', 'CellOccupations')),
         route: readString(item, 'route', 'Route').trim(),
         tag: readString(item, 'tag', 'Tag').trim(),
         sortOrder: readOptionalInteger(item, 'sortOrder', 'SortOrder'),
@@ -1801,23 +1807,9 @@ function getRouteOccupationWindowSeconds(item: {
 }) {
     const baseStartSeconds = Number(item.startMinutes || 0) * 60
     const baseEndSeconds = Number(item.endMinutes || item.startMinutes || 0) * 60
-    const routeTimeRows = mergeMovementCellOccupationTimes(item.movement.cellOccupationOverridesJson, item.route.id, getStationRouteTimes(item.route.id, item.train.trainType))
-    if (routeTimeRows.length === 0) {
-        return {
-            startSeconds: baseStartSeconds,
-            endSeconds: baseEndSeconds,
-        }
-    }
-
-    let startSeconds = baseStartSeconds
-    let endSeconds = baseEndSeconds
-    routeTimeRows.forEach((time) => {
-        const shifts = getMovementCellOccupationShifts(item.movement.cellOccupationOverridesJson, item.route.id, time.cellID, time)
-        const cellStartSeconds = baseStartSeconds + shifts.startOccupationShift
-        const rawCellEndSeconds = baseEndSeconds + shifts.endOccupationShift
-        startSeconds = Math.min(startSeconds, cellStartSeconds)
-        endSeconds = Math.max(endSeconds, Math.max(cellStartSeconds, rawCellEndSeconds))
-    })
+    const cells = item.movement.cellOccupations || []
+    const startSeconds = Math.min(baseStartSeconds, ...cells.map(cell => cell.startSeconds))
+    const endSeconds = Math.max(baseEndSeconds, ...cells.map(cell => cell.endSeconds))
     return { startSeconds, endSeconds }
 }
 
@@ -2202,55 +2194,11 @@ function getFallbackGanttCellsFromRouteTimes() {
 }
 
 function buildGanttBlocksForRun(run: RouteRun) {
-    const routeTimeRows = mergeMovementCellOccupationTimes(run.movement.cellOccupationOverridesJson, run.route.id, getStationRouteTimes(run.route.id, run.train.trainType))
-    if (routeTimeRows.length > 0) {
-        return routeTimeRows
-            .map((time, timeIndex) => buildTimedGanttBlock(run, time, timeIndex))
-            .filter((item): item is { cellID: string; block: GanttBlock } => item !== null)
-    }
-
-    return getRouteLayoutCellIds(run).map((cellID, cellIndex) => {
-        const baseWindow = getRunGanttBaseWindow(run)
-        const shifts = getMovementCellOccupationShifts(run.movement.cellOccupationOverridesJson, run.route.id, cellID, {})
-        const startSeconds = baseWindow.startSeconds + shifts.startOccupationShift
-        const endSeconds = baseWindow.endSeconds + shifts.endOccupationShift
-        return {
-            cellID,
-            block: createGanttBlock(run, cellID, cellIndex, startSeconds, endSeconds),
-        }
-    })
-}
-
-function buildTimedGanttBlock(run: RouteRun, time: Pick<StationRouteTimeOption, 'cellID' | 'startOccupationShift' | 'endOccupationShift'>, timeIndex: number) {
-    const cellID = time.cellID.trim()
-    if (!cellID) return null
-    const baseWindow = getRunGanttBaseWindow(run)
-    const shifts = getMovementCellOccupationShifts(run.movement.cellOccupationOverridesJson, run.route.id, cellID, time)
-    const startSeconds = baseWindow.startSeconds + shifts.startOccupationShift
-    const endSeconds = baseWindow.endSeconds + shifts.endOccupationShift
-    return {
-        cellID,
-        block: createGanttBlock(run, cellID, timeIndex, startSeconds, endSeconds),
-    }
-}
-
-function getRunGanttBaseWindow(run: RouteRun) {
-    if (run.usesPlanTime) {
-        const startMinutes = parseOperationPlanTime(run.movement.earliestStartTime)
-        const endMinutes = parseOperationPlanTime(run.movement.latestEndTime)
-        if (startMinutes !== null) {
-            const baseStartSeconds = startMinutes * 60 - timelineOriginSeconds.value
-            const baseEndSeconds = Number(endMinutes ?? startMinutes) * 60 - timelineOriginSeconds.value
-            return {
-                startSeconds: baseStartSeconds,
-                endSeconds: Math.max(baseStartSeconds, baseEndSeconds),
-            }
-        }
-    }
-    return {
-        startSeconds: run.startSeconds,
-        endSeconds: run.endSeconds,
-    }
+    const origin = run.usesPlanTime ? timelineOriginSeconds.value : run.absoluteStartSeconds - run.startSeconds
+    return (run.movement.cellOccupations || []).map((cell, index) => ({
+        cellID: cell.cellID,
+        block: createGanttBlock(run, cell.cellID, index, cell.startSeconds - origin, cell.endSeconds - origin),
+    }))
 }
 
 function createGanttBlock(

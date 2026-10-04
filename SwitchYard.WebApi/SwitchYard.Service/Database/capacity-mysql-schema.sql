@@ -240,7 +240,11 @@ CREATE TABLE IF NOT EXISTS `movement` (
     `LatestEndTime` VARCHAR(50) NULL,
     `Route` VARCHAR(50) NULL,
     `Tag` VARCHAR(50) NULL,
-    `SortOrder` INT NULL
+    `SortOrder` INT NULL,
+    `CellOccupationOverridesJson` LONGTEXT NULL,
+    `CellOccupationsJson` LONGTEXT NULL,
+    `StartNodeID` VARCHAR(50) NULL,
+    `EndNodeID` VARCHAR(50) NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `operationbottlenecksummarycategory` (

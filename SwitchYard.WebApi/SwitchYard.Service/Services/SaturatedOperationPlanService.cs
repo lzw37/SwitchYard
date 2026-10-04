@@ -81,7 +81,7 @@ public sealed class SaturatedOperationPlanService
             }) ?? new List<TrainRow>();
         var sourceMovements = db.Query<MovementRow>(
             $@"SELECT InstanceID, StationSchemeID, OperationPlanID, TrainID, TrainTemplateID,
-                      MovementID, Name, RouteIDList, MinDuration, EarliestStartTime, LatestEndTime,
+                      MovementID, Name, RouteIDList, MinDuration, EarliestStartTime, LatestEndTime, StartNodeID, EndNodeID,
                       {Quote("Route")}, Tag, SortOrder, CellOccupationOverridesJson
                FROM {Quote("movement")}
                WHERE InstanceID = @instanceId
@@ -142,6 +142,10 @@ public sealed class SaturatedOperationPlanService
                     OperationPlanID = targetPlanId
                 }, snapshot);
             }
+            var savedMovements = db.Query<MovementRow>(@"SELECT * FROM movement
+                WHERE InstanceID=@InstanceId AND StationSchemeID=@StationSchemeId AND OperationPlanID=@targetPlanId",
+                new { context.InstanceId, context.StationSchemeId, targetPlanId }) ?? new();
+            MovementCellOccupationStore.Materialize(db, context.InstanceId, context.StationSchemeId, targetPlanId, savedMovements);
             db.Commit();
             return targetPlan;
         }
@@ -227,6 +231,7 @@ public sealed class SaturatedOperationPlanService
         IReadOnlyDictionary<string, TrainRow> trainMap,
         IReadOnlyDictionary<string, MovementRow> movementMap)
     {
+        var occupations = new MovementCellOccupationStore(db, context.InstanceId, context.StationSchemeId, context.SourceOperationPlanId);
         foreach (var solvedTrain in result.Trains)
         {
             if (!trainMap.TryGetValue(solvedTrain.Id, out var sourceTrain))
@@ -264,16 +269,7 @@ public sealed class SaturatedOperationPlanService
                         $"求解结果中的列车作业 {solvedTrain.Id}/{solvedMovement.Id} 无法在源作业计划中找到。");
                 }
 
-                var insertedMovement = db.ExecuteNonQuery(
-                    $@"INSERT INTO {Quote("movement")} (
-                           InstanceID, StationSchemeID, OperationPlanID, TrainID, TrainTemplateID,
-                           MovementID, Name, RouteIDList, MinDuration, EarliestStartTime, LatestEndTime,
-                           {Quote("Route")}, Tag, SortOrder, CellOccupationOverridesJson)
-                       VALUES (
-                           @InstanceID, @StationSchemeID, @OperationPlanID, @TrainID, @TrainTemplateID,
-                           @MovementID, @Name, @RouteIDList, @MinDuration, @EarliestStartTime, @LatestEndTime,
-                           @Route, @Tag, @SortOrder, @CellOccupationOverridesJson)",
-                    new MovementRow
+                var movement = new MovementRow
                     {
                         InstanceID = context.InstanceId,
                         StationSchemeID = context.StationSchemeId,
@@ -286,11 +282,34 @@ public sealed class SaturatedOperationPlanService
                         MinDuration = sourceMovement.MinDuration,
                         EarliestStartTime = FormatTime(solvedMovement.StartSeconds, solvedMovement.StartTime),
                         LatestEndTime = FormatTime(solvedMovement.EndSeconds, solvedMovement.EndTime),
+                        StartNodeID = sourceMovement.StartNodeID,
+                        EndNodeID = sourceMovement.EndNodeID,
                         Route = solvedMovement.RouteId,
                         CellOccupationOverridesJson = sourceMovement.CellOccupationOverridesJson,
                         Tag = sourceMovement.Tag,
                         SortOrder = sourceMovement.SortOrder ?? index
-                    });
+                    };
+                var cells = occupations.Generate(movement, useLegacyAbsoluteTimes: false);
+                var solvedCells = MovementCellOccupations.Normalize(solvedMovement.CellOccupations.Select(cell => new MovementCellOccupation {
+                    CellID = cell.CellId, RouteID = cells.FirstOrDefault(row => row.CellID == cell.CellId)?.RouteID ?? solvedMovement.RouteId,
+                    StartSeconds = cell.StartSeconds, EndSeconds = cell.EndSeconds
+                }).ToList())!;
+                foreach (var cell in solvedCells) {
+                    var indexOfCell = cells.FindIndex(row => row.CellID == cell.CellID);
+                    if (indexOfCell < 0) cells.Add(cell);
+                    else { cell.IsInterruptCell = cells[indexOfCell].IsInterruptCell; cells[indexOfCell] = cell; }
+                }
+                movement.CellOccupationsJson = MovementCellOccupations.Write(cells);
+                var insertedMovement = db.ExecuteNonQuery(
+                    $@"INSERT INTO {Quote("movement")} (
+                           InstanceID, StationSchemeID, OperationPlanID, TrainID, TrainTemplateID,
+                           MovementID, Name, RouteIDList, MinDuration, EarliestStartTime, LatestEndTime, StartNodeID, EndNodeID,
+                           {Quote("Route")}, Tag, SortOrder, CellOccupationOverridesJson, CellOccupationsJson)
+                       VALUES (
+                           @InstanceID, @StationSchemeID, @OperationPlanID, @TrainID, @TrainTemplateID,
+                           @MovementID, @Name, @RouteIDList, @MinDuration, @EarliestStartTime, @LatestEndTime, @StartNodeID, @EndNodeID,
+                           @Route, @Tag, @SortOrder, @CellOccupationOverridesJson, @CellOccupationsJson)",
+                    movement);
                 if (insertedMovement != 1) throw new InvalidOperationException("保存饱和计划移动失败。");
             }
         }

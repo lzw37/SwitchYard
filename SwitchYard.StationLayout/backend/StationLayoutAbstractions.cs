@@ -30,6 +30,16 @@ public interface IStationLayoutRepository
         StationSchemeRecord scheme,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Atomically copies the source scheme and its scoped data into a new scheme.
+    /// Returns false if the target ID is already in use; throws when the source is missing.
+    /// The copy starts at revision zero and must not share mutable state with the source.
+    /// </summary>
+    Task<bool> TryCopySchemeAsync(
+        string sourceSchemeId,
+        StationSchemeRecord targetScheme,
+        CancellationToken cancellationToken);
+
     Task<bool> RenameSchemeAsync(
         string scopeId,
         string schemeId,

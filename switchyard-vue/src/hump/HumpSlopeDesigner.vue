@@ -234,7 +234,7 @@
                 </el-tabs>
             </div>
         </div>
-        <div class="side-menu-bottom">BOTTOM MENU</div>
+        <div class="side-menu-bottom">{{ t('frontend.bottomMenu') }}</div>
 
         <!-- 阻力能高分项浮窗 -->
         <div v-if="resistanceDetailPopover.visible" class="resistance-detail-popover"
@@ -2076,7 +2076,7 @@ const handleCopyScheme = async (scheme: HumpScheme) => {
         tableLoading.value = true
         const response = await axios.post('/Hump/CopyHumpScheme', {
             SourceHumpSchemeID: scheme.id,
-            NewName: `${scheme.name}副本`
+            NewName: t('frontend.copyName', { name: scheme.name })
         })
         if (response.status === 200) {
             await loadHumpSchemes()

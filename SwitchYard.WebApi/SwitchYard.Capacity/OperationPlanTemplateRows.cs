@@ -184,7 +184,16 @@ namespace SwitchYard.Capacity
 
         public string? LatestEndTime { get; set; }
 
+        public string? StartNodeID { get; set; }
+
+        public string? EndNodeID { get; set; }
+
         public string? CellOccupationOverridesJson { get; set; }
+
+        [System.Text.Json.Serialization.JsonIgnore]
+        public string? CellOccupationsJson { get; set; }
+
+        public List<MovementCellOccupation>? CellOccupations { get; set; }
 
         public string? Route { get; set; }
 
@@ -197,6 +206,20 @@ namespace SwitchYard.Capacity
     {
         public MovementRow? Original { get; set; }
         public MovementRow? Updated { get; set; }
+    }
+
+    public sealed class CreateTrainWithMovementsRequest
+    {
+        public TrainRow? Train { get; set; }
+
+        public List<MovementRow> Movements { get; set; } = new();
+    }
+
+    public sealed class CreateTrainWithMovementsResponse
+    {
+        public TrainRow Train { get; set; } = new();
+
+        public List<MovementRow> Movements { get; set; } = new();
     }
 
     public sealed class MovementBatchEditRequest

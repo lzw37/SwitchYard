@@ -14,7 +14,7 @@ namespace SwitchYard.Service.Controllers
     [ApiController]
     [Route("[controller]/[action]")]
     [Authorize]
-    public class StationLayoutController : ControllerBase
+    public partial class StationLayoutController : ControllerBase
     {
         private readonly ILogger<StationLayoutController> _logger;
         private readonly IWebHostEnvironment _environment;
@@ -493,6 +493,9 @@ namespace SwitchYard.Service.Controllers
                     return BadRequest("StartNodeID and EndNodeID must reference existing nodes in the selected station scheme.");
                 }
 
+                var dwellingError = ValidateStationDwellingRoute(dbConnector, route);
+                if (dwellingError != null) return dwellingError;
+
                 EnsureStationRouteDescription(dbConnector, route);
 
                 if (StationRouteIDExists(dbConnector, route.InstanceID!, route.StationSchemeID!, route.ID!))
@@ -857,6 +860,9 @@ namespace SwitchYard.Service.Controllers
                     return BadRequest("StartNodeID and EndNodeID must reference existing nodes in the selected station scheme.");
                 }
 
+                var dwellingError = ValidateStationDwellingRoute(dbConnector, route);
+                if (dwellingError != null) return dwellingError;
+
                 EnsureStationRouteDescription(dbConnector, route);
 
                 if (!string.Equals(originalID, route.ID, StringComparison.OrdinalIgnoreCase) &&
@@ -953,7 +959,8 @@ namespace SwitchYard.Service.Controllers
                         route.StationSchemeID!,
                         route.StartNodeID!,
                         route.EndNodeID!,
-                        route.Type!)
+                        route.Type!,
+                        route.LinkList)
                 });
             }
             catch (Exception ex)
@@ -1326,6 +1333,29 @@ namespace SwitchYard.Service.Controllers
             {
                 _logger.LogError(ex, "Failed to create station scheme.");
                 return StatusCode(500, "Failed to create station scheme.");
+            }
+        }
+
+        [HttpPost(Name = "CopyStationScheme")]
+        public async Task<IActionResult> CopyStationScheme(
+            [FromBody] SwitchYard.StationLayout.StationSchemeCopyRequest request,
+            [FromServices] SwitchYard.StationLayout.IStationLayoutService service,
+            CancellationToken cancellationToken)
+        {
+            try
+            {
+                return Ok(await service.CopyStationSchemeAsync(User, request, cancellationToken));
+            }
+            catch (SwitchYard.StationLayout.StationLayoutValidationException ex) { return BadRequest(ex.Message); }
+            catch (SwitchYard.StationLayout.StationLayoutNotFoundException ex) { return NotFound(ex.Message); }
+            catch (SwitchYard.StationLayout.StationLayoutUnauthenticatedException ex) { return Unauthorized(ex.Message); }
+            catch (SwitchYard.StationLayout.StationLayoutForbiddenException ex) { return StatusCode(403, ex.Message); }
+            catch (SwitchYard.StationLayout.StationLayoutConflictException ex) { return Conflict(ex.Message); }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to copy station scheme.");
+                return StatusCode(500, "Failed to copy station scheme.");
             }
         }
 
@@ -3130,7 +3160,8 @@ namespace SwitchYard.Service.Controllers
                 route.StationSchemeID,
                 route.StartNodeID,
                 route.EndNodeID,
-                route.Type);
+                route.Type,
+                route.LinkList);
         }
 
         private static string BuildStationRouteDescription(
@@ -3139,8 +3170,23 @@ namespace SwitchYard.Service.Controllers
             string stationSchemeID,
             string startNodeID,
             string endNodeID,
-            string routeType)
+            string routeType,
+            string? linkList = null)
         {
+            if (IsDwellingRouteType(routeType))
+            {
+                var linkIDs = ParseStationRouteIdList(linkList);
+                if (linkIDs.Count == 1)
+                {
+                    var link = (dbConnector.Query<StationLinkRow>(
+                        $@"SELECT * FROM {QuoteIdentifier("link")}
+                           WHERE InstanceID = @instanceID AND StationSchemeID = @stationSchemeID AND ID = @linkID",
+                        new { instanceID, stationSchemeID, linkID = linkIDs[0] }) ?? new()).FirstOrDefault();
+                    if (!string.IsNullOrWhiteSpace(link?.Name))
+                        return BuildStationDwellingRouteDescription(link.Name);
+                }
+            }
+
             EnsureStationRouteEndSchema(dbConnector);
             var startRouteEnd = FindStationRouteEndByBindingNodeID(
                 dbConnector,
@@ -3182,6 +3228,7 @@ namespace SwitchYard.Service.Controllers
                 "DEPARTURE" => "发车",
                 "SHUNTING" => "调车",
                 "LOCOMOTIVE" => "机车出入段",
+                "DWELLING" => "停留",
                 _ => normalizedRouteType
             };
         }

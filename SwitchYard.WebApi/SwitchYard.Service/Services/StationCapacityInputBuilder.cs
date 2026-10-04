@@ -46,13 +46,14 @@ public sealed class StationCapacityInputBuilder
         var movementRows = dbConnector.Query<MovementRow>(
             @"SELECT InstanceID, StationSchemeID, OperationPlanID, TrainID, TrainTemplateID,
                      MovementID, Name, RouteIDList, MinDuration, EarliestStartTime,
-                     LatestEndTime, `Route` AS `Route`, Tag, SortOrder, CellOccupationOverridesJson
+                     LatestEndTime, `Route` AS `Route`, Tag, SortOrder, CellOccupationOverridesJson, CellOccupationsJson
               FROM movement
               WHERE InstanceID = @instanceId
                 AND StationSchemeID = @stationSchemeId
                 AND OperationPlanID = @operationPlanId
               ORDER BY TrainID, SortOrder, MovementID",
             new { instanceId, stationSchemeId, operationPlanId }) ?? new List<MovementRow>();
+        MovementCellOccupationStore.Materialize(dbConnector, instanceId, stationSchemeId, operationPlanId, movementRows);
 
         var movementsByTrain = movementRows
             .Where(movement => !string.IsNullOrWhiteSpace(movement.TrainID))
@@ -125,14 +126,20 @@ public sealed class StationCapacityInputBuilder
                     Sequence = movement.SortOrder ?? index,
                     CandidateRouteIds = candidateRoutes,
                     RequiredRouteTags = ParseList(movement.Tag),
-                    CellOccupationOverrides = MovementCellOccupationOverrides.Read(movement.CellOccupationOverridesJson)
+                    CellOccupationOverrides = (movement.CellOccupations ?? new()).Select(cell => new StationCapacityRouteOccupationInput
+                        {
+                            RouteId = cell.RouteID, CellId = cell.CellID,
+                            StartOccupationShiftSeconds = cell.StartSeconds - MovementCellOccupationStore.ParseSeconds(movement.EarliestStartTime),
+                            EndOccupationShiftSeconds = cell.EndSeconds - MovementCellOccupationStore.ParseSeconds(movement.LatestEndTime)
+                        }).Concat(MovementCellOccupationOverrides.Read(movement.CellOccupationOverridesJson)
+                        .Where(pair => !(movement.CellOccupations ?? new()).Any(cell => cell.RouteID == pair.Value.RouteID && cell.CellID == pair.Key))
                         .Select(pair => new StationCapacityRouteOccupationInput
                         {
                             RouteId = pair.Value.RouteID,
                             CellId = pair.Key,
                             StartOccupationShiftSeconds = pair.Value.StartOccupationShift,
                             EndOccupationShiftSeconds = pair.Value.EndOccupationShift
-                        }).ToList(),
+                        })).ToList(),
                     OriginalStartSeconds = originalStart,
                     OriginalEndSeconds = originalEnd,
                     MinDurationSeconds = minDuration,
@@ -149,6 +156,10 @@ public sealed class StationCapacityInputBuilder
             StationSchemeID = stationSchemeId,
             OperationPlanID = operationPlanId
         }, input);
+        if (input.RouteOccupations.Concat(input.Trains.SelectMany(train => train.Movements).SelectMany(movement => movement.CellOccupationOverrides))
+            .Any(cell => cell.StartOccupationShiftSeconds != Math.Truncate(cell.StartOccupationShiftSeconds) ||
+                cell.EndOccupationShiftSeconds != Math.Truncate(cell.EndOccupationShiftSeconds)))
+            input.MinimumModelVersion = "2.1.0";
         return input;
     }
 
@@ -164,7 +175,10 @@ public sealed class StationCapacityInputBuilder
         {
             try
             {
-                return (JsonSerializer.Deserialize<List<string>>(trimmed) ?? new List<string>())
+                using var document = JsonDocument.Parse(trimmed);
+                return document.RootElement.EnumerateArray()
+                    .Select(item => item.ValueKind == JsonValueKind.String ? item.GetString() ?? "" :
+                        item.ValueKind == JsonValueKind.Number ? item.GetRawText() : "")
                     .Select(item => item.Trim())
                     .Where(item => item.Length > 0)
                     .Distinct(StringComparer.OrdinalIgnoreCase)

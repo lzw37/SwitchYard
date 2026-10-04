@@ -1015,9 +1015,10 @@ namespace SwitchYard.Service.Controllers
         [HttpPut(Name = "EditTrain")]
         public IActionResult EditTrain([FromBody] TrainRow? request)
         {
+            DBConnector? dbConnector = null;
             try
             {
-                var dbConnector = GetCapacityDbConnector();
+                dbConnector = GetCapacityDbConnector();
                 var normalized = NormalizeTrainRowRequest(request, allowMissingID: false);
                 if (normalized.ErrorResult != null)
                 {
@@ -1038,11 +1039,19 @@ namespace SwitchYard.Service.Controllers
                     return NotFound("Train not found.");
                 }
 
+                dbConnector.BeginTransaction();
+                var oldType = dbConnector.Query<string>(@"SELECT TrainType FROM train
+                    WHERE InstanceID=@InstanceID AND StationSchemeID=@StationSchemeID AND OperationPlanID=@OperationPlanID AND ID=@ID",
+                    train)?.SingleOrDefault() ?? "";
                 UpdateTrain(dbConnector, train);
+                if (oldType != (train.TrainType ?? ""))
+                    MovementCellOccupationStore.RefreshTrain(dbConnector, train);
+                dbConnector.Commit();
                 return Ok(train);
             }
             catch (Exception ex)
             {
+                dbConnector?.Rollback();
                 _logger.LogError(ex, "Failed to update train.");
                 return StatusCode(500, "Failed to update train.");
             }
@@ -1221,9 +1230,6 @@ namespace SwitchYard.Service.Controllers
                     return NotFound("Movement not found.");
                 }
 
-                if (IsProcessBoundTrain(dbConnector, movement.InstanceID!, movement.StationSchemeID!, movement.OperationPlanID!, movement.TrainID!) &&
-                    !IsProcessMovementMetadataOnlyEdit(dbConnector, movement))
-                    return ProcessBoundMovementConflict();
                 movement.CellOccupationOverridesJson ??= dbConnector.Query<MovementRow>(
                     $@"SELECT CellOccupationOverridesJson FROM {QuoteIdentifier("movement")}
                        WHERE InstanceID = @InstanceID AND StationSchemeID = @StationSchemeID
@@ -1842,6 +1848,10 @@ namespace SwitchYard.Service.Controllers
             catch (Exception ex) when (ex is JsonException or ArgumentException)
             { return (null, BadRequest(ex.Message)); }
 
+            List<MovementCellOccupation>? occupations;
+            try { occupations = MovementCellOccupations.Normalize(request?.CellOccupations); }
+            catch (ArgumentException ex) { return (null, BadRequest(ex.Message)); }
+
             return (new MovementRow
             {
                 InstanceID = scope.InstanceID,
@@ -1855,7 +1865,10 @@ namespace SwitchYard.Service.Controllers
                 MinDuration = request?.MinDuration,
                 EarliestStartTime = request?.EarliestStartTime?.Trim() ?? string.Empty,
                 LatestEndTime = request?.LatestEndTime?.Trim() ?? string.Empty,
+                StartNodeID = request?.StartNodeID?.Trim() ?? string.Empty,
+                EndNodeID = request?.EndNodeID?.Trim() ?? string.Empty,
                 CellOccupationOverridesJson = cellOccupationOverridesJson,
+                CellOccupations = occupations,
                 Route = request?.Route?.Trim() ?? string.Empty,
                 Tag = request?.Tag?.Trim() ?? string.Empty,
                 SortOrder = request?.SortOrder
@@ -2572,16 +2585,18 @@ namespace SwitchYard.Service.Controllers
             string stationSchemeID,
             string operationPlanID)
         {
-            return dbConnector.Query<MovementRow>(
+            var movements = dbConnector.Query<MovementRow>(
                 $@"SELECT InstanceID, StationSchemeID, OperationPlanID, TrainID, TrainTemplateID, MovementID, Name, RouteIDList,
-                           MinDuration, EarliestStartTime, LatestEndTime,
-                           {QuoteIdentifier("Route")}, Tag, SortOrder, CellOccupationOverridesJson
+                           MinDuration, EarliestStartTime, LatestEndTime, StartNodeID, EndNodeID,
+                           {QuoteIdentifier("Route")}, Tag, SortOrder, CellOccupationOverridesJson, CellOccupationsJson
                    FROM {QuoteIdentifier("movement")}
                    WHERE InstanceID = @instanceID
                      AND StationSchemeID = @stationSchemeID
                      AND OperationPlanID = @operationPlanID
                    ORDER BY TrainID, SortOrder IS NULL, SortOrder, EarliestStartTime, MovementID",
                 new { instanceID, stationSchemeID, operationPlanID }) ?? new List<MovementRow>();
+            MovementCellOccupationStore.Materialize(dbConnector, instanceID, stationSchemeID, operationPlanID, movements);
+            return movements;
         }
 
         private List<OperationBottleneckSummaryCategoryRow> LoadOperationBottleneckSummaryCategories(
@@ -3288,24 +3303,14 @@ namespace SwitchYard.Service.Controllers
                     train);
             }
 
-            foreach (var movement in plan.Movements)
-            {
-                dbConnector.ExecuteNonQuery(
-                    $@"INSERT INTO {QuoteIdentifier("movement")} (
-                           InstanceID, StationSchemeID, OperationPlanID, TrainID, TrainTemplateID, MovementID, Name, RouteIDList,
-                           MinDuration, EarliestStartTime, LatestEndTime,
-                           {QuoteIdentifier("Route")}, Tag, SortOrder, CellOccupationOverridesJson)
-                       VALUES (
-                           @InstanceID, @StationSchemeID, @OperationPlanID, @TrainID, @TrainTemplateID, @MovementID, @Name, @RouteIDList,
-                           @MinDuration, @EarliestStartTime, @LatestEndTime,
-                           @Route, @Tag, @SortOrder, @CellOccupationOverridesJson)",
-                    movement);
-            }
+            var occupations = plan.Movements.Count == 0 ? null : new MovementCellOccupationStore(dbConnector,
+                plan.Movements[0].InstanceID!, plan.Movements[0].StationSchemeID!, plan.Movements[0].OperationPlanID!);
+            foreach (var movement in plan.Movements) InsertMovement(dbConnector, movement, occupations);
         }
 
-        private void InsertTrain(DBConnector dbConnector, TrainRow train)
+        private int InsertTrain(DBConnector dbConnector, TrainRow train)
         {
-            dbConnector.ExecuteNonQuery(
+            return dbConnector.ExecuteNonQuery(
                 $@"INSERT INTO {QuoteIdentifier("train")} (
                        InstanceID, StationSchemeID, OperationPlanID, {QuoteIdentifier("ID")}, TrainTemplateID, TrainNumber, Name, TrainType, IsFixedOperation)
                    VALUES (
@@ -3329,22 +3334,30 @@ namespace SwitchYard.Service.Controllers
                 train);
         }
 
-        private void InsertMovement(DBConnector dbConnector, MovementRow movement)
+        private int InsertMovement(DBConnector dbConnector, MovementRow movement, MovementCellOccupationStore? occupations = null)
         {
-            dbConnector.ExecuteNonQuery(
+            (occupations ?? new MovementCellOccupationStore(dbConnector, movement.InstanceID!, movement.StationSchemeID!, movement.OperationPlanID!)).Prepare(movement);
+            return dbConnector.ExecuteNonQuery(
                 $@"INSERT INTO {QuoteIdentifier("movement")} (
                        InstanceID, StationSchemeID, OperationPlanID, TrainID, TrainTemplateID, MovementID, Name, RouteIDList,
-                       MinDuration, EarliestStartTime, LatestEndTime,
-                       {QuoteIdentifier("Route")}, Tag, SortOrder, CellOccupationOverridesJson)
+                       MinDuration, EarliestStartTime, LatestEndTime, StartNodeID, EndNodeID,
+                       {QuoteIdentifier("Route")}, Tag, SortOrder, CellOccupationOverridesJson, CellOccupationsJson)
                    VALUES (
                        @InstanceID, @StationSchemeID, @OperationPlanID, @TrainID, @TrainTemplateID, @MovementID, @Name, @RouteIDList,
-                       @MinDuration, @EarliestStartTime, @LatestEndTime,
-                       @Route, @Tag, @SortOrder, @CellOccupationOverridesJson)",
+                       @MinDuration, @EarliestStartTime, @LatestEndTime, @StartNodeID, @EndNodeID,
+                       @Route, @Tag, @SortOrder, @CellOccupationOverridesJson, @CellOccupationsJson)",
                 movement);
         }
 
-        private int UpdateMovement(DBConnector dbConnector, MovementRow movement)
+        private int UpdateMovement(DBConnector dbConnector, MovementRow movement, MovementCellOccupationStore? occupations = null)
         {
+            var previous = dbConnector.Query<MovementRow>($@"SELECT * FROM {QuoteIdentifier("movement")}
+                WHERE InstanceID=@InstanceID AND StationSchemeID=@StationSchemeID AND OperationPlanID=@OperationPlanID
+                  AND TrainID=@TrainID AND MovementID=@MovementID", movement)?.SingleOrDefault();
+            // Older movement editors do not know the picked graph endpoints.
+            if (string.IsNullOrEmpty(movement.StartNodeID)) movement.StartNodeID = previous?.StartNodeID;
+            if (string.IsNullOrEmpty(movement.EndNodeID)) movement.EndNodeID = previous?.EndNodeID;
+            (occupations ?? new MovementCellOccupationStore(dbConnector, movement.InstanceID!, movement.StationSchemeID!, movement.OperationPlanID!)).Prepare(movement, previous);
             return dbConnector.ExecuteNonQuery(
                 $@"UPDATE {QuoteIdentifier("movement")}
                    SET TrainTemplateID = @TrainTemplateID,
@@ -3353,10 +3366,13 @@ namespace SwitchYard.Service.Controllers
                        MinDuration = @MinDuration,
                        EarliestStartTime = @EarliestStartTime,
                        LatestEndTime = @LatestEndTime,
+                       StartNodeID = @StartNodeID,
+                       EndNodeID = @EndNodeID,
                        {QuoteIdentifier("Route")} = @Route,
                        Tag = @Tag,
                        SortOrder = @SortOrder,
-                       CellOccupationOverridesJson = @CellOccupationOverridesJson
+                       CellOccupationOverridesJson = @CellOccupationOverridesJson,
+                       CellOccupationsJson = @CellOccupationsJson
                     WHERE InstanceID = @InstanceID
                       AND StationSchemeID = @StationSchemeID
                       AND OperationPlanID = @OperationPlanID
@@ -3949,7 +3965,10 @@ namespace SwitchYard.Service.Controllers
                             {QuoteIdentifier("Route")} VARCHAR(50) NULL,
                             {QuoteIdentifier("Tag")} VARCHAR(50) NULL,
                             {QuoteIdentifier("SortOrder")} INT NULL,
-                            {QuoteIdentifier("CellOccupationOverridesJson")} LONGTEXT NULL
+                            {QuoteIdentifier("CellOccupationOverridesJson")} LONGTEXT NULL,
+                            {QuoteIdentifier("CellOccupationsJson")} LONGTEXT NULL,
+                            {QuoteIdentifier("StartNodeID")} VARCHAR(50) NULL,
+                            {QuoteIdentifier("EndNodeID")} VARCHAR(50) NULL
                         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
                 }
                 else
@@ -3970,7 +3989,10 @@ namespace SwitchYard.Service.Controllers
                             {QuoteIdentifier("Route")} TEXT NULL,
                             {QuoteIdentifier("Tag")} TEXT NULL,
                             {QuoteIdentifier("SortOrder")} INTEGER NULL,
-                            {QuoteIdentifier("CellOccupationOverridesJson")} TEXT NULL
+                            {QuoteIdentifier("CellOccupationOverridesJson")} TEXT NULL,
+                            {QuoteIdentifier("CellOccupationsJson")} TEXT NULL,
+                            {QuoteIdentifier("StartNodeID")} TEXT NULL,
+                            {QuoteIdentifier("EndNodeID")} TEXT NULL
                         )");
                 }
 
@@ -3994,6 +4016,9 @@ namespace SwitchYard.Service.Controllers
                 ["EarliestStartTime"] = shortTextType,
                 ["LatestEndTime"] = shortTextType,
                 ["CellOccupationOverridesJson"] = longTextType,
+                ["CellOccupationsJson"] = longTextType,
+                ["StartNodeID"] = shortTextType,
+                ["EndNodeID"] = shortTextType,
                 ["Route"] = shortTextType,
                 ["Tag"] = shortTextType,
                 ["SortOrder"] = intType

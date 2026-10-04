@@ -3,10 +3,10 @@
         <header class="page-header">
             <span class="page-header-brand">SwitchYard.Hump</span>
             <span class="page-header-sep"></span>
-            <span class="page-header-title">驼峰纵断面设计辅助工具</span>
+            <span class="page-header-title">{{ t('humpMain.title') }}</span>
             <a class="page-header-video-link" href="https://www.bilibili.com/video/BV1gMRmBRER9" target="_blank"
                 rel="noopener noreferrer">
-                教学视频
+                {{ t('humpMain.tutorial') }}
             </a>
         </header>
         <div ref="tabsHostRef" class="hump-tabs-wrapper">

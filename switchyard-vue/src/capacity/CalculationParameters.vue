@@ -537,6 +537,7 @@ import { ElMessage } from 'element-plus'
 import { Check, Close, DataAnalysis, Filter, List, Plus, Refresh, SetUp } from '@element-plus/icons-vue'
 import axios from '@/utils/axios'
 import OccupationTimeGantt from './components/OccupationTimeGantt.vue'
+import { namedTrackCellNames } from './components/chartRowKinds'
 import StationLayoutEditor from './components/StationLayoutEditor.vue'
 import StationLayoutViewToolbar from './components/StationLayoutViewToolbar.vue'
 
@@ -586,7 +587,7 @@ interface StationRouteTime {
     endOccupationShift: number | null
     isInterruptCell: boolean
 }
-interface GanttCell { id: string; name: string }
+interface GanttCell { id: string; name: string; kind: 'track' | 'cell'; trackNames: string[] }
 interface GanttTimeChange {
     timeIndex: number
     cellID: string
@@ -696,8 +697,8 @@ const routePaneWidth = ref(320)
 const paramPaneWidth = ref(300)
 const layoutPaneHeight = ref(0)
 
-const routeHighlightColors = { arrival: '#ef4444', departure: '#2563eb', locomotive: '#16a34a', shunting: '#facc15' }
-const routeTypeOptions = ['Arrival', 'Departure', 'Shunting', 'Locomotive']
+const routeHighlightColors = { arrival: '#ef4444', departure: '#2563eb', locomotive: '#16a34a', shunting: '#facc15', dwelling: '#a855f7' }
+const routeTypeOptions = ['Arrival', 'Departure', 'Shunting', 'Locomotive', 'Dwelling']
 const stationRouteTypeLabelKeys: Record<string, string> = {
     arrival: 'routeDesign.stationRoute.types.arrival',
     '接车': 'routeDesign.stationRoute.types.arrival',
@@ -712,6 +713,9 @@ const stationRouteTypeLabelKeys: Record<string, string> = {
     shunting: 'routeDesign.stationRoute.types.shunting',
     '调车': 'routeDesign.stationRoute.types.shunting',
     '调车进路': 'routeDesign.stationRoute.types.shunting',
+    dwelling: 'routeDesign.stationRoute.types.dwelling',
+    '停留': 'routeDesign.stationRoute.types.dwelling',
+    '停留进路': 'routeDesign.stationRoute.types.dwelling',
 }
 const routeFilterFieldControls: RouteFilterControl[] = [
     { field: 'startNodeIds', placeholderKey: 'routeDesign.stationRoute.filter.startNode', optionField: 'nodeList' },
@@ -831,17 +835,27 @@ const selectedRouteOccupancyCellIds = computed(() => normalizeRouteListValues([
     ...selectedRouteCellIds.value,
     ...selectedRouteInterruptCellIds.value,
 ]))
+const layoutCellTrackNames = computed(() => namedTrackCellNames(layoutCells.value,
+    getLayoutTrackItems().map((track) => ({
+        id: readString(track, 'id', 'ID').trim(),
+        name: readString(track, 'name', 'Name').trim(),
+    }))))
 const ganttCells = computed<GanttCell[]>(() => {
     const cellIds = selectedRouteOccupancyCellIds.value.length > 0
         ? selectedRouteOccupancyCellIds.value
         : routeTimes.value.map((row) => row.cellID)
     const interruptCellSet = new Set(selectedRouteInterruptCellIds.value.map((id) => id.toLowerCase()))
-    return cellIds.map((id) => ({
-        id,
-        name: interruptCellSet.has(id.toLowerCase())
-            ? `${getCellDisplayName(id) || id}（${t('calculationParameters.manager.directInterrupt')}）`
-            : (getCellDisplayName(id) || id),
-    }))
+    return cellIds.map((id): GanttCell => {
+        const trackNames = layoutCellTrackNames.value.get(id) || []
+        return {
+            id,
+            name: interruptCellSet.has(id.toLowerCase())
+                ? `${getCellDisplayName(id) || id}（${t('calculationParameters.manager.directInterrupt')}）`
+                : (getCellDisplayName(id) || id),
+            kind: trackNames.length > 0 ? 'track' : 'cell',
+            trackNames,
+        }
+    })
 })
 const occupancyGanttEmptyText = computed(() => selectedRouteId.value
     ? t('calculationParameters.occupancy.emptyCells')
@@ -913,6 +927,7 @@ function getStationRouteHighlightColor(type: string) {
     if (normalizedType === 'arrival' || normalizedType === '接车' || normalizedType === '接车进路') return routeHighlightColors.arrival
     if (normalizedType === 'departure' || normalizedType === '发车' || normalizedType === '发车进路') return routeHighlightColors.departure
     if (normalizedType === 'locomotive' || normalizedType === '机车出入段' || normalizedType === '机车出入段进路' || normalizedType === '机车走行') return routeHighlightColors.locomotive
+    if (normalizedType === 'dwelling' || normalizedType === '停留' || normalizedType === '停留进路') return routeHighlightColors.dwelling
     return routeHighlightColors.shunting
 }
 

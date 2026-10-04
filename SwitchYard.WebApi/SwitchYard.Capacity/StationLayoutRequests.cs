@@ -92,6 +92,13 @@ namespace SwitchYard.Capacity
         public string? TrainTypeID { get; set; }
     }
 
+    public sealed class StationDwellingRouteGenerateRequest
+    {
+        public string? InstanceID { get; set; }
+
+        public string? StationSchemeID { get; set; }
+    }
+
     public sealed class StationRouteInterruptCellGenerateRequest
     {
         public string? InstanceID { get; set; }

@@ -13,8 +13,12 @@
                 <output>{{ scaleY.toFixed(2) }}×</output>
             </label>
             <ActionButton :icon="Refresh" :label="t('capacityGantt.refresh')" :loading="refreshLoading" :disabled="refreshDisabled || controlsDisabled" @click="emit('refresh')" />
+            <div v-if="rows.length" class="track-occupancy-gantt-row-legend" :aria-label="t('capacityGantt.rowLegend')">
+                <span class="is-track"><i aria-hidden="true" />{{ t('capacityGantt.rowKinds.track') }}</span>
+                <span class="is-cell"><i aria-hidden="true" />{{ t('capacityGantt.rowKinds.cell') }}</span>
+            </div>
         </div>
-        <div ref="viewport" class="track-occupancy-gantt-viewport">
+        <div ref="viewport" class="track-occupancy-gantt-viewport" @scroll="emit('viewport-scroll', $event)">
             <div v-if="rows.length === 0" class="track-occupancy-gantt-empty">{{ emptyText }}</div>
             <div v-else class="track-occupancy-gantt-content" :style="contentStyle">
                 <div class="track-occupancy-gantt-axis-row">
@@ -37,9 +41,13 @@
                     v-for="row in rows"
                     :key="row.key"
                     class="track-occupancy-gantt-lane-row"
+                    :class="[`is-${row.kind || 'cell'}`, { 'is-drop-target': row.key === highlightedRowKey }]"
+                    :data-row-key="row.key"
                     :style="{ height: `${(row.height ?? metrics.rowHeight) * scaleY}px` }"
                 >
-                    <div class="track-occupancy-gantt-lane-label" :title="row.label"><span>{{ row.label }}</span></div>
+                    <div class="track-occupancy-gantt-lane-label" :title="rowKindTitle(row)">
+                        <i class="track-occupancy-gantt-row-marker" aria-hidden="true" /><span>{{ row.label }}</span>
+                    </div>
                     <div class="track-occupancy-gantt-lane-track">
                         <span
                             v-for="tick in ticks"
@@ -91,6 +99,7 @@ import { FullScreen, Refresh } from '@element-plus/icons-vue'
 import ActionButton from '@/components/ui/ActionButton.vue'
 import {
     fitTrackOccupancyGantt,
+    hitTestTrackOccupancyGanttRow,
     trackOccupancyGanttMetrics as metrics,
     type TrackOccupancyGanttBlock,
     type TrackOccupancyGanttRow,
@@ -114,6 +123,7 @@ const props = withDefaults(defineProps<{
     timeAxisLabel?: string
     startHandleLabel?: string
     endHandleLabel?: string
+    highlightedRowKey?: string | null
 }>(), {
     playheadLeft: null,
     editable: false,
@@ -126,17 +136,19 @@ const props = withDefaults(defineProps<{
     timeAxisLabel: '',
     startHandleLabel: '',
     endHandleLabel: '',
+    highlightedRowKey: null,
 })
 
 const emit = defineEmits<{
     (event: 'drag-start', payload: TrackOccupancyGanttDragStart): void
     (event: 'refresh'): void
+    (event: 'viewport-scroll', payload: Event): void
 }>()
 const { t } = useI18n()
 const scaleX = defineModel<number>('scaleX', { default: 1 })
 const scaleY = defineModel<number>('scaleY', { default: 1 })
 const autoFit = defineModel<boolean>('autoFit', { default: false })
-const sliderMinX = ref(0.01), sliderMaxX = ref(4)
+const sliderMinX = ref(0.01), sliderMaxX = ref(10)
 const sliderMinY = ref(0.01), sliderMaxY = ref(4)
 // Extend the manual ranges for fitted charts without moving the slider bounds during a drag.
 watch([scaleX, scaleY], ([x, y]) => {
@@ -148,7 +160,7 @@ watch([scaleX, scaleY], ([x, y]) => {
 // Parents use this same viewport for auto-fit and following the playback cursor.
 const viewport = ref<HTMLElement | null>(null)
 let resizeObserver: ResizeObserver | null = null
-defineExpose({ viewport, fitToViewport })
+defineExpose({ viewport, fitToViewport, hitTestRow })
 
 const contentStyle = computed(() => ({
     width: `${metrics.sidebarWidth + props.timelineWidth * scaleX.value}px`,
@@ -159,6 +171,17 @@ const contentStyle = computed(() => ({
 }))
 const playheadStyle = computed(() => ({ left: `${(props.playheadLeft || 0) * scaleX.value}px` }))
 const rowsHeight = computed(() => props.rows.reduce((sum, row) => sum + (row.height ?? metrics.rowHeight), 0))
+
+function hitTestRow(clientX: number, clientY: number, allowedRowKeys?: ReadonlySet<string>) {
+    if (!viewport.value) return null
+    const bounds = viewport.value.getBoundingClientRect()
+    return hitTestTrackOccupancyGanttRow(props.rows, {
+        left: bounds.left + viewport.value.clientLeft, top: bounds.top + viewport.value.clientTop,
+        width: viewport.value.clientWidth, height: viewport.value.clientHeight,
+        scrollLeft: viewport.value.scrollLeft, scrollTop: viewport.value.scrollTop,
+        scaleX: scaleX.value, scaleY: scaleY.value, timelineWidth: props.timelineWidth,
+    }, clientX, clientY, allowedRowKeys)
+}
 
 function fitToViewport() {
     if (!viewport.value || props.rows.length === 0 || props.controlsDisabled) return
@@ -215,6 +238,12 @@ function getBlockStyle(block: TrackOccupancyGanttBlock) {
     }
 }
 
+function rowKindTitle(row: TrackOccupancyGanttRow) {
+    const kind = t(row.kind === 'track' ? 'capacityGantt.rowKinds.track' : 'capacityGantt.rowKinds.cell')
+    const names = row.trackNames?.filter(name => name !== row.label).join(' / ')
+    return `${row.label} · ${kind}${names ? ` · ${names}` : ''}`
+}
+
 function startDrag(event: PointerEvent, rowKey: string, block: TrackOccupancyGanttBlock, mode: TrackOccupancyGanttDragMode) {
     if (!props.editable || props.disabled || block.editable === false) return
     emit('drag-start', { event, rowKey, blockKey: block.key, mode })
@@ -256,6 +285,12 @@ function startDrag(event: PointerEvent, rowKey: string, block: TrackOccupancyGan
 .track-occupancy-gantt-scale :deep(.el-slider) { flex: 1 1 auto; min-width: 70px; }
 .track-occupancy-gantt-scale output { flex: 0 0 42px; text-align: right; font-variant-numeric: tabular-nums; }
 .track-occupancy-gantt-toolbar :deep(.el-button + .el-button) { margin-left: 0; }
+.track-occupancy-gantt-row-legend { display: flex; flex-wrap: wrap; gap: 12px; margin-left: auto; font-size: 12px; }
+.track-occupancy-gantt-row-legend > span { display: inline-flex; align-items: center; gap: 5px; color: #64748b; white-space: nowrap; }
+.track-occupancy-gantt-row-legend > .is-track { color: #0f766e; }
+.track-occupancy-gantt-row-legend i, .track-occupancy-gantt-row-marker { display: inline-block; width: 12px; height: 0; border-top: 1px dashed currentColor; }
+.track-occupancy-gantt-row-legend .is-track i, .is-track .track-occupancy-gantt-row-marker { height: 3px; border-top: 1px solid currentColor; border-bottom: 1px solid currentColor; }
+.track-occupancy-gantt-row-marker { flex: 0 0 12px; margin-right: 6px; }
 
 .track-occupancy-gantt-viewport {
     flex: 1 1 auto;
@@ -323,6 +358,15 @@ function startDrag(event: PointerEvent, rowKey: string, block: TrackOccupancyGan
 .track-occupancy-gantt-axis-track { border-bottom: 1px solid var(--occupancy-gantt-border); }
 .track-occupancy-gantt-lane-track { border-bottom: 1px solid #edf2f7; }
 .track-occupancy-gantt-lane-row:nth-child(odd) > div { background-color: #fbfdff; }
+.track-occupancy-gantt-lane-row.is-cell > .track-occupancy-gantt-lane-label { color: #64748b; }
+.track-occupancy-gantt-lane-row.is-track > .track-occupancy-gantt-lane-track { background-color: #f0fdfa; border-bottom-color: #b9e3d9; }
+.track-occupancy-gantt-lane-row.is-track > .track-occupancy-gantt-lane-label { background-color: #e4f5f0; color: #0f766e; font-weight: 600; box-shadow: inset 3px 0 #0f766e; }
+.track-occupancy-gantt-lane-row.is-drop-target > .track-occupancy-gantt-lane-label,
+.track-occupancy-gantt-lane-row.is-drop-target > .track-occupancy-gantt-lane-track {
+    background-color: var(--el-color-primary-light-9, #ecf5ff);
+    box-shadow: inset 0 1px 0 var(--el-color-primary, #409eff), inset 0 -1px 0 var(--el-color-primary, #409eff);
+}
+.track-occupancy-gantt-lane-row.is-drop-target > .track-occupancy-gantt-lane-label { color: var(--el-color-primary, #409eff); }
 
 .track-occupancy-gantt-axis-title {
     position: absolute;
@@ -407,6 +451,7 @@ function startDrag(event: PointerEvent, rowKey: string, block: TrackOccupancyGan
 
 .track-occupancy-gantt-block.is-finished { border-color: #8792a1; background: #a0a8b3; color: #ffffff; }
 .track-occupancy-gantt-block.is-active { box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.22); transform: translateY(-1px); }
+.track-occupancy-gantt-block.is-track-preview { border-style: dashed; opacity: 0.75; pointer-events: none; }
 
 .track-occupancy-gantt-now-line {
     position: absolute;

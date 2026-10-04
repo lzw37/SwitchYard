@@ -6,14 +6,14 @@ namespace SwitchYard.Service.Services;
 public static class OperationProcessResourceLocations
 {
     public static List<string> Get(OperationProcessTemplate source, ProcessCatalog catalog,
-        ProcessActivity activity, string resourceID, bool start)
+        ProcessActivity activity, string resourceID, bool start, bool useRouteEndpoints = false)
     {
         var ev = source.Events.First(item => item.Id == (start ? activity.StartEvent : activity.EndEvent));
         var allowedAnchors = ev.SelectedAnchor is not null ? new[] { ev.SelectedAnchor } : ev.AnchorList.ToArray();
         var tracks = catalog.Tracks.ToDictionary(track => track.Id, StringComparer.Ordinal);
         var anchors = source.Anchors.ToDictionary(anchor => anchor.Id, StringComparer.Ordinal);
         var result = new List<string>();
-        if (activity.Type == "Dwelling")
+        if (activity.Type == "Dwelling" && !useRouteEndpoints)
         {
             if (!tracks.TryGetValue(resourceID, out var track)) return result;
             foreach (var node in new[] { track.FromNodeID, track.ToNodeID }.Distinct(StringComparer.Ordinal))

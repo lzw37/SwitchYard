@@ -1,28 +1,139 @@
 {
     "capacityGantt": {
         "toolbar": "Occupancy chart controls",
+        "rowLegend": "Row type legend",
+        "rowKinds": { "track": "Named track", "cell": "Other track circuit section" },
         "fit": "Fit to window",
         "fitHint": "Fit the chart to the window and follow resizing; manual zoom exits auto-fit",
         "scaleX": "X Scale",
         "scaleY": "Y Scale",
         "refresh": "Refresh",
         "dragHint": "Move or resize only the current occupancy block; release to save",
+        "trackDragHint": "Drag horizontally to edit occupancy times; drag a dwelling event vertically to change track and match related routes",
+        "invalidTrackTarget": "Drop on a track circuit section that identifies exactly one named track. The original position has been restored.",
         "startHandle": "Adjust this cell's occupancy start time",
         "endHandle": "Adjust this cell's occupancy end time",
         "saveSuccess": "This cell's occupancy was updated",
         "saveFailed": "Failed to save cell occupancy times; the original times were restored"
     },
     "stationPlanView": {
+        "dwelling": {
+            "menuLabel": "Dwelling activity actions",
+            "passToStop": "Convert passing to stop",
+            "stopToPass": "Convert stop to passing",
+            "passToStopHint": "Keep the dwelling start time and move its end 2 minutes later.",
+            "stopToPassHint": "Align both dwelling endpoints to the earlier of the two times.",
+            "saved": "Dwelling activity times updated"
+        },
+        "rowLegend": "Row type legend",
+        "rowKinds": { "track": "Track", "node": "Node" },
+        "fromProcess": {
+            "open": "Add train from process",
+            "title": "Add train from an operation process",
+            "description": "Choose a saved process, select each activity's allowed route or track, then preview and create one train. All activities, durations, fixed events, and precedence constraints are retained.",
+            "source": "Operation process",
+            "selectSource": "Select a saved operation process",
+            "reload": "Reload processes and candidates",
+            "loadingSources": "Loading operation processes and station resources",
+            "emptySources": "This station scheme has no saved operation processes. Create and save one in the process editor first.",
+            "originTime": "Process origin time",
+            "endTime": "Latest scheduling end time",
+            "timeRangeHint": "The origin corresponds to relative time zero in the process. Day offsets and fractional seconds are supported. An end time at or before the origin rolls forward to the next day. Scheduling is supported through the end of day 7. The backend computes activity times using all constraints.",
+            "activities": "Process activities",
+            "duration": "Duration range (minutes)",
+            "route": "Activity route",
+            "track": "Dwelling track",
+            "dwellingRoute": "Dwelling route (optional)",
+            "noDwellingRoute": "Without a dwelling route, the backend generates occupation from the selected track.",
+            "fixedSelection": "Fixed by the operation process",
+            "selectRoute": "Select one of this activity's candidate routes",
+            "selectTrack": "Select one of this activity's candidate tracks",
+            "missingChoices": "No valid candidates. Check the process and station resources.",
+            "preview": "Check constraints and preview",
+            "previewStale": "Inputs changed or have not been previewed. Check constraints again before creating the train.",
+            "previewReady": "The current inputs satisfy the process constraints. The train can be created.",
+            "previewStart": "Start time",
+            "previewEnd": "End time",
+            "previewRoute": "Preview route",
+            "previewTrack": "Preview track",
+            "validation": "Select a process, enter a train number and valid time window, and choose a valid route or track for each activity.",
+            "constraintErrors": "Process validation or creation failed",
+            "warnings": "Generation notes",
+            "unpreviewed": "Preview pending",
+            "loadFailed": "Could not load operation processes or candidate resources. Please retry.",
+            "invalidResponse": "The server returned incomplete train or process constraint data. Refresh to confirm the result.",
+            "failed": "Validation or creation failed. Adjust your choices and retry.",
+            "saved": "Train created with all operation process constraints saved"
+        },
+        "creation": {
+            "title": "Create a train from chart points",
+            "description": "Review movement nodes, times, and routes. Unmatched routes may remain empty when creating the train; those movements have no Cell occupation until a route is assigned.",
+            "startPicking": "Click to add train",
+            "pickStart": "Movement {index}: select its start node and time",
+            "pickEnd": "Movement {index}: select its end node and time",
+            "repickStart": "Select this movement's start node and time again",
+            "repickEnd": "Select this movement's end node and time again",
+            "pickCanvasLabel": "Select movement nodes and times",
+            "pickHint": "Select each start and end in turn. Two points form a movement; horizontal position sets its time. Press Esc to leave selection mode.",
+            "pickedPoint": "Point {index} · {node} · {time}",
+            "undoPoint": "Undo last point",
+            "finishPicking": "Finish selection",
+            "returnToDialog": "Return to movements",
+            "trainNumber": "Train number",
+            "trainName": "Train name",
+            "trainType": "Train type",
+            "movements": "Movements",
+            "movementName": "Movement name",
+            "start": "Start node / time",
+            "end": "End node / time",
+            "node": "Node",
+            "time": "Time",
+            "timePlaceholder": "HH:mm[:ss] or D+1 HH:mm[:ss]",
+            "timeHint": "Day offsets and fractional seconds are supported",
+            "route": "Route",
+            "selectRoute": "Select or search routes",
+            "unmatched": "No route selected; saving is allowed",
+            "matchedRoutes": "Matching routes",
+            "otherRoutes": "Other routes",
+            "repick": "Select again on chart",
+            "addMovement": "Add movement",
+            "deleteMovement": "Delete movement",
+            "moveUp": "Move up",
+            "moveDown": "Move down",
+            "cancel": "Cancel",
+            "confirm": "Create train",
+            "validation": "Enter a train number and valid start/end nodes and times for every movement.",
+            "defaultMovement": "Movement {index}",
+            "invalidDraft": "Enter a train number and at least one complete movement with valid start/end nodes and times. Up to 1000 movements are supported.",
+            "tooManyMovements": "Up to 1000 movements are supported. Finish point selection to continue.",
+            "invalidResponse": "The server returned incomplete train data. Refresh to confirm whether it was saved.",
+            "saveFailed": "Could not create the train. Your draft is retained for editing or retrying.",
+            "saved": "Train and all movements created"
+        },
         "toolbar": "Station plan view controls",
         "chartLabel": "Mesoscopic station operation plan, one line per train",
-        "axis": "Track sections / entrances",
-        "cell": "Track circuit section",
-        "endpoint": "Station entrance / exit",
-        "configure": "Configure displayed elements",
-        "settingsHint": "Choose axis sections and entrances. Entrance candidates come from route endpoints in this station scheme. Settings are saved with the current operation plan.",
-        "missingEndpoints": "{count} train endpoints are unselected, hiding their entry or exit connections",
-        "completeEndpoints": "Show missing train endpoints",
-        "usedEndpoint": "Train endpoint in this plan",
+        "lineMode": "Movement lines",
+        "straightMode": "Straight",
+        "orthogonalMode": "Orthogonal",
+        "lineModeHint": "Orthogonal lines place the horizontal leg on the non-track node row. Movements between two track nodes keep a straight line.",
+        "shiftFollowing": "Move overlapping handles and following times",
+        "singleEndpoint": "Current time only (Ctrl)",
+        "trackDragHint": "Select a train, then drag a track movement up or down to change tracks. Add destination tracks in display settings.",
+        "trackDragPreview": "Move to {track}; release to reset the related movement routes",
+        "trackDropInvalid": "Drop on a track row. This change was not saved.",
+        "trackHandleLabel": "Drag {movement} up or down to change its current track {track}",
+        "trackEditSaved": "Track and related Movement routes updated",
+        "axis": "Tracks / nodes",
+        "node": "Station nodes",
+        "configure": "Configure display and order",
+        "settingsHint": "The two endpoints of each track share one row. Select tracks or nodes and use Move up / Move down to set their top-to-bottom order. Nodes used by movements remain visible. Settings are saved with the current operation plan.",
+        "displayOrder": "Display and order (top to bottom)",
+        "moveUp": "Move up",
+        "moveDown": "Move down",
+        "expandTrack": "Double-click the track name to expand its endpoints",
+        "collapseTrack": "Double-click the track name to collapse its endpoints",
+        "unresolvedMovements": "{count} movements lack usable start/end nodes or operation times and cannot be drawn. Check their routes and times.",
+        "usedNode": "Node used by a movement",
         "selectAll": "Select all",
         "clearSelection": "Clear",
         "saveSettings": "Save settings",
@@ -31,21 +142,22 @@
         "loadSettingsFailed": "Could not load display settings. Refresh to retry.",
         "startTime": "Station plan start time",
         "endTime": "Station plan end time",
-        "summary": "{trains} trains, {rows} displayed elements",
+        "summary": "{trains} trains, {rows} tracks / nodes",
         "trainLegend": "Click lines or train numbers to select multiple trains; Esc or clicking empty chart space clears selection; hovering a line temporarily thickens it",
         "trainLine": "Train operation line {train}",
-        "startHandle": "Adjust the start of {train}'s horizontal run",
-        "endHandle": "Adjust the end of {train}'s horizontal run",
+        "startHandle": "Adjust {movement} start time for {train}",
+        "endHandle": "Adjust {movement} end time for {train}",
+        "alignStartHint": "Double-click to align only this start time with the previous Movement's end",
+        "alignEndHint": "Double-click to align only this end time with the next Movement's start",
         "handleInfo": {
             "trainNumber": "Train number",
-            "cell": "Track circuit",
-            "time": "Time"
+            "movement": "Movement",
+            "node": "Node",
+            "startTime": "Start time",
+            "endTime": "End time"
         },
-        "moveRow": "Drag this run vertically to change its track circuit and matching routes",
-        "editSaved": "Train run changes saved to the operation plan",
-        "routesChanged": "The following routes were changed:",
-        "routeChangeItem": "{train} · {movement}: {from} → {to}",
-        "editSaveFailed": "Save failed; original times and routes restored",
+        "editSaved": "Movement times saved to the operation plan",
+        "editSaveFailed": "Save failed; the original operation plan was restored",
         "undo": "Undo (Ctrl+Z)",
         "redo": "Redo (Ctrl+Y)",
         "historyHint": "Keeps up to 20 edits. Making a new edit after undo clears redo history.",
@@ -54,12 +166,13 @@
         "redoSaved": "Change redone and saved to the operation plan",
         "historySaveFailed": "Could not save undo or redo. The current plan and history are unchanged.",
         "editErrors": {
+            "missingTrackRoute": "Cannot move to {track}: no matching route for {movements}. The plan was not changed. Dwelling movements require a dwelling route on the destination track.",
             "stale": "The operation plan changed. Refresh and retry."
         },
-        "emptyRows": "No axis elements selected. Choose sections or entrances in display settings.",
-        "emptyTrains": "No train paths on the selected elements",
-        "emptyEndpoints": "Routes have no configured endpoints",
-        "note": "Horizontal lines show dwelling; vertical lines show moves between sections or entrances. Select a train and drag square handles to adjust times, or drag a run vertically to change its section. Release to save. This chart saves edits directly without checking plan legality."
+        "emptyRows": "No movement nodes to display. Choose tracks or nodes in Configure display and order.",
+        "emptyTrains": "No train paths for these nodes",
+        "emptyNodes": "No station nodes available",
+        "note": "Each track's endpoints share one horizontal line by default. Double-click its name to expand or collapse them. Line endpoints use operation times in Movement order. Drag a handle or use the left/right arrow keys to move that time, exactly overlapping handles of the same train, and following times together. Hold Ctrl to change only the selected endpoint. The overlapping group is fixed when dragging starts; passing other handles does not add them. Moving a start handle also shifts that Movement's end. Double-click a start handle to align with the previous Movement's end, or an end handle to align with the next Movement's start. Alignment changes only that endpoint and does nothing without a valid adjacent time. Changes save automatically and support undo. Use Tab to focus overlapping handles. Diagonal entry and exit lines display the train number."
     },
     "login": {
         "title": "User Login",
@@ -455,7 +568,7 @@
                 "chooseCondition": "Please choose operating condition",
                 "conditionName": "e.g. Standard Condition",
                 "chooseWagon": "Please choose wagon type",
-                "jsonExample": "JSON, e.g.: {}"
+                "jsonExample": "JSON, e.g.: {'{'}{'}'}"
             },
             "options": {
                 "other": "Other",
@@ -1612,15 +1725,16 @@
         "trainOperationPlan": {
             "fromProcess": {
                 "title": "Generate train operation plan from process",
-                "appendHint": "Copy a saved process into multiple trains and all their movements. Append them to the current plan and keep existing trains.",
-                "trainCount": "Train count (1–1000)",
-                "distributionHint": "Position train starts using evenly spaced time slots. Within each train, schedule all events as early as the full set of constraints allows. Zero-interval precedences connect directly unless another constraint requires a gap. Fixed event times, minimum intervals and duration bounds still apply. Infeasible constraints or a schedule outside the time range reject the entire batch. Times support 24:00 and multiple days.",
+                "appendHint": "Enter a train count for each saved process in the table; 0 skips that process. All processes use the time range below, with 1–1000 trains in total. Append them to the current plan and keep existing trains.",
+                "trainCount": "Train count (0–1000)",
+                "batchSummary": "{processes} processes, {trains} trains to generate",
+                "distributionHint": "Position train starts using evenly spaced time slots separately for each process. Within each train, schedule all events as early as the full set of constraints allows. Zero-interval precedences connect directly unless another constraint requires a gap. Fixed event times, minimum intervals and duration bounds still apply. If any process is infeasible or exceeds the time range, reject the whole batch across all processes. Times support 24:00 and multiple days.",
                 "generate": "Generate and append",
                 "generateFailed": "Could not generate the train operation plan. Check the error and retry.",
                 "invalidResponse": "The server did not return a complete result. Refresh the plan to check before generating again.",
                 "success": "Appended {trains} trains and {movements} movements. Existing trains were retained.",
                 "constraints": "Process constraints",
-                "lockedHint": "Generated from a process with all process constraints retained. Movements are read-only; edit the source process and generate again to change them.",
+                "generatedHint": "Generated from a process with the original process constraints retained. Blocks can be dragged or resized, and movements can be edited.",
                 "catalogFailed": "Station names could not be loaded. Object IDs are shown instead.",
                 "revision": "Source revision",
                 "origin": "Process time origin",
@@ -1721,6 +1835,8 @@
         },
         "trainOperationChart": {
             "title": "Operation Plan Chart",
+            "recalculate": "Recalculate Cell Occupancy",
+            "recalculateHint": "Recalculate all cells in the current plan using the latest saved operation times and track circuit offsets. Manual occupancy edits will be replaced and saved.",
             "count": "{cellCount} track circuit sections, {barCount} occupancy records",
             "cellAxis": "Track Circuit Section",
             "timeAxis": "Time",
@@ -1728,7 +1844,9 @@
             "emptyCells": "No track circuit sections",
             "emptyOccupations": "No occupancy records",
             "messages": {
-                "loadFailed": "Failed to load operation plan chart"
+                "loadFailed": "Failed to load operation plan chart",
+                "recalculateSuccess": "Cell occupancy times recalculated and saved for the current plan",
+                "recalculateFailed": "Failed to recalculate cell occupancy times"
             }
         },
         "operationOccupationTimeTable": {
@@ -1864,7 +1982,13 @@
         "schemeManager": {
             "manage": "Manage",
             "title": "Station Scheme Manager",
-            "add": "Add",
+            "add": "New",
+            "copy": "Copy",
+            "copyName": "{name} copy",
+            "pendingSave": "Unsaved",
+            "invalidResponse": "The server did not return a scheme ID",
+            "copySuccess": "Station scheme copied",
+            "copyFailed": "Failed to copy station scheme",
             "edit": "Edit",
             "save": "Save",
             "cancel": "Cancel",
@@ -1968,6 +2092,26 @@
             "poles": {
                 "High": "High",
                 "Low": "Low"
+            },
+            "directions": {
+                "w": "Upper left",
+                "e": "Upper right",
+                "s": "Lower left",
+                "d": "Lower right"
+            }
+        },
+        "insulationJoint": {
+            "types": {
+                "normal": "Standard",
+                "oversize": "Fouling"
+            }
+        },
+        "switch": {
+            "types": {
+                "single": "Single",
+                "slip": "Slip switch",
+                "diamond": "Diamond crossing",
+                "symmetric": "Symmetric"
             }
         },
         "topology": {
@@ -1978,7 +2122,207 @@
             "type": "Equipment Type",
             "generic": "Equipment",
             "batch": "{type}: Batch Edit ({count})",
-            "selectOne": "Select one item"
+            "selectOne": "Select one item",
+            "fields": {
+                "id": "ID",
+                "name": "Name",
+                "type": "Type",
+                "direction": "Direction",
+                "bindingNodeID": "BindingNodeID",
+                "x": "X",
+                "y": "Y",
+                "x1": "X1",
+                "y1": "Y1",
+                "x2": "X2",
+                "y2": "Y2",
+                "width": "Width",
+                "height": "Height",
+                "fromNodeID": "FromNodeID",
+                "toNodeID": "ToNodeID",
+                "arrowDirection": "ArrowDirection",
+                "arrowType": "ArrowType",
+                "branchVectorList": "BranchVectorList"
+            }
+        },
+        "editor": {
+            "common": {
+                "normal": "Normal",
+                "bold": "Bold",
+                "italic": "Italic",
+                "cancel": "Cancel",
+                "save": "Save",
+                "delete": "Delete",
+                "clear": "Clear",
+                "add": "Add",
+                "generate": "Generate",
+                "none": "None",
+                "currentScheme": "Current scheme",
+                "unknownError": "Unknown error"
+            },
+            "rename": {
+                "label": "Rename object",
+                "hint": "Enter to confirm · Esc to cancel"
+            },
+            "styles": {
+                "title": "Display styles",
+                "text": "Text",
+                "object": "Object",
+                "size": "Size",
+                "font": "Font",
+                "weight": "Weight",
+                "style": "Style",
+                "color": "Color",
+                "equipment": "Lines and equipment",
+                "track": "Track lines",
+                "curve": "Curve lines",
+                "platform": "Platform lines",
+                "strokeWidth": "Line width",
+                "reset": "Restore defaults",
+                "switchName": "Switch number",
+                "platformName": "Platform name",
+                "signalName": "Signal name",
+                "lineName": "Track name",
+                "cellName": "Track circuit name",
+                "saved": "Display styles saved",
+                "saveFailed": "Failed to save display styles: ",
+                "invalidLayout": "Could not save display styles. Check the layout data."
+            },
+            "arrows": {
+                "none": "Hidden",
+                "left": "Left",
+                "right": "Right",
+                "both": "Both sides",
+                "passenger": "Passenger route",
+                "freight": "Freight route",
+                "mixed": "Passenger and freight route",
+                "outbound": "Outbound locomotive",
+                "inbound": "Inbound locomotive",
+                "leftInRightOut": "Locomotive: enter left, exit right",
+                "leftOutRightIn": "Locomotive: exit left, enter right",
+                "oversize": "Oversize freight route"
+            },
+            "annotation": {
+                "title": "Annotation",
+                "angle": "Angle"
+            },
+            "cells": {
+                "title": "Track circuit sections (Cells)",
+                "list": "Cell list",
+                "info": "Cell details",
+                "links": "Included links",
+                "autoGenerate": "Auto-generate",
+                "pickAdd": "Pick to add",
+                "removeCurrent": "Remove selected",
+                "endpoints": "Endpoints",
+                "idPending": "Assigned on save",
+                "idPlaceholder": "Assigned on save",
+                "emptyLinks": "This cell has no links",
+                "empty": "Create or select a cell",
+                "idRequired": "A cell save identifier is required",
+                "deleteTitle": "Delete cell",
+                "selectFirst": "Select or create a cell first",
+                "linkNotFound": "This link was not found in the current layout",
+                "noLinks": "The current layout has no links for generating cells",
+                "overwriteConfirm": "Auto-generation will replace the current cell list. Continue?",
+                "generateTitle": "Generate cells",
+                "saved": "Cell saved",
+                "saveFailed": "Failed to save cell: ",
+                "name": "Name",
+                "instance": "Station ID",
+                "scheme": "Station scheme ID",
+                "idExists": "Cell ID {id} already exists",
+                "deleteConfirm": "Delete cell {name}?",
+                "linkExists": "Link {id} is already in this cell",
+                "linkAdded": "Link {id} added",
+                "generated": "{count} cells generated"
+            },
+            "routes": {
+                "title": "Route search test",
+                "start": "Start node ID",
+                "end": "End node ID",
+                "pick": "Pick",
+                "search": "Search",
+                "direction": "Direction",
+                "path": "Path",
+                "leftToRight": "Left to right",
+                "rightToLeft": "Right to left",
+                "endpointsRequired": "Enter the start and end node IDs",
+                "integerRequired": "Node IDs must be integers",
+                "searchFailed": "Route search failed",
+                "found": "Search complete: {count} routes found"
+            },
+            "equipment": {
+                "saved": "Equipment details saved",
+                "saveFailed": "Failed to save equipment details: ",
+                "idRequired": "Equipment ID is required",
+                "batchChangeRequired": "Change the fields to apply in the batch first",
+                "branchJsonInvalid": "Invalid switch branch vector JSON",
+                "noLayout": "No layout data to save",
+                "directionHint": "Direction: press w / e / s / d"
+            },
+            "json": {
+                "noLayout": "No layout data to export",
+                "exported": "JSON file exported",
+                "exportFailed": "Failed to export JSON file",
+                "fileRequired": "Select a JSON file",
+                "imported": "JSON file imported",
+                "importFailed": "Could not import JSON. Check the file format."
+            },
+            "binding": {
+                "title": "Correct equipment node bindings",
+                "previous": "Previous bound node",
+                "next": "New bound node",
+                "position": "Equipment position",
+                "confirm": "Apply corrections",
+                "none": "No equipment node bindings need correction",
+                "selectFirst": "Select the equipment to correct first",
+                "unmatchedSuffix": "; {count} equipment items have no node at their current position",
+                "fixed": "Corrected node bindings for {count} equipment items{details}",
+                "unmatched": "Not corrected: {count} equipment items have no node at their current position",
+                "correct": "Equipment node bindings are already correct{details}",
+                "skippedSuffix": "; {count} equipment items have no node at their current position or no longer exist",
+                "selectedCorrect": "Selected equipment node bindings are already correct{details}",
+                "notFixed": "No equipment node bindings were corrected{details}",
+                "summary": "Node bindings will change for {count} equipment items. Select the corrections to apply.",
+                "skipped": "{count} additional equipment items have no node at their current position and were skipped.",
+                "selected": "Selected {selected} / {total}"
+            },
+            "switches": {
+                "untitled": "Unnamed switch",
+                "reconstructTitle": "Reconstruct switches",
+                "reconstruct": "Reconstruct",
+                "noChanges": "No switches to generate or reconstruct",
+                "change": "{name} (node {node}: {from} → {to})",
+                "more": "\n{count} switches in total",
+                "alsoCreate": "\n\nThis will also generate {count} new switches.",
+                "confirm": "Adjacent links changed for {count} switches. Reconstruct them using the current links while keeping their original IDs?{details}{create}",
+                "reconstructed": "{count} reconstructed",
+                "created": "{count} created",
+                "generated": "Switch generation complete: {details}"
+            },
+            "deleteNodes": {
+                "title": "Delete nodes and bound equipment",
+                "count": "{count} {type}",
+                "more": " ({count} total)",
+                "details": "\n\nBound equipment: {details}{more}",
+                "confirm": "The {count} selected nodes have bound equipment: {equipment}. Delete the nodes and their bound equipment?{details}"
+            },
+            "dwg": {
+                "title": "Extract from DWG",
+                "file": "DWG file",
+                "layer": "Layer name",
+                "layerPlaceholder": "Enter the layer to extract",
+                "upload": "Upload and extract",
+                "invalidFile": "Select a DWG file",
+                "fileRequired": "Select a DWG file first",
+                "noData": "DWG extraction failed: the server returned no drawing data",
+                "failed": "DWG extraction failed: ",
+                "completed": "DWG extraction complete: {count} segments generated"
+            },
+            "topology": {
+                "recheck": "The latest topology was saved. Splitting tracks, generating nodes, or merging nodes may affect equipment bindings, switch and curve associations, cells, and existing routes. Check equipment with “Correct equipment node bindings”, review or regenerate cells, and revalidate any configured routes.",
+                "curvesGenerated": "{count} curves generated"
+            }
         }
     },
     "stationLayout3d": {
@@ -2188,7 +2532,8 @@
             "curveDisplay": "Curves",
             "showCellNames": "Track Circuit Names",
             "displayScale": "Scale",
-            "generateInterruptCells": "Generate Direct Interrupt Cells"
+            "generateInterruptCells": "Generate Direct Interrupt Cells",
+            "generateDwellingRoutes": "Auto-generate Dwelling Routes"
         },
         "stationRoute": {
             "title": "Route Generation",
@@ -2219,7 +2564,8 @@
                 "arrival": "Arrival Route",
                 "departure": "Departure Route",
                 "locomotive": "Locomotive Depot Route",
-                "shunting": "Shunting Route"
+                "shunting": "Shunting Route",
+                "dwelling": "Dwelling Route"
             },
             "actions": {
                 "add": "Add",
@@ -2313,7 +2659,9 @@
                 "batchDeleteSuccess": "{count} routes deleted",
                 "batchDeletePartial": "Batch delete complete: {deleted} deleted, {failed} failed",
                 "interruptCellsGenerated": "Direct interrupt cells generated for {count} routes",
-                "interruptCellsGenerateFailed": "Failed to generate direct interrupt cells"
+                "interruptCellsGenerateFailed": "Failed to generate direct interrupt cells",
+                "dwellingRoutesGenerated": "Dwelling routes generated: {created} added, {skipped} existing skipped, {invalid} invalid Links",
+                "dwellingRoutesGenerateFailed": "Failed to auto-generate dwelling routes"
             }
         },
         "autoRoute": {
@@ -2505,6 +2853,63 @@
             "correct": "Correct",
             "partial": "Partly Correct",
             "wrong": "Incorrect"
+        }
+    },
+    "frontend": {
+        "version": "Version: {version}",
+        "aboutPage": "About SwitchYard",
+        "bottomMenu": "Bottom menu",
+        "copyName": "{name} copy",
+        "signalTypePlaceholder": "Select a signal type",
+        "nodePlaceholder": "Select a node",
+        "frogNumbers": {
+            "single9": "No. 9 single turnout",
+            "single12": "No. 12 single turnout",
+            "symmetric6": "No. 6 symmetric turnout",
+            "symmetric65": "No. 6.5 symmetric turnout"
+        },
+        "positionChange": {
+            "affected": "The position ID changed, affecting {count} segments. Delete the affected segments?",
+            "confirm": "The position ID changed. Continue?"
+        }
+    },
+    "operationProcess": {
+        "defaults": {
+            "newTemplate": "New operation process template",
+            "exampleName": "Arrival–Dwelling–Departure (with locomotive and shunting coordination)",
+            "exampleDescription": "An example with five activity types. Times are minutes from the template origin; precedence intervals are minimum gaps. Edit and save it as a shared process template for the current station scheme.",
+            "trackName": "Track {id}",
+            "anchorName": "{name} anchor",
+            "startEvent": "{name} Start",
+            "endEvent": "{name} End",
+            "nodes": {
+                "westEntrance": "West throat entrance",
+                "trackWest": "Track I west end",
+                "trackEast": "Track I east end",
+                "eastExit": "East throat exit",
+                "depotExit": "Locomotive depot exit",
+                "headshuntEnd": "Headshunt end"
+            },
+            "tracks": {
+                "westThroat": "West throat",
+                "arrivalDeparture": "Track I (arrival/departure)",
+                "eastThroat": "East throat",
+                "locomotive": "Locomotive running line",
+                "headshunt": "Headshunt"
+            },
+            "routes": {
+                "arrival": "West throat → Track I arrival",
+                "departure": "Track I → East throat departure",
+                "shunting": "Headshunt → Track I shunting",
+                "locomotive": "Locomotive depot → Headshunt"
+            },
+            "activities": {
+                "arrival": "Train arrival",
+                "dwelling": "Station dwell / technical operations",
+                "departure": "Train departure",
+                "locomotive": "Locomotive depot departure",
+                "shunting": "Shunting transfer"
+            }
         }
     }
 }

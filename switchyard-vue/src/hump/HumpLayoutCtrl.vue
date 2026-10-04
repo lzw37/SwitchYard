@@ -689,15 +689,15 @@ async function checkPositionIdChange(positionId: string) {
             affectedSegments.push(...segments.map((s: any) => s.id))
 
             const message = affectedSegments.length > 0
-                ? `检测到Position ID变化，这将影响 ${affectedSegments.length} 个区段。是否删除受影响的区段？`
-                : '检测到Position ID变化，是否继续？'
+                ? t('frontend.positionChange.affected', { count: affectedSegments.length })
+                : t('frontend.positionChange.confirm')
 
             await ElMessageBox.confirm(
                 message,
-                '警告',
+                t('common.titles.warning'),
                 {
-                    confirmButtonText: '确定',
-                    cancelButtonText: '取消',
+                    confirmButtonText: t('common.confirm'),
+                    cancelButtonText: t('common.cancel'),
                     type: 'warning',
                 }
             )

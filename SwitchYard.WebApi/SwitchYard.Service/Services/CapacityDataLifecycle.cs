@@ -22,7 +22,7 @@ public static class CapacityDataLifecycle
         "operationoccupationtimecell", "operationoccupationtimerow", "operationanalysiscell", "operationanalysismeta"
     };
 
-    private static readonly string[] SchemeTables = PlanTables.Concat(new[]
+    public static readonly IReadOnlyList<string> SchemeTables = PlanTables.Concat(new[]
     {
         "operationplan", "operationprocesstemplate", "movementtemplate", "traintemplate",
         "stationroutetime", "stationroute", "stationrouteend", "switchbranchvector", "switch",

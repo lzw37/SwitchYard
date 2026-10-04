@@ -20,11 +20,19 @@ public partial class OperationPlanController
                 InstanceID = request?.InstanceID?.Trim() ?? "", StationSchemeID = request?.StationSchemeID?.Trim() ?? "",
                 OperationPlanID = request?.OperationPlanID?.Trim() ?? ""
             };
-            if (new[] { scope.InstanceID, scope.StationSchemeID, scope.OperationPlanID }.Any(id => id.Length is 0 or > 50) ||
-                string.IsNullOrWhiteSpace(request?.ProcessTemplateID) || request.ProcessTemplateID.Length > 100 || request.Revision is null or <= 0)
+            if (request is null || new[] { scope.InstanceID, scope.StationSchemeID, scope.OperationPlanID }.Any(id => id.Length is 0 or > 50))
                 return BadRequest(new { message = "请提供有效的实例、站场方案、作业计划、已保存过程 id 和正整数 revision。" });
-            if (request.TrainCount is < 1 or > 1000)
-                return BadRequest(new { message = "一次生成的列车数量必须为 1–1000。" });
+            var selections = request.Processes ?? new List<ProcessPlanGenerationItem> { new() {
+                ProcessTemplateID = request.ProcessTemplateID, Revision = request.Revision, TrainCount = request.TrainCount
+            } };
+            if (selections.Any(item => item is null || item.TrainCount is < 0 or > 1000))
+                return BadRequest(new { message = "每个作业过程的列车数量必须为 0–1000。" });
+            selections = selections.Where(item => item.TrainCount > 0).ToList();
+            if (selections.Sum(item => (long)item.TrainCount) is < 1 or > 1000)
+                return BadRequest(new { message = "一次生成的列车总数量必须为 1–1000，数量为 0 的作业过程跳过。" });
+            if (selections.Any(item => string.IsNullOrWhiteSpace(item.ProcessTemplateID) || item.ProcessTemplateID.Length > 100 || item.Revision is null or <= 0) ||
+                selections.Select(item => item.ProcessTemplateID!.Trim()).Distinct(StringComparer.Ordinal).Count() != selections.Count)
+                return BadRequest(new { message = "请为每个作业过程提供有效且不重复的 id 和正整数 revision。" });
             if (!TryParseProcessPlanTime(request.StartTime ?? "00:00", out var startSeconds) ||
                 !TryParseProcessPlanTime(request.EndTime ?? "24:00", out var endSeconds))
                 return BadRequest(new { message = "时间范围格式应为 HH:mm、HH:mm:ss 或 D+天数 HH:mm:ss。" });
@@ -41,76 +49,83 @@ public partial class OperationPlanController
             SchemeTemplateStore.Migrate(db, scope.InstanceID, scope.StationSchemeID);
             TrainProcessSnapshotStore.EnsureSchema(db);
             db.BeginTransaction();
-            var source = OperationProcessController.FindTemplate(db, scope, request.ProcessTemplateID.Trim(), lockForUpdate: true);
-            if (source is null) { db.Rollback(); return NotFound(new { message = "当前站场方案下不存在此已保存作业过程。" }); }
-            if (source.Revision != request.Revision) { db.Rollback(); return ProcessGenerationRevisionConflict(); }
             var catalog = OperationProcessController.LoadCatalog(db, scope);
-            var errors = OperationProcessValidator.Validate(source, catalog);
-            if (source.Activities is { Count: 0 }) errors.Add("作业过程没有活动，请先添加活动并保存。");
-            if ((long)(source.Activities?.Count ?? 0) * request.TrainCount > 20000)
-                errors.Add("本次生成的活动总数不能超过 20000，请减少列车数量。");
-            if (errors.Count > 0)
-            {
-                db.Rollback();
-                return BadRequest(new { message = "已保存作业过程未通过生成检查。", errors });
-            }
-
-            var ordered = OperationProcessPlanScheduler.OrderedActivities(source);
-            foreach (var activity in ordered)
-            {
-                if (activity.RouteList.Any(id => id.IndexOfAny(new[] { ',', ';', '，', '；', '\r', '\n', '\t', ' ' }) >= 0) ||
-                    activity.RouteList.Distinct(StringComparer.OrdinalIgnoreCase).Count() != activity.RouteList.Count)
-                    throw new ArgumentException($"活动“{activity.Name}”的进路 id 无法在现有进路列表字段中完整表达，请先调整分隔符或仅大小写不同的 id。");
-                ProcessPlanDurationSeconds(activity);
-            }
-            var schedules = OperationProcessPlanScheduler.Build(source, catalog, request.TrainCount, startSeconds, endSeconds);
-            if (schedules.Count != request.TrainCount) throw new InvalidOperationException("Scheduler did not return the requested train count.");
-            var warnings = new List<string> { "已保存每列车完整的作业过程约束，列车起点按平均时间槽定位，同一列车内的事件在固定时刻、时长范围和次序间隔等全部约束下尽早发生；次序间隔为 0 且无其他约束阻碍时直接衔接。本次未做跨列车占用冲突优化。" };
-            var trainName = ProcessPlanName(source.Name, "列车", warnings);
-            var activityNames = ordered.ToDictionary(activity => activity.Id, activity => ProcessPlanName(activity.Name, $"活动 {activity.Id}", warnings), StringComparer.Ordinal);
-            var sourceJson = JsonSerializer.Serialize(source, TrainProcessSnapshotStore.JsonOptions);
             var generatedTrainIDs = new List<string>();
+            var warnings = new List<string> { "已保存每列车完整的作业过程约束，各作业过程的列车起点分别按平均时间槽定位，同一列车内的事件在固定时刻、时长范围和次序间隔等全部约束下尽早发生；次序间隔为 0 且无其他约束阻碍时直接衔接。本次未做跨列车占用冲突优化。" };
             var nextTrainNumber = (long)LoadTrains(db, scope.InstanceID, scope.StationSchemeID, scope.OperationPlanID)
                 .Select(train => GetTrainNumberSortValue(train.TrainNumber)).Where(number => number != int.MaxValue).DefaultIfEmpty(0).Max() + 1;
-            foreach (var schedule in schedules)
+            long activityCount = 0;
+            foreach (var selection in selections)
             {
-                var trainID = GenerateOperationTrainID(db, scope.InstanceID, scope.StationSchemeID, scope.OperationPlanID);
-                var train = new TrainRow {
-                    InstanceID = scope.InstanceID, StationSchemeID = scope.StationSchemeID, OperationPlanID = scope.OperationPlanID,
-                    ID = trainID, TrainTemplateID = "", TrainNumber = (nextTrainNumber++).ToString(CultureInfo.InvariantCulture),
-                    Name = trainName, TrainType = "", IsFixedOperation = 0
-                };
-                InsertProcessPlanTrain(db, train);
-                var snapshot = new TrainProcessSnapshot {
-                    InstanceID = scope.InstanceID, StationSchemeID = scope.StationSchemeID, OperationPlanID = scope.OperationPlanID,
-                    TrainID = trainID, SourceTemplateID = source.Id, SourceRevision = source.Revision, SourceName = source.Name,
-                    OriginSeconds = schedule.OriginSeconds,
-                    Process = JsonSerializer.Deserialize<OperationProcessTemplate>(sourceJson, TrainProcessSnapshotStore.JsonOptions)!,
-                    EventTimes = new Dictionary<string, double>(schedule.EventTimes, StringComparer.Ordinal),
-                    SelectedTrackIDs = new Dictionary<string, string>(schedule.SelectedTrackIDs, StringComparer.Ordinal)
-                };
-                var sortOrder = 0;
+                var source = OperationProcessController.FindTemplate(db, scope, selection.ProcessTemplateID!.Trim(), lockForUpdate: true);
+                if (source is null) { db.Rollback(); return NotFound(new { message = "当前站场方案下不存在此已保存作业过程。" }); }
+                if (source.Revision != selection.Revision) { db.Rollback(); return ProcessGenerationRevisionConflict(); }
+                var errors = OperationProcessValidator.Validate(source, catalog);
+                if (source.Activities is { Count: 0 }) errors.Add("作业过程没有活动，请先添加活动并保存。");
+                activityCount += (long)(source.Activities?.Count ?? 0) * selection.TrainCount;
+                if (activityCount > 20000)
+                    errors.Add("本次生成的活动总数不能超过 20000，请减少列车数量。");
+                if (errors.Count > 0)
+                {
+                    db.Rollback();
+                    return BadRequest(new { message = $"作业过程“{source.Name}”未通过生成检查。", errors });
+                }
+
+                var ordered = OperationProcessPlanScheduler.OrderedActivities(source);
                 foreach (var activity in ordered)
                 {
-                    var movementID = GenerateOperationMovementID(db, scope.InstanceID, scope.StationSchemeID, scope.OperationPlanID, trainID);
-                    snapshot.ActivityMovementMap.Add(activity.Id, movementID);
-                    InsertProcessPlanMovement(db, new MovementRow {
-                        InstanceID = scope.InstanceID, StationSchemeID = scope.StationSchemeID, OperationPlanID = scope.OperationPlanID,
-                        TrainID = trainID, TrainTemplateID = "", MovementID = movementID, Name = activityNames[activity.Id],
-                        RouteIDList = string.Join(",", activity.RouteList), MinDuration = ProcessPlanDurationSeconds(activity),
-                        EarliestStartTime = OperationProcessPlanScheduler.FormatTime(schedule.EventTimes[activity.StartEvent]),
-                        LatestEndTime = OperationProcessPlanScheduler.FormatTime(schedule.EventTimes[activity.EndEvent]),
-                        Route = schedule.SelectedRouteIDs.GetValueOrDefault(activity.Id, ""), Tag = "", SortOrder = sortOrder++
-                    });
+                    if (activity.RouteList.Any(id => id.IndexOfAny(new[] { ',', ';', '，', '；', '\r', '\n', '\t', ' ' }) >= 0) ||
+                        activity.RouteList.Distinct(StringComparer.OrdinalIgnoreCase).Count() != activity.RouteList.Count)
+                        throw new ArgumentException($"活动“{activity.Name}”的进路 id 无法在现有进路列表字段中完整表达，请先调整分隔符或仅大小写不同的 id。");
+                    ProcessPlanDurationSeconds(activity);
                 }
-                TrainProcessSnapshotStore.Insert(db, scope, snapshot);
-                generatedTrainIDs.Add(trainID);
-            }
-            var current = OperationProcessController.FindTemplate(db, scope, source.Id, lockForUpdate: true);
-            if (current is null || current.Revision != request.Revision)
-            {
-                db.Rollback();
-                return ProcessGenerationRevisionConflict();
+                List<ProcessScheduledTrain> schedules;
+                try { schedules = OperationProcessPlanScheduler.Build(source, catalog, selection.TrainCount, startSeconds, endSeconds); }
+                catch (ArgumentException ex) { throw new ArgumentException($"作业过程“{source.Name}”：{ex.Message}", ex); }
+                if (schedules.Count != selection.TrainCount) throw new InvalidOperationException("Scheduler did not return the requested train count.");
+                var trainName = ProcessPlanName(source.Name, "列车", warnings);
+                var activityNames = ordered.ToDictionary(activity => activity.Id, activity => ProcessPlanName(activity.Name, $"活动 {activity.Id}", warnings), StringComparer.Ordinal);
+                var sourceJson = JsonSerializer.Serialize(source, TrainProcessSnapshotStore.JsonOptions);
+                foreach (var schedule in schedules)
+                {
+                    var trainID = GenerateOperationTrainID(db, scope.InstanceID, scope.StationSchemeID, scope.OperationPlanID);
+                    var train = new TrainRow {
+                        InstanceID = scope.InstanceID, StationSchemeID = scope.StationSchemeID, OperationPlanID = scope.OperationPlanID,
+                        ID = trainID, TrainTemplateID = "", TrainNumber = (nextTrainNumber++).ToString(CultureInfo.InvariantCulture),
+                        Name = trainName, TrainType = "", IsFixedOperation = 0
+                    };
+                    InsertProcessPlanTrain(db, train);
+                    var snapshot = new TrainProcessSnapshot {
+                        InstanceID = scope.InstanceID, StationSchemeID = scope.StationSchemeID, OperationPlanID = scope.OperationPlanID,
+                        TrainID = trainID, SourceTemplateID = source.Id, SourceRevision = source.Revision, SourceName = source.Name,
+                        OriginSeconds = schedule.OriginSeconds,
+                        Process = JsonSerializer.Deserialize<OperationProcessTemplate>(sourceJson, TrainProcessSnapshotStore.JsonOptions)!,
+                        EventTimes = new Dictionary<string, double>(schedule.EventTimes, StringComparer.Ordinal),
+                        SelectedTrackIDs = new Dictionary<string, string>(schedule.SelectedTrackIDs, StringComparer.Ordinal)
+                    };
+                    var sortOrder = 0;
+                    foreach (var activity in ordered)
+                    {
+                        var movementID = GenerateOperationMovementID(db, scope.InstanceID, scope.StationSchemeID, scope.OperationPlanID, trainID);
+                        snapshot.ActivityMovementMap.Add(activity.Id, movementID);
+                        InsertProcessPlanMovement(db, new MovementRow {
+                            InstanceID = scope.InstanceID, StationSchemeID = scope.StationSchemeID, OperationPlanID = scope.OperationPlanID,
+                            TrainID = trainID, TrainTemplateID = "", MovementID = movementID, Name = activityNames[activity.Id],
+                            RouteIDList = string.Join(",", activity.RouteList), MinDuration = ProcessPlanDurationSeconds(activity),
+                            EarliestStartTime = OperationProcessPlanScheduler.FormatTime(schedule.EventTimes[activity.StartEvent]),
+                            LatestEndTime = OperationProcessPlanScheduler.FormatTime(schedule.EventTimes[activity.EndEvent]),
+                            Route = schedule.SelectedRouteIDs.GetValueOrDefault(activity.Id, ""), Tag = "", SortOrder = sortOrder++
+                        });
+                    }
+                    TrainProcessSnapshotStore.Insert(db, scope, snapshot);
+                    generatedTrainIDs.Add(trainID);
+                }
+                var current = OperationProcessController.FindTemplate(db, scope, source.Id, lockForUpdate: true);
+                if (current is null || current.Revision != selection.Revision)
+                {
+                    db.Rollback();
+                    return ProcessGenerationRevisionConflict();
+                }
             }
             var result = LoadTrainOperationPlan(db, scope.InstanceID, scope.StationSchemeID, scope.OperationPlanID);
             result.GeneratedTrainIDs = generatedTrainIDs;
@@ -153,22 +168,8 @@ public partial class OperationPlanController
         TrainProcessSnapshotStore.HasTrain(db, new ProcessScope { InstanceID = instanceID, StationSchemeID = stationSchemeID, OperationPlanID = operationPlanID }, trainID);
 
     private ConflictObjectResult ProcessBoundMovementConflict() => Conflict(new {
-        message = "此列车绑定完整作业过程；移动仅可修改名称和标签。请修改原过程后重新生成，或删除整列车，避免破坏事件与次序约束。"
+        message = "此列车绑定完整作业过程；新增、删除移动或调整移动顺序需修改原过程后重新生成。"
     });
-
-    private static bool IsProcessMovementMetadataOnlyEdit(DBConnector db, MovementRow movement)
-    {
-        var old = db.Query<MovementRow>($@"SELECT TrainTemplateID, RouteIDList, MinDuration, EarliestStartTime,
-            LatestEndTime, {QuoteIdentifier("Route")} AS {QuoteIdentifier("Route")}, SortOrder, CellOccupationOverridesJson FROM {QuoteIdentifier("movement")}
-            WHERE InstanceID = @InstanceID AND StationSchemeID = @StationSchemeID AND OperationPlanID = @OperationPlanID
-            AND TrainID = @TrainID AND MovementID = @MovementID", movement)?.SingleOrDefault();
-        return old is not null && (old.TrainTemplateID ?? "") == (movement.TrainTemplateID ?? "") &&
-            (old.RouteIDList ?? "") == (movement.RouteIDList ?? "") && old.MinDuration == movement.MinDuration &&
-            (old.EarliestStartTime ?? "") == (movement.EarliestStartTime ?? "") && (old.LatestEndTime ?? "") == (movement.LatestEndTime ?? "") &&
-            (old.Route ?? "") == (movement.Route ?? "") && old.SortOrder == movement.SortOrder &&
-            (movement.CellOccupationOverridesJson is null ||
-             (MovementCellOccupationOverrides.Normalize(old.CellOccupationOverridesJson) ?? "{}") == movement.CellOccupationOverridesJson);
-    }
 
     private static int ProcessPlanDurationSeconds(ProcessActivity activity)
     {

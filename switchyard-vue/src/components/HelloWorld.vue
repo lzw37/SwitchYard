@@ -309,7 +309,7 @@ console.log('欢迎访问 SwitchYard 项目主页！');
         <div class="hero-overlay"></div>
         <div class="hero-content">
             <h1 class="hero-title">{{ t('home.brand') }}</h1>
-            <p v-if="appVersion" class="hero-version">Version {{ appVersion }}</p>
+            <p v-if="appVersion" class="hero-version">{{ t('frontend.version', { version: appVersion }) }}</p>
             <p class="hero-subtitle">{{ t('home.hero.subtitle') }}</p>
             <p class="hero-description">{{ t('home.hero.description') }}</p>
             <div class="hero-buttons">
@@ -521,7 +521,7 @@ console.log('欢迎访问 SwitchYard 项目主页！');
         <div class="container">
             <p>{{ t('home.footer.copy') }}</p>
             <p>{{ t('home.footer.tagline') }}</p>
-            <p v-if="appVersion" class="app-version">Version: {{ appVersion }}</p>
+            <p v-if="appVersion" class="app-version">{{ t('frontend.version', { version: appVersion }) }}</p>
         </div>
     </footer>
 </template>

@@ -240,7 +240,11 @@ CREATE TABLE IF NOT EXISTS "movement" (
     "LatestEndTime" TEXT NULL,
     "Route" TEXT NULL,
     "Tag" TEXT NULL,
-    "SortOrder" INTEGER NULL
+    "SortOrder" INTEGER NULL,
+    "CellOccupationOverridesJson" TEXT NULL,
+    "CellOccupationsJson" TEXT NULL,
+    "StartNodeID" TEXT NULL,
+    "EndNodeID" TEXT NULL
 );
 
 CREATE TABLE IF NOT EXISTS "operationbottlenecksummarycategory" (

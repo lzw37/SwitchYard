@@ -115,6 +115,7 @@ public partial class OperationPlanController
             VerifyCellImportRows(result.Movements, LoadCellImportRows<CellOccupancyMovementDraft>(db, "movement", "TrainID,MovementID", target, false, true), row => $"{row.TrainID}\0{row.MovementID}");
             if (db.Query<long>($"SELECT COUNT(1) FROM operationplan WHERE {CellImportPlanFilter}", target)?.Single() != 1)
                 throw new InvalidOperationException("The imported operation plan was not saved exactly once.");
+            LoadMovements(db, target.InstanceID, target.StationSchemeID, target.OperationPlanID);
             db.Commit();
             return Ok(new {
                 preview.Valid, preview.TrainCount, preview.MovementCount, preview.OccupancyCount,

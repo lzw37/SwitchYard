@@ -102,6 +102,15 @@ export const switchyardStationLayoutGateway: StationLayoutGateway = {
         return normalizeScheme(data);
     },
 
+    async copyStationScheme({ instanceId, sourceStationSchemeId, name }) {
+        const { data } = await axios.post("/StationLayout/CopyStationScheme", {
+            instanceID: instanceId,
+            sourceStationSchemeID: sourceStationSchemeId,
+            name,
+        });
+        return normalizeScheme(data);
+    },
+
     async editStationScheme({ instanceId, originalId, name }) {
         const { data } = await axios.put("/StationLayout/EditStationScheme", {
             instanceID: instanceId,

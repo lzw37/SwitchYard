@@ -126,6 +126,9 @@ public interface IStationLayoutRepository
     Task<bool> TryCreateSchemeAsync(
         StationSchemeRecord scheme, CancellationToken cancellationToken);
 
+    Task<bool> TryCopySchemeAsync(
+        string sourceSchemeId, StationSchemeRecord targetScheme, CancellationToken cancellationToken);
+
     Task<bool> RenameSchemeAsync(
         string scopeId, string schemeId, string name, CancellationToken cancellationToken);
 
@@ -146,6 +149,7 @@ public interface IStationLayoutRepository
 5. 保存成功后修订号只增加一次。
 6. `DeleteSchemeAsync` 应原子删除方案及其全部布局数据。
 7. 数据库错误应继续抛出，或包装为 `StationLayoutStoreException`；不要吞掉异常后返回成功。
+8. `TryCopySchemeAsync` 应在一个事务内复制方案及其关联数据，新方案从修订号 0 开始。目标 ID 已存在时返回 `false`，源方案不存在时抛出 `StationLayoutNotFoundException`。内嵌 JSON 的方案归属也应更新为副本。
 
 最简单的宿主存储可以只保存一个 JSON 聚合：
 
@@ -298,6 +302,7 @@ app.Run();
 |---|---|---|---|
 | GET | `/GetStationSchemes` | View | query `instanceID` |
 | POST | `/CreateStationScheme` | ManageSchemes | JSON `instanceID`, `name` |
+| POST | `/CopyStationScheme` | ManageSchemes | JSON `instanceID`, `sourceStationSchemeID`, optional `name` |
 | PUT | `/EditStationScheme` | ManageSchemes | JSON `instanceID`, `originalID`, `name` |
 | DELETE | `/DeleteStationScheme` | ManageSchemes | query `instanceID`, `stationSchemeID` |
 | POST | `/GetJson` | View | query `instanceID`, optional `stationSchemeID` |
@@ -446,6 +451,15 @@ export const stationLayoutGateway: StationLayoutGateway = {
     return data;
   },
 
+  async copyStationScheme({ instanceId, sourceStationSchemeId, name }) {
+    const { data } = await axios.post(`${base}/CopyStationScheme`, {
+      instanceID: instanceId,
+      sourceStationSchemeID: sourceStationSchemeId,
+      name,
+    });
+    return data;
+  },
+
   async editStationScheme({ instanceId, originalId, name }) {
     const { data } = await axios.put(`${base}/EditStationScheme`, {
       instanceID: instanceId,
@@ -580,7 +594,7 @@ function formatError(error: unknown, fallback: string): string {
 | 属性 | 必填 | 说明 |
 |---|---|---|
 | `selectedInstanceId` | 否 | 当前宿主 scope ID；为空时显示未选择状态 |
-| `gateway` | 是 | 宿主的 8 方法 Gateway |
+| `gateway` | 是 | 宿主的 9 方法 Gateway |
 | `translate` | 否 | 翻译函数；不传时使用内置中文 |
 | `formatError` | 否 | 宿主错误格式化函数 |
 | `readonly` | 否 | 只读模式；仍允许查看、载入和导出 |

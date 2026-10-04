@@ -3,7 +3,7 @@
         ref="canvasRef"
         class="simulation-train-overlay"
         role="img"
-        :aria-label="`作业仿真列车：当前 ${trainCount} 列`"
+        :aria-label="t('operationSimulation.trainOverlay', { count: trainCount })"
         :data-car-count="cars.length"
         :data-train-keys="trainKeys"
     />
@@ -11,6 +11,9 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 interface TrainCar {
     key: string

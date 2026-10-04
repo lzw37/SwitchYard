@@ -91,6 +91,8 @@ function toggleDensity() {
 }
 
 .station-layout-toolbar__row--main {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
     min-height: 44px;
 }
 
@@ -113,17 +115,12 @@ function toggleDensity() {
     min-width: 0;
 }
 
-.station-layout-toolbar__identity {
-    flex: 1 1 340px;
-}
-
 .station-layout-toolbar__primary {
-    flex: 0 1 auto;
+    justify-content: center;
 }
 
 .station-layout-toolbar__actions {
-    flex: 0 0 auto;
-    margin-left: auto;
+    justify-content: flex-end;
 }
 
 .station-layout-toolbar :deep(.station-toolbar-group) {
@@ -185,23 +182,19 @@ function toggleDensity() {
 }
 
 @container (max-width: 880px) {
-    .station-layout-toolbar__identity {
-        flex-basis: 260px;
+    .station-layout-toolbar__row--main {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     }
 
     .station-layout-toolbar__primary {
-        order: 3;
-        flex: 1 0 100%;
+        grid-column: 1 / -1;
+        grid-row: 2;
     }
 }
 
 @container (max-width: 620px) {
     .station-layout-toolbar__row {
         padding-inline: 8px;
-    }
-
-    .station-layout-toolbar__identity {
-        flex-basis: 180px;
     }
 
     .station-layout-toolbar__density {

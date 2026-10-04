@@ -213,8 +213,8 @@ public sealed class StationCapacityRouteOccupationInput
     public string RouteId { get; set; } = string.Empty;
     public string TrainTypeId { get; set; } = string.Empty;
     public string CellId { get; set; } = string.Empty;
-    public int StartOccupationShiftSeconds { get; set; }
-    public int EndOccupationShiftSeconds { get; set; }
+    public double StartOccupationShiftSeconds { get; set; }
+    public double EndOccupationShiftSeconds { get; set; }
 }
 
 public sealed class StationCapacityTrainInput
