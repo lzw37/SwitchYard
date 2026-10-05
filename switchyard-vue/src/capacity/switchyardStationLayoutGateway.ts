@@ -49,6 +49,11 @@ function normalizeSaveResult(value: unknown, fallback: {
 }): SaveJsonResult {
     const row = asRecord(value);
     const result: SaveJsonResult = {
+        savedJson: (row.savedJson ?? row.SavedJson ?? null) as string | null,
+        idMappings: (row.idMappings ?? row.IdMappings ?? {}) as Record<string, Record<string, string>>,
+        repairCount: optionalNumber(row.repairCount ?? row.RepairCount) ?? 0,
+        repairs: (row.repairs ?? row.Repairs ?? []) as string[],
+        repairedJson: (row.repairedJson ?? row.RepairedJson ?? null) as string | null,
         message: String(row.message ?? row.Message ?? "OK"),
         instanceId: String(row.instanceId ?? row.instanceID ?? row.InstanceID ?? fallback.instanceId),
         stationSchemeId: String(
@@ -154,6 +159,17 @@ export const switchyardStationLayoutGateway: StationLayoutGateway = {
         } as StationLayoutDocument;
     },
 
+    async repairJson(request) {
+        const { data } = await axios.post<UnknownRecord>("/StationLayout/RepairJson", {
+            json: request.json, instanceID: request.instanceId, stationSchemeID: request.stationSchemeId,
+        });
+        return {
+            json: String(data.json ?? data.Json ?? ""),
+            repairCount: optionalNumber(data.repairCount ?? data.RepairCount) ?? 0,
+            repairs: (data.repairs ?? data.Repairs ?? []) as string[],
+        };
+    },
+
     async saveJson(request) {
         const params = {
             instanceID: request.instanceId,
@@ -196,8 +212,8 @@ export const switchyardStationLayoutGateway: StationLayoutGateway = {
                 ?? request.stationSchemeId
                 ?? "",
             ),
-            startNodeId: Number(row.startNodeId ?? row.StartNodeId ?? request.startNodeId),
-            endNodeId: Number(row.endNodeId ?? row.EndNodeId ?? request.endNodeId),
+            startNodeId: String(row.startNodeId ?? row.StartNodeId ?? request.startNodeId),
+            endNodeId: String(row.endNodeId ?? row.EndNodeId ?? request.endNodeId),
             routes: (Array.isArray(row.routes) ? row.routes : Array.isArray(row.Routes) ? row.Routes : []),
         } as SearchRoutesResult;
     },

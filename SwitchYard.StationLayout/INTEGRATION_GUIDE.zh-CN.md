@@ -267,6 +267,7 @@ builder.Services.AddSwitchYardStationLayout(options =>
     options.DefaultSchemeId = "station_layout_scheme";
     options.DefaultSchemeName = "车站布置图";
     options.MaximumSchemeNameLength = 100;
+    options.TopologyRepairTolerance = 1; // 布置图坐标单位，修复绑定时的位置容差
 });
 
 var app = builder.Build();
@@ -306,6 +307,7 @@ app.Run();
 | PUT | `/EditStationScheme` | ManageSchemes | JSON `instanceID`, `originalID`, `name` |
 | DELETE | `/DeleteStationScheme` | ManageSchemes | query `instanceID`, `stationSchemeID` |
 | POST | `/GetJson` | View | query `instanceID`, optional `stationSchemeID` |
+| POST | `/RepairJson` | View | body `instanceID`, `json`；校验并预览修复，不写数据库 |
 | POST | `/SaveJson` | SaveLayout | query/body scope，body `json`, optional revision |
 | POST | `/SearchRoutes` | View | query/body scope，起止节点 ID |
 | POST | `/ExtractDwgFile` | ImportDwg | multipart `file`, `layerName` |
@@ -315,6 +317,28 @@ app.Run();
 - `ETag: "<revision>"`
 - `X-Station-Layout-Revision: <revision>`
 - `X-Station-Layout-Exists: true|false`
+
+`SaveJson` 会先检查绑定关系，发现不一致时按节点、线段端点和设备的位置尝试修复，然后重新校验。
+位置匹配必须唯一；已有有效引用及设备的显示偏移保持不变。节点邻接表从线段端点重建，道岔分支按方向匹配，
+曲线按顶点及切点匹配。Cell 引用的旧线段仅在原邻接表仍能确定两个端点、且存在唯一共线线段链时替换。
+无法定位或存在多个候选时返回 400，整份布局不会保存；乐观并发检查仍然有效。
+
+`RepairJson` 返回 `{ json, repairCount, repairs }`，其中 `repairs` 为已修改的字段路径。
+保存响应新增 `repairCount`、`repairs` 和 `repairedJson`；只有发生修复时才返回修复后的 JSON。
+响应还包含 `savedJson`（最终保存的数据）和 `idMappings`（按 `nodes`、`tracks`、`signals` 等集合划分的旧 ID 到新 ID 字典）。
+SwitchYard 宿主在同一保存事务内，为目标方案中尚未保存的对象分配雪花字符串 ID，并同步替换端点、设备、曲线、道岔分支和 Cell 引用；已有对象的 ID 保持不变。
+前端必须应用这些映射，包括当前选中对象和撤销/重做历史。保存期间发生的新编辑保留，只更新其 ID 引用。
+`SearchRoutes` 的 `startNodeId`、`endNodeId`、返回的 `nodeIds` 和 `linkIds` 均为字符串，禁止使用 `Number` 或整数解析，以免雪花 ID 丢失精度。
+
+SwitchYard 数据库以对象关系表为唯一来源，读取时在同一事务中临时组装布置图 JSON。
+启动迁移将旧整数 ID 列改为字符串；有历史存档时恢复原始 ID 并更新已有进路、业务文档的节点和线段引用，成功后删除 `stationscheme.LayoutDocument`。
+历史拓扑存在无法确定的冲突时停止迁移，保留原数据和历史存档。
+对象的额外绘图属性保存在各自数据表的 `ExtraProperties` 中，已映射到列的 ID、绑定和几何字段不会重复存入此字段。
+`stationscheme.LayoutMetadata` 和 `LayoutExtensions` 只保存元数据及根级扩展，不包含节点、线段或设备集合。
+
+前端宿主实现可选的 `StationLayoutGateway.repairJson` 后，导入和载入也会调用此接口，并显示修复提示。
+保存时由后端在写入前修复，成功后前端应用 `repairedJson`；修复期间产生的新编辑会保留。
+导入及载入的修复仅影响画布，需要保存才会持久化。未实现该可选方法的旧宿主继续使用原有前端严格校验。
 
 保存时前端应把读取到的修订号作为以下任一种形式发送：
 

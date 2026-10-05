@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 
 namespace SwitchYard.Capacity
@@ -49,9 +49,9 @@ namespace SwitchYard.Capacity
 
     public class StationRouteSearcher
     {
-        private readonly Dictionary<int, StationNodeRow> _stationNodeByID;
+        private readonly Dictionary<string, StationNodeRow> _stationNodeByID;
 
-        private readonly Dictionary<int, StationLinkRow> _stationLinkByID;
+        private readonly Dictionary<string, StationLinkRow> _stationLinkByID;
 
         public List<DirectiveGraph> directiveGraphs { get; set; } = new();
 
@@ -92,9 +92,9 @@ namespace SwitchYard.Capacity
             return routes;
         }
 
-        private static Dictionary<int, StationNodeRow> BuildStationNodeLookup(IEnumerable<StationNodeRow> stationNodes)
+        private static Dictionary<string, StationNodeRow> BuildStationNodeLookup(IEnumerable<StationNodeRow> stationNodes)
         {
-            var nodeByID = new Dictionary<int, StationNodeRow>();
+            var nodeByID = new Dictionary<string, StationNodeRow>();
 
             foreach (var node in stationNodes)
             {
@@ -107,9 +107,9 @@ namespace SwitchYard.Capacity
             return nodeByID;
         }
 
-        private static Dictionary<int, StationLinkRow> BuildStationLinkLookup(IEnumerable<StationLinkRow> stationLinks)
+        private static Dictionary<string, StationLinkRow> BuildStationLinkLookup(IEnumerable<StationLinkRow> stationLinks)
         {
-            var linkByID = new Dictionary<int, StationLinkRow>();
+            var linkByID = new Dictionary<string, StationLinkRow>();
 
             foreach (var link in stationLinks)
             {
@@ -122,7 +122,7 @@ namespace SwitchYard.Capacity
             return linkByID;
         }
 
-        private List<StationRoute> SearchDirectiveGraph(DirectiveGraph directiveGraph, int startNodeID, int endNodeID)
+        private List<StationRoute> SearchDirectiveGraph(DirectiveGraph directiveGraph, string startNodeID, string endNodeID)
         {
             var routes = new List<StationRoute>();
             var outgoingLinksByNodeID = directiveGraph.Nodes.ToDictionary(node => node.ID, _ => new List<DirectiveGraphLink>());
@@ -139,9 +139,9 @@ namespace SwitchYard.Capacity
             }
 
             var currentLinks = new List<DirectiveGraphLink>();
-            var visitedNodeIDs = new HashSet<int> { startNodeID };
+            var visitedNodeIDs = new HashSet<string> { startNodeID };
 
-            void SearchFrom(int currentNodeID)
+            void SearchFrom(string currentNodeID)
             {
                 if (currentNodeID == endNodeID)
                 {
@@ -174,11 +174,11 @@ namespace SwitchYard.Capacity
 
         private StationRoute BuildStationRoute(
             DirectiveGraphDirections direction,
-            int startNodeID,
-            int endNodeID,
+            string startNodeID,
+            string endNodeID,
             IReadOnlyCollection<DirectiveGraphLink> directiveLinks)
         {
-            var routeNodeIDs = new List<int> { startNodeID };
+            var routeNodeIDs = new List<string> { startNodeID };
             var stationLinks = new List<StationLinkRow>();
 
             foreach (var directiveLink in directiveLinks)

@@ -38,14 +38,15 @@ namespace SwitchYard.Service.Services
                     "capacity-sqlite-schema.sql",
                     "capacity-mysql-schema.sql");
 
-                EnsureStationLayoutDocumentColumn();
-
                 if (DBConnector.IsMySql(DBConnector.CapacityDatabaseSectionName))
                 {
                     EnsureMySqlTableCollations(
                         DBConnector.CapacityDatabaseSectionName,
                         CapacityMySqlUnicodeTables);
                 }
+                SwitchYard.Service.StationLayout.StationLayoutSchemaMigration.Apply(
+                    DBConnector.GetDBConnector(DBConnector.CapacityDatabaseSectionName),
+                    DBConnector.IsMySql(DBConnector.CapacityDatabaseSectionName));
             }
         }
 
@@ -65,6 +66,7 @@ namespace SwitchYard.Service.Services
                           FROM INFORMATION_SCHEMA.COLUMNS
                           WHERE TABLE_SCHEMA = DATABASE()
                             AND TABLE_NAME = @tableName
+                            AND COLUMN_NAME NOT REGEXP 'ID$'
                             AND COLLATION_NAME IS NOT NULL",
                         new { tableName })
                     ?? [];
@@ -92,20 +94,6 @@ namespace SwitchYard.Service.Services
                        CONVERT TO CHARACTER SET utf8mb4
                        COLLATE {MySqlUtf8mb4UnicodeCollation}");
             }
-        }
-
-        internal static void EnsureStationLayoutDocumentColumn()
-        {
-            var db = DBConnector.GetDBConnector(DBConnector.CapacityDatabaseSectionName);
-            var mysql = DBConnector.IsMySql(DBConnector.CapacityDatabaseSectionName);
-            var columns = db.Query<DatabaseNameRow>(mysql
-                ? "SELECT COLUMN_NAME AS Name FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stationscheme'"
-                : "PRAGMA table_info(\"stationscheme\")") ?? [];
-            if (columns.Any(column => string.Equals(column.Name, "LayoutDocument", StringComparison.OrdinalIgnoreCase)))
-                return;
-            db.ExecuteNonQuery(mysql
-                ? "ALTER TABLE `stationscheme` ADD COLUMN `LayoutDocument` LONGTEXT NULL"
-                : "ALTER TABLE \"stationscheme\" ADD COLUMN \"LayoutDocument\" TEXT NULL");
         }
 
         private void EnsureSchemaCreatedFor(string databaseSectionName, string sqliteScriptName, string mysqlScriptName)

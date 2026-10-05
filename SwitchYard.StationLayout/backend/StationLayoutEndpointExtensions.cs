@@ -100,6 +100,14 @@ public static class StationLayoutEndpointExtensions
                 return Results.Text(result.Document.ToJson(), "application/json");
             }));
 
+        group.MapPost("/RepairJson", (HttpContext context, IStationLayoutService service) =>
+            ExecuteAsync(context, async cancellationToken =>
+            {
+                var request = await ReadJsonAsync<StationLayoutSaveRequest>(context, cancellationToken);
+                request.InstanceID = PreferQuery(context.Request, "instanceID", request.InstanceID);
+                return Results.Json(await service.RepairJsonAsync(context.User, request, cancellationToken));
+            }));
+
         group.MapPost("/SaveJson", (HttpContext context, IStationLayoutService service) =>
             ExecuteAsync(context, async cancellationToken =>
             {

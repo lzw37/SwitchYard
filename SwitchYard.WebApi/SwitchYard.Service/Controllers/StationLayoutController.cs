@@ -59,6 +59,23 @@ namespace SwitchYard.Service.Controllers
             _snowflakeIdGenerator = snowflakeIdGenerator;
         }
         
+        [HttpPost(Name = "RepairJson")]
+        public async Task<IActionResult> RepairJson(
+            [FromBody] SwitchYard.StationLayout.StationLayoutSaveRequest request,
+            [FromServices] SwitchYard.StationLayout.IStationLayoutService service,
+            [FromQuery] string? instanceID = null)
+        {
+            try
+            {
+                request.InstanceID = FirstNonEmpty(instanceID, request.InstanceID);
+                return Ok(await service.RepairJsonAsync(User, request, HttpContext.RequestAborted));
+            }
+            catch (SwitchYard.StationLayout.StationLayoutValidationException ex) { return BadRequest(ex.Message); }
+            catch (SwitchYard.StationLayout.StationLayoutNotFoundException ex) { return NotFound(ex.Message); }
+            catch (SwitchYard.StationLayout.StationLayoutUnauthenticatedException ex) { return Unauthorized(ex.Message); }
+            catch (SwitchYard.StationLayout.StationLayoutForbiddenException ex) { return StatusCode(403, ex.Message); }
+        }
+
         [HttpPost(Name ="SaveJson")]
         [Authorize(Roles = "Admin")]
         public async Task<IActionResult> SaveJson(
@@ -74,52 +91,13 @@ namespace SwitchYard.Service.Controllers
 
             try
             {
-                using var payload = JsonDocument.Parse(request.Json);
-                if (payload.RootElement.ValueKind == JsonValueKind.Object &&
-                    (payload.RootElement.TryGetProperty("format", out _) || payload.RootElement.TryGetProperty("formatVersion", out _)))
+                return Ok(await service.SaveJsonAsync(User, new SwitchYard.StationLayout.StationLayoutSaveRequest
                 {
-                    return Ok(await service.SaveJsonAsync(User, new SwitchYard.StationLayout.StationLayoutSaveRequest
-                    {
-                        Json = request.Json,
-                        InstanceID = FirstNonEmpty(instanceID, request.InstanceID),
-                        StationSchemeID = FirstNonEmpty(stationSchemeID, request.StationSchemeID),
-                        ExpectedRevision = request.ExpectedRevision
-                    }, HttpContext.RequestAborted));
-                }
-                var layout = JsonSerializer.Deserialize<StationLayoutJson>(
-                    request.Json,
-                    StationLayoutJsonOptions) ?? new StationLayoutJson();
-                var normalizedInstanceID = FirstNonEmpty(instanceID, request.InstanceID, layout.Metadata?.InstanceID);
-                if (string.IsNullOrWhiteSpace(normalizedInstanceID))
-                {
-                    return BadRequest("instanceID is required when saving station layout data.");
-                }
-
-                var dbConnector = GetCapacityDbConnector();
-                var authResult = ValidateCapacityInstanceOwnershipOrFail(dbConnector, normalizedInstanceID);
-                if (authResult != null)
-                {
-                    return authResult;
-                }
-
-                EnsureStationSchemeSchema(dbConnector);
-                var normalizedStationSchemeID = ResolveStationSchemeIDForSave(
-                    dbConnector,
-                    normalizedInstanceID,
-                    FirstNonEmpty(stationSchemeID, request.StationSchemeID, layout.Metadata?.StationSchemeID));
-                var saveResult = SaveStationLayoutJsonToDatabase(
-                    dbConnector,
-                    normalizedInstanceID,
-                    normalizedStationSchemeID,
-                    layout);
-
-                _logger.LogInformation(
-                    "Station layout saved to database. InstanceID: {InstanceID}, StationSchemeID: {StationSchemeID}, Nodes: {NodeCount}, Links: {LinkCount}",
-                    normalizedInstanceID,
-                    normalizedStationSchemeID,
-                    saveResult.NodeCount,
-                    saveResult.LinkCount);
-                return Ok(saveResult);
+                    Json = request.Json,
+                    InstanceID = FirstNonEmpty(instanceID, request.InstanceID),
+                    StationSchemeID = FirstNonEmpty(stationSchemeID, request.StationSchemeID),
+                    ExpectedRevision = request.ExpectedRevision
+                }, HttpContext.RequestAborted));
             }
             catch (SwitchYard.StationLayout.StationLayoutValidationException ex) { return BadRequest(ex.Message); }
             catch (SwitchYard.StationLayout.StationLayoutNotFoundException ex) { return NotFound(ex.Message); }
@@ -151,36 +129,12 @@ namespace SwitchYard.Service.Controllers
                     return GetJsonFromFileFallback();
                 }
 
-                var dbConnector = GetCapacityDbConnector();
-                var authResult = ValidateCapacityInstanceOwnershipOrFail(dbConnector, normalizedInstanceID);
-                if (authResult != null)
-                {
-                    return authResult;
-                }
-
-                EnsureStationSchemeSchema(dbConnector);
-                var normalizedStationSchemeID = ResolveStationSchemeID(dbConnector, normalizedInstanceID, stationSchemeID);
-                if (string.IsNullOrWhiteSpace(normalizedStationSchemeID))
-                {
-                    return Content(BuildEmptyStationLayoutJson(), "application/json", Encoding.UTF8);
-                }
-
-                var snapshot = dbConnector.Query<string>(
-                    $"SELECT LayoutDocument FROM {QuoteIdentifier("stationscheme")} WHERE InstanceID=@instanceID AND ID=@stationSchemeID LIMIT 1",
-                    new { instanceID = normalizedInstanceID, stationSchemeID = normalizedStationSchemeID })?.FirstOrDefault();
-                if (!string.IsNullOrWhiteSpace(snapshot))
-                {
-                    var result = await service.GetJsonAsync(User, normalizedInstanceID, normalizedStationSchemeID, HttpContext.RequestAborted);
-                    return Content(result.Document.ToJson(), "application/json", Encoding.UTF8);
-                }
-
-                var layoutJson = BuildStationLayoutJsonFromDatabase(
-                    dbConnector,
-                    normalizedInstanceID,
-                    normalizedStationSchemeID);
-
-                return Content(layoutJson, "application/json", Encoding.UTF8);
+                var result = await service.GetJsonAsync(User, normalizedInstanceID, stationSchemeID, HttpContext.RequestAborted);
+                return Content(result.Document.ToJson(), "application/json", Encoding.UTF8);
             }
+            catch (SwitchYard.StationLayout.StationLayoutNotFoundException ex) { return NotFound(ex.Message); }
+            catch (SwitchYard.StationLayout.StationLayoutUnauthenticatedException ex) { return Unauthorized(ex.Message); }
+            catch (SwitchYard.StationLayout.StationLayoutForbiddenException ex) { return StatusCode(403, ex.Message); }
             catch (JsonException ex)
             {
                 _logger.LogError(ex, "Station layout JSON file contains invalid JSON.");
@@ -236,124 +190,129 @@ namespace SwitchYard.Service.Controllers
                 var switchTable = QuoteIdentifier("switch");
                 var signalTable = QuoteIdentifier("signal");
                 var cellTable = QuoteIdentifier("cell");
-                var nodes = dbConnector.Query<StationNodeRow>(
-                    $@"SELECT *
-                       FROM {nodeTable}
-                       WHERE InstanceID = @normalizedInstanceID AND StationSchemeID = @normalizedStationSchemeID
-                       ORDER BY ID",
-                    new { normalizedInstanceID, normalizedStationSchemeID }) ?? new List<StationNodeRow>();
-                var links = dbConnector.Query<StationLinkRow>(
-                    $@"SELECT *
-                       FROM {linkTable}
-                       WHERE InstanceID = @normalizedInstanceID AND StationSchemeID = @normalizedStationSchemeID
-                       ORDER BY ID",
-                    new { normalizedInstanceID, normalizedStationSchemeID }) ?? new List<StationLinkRow>();
-                var switches = dbConnector.Query<StationSwitchRow>(
-                    $@"SELECT ID, Name, {QuoteIdentifier("Type")} AS {QuoteIdentifier("Type")}, BindingNodeID
-                       FROM {switchTable}
-                       WHERE InstanceID = @normalizedInstanceID AND StationSchemeID = @normalizedStationSchemeID
-                       ORDER BY ID",
-                    new { normalizedInstanceID, normalizedStationSchemeID }) ?? new List<StationSwitchRow>();
-                var signals = dbConnector.Query<StationSignalRow>(
-                    $@"SELECT ID, Name, {QuoteIdentifier("Type")} AS {QuoteIdentifier("Type")}, Direction, BindingNodeID
-                       FROM {signalTable}
-                       WHERE InstanceID = @normalizedInstanceID AND StationSchemeID = @normalizedStationSchemeID
-                       ORDER BY ID",
-                    new { normalizedInstanceID, normalizedStationSchemeID }) ?? new List<StationSignalRow>();
-                var cells = dbConnector.Query<StationCellRow>(
-                    $@"SELECT InstanceID, StationSchemeID, ID, LinkIDList, Name
-                       FROM {cellTable}
-                       WHERE InstanceID = @normalizedInstanceID AND StationSchemeID = @normalizedStationSchemeID
-                       ORDER BY ID",
-                    new { normalizedInstanceID, normalizedStationSchemeID }) ?? new List<StationCellRow>();
-
-                var startNode = nodes.FirstOrDefault(node => node.ID == request.StartNodeId);
-                if (startNode == null)
+                dbConnector.BeginTransaction();
+                try
                 {
-                    return BadRequest($"Start node {request.StartNodeId} does not exist.");
-                }
+                    var nodes = dbConnector.Query<StationNodeRow>(
+                        $@"SELECT *
+                           FROM {nodeTable}
+                           WHERE InstanceID = @normalizedInstanceID AND StationSchemeID = @normalizedStationSchemeID
+                           ORDER BY ID",
+                        new { normalizedInstanceID, normalizedStationSchemeID }) ?? new List<StationNodeRow>();
+                    var links = dbConnector.Query<StationLinkRow>(
+                        $@"SELECT *
+                           FROM {linkTable}
+                           WHERE InstanceID = @normalizedInstanceID AND StationSchemeID = @normalizedStationSchemeID
+                           ORDER BY ID",
+                        new { normalizedInstanceID, normalizedStationSchemeID }) ?? new List<StationLinkRow>();
+                    var switches = dbConnector.Query<StationSwitchRow>(
+                        $@"SELECT ID, Name, {QuoteIdentifier("Type")} AS {QuoteIdentifier("Type")}, BindingNodeID
+                           FROM {switchTable}
+                           WHERE InstanceID = @normalizedInstanceID AND StationSchemeID = @normalizedStationSchemeID
+                           ORDER BY ID",
+                        new { normalizedInstanceID, normalizedStationSchemeID }) ?? new List<StationSwitchRow>();
+                    var signals = dbConnector.Query<StationSignalRow>(
+                        $@"SELECT ID, Name, {QuoteIdentifier("Type")} AS {QuoteIdentifier("Type")}, Direction, BindingNodeID
+                           FROM {signalTable}
+                           WHERE InstanceID = @normalizedInstanceID AND StationSchemeID = @normalizedStationSchemeID
+                           ORDER BY ID",
+                        new { normalizedInstanceID, normalizedStationSchemeID }) ?? new List<StationSignalRow>();
+                    var cells = dbConnector.Query<StationCellRow>(
+                        $@"SELECT InstanceID, StationSchemeID, ID, LinkIDList, Name
+                           FROM {cellTable}
+                           WHERE InstanceID = @normalizedInstanceID AND StationSchemeID = @normalizedStationSchemeID
+                           ORDER BY ID",
+                        new { normalizedInstanceID, normalizedStationSchemeID }) ?? new List<StationCellRow>();
 
-                var endNode = nodes.FirstOrDefault(node => node.ID == request.EndNodeId);
-                if (endNode == null)
-                {
-                    return BadRequest($"End node {request.EndNodeId} does not exist.");
-                }
-
-                var routeSearcher = new StationRouteSearcher(nodes, links);
-                var routes = routeSearcher.Search(startNode, endNode);
-                var response = new StationRouteSearchResponse
-                {
-                    InstanceID = normalizedInstanceID,
-                    StationSchemeID = normalizedStationSchemeID,
-                    StartNodeId = request.StartNodeId,
-                    EndNodeId = request.EndNodeId,
-                    Routes = routes.Select(route =>
+                    var startNode = nodes.FirstOrDefault(node => node.ID == request.StartNodeId);
+                    if (startNode == null)
                     {
-                        var routeNodeIndexByID = route.Nodes
-                            .Select((node, index) => new { NodeID = ToInvariantString(node.ID), index })
-                            .ToDictionary(item => item.NodeID, item => item.index, StringComparer.OrdinalIgnoreCase);
-                        var routeNodeIDSet = routeNodeIndexByID.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
-                        var routeLinkIndexByID = route.Links
-                            .Select((link, index) => new { LinkID = ToInvariantString(link.ID), index })
-                            .GroupBy(item => item.LinkID, StringComparer.OrdinalIgnoreCase)
-                            .ToDictionary(group => group.Key, group => group.Min(item => item.index), StringComparer.OrdinalIgnoreCase);
-                        var routeSwitches = switches
-                            .Where(sw => !string.IsNullOrWhiteSpace(sw.BindingNodeID) && routeNodeIDSet.Contains(sw.BindingNodeID.Trim()))
-                            .OrderBy(sw => routeNodeIndexByID.TryGetValue(sw.BindingNodeID!.Trim(), out var index) ? index : int.MaxValue)
-                            .ThenBy(sw => sw.ID ?? string.Empty, StringComparer.OrdinalIgnoreCase)
-                            .ToList();
-                        var routeSignals = signals
-                            .Where(signal => !string.IsNullOrWhiteSpace(signal.BindingNodeID) && routeNodeIDSet.Contains(signal.BindingNodeID.Trim()))
-                            .OrderBy(signal => routeNodeIndexByID.TryGetValue(signal.BindingNodeID!.Trim(), out var index) ? index : int.MaxValue)
-                            .ThenBy(signal => signal.ID ?? string.Empty, StringComparer.OrdinalIgnoreCase)
-                            .ToList();
-                        var routeCells = cells
-                            .Select(cell => new
-                            {
-                                Cell = cell,
-                                FirstLinkIndex = GetFirstMatchingRouteLinkIndex(cell, routeLinkIndexByID)
-                            })
-                            .Where(item => item.FirstLinkIndex < int.MaxValue)
-                            .OrderBy(item => item.FirstLinkIndex)
-                            .ThenBy(item => item.Cell.ID ?? string.Empty, StringComparer.OrdinalIgnoreCase)
-                            .Select(item => item.Cell)
-                            .ToList();
+                        return BadRequest($"Start node {request.StartNodeId} does not exist.");
+                    }
 
-                        return new StationRouteSearchResult
+                    var endNode = nodes.FirstOrDefault(node => node.ID == request.EndNodeId);
+                    if (endNode == null)
+                    {
+                        return BadRequest($"End node {request.EndNodeId} does not exist.");
+                    }
+
+                    var routeSearcher = new StationRouteSearcher(nodes, links);
+                    var routes = routeSearcher.Search(startNode, endNode);
+                    var response = new StationRouteSearchResponse
+                    {
+                        InstanceID = normalizedInstanceID,
+                        StationSchemeID = normalizedStationSchemeID,
+                        StartNodeId = request.StartNodeId,
+                        EndNodeId = request.EndNodeId,
+                        Routes = routes.Select(route =>
                         {
-                            Direction = route.Direction.ToString(),
-                            NodeIds = route.Nodes.Select(node => node.ID).ToList(),
-                            LinkIds = route.Links.Select(link => link.ID).ToList(),
-                            SwitchIds = routeSwitches
-                                .Select(sw => sw.ID?.Trim())
-                                .Where(id => !string.IsNullOrWhiteSpace(id))
-                                .Select(id => id!)
-                                .ToList(),
-                            CellIds = routeCells
-                                .Select(cell => cell.ID?.Trim())
-                                .Where(id => !string.IsNullOrWhiteSpace(id))
-                                .Select(id => id!)
-                                .ToList(),
-                            SignalIds = routeSignals
-                                .Select(signal => signal.ID?.Trim())
-                                .Where(id => !string.IsNullOrWhiteSpace(id))
-                                .Select(id => id!)
-                                .ToList(),
-                            Nodes = route.Nodes,
-                            Links = route.Links,
-                            Switches = routeSwitches,
-                            Cells = routeCells,
-                            Signals = routeSignals
-                        };
-                    })
-                    .OrderBy(result => result.CellIds.Count)
-                    .ThenBy(result => result.LinkIds.Count)
-                    .ThenBy(result => result.Direction, StringComparer.OrdinalIgnoreCase)
-                    .ThenBy(result => string.Join(",", result.NodeIds))
-                    .ToList()
-                };
+                            var routeNodeIndexByID = route.Nodes
+                                .Select((node, index) => new { NodeID = ToInvariantString(node.ID), index })
+                                .ToDictionary(item => item.NodeID, item => item.index, StringComparer.Ordinal);
+                            var routeNodeIDSet = routeNodeIndexByID.Keys.ToHashSet(StringComparer.Ordinal);
+                            var routeLinkIndexByID = route.Links
+                                .Select((link, index) => new { LinkID = ToInvariantString(link.ID), index })
+                                .GroupBy(item => item.LinkID, StringComparer.Ordinal)
+                                .ToDictionary(group => group.Key, group => group.Min(item => item.index), StringComparer.Ordinal);
+                            var routeSwitches = switches
+                                .Where(sw => !string.IsNullOrWhiteSpace(sw.BindingNodeID) && routeNodeIDSet.Contains(sw.BindingNodeID.Trim()))
+                                .OrderBy(sw => routeNodeIndexByID.TryGetValue(sw.BindingNodeID!.Trim(), out var index) ? index : int.MaxValue)
+                                .ThenBy(sw => sw.ID ?? string.Empty, StringComparer.Ordinal)
+                                .ToList();
+                            var routeSignals = signals
+                                .Where(signal => !string.IsNullOrWhiteSpace(signal.BindingNodeID) && routeNodeIDSet.Contains(signal.BindingNodeID.Trim()))
+                                .OrderBy(signal => routeNodeIndexByID.TryGetValue(signal.BindingNodeID!.Trim(), out var index) ? index : int.MaxValue)
+                                .ThenBy(signal => signal.ID ?? string.Empty, StringComparer.Ordinal)
+                                .ToList();
+                            var routeCells = cells
+                                .Select(cell => new
+                                {
+                                    Cell = cell,
+                                    FirstLinkIndex = GetFirstMatchingRouteLinkIndex(cell, routeLinkIndexByID)
+                                })
+                                .Where(item => item.FirstLinkIndex < int.MaxValue)
+                                .OrderBy(item => item.FirstLinkIndex)
+                                .ThenBy(item => item.Cell.ID ?? string.Empty, StringComparer.Ordinal)
+                                .Select(item => item.Cell)
+                                .ToList();
 
-                return Ok(response);
+                            return new StationRouteSearchResult
+                            {
+                                Direction = route.Direction.ToString(),
+                                NodeIds = route.Nodes.Select(node => node.ID).ToList(),
+                                LinkIds = route.Links.Select(link => link.ID).ToList(),
+                                SwitchIds = routeSwitches
+                                    .Select(sw => sw.ID?.Trim())
+                                    .Where(id => !string.IsNullOrWhiteSpace(id))
+                                    .Select(id => id!)
+                                    .ToList(),
+                                CellIds = routeCells
+                                    .Select(cell => cell.ID?.Trim())
+                                    .Where(id => !string.IsNullOrWhiteSpace(id))
+                                    .Select(id => id!)
+                                    .ToList(),
+                                SignalIds = routeSignals
+                                    .Select(signal => signal.ID?.Trim())
+                                    .Where(id => !string.IsNullOrWhiteSpace(id))
+                                    .Select(id => id!)
+                                    .ToList(),
+                                Nodes = route.Nodes,
+                                Links = route.Links,
+                                Switches = routeSwitches,
+                                Cells = routeCells,
+                                Signals = routeSignals
+                            };
+                        })
+                        .OrderBy(result => result.CellIds.Count)
+                        .ThenBy(result => result.LinkIds.Count)
+                        .ThenBy(result => result.Direction, StringComparer.Ordinal)
+                        .ThenBy(result => string.Join(",", result.NodeIds))
+                        .ToList()
+                    };
+
+                    return Ok(response);
+                }
+                finally { dbConnector.Rollback(); }
             }
             catch (ArgumentException ex)
             {
@@ -765,7 +724,7 @@ namespace SwitchYard.Service.Controllers
                     return BadRequest("instanceID and stationSchemeID are required.");
                 }
 
-                var settingsByType = new Dictionary<string, StationRouteTimeBatchSetItem>(StringComparer.OrdinalIgnoreCase);
+                var settingsByType = new Dictionary<string, StationRouteTimeBatchSetItem>(StringComparer.Ordinal);
                 foreach (var setting in request?.Settings ?? new List<StationRouteTimeBatchSetItem>())
                 {
                     var type = setting.Type?.Trim();
@@ -781,7 +740,7 @@ namespace SwitchYard.Service.Controllers
                             .Select(routeID => routeID?.Trim())
                             .Where(routeID => !string.IsNullOrWhiteSpace(routeID))
                             .Select(routeID => routeID!)
-                            .Distinct(StringComparer.OrdinalIgnoreCase)
+                            .Distinct(StringComparer.Ordinal)
                             .ToList(),
                         StartOccupationShift = setting.StartOccupationShift,
                         EndOccupationShift = setting.EndOccupationShift,
@@ -814,7 +773,7 @@ namespace SwitchYard.Service.Controllers
                         continue;
                     }
                     if (setting.RouteIDs != null &&
-                        !setting.RouteIDs.Contains(routeID, StringComparer.OrdinalIgnoreCase))
+                        !setting.RouteIDs.Contains(routeID, StringComparer.Ordinal))
                     {
                         continue;
                     }
@@ -1645,7 +1604,7 @@ namespace SwitchYard.Service.Controllers
                    ORDER BY CASE WHEN Name IS NULL OR TRIM(Name) = '' THEN ID ELSE Name END, ID",
                 new { instanceID }) ?? new List<StationSchemeLookupRow>();
 
-            var schemesByID = new Dictionary<string, StationSchemeLookupRow>(StringComparer.OrdinalIgnoreCase);
+            var schemesByID = new Dictionary<string, StationSchemeLookupRow>(StringComparer.Ordinal);
             foreach (var row in rows)
             {
                 AddStationSchemeLookupRow(schemesByID, row.ID, row.Name);
@@ -1674,8 +1633,8 @@ namespace SwitchYard.Service.Controllers
             return schemesByID.Values
                 .OrderBy(
                     row => string.IsNullOrWhiteSpace(row.Name) ? row.ID ?? string.Empty : row.Name ?? string.Empty,
-                    StringComparer.OrdinalIgnoreCase)
-                .ThenBy(row => row.ID ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+                    StringComparer.Ordinal)
+                .ThenBy(row => row.ID ?? string.Empty, StringComparer.Ordinal)
                 .ToList();
         }
 
@@ -2018,509 +1977,9 @@ namespace SwitchYard.Service.Controllers
             }
         }
 
-        private string BuildStationLayoutJsonFromDatabase(DBConnector dbConnector, string instanceID, string stationSchemeID)
+        private static void DeleteStationLayoutTableRows(DBConnector db, string tableName, string instanceID, string stationSchemeID)
         {
-            var nodeTable = QuoteIdentifier("node");
-            var linkTable = QuoteIdentifier("link");
-            var curveTable = QuoteIdentifier("curve");
-            var signalTable = QuoteIdentifier("signal");
-            var insulationJointTable = QuoteIdentifier("insulationjoint");
-            var bufferStopTable = QuoteIdentifier("bufferstop");
-            var platformTable = QuoteIdentifier("platform");
-            var switchTable = QuoteIdentifier("switch");
-            var cellTable = QuoteIdentifier("cell");
-            var switchBranchVectorTable = QuoteIdentifier("switchbranchvector");
-            var annotationTable = QuoteIdentifier("annotation");
-
-            EnsureLinkSchema(dbConnector);
-            EnsureCurveSchema(dbConnector);
-            EnsureBufferStopSchema(dbConnector);
-            EnsureNamedDeviceSchemas(dbConnector);
-            EnsureCellSchema(dbConnector);
-
-            var nodes = dbConnector.Query<StationNodeRow>(
-                $@"SELECT *
-                   FROM {nodeTable}
-                   WHERE InstanceID = @instanceID AND StationSchemeID = @stationSchemeID
-                   ORDER BY ID",
-                new { instanceID, stationSchemeID }) ?? new List<StationNodeRow>();
-
-            var links = dbConnector.Query<StationLinkRow>(
-                $@"SELECT *
-                   FROM {linkTable}
-                   WHERE InstanceID = @instanceID AND StationSchemeID = @stationSchemeID
-                   ORDER BY ID",
-                new { instanceID, stationSchemeID }) ?? new List<StationLinkRow>();
-
-            var curves = dbConnector.Query<StationCurveRow>(
-                $@"SELECT *
-                   FROM {curveTable}
-                   WHERE InstanceID = @instanceID AND StationSchemeID = @stationSchemeID
-                   ORDER BY ID",
-                new { instanceID, stationSchemeID }) ?? new List<StationCurveRow>();
-
-            var signals = dbConnector.Query<StationSignalRow>(
-                $@"SELECT *
-                   FROM {signalTable}
-                   WHERE InstanceID = @instanceID AND StationSchemeID = @stationSchemeID
-                   ORDER BY ID",
-                new { instanceID, stationSchemeID }) ?? new List<StationSignalRow>();
-
-            var insulationJoints = dbConnector.Query<StationInsulationJointRow>(
-                $@"SELECT *
-                   FROM {insulationJointTable}
-                   WHERE InstanceID = @instanceID AND StationSchemeID = @stationSchemeID
-                   ORDER BY ID",
-                new { instanceID, stationSchemeID }) ?? new List<StationInsulationJointRow>();
-
-            var bufferStops = dbConnector.Query<StationBufferStopRow>(
-                $@"SELECT *
-                   FROM {bufferStopTable}
-                   WHERE InstanceID = @instanceID AND StationSchemeID = @stationSchemeID
-                   ORDER BY ID",
-                new { instanceID, stationSchemeID }) ?? new List<StationBufferStopRow>();
-
-            var platforms = dbConnector.Query<StationPlatformRow>(
-                $@"SELECT *
-                   FROM {platformTable}
-                   WHERE InstanceID = @instanceID AND StationSchemeID = @stationSchemeID
-                   ORDER BY ID",
-                new { instanceID, stationSchemeID }) ?? new List<StationPlatformRow>();
-
-            var switches = dbConnector.Query<StationSwitchRow>(
-                $@"SELECT *
-                   FROM {switchTable}
-                   WHERE InstanceID = @instanceID AND StationSchemeID = @stationSchemeID
-                   ORDER BY ID",
-                new { instanceID, stationSchemeID }) ?? new List<StationSwitchRow>();
-
-            var switchBranchVectors = dbConnector.Query<SwitchBranchVectorRow>(
-                $@"SELECT *
-                   FROM {switchBranchVectorTable}
-                   WHERE InstanceID = @instanceID AND StationSchemeID = @stationSchemeID
-                   ORDER BY SwitchID, Sequence",
-                new { instanceID, stationSchemeID }) ?? new List<SwitchBranchVectorRow>();
-
-            var cells = dbConnector.Query<StationCellRow>(
-                $@"SELECT InstanceID, StationSchemeID, ID, LinkIDList, Name
-                   FROM {cellTable}
-                   WHERE InstanceID = @instanceID AND StationSchemeID = @stationSchemeID
-                   ORDER BY ID",
-                new { instanceID, stationSchemeID }) ?? new List<StationCellRow>();
-
-            var annotations = dbConnector.Query<StationAnnotationRow>(
-                $@"SELECT *
-                   FROM {annotationTable}
-                   WHERE InstanceID = @instanceID AND StationSchemeID = @stationSchemeID
-                   ORDER BY ID",
-                new { instanceID, stationSchemeID }) ?? new List<StationAnnotationRow>();
-
-            var nodeTransform = BuildCoordinateTransform(nodes);
-            var nodeViews = nodes
-                .Select(node =>
-                {
-                    var point = nodeTransform.MapPoint(node.X, node.Y);
-                    return new
-                    {
-                        id = ToInvariantString(node.ID),
-                        x = point.x,
-                        y = point.y,
-                        adjacentLineIDList = links
-                            .Where(link => link.FromNodeID == node.ID || link.ToNodeID == node.ID)
-                            .Select(link => ToInvariantString(link.ID))
-                            .ToArray()
-                    };
-                })
-                .ToArray();
-
-            var nodeByID = nodes.ToDictionary(node => node.ID);
-            var trackViews = links
-                .Select(link =>
-                {
-                    if (!nodeByID.TryGetValue(link.FromNodeID, out var fromNode) ||
-                        !nodeByID.TryGetValue(link.ToNodeID, out var toNode))
-                    {
-                        return null;
-                    }
-
-                    var fromPoint = nodeTransform.MapPoint(fromNode.X, fromNode.Y);
-                    var toPoint = nodeTransform.MapPoint(toNode.X, toNode.Y);
-                    return new
-                    {
-                        id = ToInvariantString(link.ID),
-                        name = link.Name ?? string.Empty,
-                        arrowDirection = link.ArrowDirection ?? string.Empty,
-                        arrowType = link.ArrowType ?? string.Empty,
-                        x1 = fromPoint.x,
-                        y1 = fromPoint.y,
-                        x2 = toPoint.x,
-                        y2 = toPoint.y,
-                        fromNodeID = ToInvariantString(link.FromNodeID),
-                        toNodeID = ToInvariantString(link.ToNodeID)
-                    };
-                })
-                .Where(track => track != null)
-                .ToArray();
-
-            var curveViews = curves
-                .Select(curve =>
-                {
-                    var start = nodeTransform.MapPoint(curve.StartX, curve.StartY);
-                    var end = nodeTransform.MapPoint(curve.EndX, curve.EndY);
-                    var center = nodeTransform.MapPoint(curve.CenterX, curve.CenterY);
-                    return new
-                    {
-                        id = curve.ID ?? string.Empty,
-                        nodeID = FirstNonEmpty(curve.BindingNodeID, curve.VertexNodeID) ?? string.Empty,
-                        tangentLinkID1 = FirstNonEmpty(curve.BindingLink1ID, curve.TangentLinkID1) ?? string.Empty,
-                        tangentLinkID2 = FirstNonEmpty(curve.BindingLink2ID, curve.TangentLinkID2) ?? string.Empty,
-                        radius = nodeTransform.MapLength(ParseDoubleOrDefault(curve.Radius)),
-                        angle = curve.Angle,
-                        tangentDistance = nodeTransform.MapLength(curve.TangentDistance),
-                        start = new { x = start.x, y = start.y },
-                        end = new { x = end.x, y = end.y },
-                        center = new { x = center.x, y = center.y },
-                        largeArcFlag = curve.LargeArcFlag == 1 ? 1 : 0,
-                        sweepFlag = curve.SweepFlag == 1 ? 1 : 0
-                    };
-                })
-                .ToArray();
-
-            var signalViews = signals
-                .Select(signal =>
-                {
-                    var bindingNodeID = ParseNullableInt(signal.BindingNodeID);
-                    if (bindingNodeID == null || !nodeByID.TryGetValue(bindingNodeID.Value, out var bindingNode))
-                    {
-                        return null;
-                    }
-
-                    var point = nodeTransform.MapPoint(bindingNode.X, bindingNode.Y);
-                    return new
-                    {
-                        id = signal.ID ?? string.Empty,
-                        name = NormalizeEquipmentName(signal.Name, signal.ID ?? string.Empty),
-                        type = signal.Type ?? string.Empty,
-                        position = new { x = point.x, y = point.y },
-                        direction = string.IsNullOrWhiteSpace(signal.Direction) ? "e" : signal.Direction,
-                        bindingNodeID = ToInvariantString(bindingNode.ID)
-                    };
-                })
-                .Where(signal => signal != null)
-                .ToArray();
-
-            var insulationJointViews = insulationJoints
-                .Select(insulationJoint =>
-                {
-                    var bindingNodeID = ParseNullableInt(insulationJoint.BindingNodeID);
-                    if (bindingNodeID == null || !nodeByID.TryGetValue(bindingNodeID.Value, out var bindingNode))
-                    {
-                        return null;
-                    }
-
-                    var point = nodeTransform.MapPoint(bindingNode.X, bindingNode.Y);
-                    return new
-                    {
-                        id = insulationJoint.ID ?? string.Empty,
-                        type = insulationJoint.Type ?? string.Empty,
-                        position = new { x = point.x, y = point.y },
-                        bindingNodeID = ToInvariantString(bindingNode.ID)
-                    };
-                })
-                .Where(insulationJoint => insulationJoint != null)
-                .ToArray();
-
-            var bufferStopViews = bufferStops
-                .Select(bufferStop =>
-                {
-                    var bindingNodeID = ParseNullableInt(bufferStop.BindingNodeID);
-                    if (bindingNodeID == null || !nodeByID.TryGetValue(bindingNodeID.Value, out var bindingNode))
-                    {
-                        return null;
-                    }
-
-                    var point = nodeTransform.MapPoint(bindingNode.X, bindingNode.Y);
-                    return new
-                    {
-                        id = bufferStop.ID ?? string.Empty,
-                        type = NormalizeBufferStopType(bufferStop.Type),
-                        direction = string.IsNullOrWhiteSpace(bufferStop.Direction) ? "right" : bufferStop.Direction,
-                        position = new { x = point.x, y = point.y },
-                        bindingNodeID = ToInvariantString(bindingNode.ID)
-                    };
-                })
-                .Where(bufferStop => bufferStop != null)
-                .ToArray();
-
-            var platformViews = platforms
-                .Select(platform =>
-                {
-                    var point = nodeTransform.MapPoint(platform.X, platform.Y);
-                    return new
-                    {
-                        id = platform.ID ?? string.Empty,
-                        name = NormalizeEquipmentName(platform.Name, platform.ID ?? string.Empty),
-                        x = point.x,
-                        y = point.y,
-                        width = nodeTransform.MapLength(platform.Width),
-                        height = nodeTransform.MapLength(platform.Height)
-                    };
-                })
-                .ToArray();
-
-            var switchBranchVectorLookup = switchBranchVectors
-                .GroupBy(vector => vector.SwitchID ?? string.Empty)
-                .ToDictionary(group => group.Key, group => group.OrderBy(vector => vector.Sequence).ToList());
-            var switchViews = switches
-                .Select(sw =>
-                {
-                    var bindingNodeID = ParseNullableInt(sw.BindingNodeID);
-                    if (bindingNodeID == null || !nodeByID.TryGetValue(bindingNodeID.Value, out var bindingNode))
-                    {
-                        return null;
-                    }
-
-                    var point = nodeTransform.MapPoint(bindingNode.X, bindingNode.Y);
-                    switchBranchVectorLookup.TryGetValue(sw.ID ?? string.Empty, out var branchVectors);
-
-                    return new
-                    {
-                        id = sw.ID ?? string.Empty,
-                        name = NormalizeEquipmentName(sw.Name, sw.ID ?? string.Empty),
-                        type = sw.Type ?? "unknown",
-                        position = new { x = point.x, y = point.y },
-                        bindingNodeID = ToInvariantString(bindingNode.ID),
-                        branchVectorList = (branchVectors ?? new List<SwitchBranchVectorRow>())
-                            .Select(vector => new
-                            {
-                                x = nodeTransform.MapLength(vector.X),
-                                y = nodeTransform.MapLength(vector.Y),
-                                lineID = vector.BindingLinkID ?? string.Empty
-                            })
-                            .ToArray()
-                    };
-                })
-                .Where(sw => sw != null)
-                .ToArray();
-
-            var cellViews = cells
-                .Select(cell => new
-                {
-                    instanceID = cell.InstanceID ?? instanceID,
-                    stationSchemeID = cell.StationSchemeID ?? stationSchemeID,
-                    id = cell.ID ?? string.Empty,
-                    linkIDList = cell.LinkIDList ?? string.Empty,
-                    name = NormalizeEquipmentName(cell.Name, cell.ID ?? string.Empty)
-                })
-                .ToArray();
-
-            var annotationViews = annotations
-                .Select(annotation =>
-                {
-                    var point = nodeTransform.MapPoint(annotation.X, annotation.Y);
-                    return new
-                    {
-                        id = annotation.ID ?? string.Empty,
-                        text = annotation.Text ?? string.Empty,
-                        position = new { x = point.x, y = point.y },
-                        fontFamily = string.IsNullOrWhiteSpace(annotation.FontFamily) ? "Arial" : annotation.FontFamily,
-                        fontSize = annotation.FontSize <= 0 ? 16 : annotation.FontSize,
-                        fontWeight = string.IsNullOrWhiteSpace(annotation.FontWeight) ? "normal" : annotation.FontWeight,
-                        fontStyle = string.IsNullOrWhiteSpace(annotation.FontStyle) ? "normal" : annotation.FontStyle,
-                        angle = annotation.Angle,
-                        textColor = string.IsNullOrWhiteSpace(annotation.TextColor) ? "#ffffff" : annotation.TextColor
-                    };
-                })
-                .ToArray();
-
-            var displayStyles = ParseStationSchemeDisplayStyles(
-                LoadStationSchemeDisplayStyles(dbConnector, instanceID, stationSchemeID));
-            var gridSettings = ParseStationSchemeGridSettings(
-                LoadStationSchemeGridSettings(dbConnector, instanceID, stationSchemeID));
-            var latestElementID = CalculateLatestElementID(
-                nodes.Select(node => ToInvariantString(node.ID))
-                    .Concat(links.Select(link => ToInvariantString(link.ID)))
-                    .Concat(curves.Select(curve => curve.ID ?? string.Empty))
-                    .Concat(signals.Select(signal => signal.ID ?? string.Empty))
-                    .Concat(insulationJoints.Select(insulationJoint => insulationJoint.ID ?? string.Empty))
-                    .Concat(bufferStops.Select(bufferStop => bufferStop.ID ?? string.Empty))
-                    .Concat(platforms.Select(platform => platform.ID ?? string.Empty))
-                    .Concat(switches.Select(sw => sw.ID ?? string.Empty))
-                    .Concat(cells.Select(cell => cell.ID ?? string.Empty))
-                    .Concat(annotations.Select(annotation => annotation.ID ?? string.Empty)));
-
-            return JsonSerializer.Serialize(new
-            {
-                metadata = new
-                {
-                    latestElementID,
-                    instanceID,
-                    stationSchemeID,
-                    coordinateTransform = nodeTransform.ToMetadata(),
-                    displayStyles,
-                    gridSettings
-                },
-                tracks = trackViews,
-                curves = curveViews,
-                nodes = nodeViews,
-                signals = signalViews,
-                insulationJoints = insulationJointViews,
-                bufferStops = bufferStopViews,
-                platforms = platformViews,
-                switches = switchViews,
-                cells = cellViews,
-                annotations = annotationViews
-            });
-        }
-
-        private StationLayoutSaveResult SaveStationLayoutJsonToDatabase(
-            DBConnector dbConnector,
-            string instanceID,
-            string stationSchemeID,
-            StationLayoutJson layout)
-        {
-            var nodeTable = QuoteIdentifier("node");
-            var linkTable = QuoteIdentifier("link");
-            var curveTable = QuoteIdentifier("curve");
-            var signalTable = QuoteIdentifier("signal");
-            var insulationJointTable = QuoteIdentifier("insulationjoint");
-            var bufferStopTable = QuoteIdentifier("bufferstop");
-            var platformTable = QuoteIdentifier("platform");
-            var switchTable = QuoteIdentifier("switch");
-            var cellTable = QuoteIdentifier("cell");
-            var switchBranchVectorTable = QuoteIdentifier("switchbranchvector");
-            var annotationTable = QuoteIdentifier("annotation");
-
-            EnsureLinkSchema(dbConnector);
-            EnsureCurveSchema(dbConnector);
-            EnsureBufferStopSchema(dbConnector);
-            EnsureNamedDeviceSchemas(dbConnector);
-            EnsureCellSchema(dbConnector);
-
-            var transform = StationLayoutPersistenceTransform.Identity;
-            var nodeSaveContext = BuildNodeSaveContext(layout, transform);
-            var linkSaveContext = BuildLinkSaveContext(layout, nodeSaveContext);
-
-            dbConnector.BeginTransaction();
-            try
-            {
-                EnsureStationSchemeExists(dbConnector, instanceID, stationSchemeID);
-                PersistStationSchemeDisplayStyles(
-                    dbConnector,
-                    instanceID,
-                    stationSchemeID,
-                    layout.Metadata?.DisplayStyles);
-                PersistStationSchemeGridSettings(
-                    dbConnector,
-                    instanceID,
-                    stationSchemeID,
-                    layout.Metadata?.GridSettings);
-
-                // A legacy save replaces the drawing too; it must invalidate any
-                // previously stored complete document in the same transaction.
-                dbConnector.ExecuteNonQuery(
-                    $"UPDATE {QuoteIdentifier("stationscheme")} SET LayoutDocument=NULL WHERE InstanceID=@instanceID AND ID=@stationSchemeID",
-                    new { instanceID, stationSchemeID });
-
-                DeleteStationLayoutTableRows(dbConnector, switchBranchVectorTable, instanceID, stationSchemeID);
-                DeleteStationLayoutTableRows(dbConnector, switchTable, instanceID, stationSchemeID);
-                DeleteStationLayoutTableRows(dbConnector, bufferStopTable, instanceID, stationSchemeID);
-                DeleteStationLayoutTableRows(dbConnector, insulationJointTable, instanceID, stationSchemeID);
-                DeleteStationLayoutTableRows(dbConnector, signalTable, instanceID, stationSchemeID);
-                DeleteStationLayoutTableRows(dbConnector, platformTable, instanceID, stationSchemeID);
-                DeleteStationLayoutTableRows(dbConnector, cellTable, instanceID, stationSchemeID);
-                DeleteStationLayoutTableRows(dbConnector, annotationTable, instanceID, stationSchemeID);
-                DeleteStationLayoutTableRows(dbConnector, curveTable, instanceID, stationSchemeID);
-                DeleteStationLayoutTableRows(dbConnector, linkTable, instanceID, stationSchemeID);
-                DeleteStationLayoutTableRows(dbConnector, nodeTable, instanceID, stationSchemeID);
-
-                foreach (var node in nodeSaveContext.Nodes)
-                {
-                    EnsureInserted(
-                        dbConnector.ExecuteNonQuery(
-                            $@"INSERT INTO {nodeTable} (InstanceID, StationSchemeID, ID, X, Y)
-                               VALUES (@InstanceID, @StationSchemeID, @ID, @X, @Y)",
-                            new
-                            {
-                                InstanceID = instanceID,
-                                StationSchemeID = stationSchemeID,
-                                node.ID,
-                                X = node.DatabaseX,
-                                Y = node.DatabaseY
-                            }),
-                        "node");
-                }
-
-                foreach (var link in linkSaveContext.Links)
-                {
-                    EnsureInserted(
-                        dbConnector.ExecuteNonQuery(
-                            $@"INSERT INTO {linkTable} (InstanceID, StationSchemeID, ID, Name, FromNodeID, ToNodeID, ArrowDirection, ArrowType)
-                               VALUES (@InstanceID, @StationSchemeID, @ID, @Name, @FromNodeID, @ToNodeID, @ArrowDirection, @ArrowType)",
-                            new
-                            {
-                                InstanceID = instanceID,
-                                StationSchemeID = stationSchemeID,
-                                link.ID,
-                                link.Name,
-                                link.FromNodeID,
-                                link.ToNodeID,
-                                link.ArrowDirection,
-                                link.ArrowType
-                            }),
-                        "link");
-                }
-
-                var platformCount = SavePlatforms(dbConnector, platformTable, instanceID, stationSchemeID, layout, transform);
-                var annotationCount = SaveAnnotations(dbConnector, annotationTable, instanceID, stationSchemeID, layout, transform);
-                var curveCount = SaveCurves(dbConnector, curveTable, instanceID, stationSchemeID, layout, transform, nodeSaveContext, linkSaveContext);
-                var signalCount = SaveSignals(dbConnector, signalTable, instanceID, stationSchemeID, layout, nodeSaveContext);
-                var insulationJointCount = SaveInsulationJoints(dbConnector, insulationJointTable, instanceID, stationSchemeID, layout, nodeSaveContext);
-                var bufferStopCount = SaveBufferStops(dbConnector, bufferStopTable, instanceID, stationSchemeID, layout, nodeSaveContext);
-                var cellCount = SaveCells(dbConnector, cellTable, instanceID, stationSchemeID, layout, linkSaveContext);
-                var switchSaveResult = SaveSwitches(
-                    dbConnector,
-                    switchTable,
-                    switchBranchVectorTable,
-                    instanceID,
-                    stationSchemeID,
-                    layout,
-                    transform,
-                    nodeSaveContext,
-                    linkSaveContext);
-
-                dbConnector.Commit();
-                return new StationLayoutSaveResult
-                {
-                    Message = "OK",
-                    InstanceID = instanceID,
-                    StationSchemeID = stationSchemeID,
-                    NodeCount = nodeSaveContext.Nodes.Count,
-                    LinkCount = linkSaveContext.Links.Count,
-                    CurveCount = curveCount,
-                    SignalCount = signalCount,
-                    InsulationJointCount = insulationJointCount,
-                    BufferStopCount = bufferStopCount,
-                    PlatformCount = platformCount,
-                    SwitchCount = switchSaveResult.SwitchCount,
-                    SwitchBranchVectorCount = switchSaveResult.SwitchBranchVectorCount,
-                    CellCount = cellCount,
-                    AnnotationCount = annotationCount
-                };
-            }
-            catch
-            {
-                dbConnector.Rollback();
-                throw;
-            }
-        }
-
-        private static void DeleteStationLayoutTableRows(DBConnector dbConnector, string tableName, string instanceID, string stationSchemeID)
-        {
-            dbConnector.ExecuteNonQuery(
-                $@"DELETE FROM {tableName}
-                   WHERE InstanceID = @instanceID AND StationSchemeID = @stationSchemeID",
-                new { instanceID, stationSchemeID });
+            db.ExecuteNonQuery($"DELETE FROM {QuoteIdentifier(tableName)} WHERE InstanceID=@instanceID AND StationSchemeID=@stationSchemeID", new { instanceID, stationSchemeID });
         }
 
         private (StationRouteRow? Route, IActionResult? ErrorResult) NormalizeStationRouteRequest(
@@ -2700,7 +2159,7 @@ namespace SwitchYard.Service.Controllers
         private static List<string> NormalizeStationRouteIdList(IEnumerable<string> ids)
         {
             var normalized = new List<string>();
-            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var seen = new HashSet<string>(StringComparer.Ordinal);
             foreach (var id in ids)
             {
                 var trimmed = id?.Trim();
@@ -2728,8 +2187,8 @@ namespace SwitchYard.Service.Controllers
         {
             var routeCellSet = new HashSet<string>(
                 ParseStationRouteIdList(route.CellList),
-                StringComparer.OrdinalIgnoreCase);
-            var parallelCellSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                StringComparer.Ordinal);
+            var parallelCellSet = new HashSet<string>(StringComparer.Ordinal);
 
             foreach (var otherRoute in routes)
             {
@@ -2765,11 +2224,11 @@ namespace SwitchYard.Service.Controllers
             string? interruptCellList)
         {
             var routeCellIDs = NormalizeStationRouteIdList(ParseStationRouteIdList(cellList));
-            var routeCellIDSet = new HashSet<string>(routeCellIDs, StringComparer.OrdinalIgnoreCase);
+            var routeCellIDSet = new HashSet<string>(routeCellIDs, StringComparer.Ordinal);
             var interruptCellIDs = NormalizeStationRouteIdList(ParseStationRouteIdList(interruptCellList))
                 .Where(cellID => !routeCellIDSet.Contains(cellID))
                 .ToList();
-            var interruptCellIDSet = new HashSet<string>(interruptCellIDs, StringComparer.OrdinalIgnoreCase);
+            var interruptCellIDSet = new HashSet<string>(interruptCellIDs, StringComparer.Ordinal);
             return (NormalizeStationRouteIdList(routeCellIDs.Concat(interruptCellIDs)), interruptCellIDSet);
         }
 
@@ -3268,269 +2727,6 @@ namespace SwitchYard.Service.Controllers
             };
         }
 
-        private StationLayoutNodeSaveContext BuildNodeSaveContext(
-            StationLayoutJson layout,
-            StationLayoutPersistenceTransform transform)
-        {
-            var allocator = new IntegerIdAllocator();
-            var context = new StationLayoutNodeSaveContext();
-
-            foreach (var node in layout.Nodes ?? new List<StationLayoutNodeJson>())
-            {
-                var sourceID = string.IsNullOrWhiteSpace(node.ID)
-                    ? $"node_{context.Nodes.Count}"
-                    : node.ID.Trim();
-                var dbID = allocator.Allocate(sourceID);
-                var databasePoint = transform.UnmapPoint(node.X, node.Y);
-                var entry = new StationLayoutNodeSaveEntry
-                {
-                    SourceID = sourceID,
-                    ID = dbID,
-                    DisplayX = node.X,
-                    DisplayY = node.Y,
-                    DatabaseX = databasePoint.x,
-                    DatabaseY = databasePoint.y
-                };
-
-                context.Nodes.Add(entry);
-                if (!context.NodeIDBySourceID.ContainsKey(sourceID))
-                {
-                    context.NodeIDBySourceID[sourceID] = dbID;
-                }
-
-                context.NodeIDByPointKey.TryAdd(BuildPointKey(node.X, node.Y), dbID);
-            }
-
-            context.Allocator = allocator;
-            context.Transform = transform;
-            return context;
-        }
-
-        private StationLayoutLinkSaveContext BuildLinkSaveContext(
-            StationLayoutJson layout,
-            StationLayoutNodeSaveContext nodeContext)
-        {
-            var allocator = new IntegerIdAllocator();
-            var context = new StationLayoutLinkSaveContext();
-
-            foreach (var track in layout.Tracks ?? new List<StationLayoutTrackJson>())
-            {
-                var sourceID = string.IsNullOrWhiteSpace(track.ID)
-                    ? $"track_{context.Links.Count}"
-                    : track.ID.Trim();
-                var dbID = allocator.Allocate(sourceID);
-                var fromNodeID = ResolveTrackEndpointNodeID(
-                    nodeContext,
-                    track.FromNodeID,
-                    track.X1,
-                    track.Y1);
-                var toNodeID = ResolveTrackEndpointNodeID(
-                    nodeContext,
-                    track.ToNodeID,
-                    track.X2,
-                    track.Y2);
-
-                context.Links.Add(new StationLayoutLinkSaveEntry
-                {
-                    SourceID = sourceID,
-                    ID = dbID,
-                    Name = track.Name ?? string.Empty,
-                    ArrowDirection = NormalizeOptionalCode(track.ArrowDirection),
-                    ArrowType = NormalizeOptionalCode(track.ArrowType),
-                    FromNodeID = fromNodeID,
-                    ToNodeID = toNodeID
-                });
-
-                if (!context.LinkIDBySourceID.ContainsKey(sourceID))
-                {
-                    context.LinkIDBySourceID[sourceID] = dbID;
-                }
-            }
-
-            return context;
-        }
-
-        private static int ResolveTrackEndpointNodeID(
-            StationLayoutNodeSaveContext nodeContext,
-            string? sourceNodeID,
-            double displayX,
-            double displayY)
-        {
-            if (!string.IsNullOrWhiteSpace(sourceNodeID) &&
-                nodeContext.NodeIDBySourceID.TryGetValue(sourceNodeID.Trim(), out var nodeID))
-            {
-                return nodeID;
-            }
-
-            return GetOrCreateNodeForPoint(nodeContext, displayX, displayY);
-        }
-
-        private static int GetOrCreateNodeForPoint(
-            StationLayoutNodeSaveContext nodeContext,
-            double displayX,
-            double displayY)
-        {
-            var key = BuildPointKey(displayX, displayY);
-            if (nodeContext.NodeIDByPointKey.TryGetValue(key, out var existingID))
-            {
-                return existingID;
-            }
-
-            var generatedSourceID = $"__generated_node_{nodeContext.Nodes.Count}";
-            var dbID = nodeContext.Allocator.Allocate(generatedSourceID);
-            var databasePoint = nodeContext.Transform.UnmapPoint(displayX, displayY);
-            var entry = new StationLayoutNodeSaveEntry
-            {
-                SourceID = generatedSourceID,
-                ID = dbID,
-                DisplayX = displayX,
-                DisplayY = displayY,
-                DatabaseX = databasePoint.x,
-                DatabaseY = databasePoint.y
-            };
-
-            nodeContext.Nodes.Add(entry);
-            nodeContext.NodeIDBySourceID[generatedSourceID] = dbID;
-            nodeContext.NodeIDByPointKey[key] = dbID;
-            return dbID;
-        }
-
-        private int SavePlatforms(
-            DBConnector dbConnector,
-            string platformTable,
-            string instanceID,
-            string stationSchemeID,
-            StationLayoutJson layout,
-            StationLayoutPersistenceTransform transform)
-        {
-            var count = 0;
-            foreach (var platform in layout.Platforms ?? new List<StationLayoutPlatformJson>())
-            {
-                var platformID = NormalizeStringID(platform.ID, "platform", count);
-                var databasePoint = transform.UnmapPoint(platform.X, platform.Y);
-                EnsureInserted(
-                    dbConnector.ExecuteNonQuery(
-                        $@"INSERT INTO {platformTable} (InstanceID, StationSchemeID, ID, Name, X, Y, Width, Height)
-                           VALUES (@InstanceID, @StationSchemeID, @ID, @Name, @X, @Y, @Width, @Height)",
-                        new
-                        {
-                            InstanceID = instanceID,
-                            StationSchemeID = stationSchemeID,
-                            ID = platformID,
-                            Name = NormalizeEquipmentName(platform.Name, platformID),
-                            X = databasePoint.x,
-                            Y = databasePoint.y,
-                            Width = transform.UnmapLength(platform.Width),
-                            Height = transform.UnmapLength(platform.Height)
-                        }),
-                    "platform");
-                count++;
-            }
-
-            return count;
-        }
-
-        private int SaveCells(
-            DBConnector dbConnector,
-            string cellTable,
-            string instanceID,
-            string stationSchemeID,
-            StationLayoutJson layout,
-            StationLayoutLinkSaveContext linkContext)
-        {
-            var count = 0;
-            var usedCellIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var cell in layout.Cells ?? new List<StationLayoutCellJson>())
-            {
-                var cellID = string.IsNullOrWhiteSpace(cell.ID)
-                    ? GenerateStationCellID(dbConnector, instanceID, stationSchemeID, usedCellIds)
-                    : cell.ID.Trim();
-                if (usedCellIds.Contains(cellID))
-                {
-                    cellID = GenerateStationCellID(dbConnector, instanceID, stationSchemeID, usedCellIds);
-                }
-
-                usedCellIds.Add(cellID);
-                var linkIDList = NormalizeCellLinkIDList(cell.LinkIDList, linkContext);
-                var cellName = NormalizeEquipmentName(cell.Name, cellID);
-                cell.ID = cellID;
-                cell.LinkIDList = linkIDList;
-                cell.Name = cellName;
-                EnsureInserted(
-                    dbConnector.ExecuteNonQuery(
-                        $@"INSERT INTO {cellTable} (InstanceID, StationSchemeID, ID, LinkIDList, Name)
-                           VALUES (@InstanceID, @StationSchemeID, @ID, @LinkIDList, @Name)",
-                        new
-                        {
-                            InstanceID = instanceID,
-                            StationSchemeID = stationSchemeID,
-                            ID = cellID,
-                            LinkIDList = linkIDList,
-                            Name = cellName
-                        }),
-                    "cell");
-                count++;
-            }
-
-            return count;
-        }
-
-        private string GenerateStationCellID(
-            DBConnector dbConnector,
-            string instanceID,
-            string stationSchemeID,
-            ISet<string> reservedIds)
-        {
-            for (var attempt = 0; attempt < 10; attempt++)
-            {
-                var candidate = _snowflakeIdGenerator.NextIdString();
-                if (!reservedIds.Contains(candidate) && !StationCellIDExists(dbConnector, instanceID, stationSchemeID, candidate))
-                {
-                    return candidate;
-                }
-            }
-
-            throw new InvalidOperationException("Failed to generate a unique station cell ID.");
-        }
-
-        private static bool StationCellIDExists(
-            DBConnector dbConnector,
-            string instanceID,
-            string stationSchemeID,
-            string id)
-        {
-            if (string.IsNullOrWhiteSpace(id))
-            {
-                return false;
-            }
-
-            EnsureCellSchema(dbConnector);
-            var tableName = QuoteIdentifier("cell");
-            return (dbConnector.Query<StationCellRow>(
-                $@"SELECT ID
-                   FROM {tableName}
-                   WHERE InstanceID = @instanceID
-                     AND StationSchemeID = @stationSchemeID
-                     AND ID = @id
-                   LIMIT 1",
-                new { instanceID, stationSchemeID, id }) ?? new List<StationCellRow>()).Any();
-        }
-
-        private static string NormalizeCellLinkIDList(string? linkIDList, StationLayoutLinkSaveContext linkContext)
-        {
-            if (string.IsNullOrWhiteSpace(linkIDList))
-            {
-                return string.Empty;
-            }
-
-            var normalizedLinkIDs = ParseDelimitedIDList(linkIDList)
-                .Select(id => ResolveBindingLinkID(linkContext, id))
-                .Where(id => !string.IsNullOrWhiteSpace(id))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToList();
-            return string.Join(",", normalizedLinkIDs);
-        }
-
         private static int GetFirstMatchingRouteLinkIndex(
             StationCellRow cell,
             IReadOnlyDictionary<string, int> routeLinkIndexByID)
@@ -3557,365 +2753,8 @@ namespace SwitchYard.Service.Controllers
             return Regex.Split(idList.Trim(), @"[\s,，;；]+")
                 .Select(id => id.Trim())
                 .Where(id => !string.IsNullOrWhiteSpace(id))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Distinct(StringComparer.Ordinal)
                 .ToList();
-        }
-
-        private int SaveAnnotations(
-            DBConnector dbConnector,
-            string annotationTable,
-            string instanceID,
-            string stationSchemeID,
-            StationLayoutJson layout,
-            StationLayoutPersistenceTransform transform)
-        {
-            var count = 0;
-            foreach (var annotation in layout.Annotations ?? new List<StationLayoutAnnotationJson>())
-            {
-                var position = annotation.Position ?? new StationLayoutPositionJson();
-                var databasePoint = transform.UnmapPoint(position.X, position.Y);
-                EnsureInserted(
-                    dbConnector.ExecuteNonQuery(
-                        $@"INSERT INTO {annotationTable} (
-                               InstanceID, StationSchemeID, ID, Text, X, Y,
-                               FontFamily, FontSize, FontWeight, FontStyle, Angle, TextColor)
-                           VALUES (
-                               @InstanceID, @StationSchemeID, @ID, @Text, @X, @Y,
-                               @FontFamily, @FontSize, @FontWeight, @FontStyle, @Angle, @TextColor)",
-                        new
-                        {
-                            InstanceID = instanceID,
-                            StationSchemeID = stationSchemeID,
-                            ID = NormalizeStringID(annotation.ID, "annotation", count),
-                            Text = annotation.Text ?? string.Empty,
-                            X = databasePoint.x,
-                            Y = databasePoint.y,
-                            FontFamily = string.IsNullOrWhiteSpace(annotation.FontFamily) ? "Arial" : annotation.FontFamily,
-                            FontSize = annotation.FontSize <= 0 ? 16 : annotation.FontSize,
-                            FontWeight = string.IsNullOrWhiteSpace(annotation.FontWeight) ? "normal" : annotation.FontWeight,
-                            FontStyle = string.IsNullOrWhiteSpace(annotation.FontStyle) ? "normal" : annotation.FontStyle,
-                            Angle = annotation.Angle,
-                            TextColor = string.IsNullOrWhiteSpace(annotation.TextColor) ? "#ffffff" : annotation.TextColor
-                        }),
-                    "annotation");
-                count++;
-            }
-
-            return count;
-        }
-
-        private int SaveCurves(
-            DBConnector dbConnector,
-            string curveTable,
-            string instanceID,
-            string stationSchemeID,
-            StationLayoutJson layout,
-            StationLayoutPersistenceTransform transform,
-            StationLayoutNodeSaveContext nodeContext,
-            StationLayoutLinkSaveContext linkContext)
-        {
-            var count = 0;
-            foreach (var curve in layout.Curves ?? new List<StationLayoutCurveJson>())
-            {
-                var start = curve.Start ?? new StationLayoutPositionJson();
-                var end = curve.End ?? new StationLayoutPositionJson();
-                var center = curve.Center ?? new StationLayoutPositionJson();
-                var databaseStart = transform.UnmapPoint(start.X, start.Y);
-                var databaseEnd = transform.UnmapPoint(end.X, end.Y);
-                var databaseCenter = transform.UnmapPoint(center.X, center.Y);
-                var curveID = NormalizeStringID(curve.ID, "curve", count);
-
-                EnsureInserted(
-                    dbConnector.ExecuteNonQuery(
-                        $@"INSERT INTO {curveTable} (
-                               InstanceID, StationSchemeID, ID, BindingNodeID, BindingLink1ID, BindingLink2ID,
-                               Radius, Angle, TangentDistance, StartX, StartY, EndX, EndY,
-                               CenterX, CenterY, LargeArcFlag, SweepFlag)
-                           VALUES (
-                               @InstanceID, @StationSchemeID, @ID, @BindingNodeID, @BindingLink1ID, @BindingLink2ID,
-                               @Radius, @Angle, @TangentDistance, @StartX, @StartY, @EndX, @EndY,
-                               @CenterX, @CenterY, @LargeArcFlag, @SweepFlag)",
-                        new
-                        {
-                            InstanceID = instanceID,
-                            StationSchemeID = stationSchemeID,
-                            ID = curveID,
-                            BindingNodeID = ResolveCurveNodeID(nodeContext, curve.NodeID),
-                            BindingLink1ID = ResolveBindingLinkID(linkContext, curve.TangentLinkID1),
-                            BindingLink2ID = ResolveBindingLinkID(linkContext, curve.TangentLinkID2),
-                            Radius = ToRoundedInt(transform.UnmapLength(curve.Radius <= 0 ? 100 : curve.Radius)),
-                            Angle = curve.Angle,
-                            TangentDistance = transform.UnmapLength(curve.TangentDistance),
-                            StartX = databaseStart.x,
-                            StartY = databaseStart.y,
-                            EndX = databaseEnd.x,
-                            EndY = databaseEnd.y,
-                            CenterX = databaseCenter.x,
-                            CenterY = databaseCenter.y,
-                            LargeArcFlag = curve.LargeArcFlag == 1 ? 1 : 0,
-                            SweepFlag = curve.SweepFlag == 1 ? 1 : 0
-                        }),
-                    "curve");
-                count++;
-            }
-
-            return count;
-        }
-
-        private int SaveSignals(
-            DBConnector dbConnector,
-            string signalTable,
-            string instanceID,
-            string stationSchemeID,
-            StationLayoutJson layout,
-            StationLayoutNodeSaveContext nodeContext)
-        {
-            var count = 0;
-            foreach (var signal in layout.Signals ?? new List<StationLayoutSignalJson>())
-            {
-                var bindingNodeID = ResolveEquipmentBindingNodeID(nodeContext, signal.BindingNodeID, signal.Position);
-                if (bindingNodeID == null)
-                {
-                    continue;
-                }
-
-                var signalID = NormalizeStringID(signal.ID, "signal", count);
-                EnsureInserted(
-                    dbConnector.ExecuteNonQuery(
-                        $@"INSERT INTO {signalTable} (InstanceID, StationSchemeID, ID, Name, Type, Direction, BindingNodeID)
-                           VALUES (@InstanceID, @StationSchemeID, @ID, @Name, @Type, @Direction, @BindingNodeID)",
-                        new
-                        {
-                            InstanceID = instanceID,
-                            StationSchemeID = stationSchemeID,
-                            ID = signalID,
-                            Name = NormalizeEquipmentName(signal.Name, signalID),
-                            Type = string.IsNullOrWhiteSpace(signal.Type) ? "departure" : signal.Type,
-                            Direction = string.IsNullOrWhiteSpace(signal.Direction) ? "e" : signal.Direction,
-                            BindingNodeID = ToInvariantString(bindingNodeID.Value)
-                        }),
-                    "signal");
-                count++;
-            }
-
-            return count;
-        }
-
-        private int SaveInsulationJoints(
-            DBConnector dbConnector,
-            string insulationJointTable,
-            string instanceID,
-            string stationSchemeID,
-            StationLayoutJson layout,
-            StationLayoutNodeSaveContext nodeContext)
-        {
-            var count = 0;
-            foreach (var insulationJoint in layout.InsulationJoints ?? new List<StationLayoutInsulationJointJson>())
-            {
-                var bindingNodeID = ResolveEquipmentBindingNodeID(nodeContext, insulationJoint.BindingNodeID, insulationJoint.Position);
-                if (bindingNodeID == null)
-                {
-                    continue;
-                }
-
-                EnsureInserted(
-                    dbConnector.ExecuteNonQuery(
-                        $@"INSERT INTO {insulationJointTable} (InstanceID, StationSchemeID, ID, Type, BindingNodeID)
-                           VALUES (@InstanceID, @StationSchemeID, @ID, @Type, @BindingNodeID)",
-                        new
-                        {
-                            InstanceID = instanceID,
-                            StationSchemeID = stationSchemeID,
-                            ID = NormalizeStringID(insulationJoint.ID, "insulationjoint", count),
-                            Type = string.IsNullOrWhiteSpace(insulationJoint.Type) ? "normal" : insulationJoint.Type,
-                            BindingNodeID = ToInvariantString(bindingNodeID.Value)
-                        }),
-                    "insulationjoint");
-                count++;
-            }
-
-            return count;
-        }
-
-        private int SaveBufferStops(
-            DBConnector dbConnector,
-            string bufferStopTable,
-            string instanceID,
-            string stationSchemeID,
-            StationLayoutJson layout,
-            StationLayoutNodeSaveContext nodeContext)
-        {
-            var count = 0;
-            foreach (var bufferStop in layout.BufferStops ?? new List<StationLayoutBufferStopJson>())
-            {
-                var bindingNodeID = ResolveEquipmentBindingNodeID(nodeContext, bufferStop.BindingNodeID, bufferStop.Position);
-                if (bindingNodeID == null)
-                {
-                    continue;
-                }
-
-                EnsureInserted(
-                    dbConnector.ExecuteNonQuery(
-                        $@"INSERT INTO {bufferStopTable} (InstanceID, StationSchemeID, ID, {QuoteIdentifier("Type")}, Direction, BindingNodeID)
-                           VALUES (@InstanceID, @StationSchemeID, @ID, @Type, @Direction, @BindingNodeID)",
-                        new
-                        {
-                            InstanceID = instanceID,
-                            StationSchemeID = stationSchemeID,
-                            ID = NormalizeStringID(bufferStop.ID, "bufferstop", count),
-                            Type = NormalizeBufferStopType(bufferStop.Type),
-                            Direction = NormalizeBufferStopDirection(bufferStop.Direction),
-                            BindingNodeID = ToInvariantString(bindingNodeID.Value)
-                        }),
-                    "bufferstop");
-                count++;
-            }
-
-            return count;
-        }
-
-        private StationLayoutSwitchSaveResult SaveSwitches(
-            DBConnector dbConnector,
-            string switchTable,
-            string switchBranchVectorTable,
-            string instanceID,
-            string stationSchemeID,
-            StationLayoutJson layout,
-            StationLayoutPersistenceTransform transform,
-            StationLayoutNodeSaveContext nodeContext,
-            StationLayoutLinkSaveContext linkContext)
-        {
-            var switchCount = 0;
-            var branchVectorCount = 0;
-            foreach (var sw in layout.Switches ?? new List<StationLayoutSwitchJson>())
-            {
-                var bindingNodeID = ResolveEquipmentBindingNodeID(nodeContext, sw.BindingNodeID, sw.Position);
-                if (bindingNodeID == null)
-                {
-                    continue;
-                }
-
-                var switchID = NormalizeStringID(sw.ID, "switch", switchCount);
-                EnsureInserted(
-                    dbConnector.ExecuteNonQuery(
-                        $@"INSERT INTO {switchTable} (InstanceID, StationSchemeID, ID, Name, Type, BindingNodeID)
-                           VALUES (@InstanceID, @StationSchemeID, @ID, @Name, @Type, @BindingNodeID)",
-                        new
-                        {
-                            InstanceID = instanceID,
-                            StationSchemeID = stationSchemeID,
-                            ID = switchID,
-                            Name = NormalizeEquipmentName(sw.Name, switchID),
-                            Type = string.IsNullOrWhiteSpace(sw.Type) ? "unknown" : sw.Type,
-                            BindingNodeID = ToInvariantString(bindingNodeID.Value)
-                        }),
-                    "switch");
-
-                var sequence = 0;
-                foreach (var vector in sw.BranchVectorList ?? new List<StationLayoutSwitchBranchVectorJson>())
-                {
-                    var bindingLinkID = ResolveBindingLinkID(linkContext, vector.LineID);
-                    EnsureInserted(
-                        dbConnector.ExecuteNonQuery(
-                            $@"INSERT INTO {switchBranchVectorTable} (InstanceID, StationSchemeID, SwitchID, Sequence, X, Y, BindingLinkID)
-                               VALUES (@InstanceID, @StationSchemeID, @SwitchID, @Sequence, @X, @Y, @BindingLinkID)",
-                            new
-                            {
-                                InstanceID = instanceID,
-                                StationSchemeID = stationSchemeID,
-                                SwitchID = switchID,
-                                Sequence = sequence,
-                                X = transform.UnmapLength(vector.X),
-                                Y = transform.UnmapLength(vector.Y),
-                                BindingLinkID = bindingLinkID
-                            }),
-                        "switchbranchvector");
-                    sequence++;
-                    branchVectorCount++;
-                }
-
-                switchCount++;
-            }
-
-            return new StationLayoutSwitchSaveResult
-            {
-                SwitchCount = switchCount,
-                SwitchBranchVectorCount = branchVectorCount
-            };
-        }
-
-        private static int? ResolveEquipmentBindingNodeID(
-            StationLayoutNodeSaveContext nodeContext,
-            string? sourceNodeID,
-            StationLayoutPositionJson? position)
-        {
-            if (!string.IsNullOrWhiteSpace(sourceNodeID) &&
-                nodeContext.NodeIDBySourceID.TryGetValue(sourceNodeID.Trim(), out var nodeID))
-            {
-                return nodeID;
-            }
-
-            if (position == null)
-            {
-                return null;
-            }
-
-            var key = BuildPointKey(position.X, position.Y);
-            if (nodeContext.NodeIDByPointKey.TryGetValue(key, out var pointNodeID))
-            {
-                return pointNodeID;
-            }
-
-            var nearestNode = nodeContext.Nodes
-                .Select(node => new
-                {
-                    node.ID,
-                    Distance = Math.Sqrt(
-                        Math.Pow(node.DisplayX - position.X, 2) +
-                        Math.Pow(node.DisplayY - position.Y, 2))
-                })
-                .OrderBy(item => item.Distance)
-                .FirstOrDefault();
-            return nearestNode?.Distance <= 2 ? nearestNode.ID : null;
-        }
-
-        private static string ResolveBindingLinkID(StationLayoutLinkSaveContext linkContext, string? sourceLineID)
-        {
-            if (string.IsNullOrWhiteSpace(sourceLineID))
-            {
-                return string.Empty;
-            }
-
-            return linkContext.LinkIDBySourceID.TryGetValue(sourceLineID.Trim(), out var linkID)
-                ? ToInvariantString(linkID)
-                : sourceLineID.Trim();
-        }
-
-        private static string ResolveCurveNodeID(StationLayoutNodeSaveContext nodeContext, string? sourceNodeID)
-        {
-            if (string.IsNullOrWhiteSpace(sourceNodeID))
-            {
-                return string.Empty;
-            }
-
-            return nodeContext.NodeIDBySourceID.TryGetValue(sourceNodeID.Trim(), out var nodeID)
-                ? ToInvariantString(nodeID)
-                : sourceNodeID.Trim();
-        }
-
-        private static string NormalizeStringID(string? id, string prefix, int index)
-        {
-            return string.IsNullOrWhiteSpace(id)
-                ? $"{prefix}_{index}"
-                : id.Trim();
-        }
-
-        private static void EnsureInserted(int result, string tableName)
-        {
-            if (result <= 0)
-            {
-                throw new InvalidOperationException($"Failed to insert {tableName} row.");
-            }
         }
 
         private IActionResult? ValidateCapacityInstanceOwnershipOrFail(DBConnector dbConnector, string instanceID)
@@ -3993,8 +2832,7 @@ namespace SwitchYard.Service.Controllers
                             {QuoteIdentifier("ID")} VARCHAR(50) NULL,
                             {QuoteIdentifier("Name")} VARCHAR(100) NULL,
                             {QuoteIdentifier("DisplayStyles")} TEXT NULL,
-                            {QuoteIdentifier("GridSettings")} TEXT NULL,
-                            {QuoteIdentifier("LayoutDocument")} LONGTEXT NULL
+                            {QuoteIdentifier("GridSettings")} TEXT NULL
                         )");
                 }
                 else
@@ -4005,8 +2843,7 @@ namespace SwitchYard.Service.Controllers
                             {QuoteIdentifier("ID")} TEXT NULL,
                             {QuoteIdentifier("Name")} TEXT NULL,
                             {QuoteIdentifier("DisplayStyles")} TEXT NULL,
-                            {QuoteIdentifier("GridSettings")} TEXT NULL,
-                            {QuoteIdentifier("LayoutDocument")} TEXT NULL
+                            {QuoteIdentifier("GridSettings")} TEXT NULL
                         )");
                 }
 
@@ -4015,23 +2852,21 @@ namespace SwitchYard.Service.Controllers
 
             var existingColumns = GetColumnNames(dbConnector, "stationscheme");
             var requiredColumns = DBConnector.IsMySql(DBConnector.CapacityDatabaseSectionName)
-                ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                ? new Dictionary<string, string>(StringComparer.Ordinal)
                 {
                     ["InstanceID"] = "VARCHAR(50) NULL",
                     ["ID"] = "VARCHAR(50) NULL",
                     ["Name"] = "VARCHAR(100) NULL",
                     ["DisplayStyles"] = "TEXT NULL",
-                    ["GridSettings"] = "TEXT NULL",
-                    ["LayoutDocument"] = "LONGTEXT NULL"
+                    ["GridSettings"] = "TEXT NULL"
                 }
-                : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                : new Dictionary<string, string>(StringComparer.Ordinal)
                 {
                     ["InstanceID"] = "TEXT NULL",
                     ["ID"] = "TEXT NULL",
                     ["Name"] = "TEXT NULL",
                     ["DisplayStyles"] = "TEXT NULL",
-                    ["GridSettings"] = "TEXT NULL",
-                    ["LayoutDocument"] = "TEXT NULL"
+                    ["GridSettings"] = "TEXT NULL"
                 };
 
             foreach (var column in requiredColumns)
@@ -4066,7 +2901,7 @@ namespace SwitchYard.Service.Controllers
                             {QuoteIdentifier("InstanceID")} VARCHAR(50) NULL,
                             {QuoteIdentifier("StationSchemeID")} VARCHAR(50) NULL,
                             {QuoteIdentifier("ID")} VARCHAR(50) NULL,
-                            {QuoteIdentifier("LinkIDList")} VARCHAR(255) NULL,
+                            {QuoteIdentifier("LinkIDList")} LONGTEXT NULL,
                             {QuoteIdentifier("Name")} VARCHAR(100) NULL
                         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
                 }
@@ -4087,15 +2922,15 @@ namespace SwitchYard.Service.Controllers
 
             var existingColumns = GetColumnNames(dbConnector, "cell");
             var requiredColumns = DBConnector.IsMySql(DBConnector.CapacityDatabaseSectionName)
-                ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                ? new Dictionary<string, string>(StringComparer.Ordinal)
                 {
                     ["InstanceID"] = "VARCHAR(50) NULL",
                     ["StationSchemeID"] = "VARCHAR(50) NULL",
                     ["ID"] = "VARCHAR(50) NULL",
-                    ["LinkIDList"] = "VARCHAR(255) NULL",
+                    ["LinkIDList"] = "LONGTEXT NULL",
                     ["Name"] = "VARCHAR(100) NULL"
                 }
-                : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                : new Dictionary<string, string>(StringComparer.Ordinal)
                 {
                     ["InstanceID"] = "TEXT NULL",
                     ["StationSchemeID"] = "TEXT NULL",
@@ -4156,7 +2991,7 @@ namespace SwitchYard.Service.Controllers
                             {QuoteIdentifier("BindingNodeID")} VARCHAR(50) NULL,
                             {QuoteIdentifier("BindingLink1ID")} VARCHAR(50) NULL,
                             {QuoteIdentifier("BindingLink2ID")} VARCHAR(50) NULL,
-                            {QuoteIdentifier("Radius")} INT NULL,
+                            {QuoteIdentifier("Radius")} DOUBLE NULL,
                             {QuoteIdentifier("Angle")} DOUBLE NULL,
                             {QuoteIdentifier("TangentDistance")} DOUBLE NULL,
                             {QuoteIdentifier("StartX")} DOUBLE NULL,
@@ -4179,7 +3014,7 @@ namespace SwitchYard.Service.Controllers
                             {QuoteIdentifier("BindingNodeID")} TEXT NULL,
                             {QuoteIdentifier("BindingLink1ID")} TEXT NULL,
                             {QuoteIdentifier("BindingLink2ID")} TEXT NULL,
-                            {QuoteIdentifier("Radius")} INTEGER NULL,
+                            {QuoteIdentifier("Radius")} REAL NULL,
                             {QuoteIdentifier("Angle")} REAL NULL,
                             {QuoteIdentifier("TangentDistance")} REAL NULL,
                             {QuoteIdentifier("StartX")} REAL NULL,
@@ -4201,7 +3036,7 @@ namespace SwitchYard.Service.Controllers
             var numberType = DBConnector.IsMySql(DBConnector.CapacityDatabaseSectionName) ? "DOUBLE NULL" : "REAL NULL";
             var flagType = DBConnector.IsMySql(DBConnector.CapacityDatabaseSectionName) ? "TINYINT NULL" : "INTEGER NULL";
             var radiusType = DBConnector.IsMySql(DBConnector.CapacityDatabaseSectionName) ? "INT NULL" : "INTEGER NULL";
-            var requiredColumns = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            var requiredColumns = new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 ["InstanceID"] = textType,
                 ["StationSchemeID"] = textType,
@@ -4236,7 +3071,7 @@ namespace SwitchYard.Service.Controllers
             if (DBConnector.IsMySql(DBConnector.CapacityDatabaseSectionName))
             {
                 dbConnector.ExecuteNonQuery(
-                    $@"ALTER TABLE {tableName} MODIFY COLUMN {QuoteIdentifier("Radius")} INT NULL");
+                    $@"ALTER TABLE {tableName} MODIFY COLUMN {QuoteIdentifier("Radius")} DOUBLE NULL");
             }
         }
 
@@ -4276,7 +3111,7 @@ namespace SwitchYard.Service.Controllers
             var existingColumns = GetColumnNames(dbConnector, "bufferstop");
             var textType = DBConnector.IsMySql(DBConnector.CapacityDatabaseSectionName) ? "VARCHAR(50) NULL" : "TEXT NULL";
             var directionType = DBConnector.IsMySql(DBConnector.CapacityDatabaseSectionName) ? "VARCHAR(20) NULL" : "TEXT NULL";
-            var requiredColumns = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            var requiredColumns = new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 ["InstanceID"] = textType,
                 ["StationSchemeID"] = textType,
@@ -4352,7 +3187,7 @@ namespace SwitchYard.Service.Controllers
             var existingColumns = GetColumnNames(dbConnector, "stationroute");
             var shortTextType = DBConnector.IsMySql(DBConnector.CapacityDatabaseSectionName) ? "VARCHAR(50) NULL" : "TEXT NULL";
             var longTextType = DBConnector.IsMySql(DBConnector.CapacityDatabaseSectionName) ? "LONGTEXT NULL" : "TEXT NULL";
-            var requiredColumns = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            var requiredColumns = new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 ["InstanceID"] = shortTextType,
                 ["StationSchemeID"] = shortTextType,
@@ -4421,7 +3256,7 @@ namespace SwitchYard.Service.Controllers
             var existingColumns = GetColumnNames(dbConnector, "stationroutetime");
             var textType = DBConnector.IsMySql(DBConnector.CapacityDatabaseSectionName) ? "VARCHAR(50) NULL" : "TEXT NULL";
             var intType = DBConnector.IsMySql(DBConnector.CapacityDatabaseSectionName) ? "INT NULL" : "INTEGER NULL";
-            var requiredColumns = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            var requiredColumns = new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 ["InstanceID"] = textType,
                 ["StationSchemeID"] = textType,
@@ -4481,7 +3316,7 @@ namespace SwitchYard.Service.Controllers
 
             var existingColumns = GetColumnNames(dbConnector, "stationrouteend");
             var textType = DBConnector.IsMySql(DBConnector.CapacityDatabaseSectionName) ? "VARCHAR(50) NULL" : "TEXT NULL";
-            var requiredColumns = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            var requiredColumns = new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 ["InstanceID"] = textType,
                 ["StationSchemeID"] = textType,
@@ -4638,9 +3473,9 @@ namespace SwitchYard.Service.Controllers
             };
         }
 
-        private static string ToInvariantString(int value)
+        private static string ToInvariantString(string value)
         {
-            return value.ToString(CultureInfo.InvariantCulture);
+            return value;
         }
 
         private static int ToRoundedInt(double value)
@@ -4671,30 +3506,6 @@ namespace SwitchYard.Service.Controllers
             return double.TryParse(Convert.ToString(value, CultureInfo.InvariantCulture), NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed)
                 ? parsed
                 : 0;
-        }
-
-        private static int? ParseNullableInt(string? value)
-        {
-            if (int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed))
-            {
-                return parsed;
-            }
-
-            return null;
-        }
-
-        private static int CalculateLatestElementID(IEnumerable<string> ids)
-        {
-            var maxID = -1;
-            foreach (var id in ids)
-            {
-                if (int.TryParse(id, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed))
-                {
-                    maxID = Math.Max(maxID, parsed);
-                }
-            }
-
-            return maxID + 1;
         }
 
         private static string BuildPointKey(double x, double y)
@@ -4750,7 +3561,7 @@ namespace SwitchYard.Service.Controllers
                 {
                     var availableLayers = document.Layers
                         .Select(layer => layer.Name)
-                        .Order(StringComparer.OrdinalIgnoreCase)
+                        .Order(StringComparer.Ordinal)
                         .ToArray();
                     _logger.LogWarning(
                         "Requested DWG layer not found. Requested: {LayerName}, Available: {Layers}",

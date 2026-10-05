@@ -42,6 +42,11 @@ export interface SaveJsonRequest extends StationLayoutScope {
 }
 
 export interface SaveJsonResult {
+  savedJson?: string | null;
+  idMappings?: Record<string, Record<string, string>>;
+  repairCount?: number;
+  repairs?: string[];
+  repairedJson?: string | null;
   message: string;
   instanceId: string;
   stationSchemeId: string;
@@ -59,15 +64,21 @@ export interface SaveJsonResult {
   annotationCount?: number;
 }
 
+export interface RepairJsonResult {
+  json: string;
+  repairCount: number;
+  repairs: string[];
+}
+
 export interface SearchRoutesRequest extends StationLayoutScope {
-  startNodeId: number;
-  endNodeId: number;
+  startNodeId: string;
+  endNodeId: string;
 }
 
 export interface StationRouteSearchItem {
   direction: string;
-  nodeIds: number[];
-  linkIds: number[];
+  nodeIds: string[];
+  linkIds: string[];
   switchIds?: string[];
   cellIds: string[];
   signalIds?: string[];
@@ -80,8 +91,8 @@ export interface StationRouteSearchItem {
 }
 
 export interface SearchRoutesResult extends StationLayoutScope {
-  startNodeId: number;
-  endNodeId: number;
+  startNodeId: string;
+  endNodeId: string;
   routes: StationRouteSearchItem[];
 }
 
@@ -114,6 +125,8 @@ export interface StationLayoutGateway {
     stationSchemeId: string;
   }): Promise<void>;
   getJson(request: StationLayoutScope): Promise<StationLayoutDocument>;
+  /** Preview server-side binding repairs without persisting the document. */
+  repairJson?(request: SaveJsonRequest): Promise<RepairJsonResult>;
   saveJson(request: SaveJsonRequest): Promise<SaveJsonResult>;
   searchRoutes(request: SearchRoutesRequest): Promise<SearchRoutesResult>;
   extractDwgFile(request: ExtractDwgFileRequest): Promise<ExtractDwgFileResult>;

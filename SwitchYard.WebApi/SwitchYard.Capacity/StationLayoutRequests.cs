@@ -149,9 +149,9 @@ namespace SwitchYard.Capacity
 
         public string? StationSchemeID { get; set; }
 
-        public int StartNodeId { get; set; }
+        public string StartNodeId { get; set; } = string.Empty;
 
-        public int EndNodeId { get; set; }
+        public string EndNodeId { get; set; } = string.Empty;
     }
 
     public sealed class StationRouteSearchResponse
@@ -160,9 +160,9 @@ namespace SwitchYard.Capacity
 
         public string StationSchemeID { get; set; } = string.Empty;
 
-        public int StartNodeId { get; set; }
+        public string StartNodeId { get; set; } = string.Empty;
 
-        public int EndNodeId { get; set; }
+        public string EndNodeId { get; set; } = string.Empty;
 
         public List<StationRouteSearchResult> Routes { get; set; } = new();
     }
@@ -171,9 +171,9 @@ namespace SwitchYard.Capacity
     {
         public string Direction { get; set; } = string.Empty;
 
-        public List<int> NodeIds { get; set; } = new();
+        public List<string> NodeIds { get; set; } = new();
 
-        public List<int> LinkIds { get; set; } = new();
+        public List<string> LinkIds { get; set; } = new();
 
         public List<string> SwitchIds { get; set; } = new();
 

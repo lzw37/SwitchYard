@@ -136,15 +136,16 @@ function idValue(value: unknown, path: string, allowEmpty = false, archive = fal
   return id.trim() ? id : '';
 }
 
-function reference(value: unknown, ids: Set<string>, path: string, archive: boolean): void {
+function reference(value: unknown, ids: Set<string>, path: string, archive: boolean, allowUnresolved = false): void {
   // Direct references are nullable in the backend document contract.
   if (value === null) return;
   const id = idValue(value, path, true, archive);
-  if (id && !ids.has(id)) invalid(path, `references a missing element (${id})`);
+  if (id && !ids.has(id) && !allowUnresolved) invalid(path, `references a missing element (${id})`);
 }
 
-function referenceField(value: JsonObject, key: string, ids: Set<string>, path: string, archive: boolean): void {
-  if (own(value, key)) reference(value[key], ids, `${path}.${key}`, archive);
+export interface StationLayoutValidationOptions {
+  /** Only for requests to a backend which validates and repairs topology before accepting it. */
+  allowUnresolvedReferences?: boolean;
 }
 
 function validateEntityGeometry(entity: JsonObject, collection: StationLayoutCollection, path: string, archive: boolean): void {
@@ -179,7 +180,7 @@ export function isStationLayoutArchive(value: unknown): value is StationLayoutAr
 }
 
 /** Validate without normalizing, pruning extensions, assigning IDs, or changing topology. */
-export function validateStationLayoutJson(value: unknown): asserts value is StationLayoutDocument {
+export function validateStationLayoutJson(value: unknown, options: StationLayoutValidationOptions = {}): asserts value is StationLayoutDocument {
   if (!isObject(value)) invalid('$', 'must be an object');
   validateJsonValue(value, '$');
   const hasVersion = own(value, 'format') || own(value, 'formatVersion');
@@ -209,6 +210,9 @@ export function validateStationLayoutJson(value: unknown): asserts value is Stat
 
   const collections = {} as Record<StationLayoutCollection, JsonObject[]>;
   const ids = {} as Record<StationLayoutCollection, Set<string>>;
+  const referenceField = (entity: JsonObject, key: string, ids: Set<string>, path: string, archive: boolean) => {
+    if (own(entity, key)) reference(entity[key], ids, `${path}.${key}`, archive, options.allowUnresolvedReferences);
+  };
   for (const key of STATION_LAYOUT_COLLECTIONS) {
     const entries = value[key];
     if (!own(value, key) && !hasVersion) {
@@ -266,7 +270,7 @@ export function validateStationLayoutJson(value: unknown): asserts value is Stat
       }
       if (key === 'nodes' && own(entity, 'adjacentLineIDList')) {
         if (!Array.isArray(entity.adjacentLineIDList)) invalid(`${path}.adjacentLineIDList`, 'must be an array');
-        entity.adjacentLineIDList.forEach((id, i) => reference(id, ids.tracks, `${path}.adjacentLineIDList[${i}]`, hasVersion));
+        entity.adjacentLineIDList.forEach((id, i) => reference(id, ids.tracks, `${path}.adjacentLineIDList[${i}]`, hasVersion, options.allowUnresolvedReferences));
       }
       if (key === 'switches' && own(entity, 'branchVectorList')) {
         if (!Array.isArray(entity.branchVectorList)) invalid(`${path}.branchVectorList`, 'must be an array');
@@ -283,7 +287,7 @@ export function validateStationLayoutJson(value: unknown): asserts value is Stat
         if (hasVersion) stringField(entity, 'linkIDList', path);
         if (list !== null && typeof list !== 'string' && !Array.isArray(list)) invalid(`${path}.linkIDList`, 'must be a string or array');
         const links = Array.isArray(list) ? list : (list === null ? [] : list.split(/[,，;；\s]+/).filter(Boolean));
-        links.forEach((id, i) => reference(id, ids.tracks, `${path}.linkIDList[${i}]`, hasVersion));
+        links.forEach((id, i) => reference(id, ids.tracks, `${path}.linkIDList[${i}]`, hasVersion, options.allowUnresolvedReferences));
       }
     });
   }
@@ -297,15 +301,68 @@ export function parseStationLayoutJson(text: string): StationLayoutDocument {
   return document;
 }
 
+/** Rewrite persisted IDs in a detached document or editor history snapshot, without touching edits. */
+export function remapStationLayoutIds<T extends Record<string, any>>(
+  source: T, mappings: Record<string, Record<string, string>>,
+): T {
+  const result = JSON.parse(JSON.stringify(source));
+  const id = (collection: string, value: unknown) => {
+    const map = mappings[collection];
+    return map && Object.prototype.hasOwnProperty.call(map, String(value)) ? map[String(value)] : value;
+  };
+  const fields = (item: Record<string, any>, collection: string, names: string[]) => {
+    for (const key of Object.keys(item)) if (names.some(name => name.toLowerCase() === key.toLowerCase())) item[key] = id(collection, item[key]);
+  };
+  const list = (item: Record<string, any>, field: string, collection: string) => {
+    for (const key of Object.keys(item).filter(key => key.toLowerCase() === field.toLowerCase())) {
+      const value = item[key];
+      item[key] = Array.isArray(value) ? value.map(value => id(collection, value))
+        : typeof value === 'string' ? value.replace(/[^\s,，;；]+/g, value => String(id(collection, value))) : value;
+    }
+  };
+  for (const collection of STATION_LAYOUT_COLLECTIONS) {
+    for (const item of result[collection] || []) {
+      const oldId = item.id;
+      item.id = id(collection, oldId);
+      if (item.id !== oldId) { delete item.isNew; delete item.IsNew; }
+      if (collection === 'tracks') fields(item, 'nodes', ['fromNodeID', 'toNodeID']);
+      if (collection === 'nodes') list(item, 'adjacentLineIDList', 'tracks');
+      if (['signals', 'insulationJoints', 'bufferStops', 'switches'].includes(collection)) fields(item, 'nodes', ['bindingNodeID', 'nodeID']);
+      if (collection === 'curves') {
+        fields(item, 'nodes', ['nodeID', 'vertexNodeID', 'bindingNodeID']);
+        fields(item, 'tracks', ['tangentLinkID1', 'tangentLinkID2', 'linkID1', 'linkID2', 'bindingLink1ID', 'bindingLink2ID']);
+      }
+      if (collection === 'switches') for (const branch of item.branchVectorList || []) fields(branch, 'tracks', ['lineID', 'linkID', 'bindingLinkID']);
+      if (collection === 'cells') list(item, 'linkIDList', 'tracks');
+    }
+  }
+  if (result.importedCells) result.importedCells = remapStationLayoutIds({ cells: result.importedCells }, mappings).cells;
+  for (const cell of result.cellLinks || []) {
+    cell.id = id('cells', cell.id);
+    list(cell.fields, 'linkIDList', 'tracks');
+  }
+  const selections: Record<string, string> = {
+    selectedLineIds: 'tracks', selectedNodeIds: 'nodes', selectedSignalIds: 'signals',
+    selectedInsulationJointIds: 'insulationJoints', selectedBufferStopIds: 'bufferStops', selectedSwitchIds: 'switches',
+    selectedPlatformIds: 'platforms', selectedAnnotationIds: 'annotations',
+  };
+  for (const [key, collection] of Object.entries(selections)) if (result[key]) result[key] = result[key].map((value: unknown) => id(collection, value));
+  if (result.lastSelectedEquipment) {
+    const kinds: Record<string, string> = { link: 'tracks', node: 'nodes', signal: 'signals', insulationJoint: 'insulationJoints', bufferStop: 'bufferStops', switch: 'switches', platform: 'platforms', annotation: 'annotations', cell: 'cells' };
+    result.lastSelectedEquipment.id = id(kinds[result.lastSelectedEquipment.kind] ?? '', result.lastSelectedEquipment.id);
+  }
+  return result;
+}
+
 /** Export one complete, versioned document, preserving array order and JSON values. */
-export function serializeStationLayoutJson(document: StationLayoutDocument): string {
-  validateStationLayoutJson(document);
+export function serializeStationLayoutJson(document: StationLayoutDocument, options: StationLayoutValidationOptions = {}): string {
+  validateStationLayoutJson(document, options);
   const archive: StationLayoutDocument = {
     ...document,
     format: STATION_LAYOUT_JSON_FORMAT,
     formatVersion: STATION_LAYOUT_JSON_VERSION,
   };
   for (const key of STATION_LAYOUT_COLLECTIONS) archive[key] = document[key] ?? [];
-  validateStationLayoutJson(archive);
+  validateStationLayoutJson(archive, options);
   return `${JSON.stringify(archive, null, 2)}\n`;
 }

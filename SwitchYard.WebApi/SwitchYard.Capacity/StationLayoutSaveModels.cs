@@ -2,58 +2,6 @@ using System.Text.Json.Serialization;
 
 namespace SwitchYard.Capacity
 {
-    public sealed class StationLayoutNodeSaveContext
-    {
-        public IntegerIdAllocator Allocator { get; set; } = new();
-
-        public StationLayoutPersistenceTransform Transform { get; set; } = StationLayoutPersistenceTransform.Identity;
-
-        public List<StationLayoutNodeSaveEntry> Nodes { get; } = new();
-
-        public Dictionary<string, int> NodeIDBySourceID { get; } = new(StringComparer.Ordinal);
-
-        public Dictionary<string, int> NodeIDByPointKey { get; } = new(StringComparer.Ordinal);
-    }
-
-    public sealed class StationLayoutNodeSaveEntry
-    {
-        public string SourceID { get; set; } = string.Empty;
-
-        public int ID { get; set; }
-
-        public double DisplayX { get; set; }
-
-        public double DisplayY { get; set; }
-
-        public double DatabaseX { get; set; }
-
-        public double DatabaseY { get; set; }
-    }
-
-    public sealed class StationLayoutLinkSaveContext
-    {
-        public List<StationLayoutLinkSaveEntry> Links { get; } = new();
-
-        public Dictionary<string, int> LinkIDBySourceID { get; } = new(StringComparer.Ordinal);
-    }
-
-    public sealed class StationLayoutLinkSaveEntry
-    {
-        public string SourceID { get; set; } = string.Empty;
-
-        public int ID { get; set; }
-
-        public string Name { get; set; } = string.Empty;
-
-        public string? ArrowDirection { get; set; }
-
-        public string? ArrowType { get; set; }
-
-        public int FromNodeID { get; set; }
-
-        public int ToNodeID { get; set; }
-    }
-
     public sealed class StationLayoutSwitchSaveResult
     {
         public int SwitchCount { get; set; }

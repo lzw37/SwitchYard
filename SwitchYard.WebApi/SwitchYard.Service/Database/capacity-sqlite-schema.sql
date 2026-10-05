@@ -12,7 +12,8 @@ CREATE TABLE IF NOT EXISTS "stationscheme" (
     "Name" TEXT NULL,
     "DisplayStyles" TEXT NULL,
     "GridSettings" TEXT NULL,
-    "LayoutDocument" TEXT NULL
+    "LayoutMetadata" TEXT NULL,
+    "LayoutExtensions" TEXT NULL
 );
 
 CREATE TABLE IF NOT EXISTS "stationlayoutrevision" (
@@ -27,20 +28,28 @@ CREATE TABLE IF NOT EXISTS "stationlayoutrevision" (
 CREATE TABLE IF NOT EXISTS "node" (
     "InstanceID" TEXT NULL,
     "StationSchemeID" TEXT NULL,
-    "ID" INTEGER NULL,
+    "ID" TEXT NULL,
     "X" REAL NULL,
-    "Y" REAL NULL
+    "Y" REAL NULL,
+    "ExtraProperties" TEXT NULL,
+    "LayoutOrder" INTEGER NULL
 );
 
 CREATE TABLE IF NOT EXISTS "link" (
     "InstanceID" TEXT NULL,
     "StationSchemeID" TEXT NULL,
-    "ID" INTEGER NULL,
+    "ID" TEXT NULL,
     "Name" TEXT NULL,
-    "FromNodeID" INTEGER NULL,
-    "ToNodeID" INTEGER NULL,
+    "FromNodeID" TEXT NULL,
+    "ToNodeID" TEXT NULL,
     "ArrowDirection" TEXT NULL,
-    "ArrowType" TEXT NULL
+    "ArrowType" TEXT NULL,
+    "X1" REAL NULL,
+    "Y1" REAL NULL,
+    "X2" REAL NULL,
+    "Y2" REAL NULL,
+    "ExtraProperties" TEXT NULL,
+    "LayoutOrder" INTEGER NULL
 );
 
 CREATE TABLE IF NOT EXISTS "signal" (
@@ -50,7 +59,11 @@ CREATE TABLE IF NOT EXISTS "signal" (
     "Name" TEXT NULL,
     "Type" TEXT NULL,
     "Direction" TEXT NULL,
-    "BindingNodeID" TEXT NULL
+    "BindingNodeID" TEXT NULL,
+    "X" REAL NULL,
+    "Y" REAL NULL,
+    "ExtraProperties" TEXT NULL,
+    "LayoutOrder" INTEGER NULL
 );
 
 CREATE TABLE IF NOT EXISTS "insulationjoint" (
@@ -58,7 +71,11 @@ CREATE TABLE IF NOT EXISTS "insulationjoint" (
     "StationSchemeID" TEXT NULL,
     "ID" TEXT NULL,
     "Type" TEXT NULL,
-    "BindingNodeID" TEXT NULL
+    "BindingNodeID" TEXT NULL,
+    "X" REAL NULL,
+    "Y" REAL NULL,
+    "ExtraProperties" TEXT NULL,
+    "LayoutOrder" INTEGER NULL
 );
 
 CREATE TABLE IF NOT EXISTS "bufferstop" (
@@ -67,7 +84,11 @@ CREATE TABLE IF NOT EXISTS "bufferstop" (
     "ID" TEXT NULL,
     "Type" TEXT NULL,
     "Direction" TEXT NULL,
-    "BindingNodeID" TEXT NULL
+    "BindingNodeID" TEXT NULL,
+    "X" REAL NULL,
+    "Y" REAL NULL,
+    "ExtraProperties" TEXT NULL,
+    "LayoutOrder" INTEGER NULL
 );
 
 CREATE TABLE IF NOT EXISTS "platform" (
@@ -78,7 +99,9 @@ CREATE TABLE IF NOT EXISTS "platform" (
     "X" REAL NULL,
     "Y" REAL NULL,
     "Width" REAL NULL,
-    "Height" REAL NULL
+    "Height" REAL NULL,
+    "ExtraProperties" TEXT NULL,
+    "LayoutOrder" INTEGER NULL
 );
 
 CREATE TABLE IF NOT EXISTS "switch" (
@@ -87,7 +110,11 @@ CREATE TABLE IF NOT EXISTS "switch" (
     "ID" TEXT NULL,
     "Name" TEXT NULL,
     "Type" TEXT NULL,
-    "BindingNodeID" TEXT NULL
+    "BindingNodeID" TEXT NULL,
+    "X" REAL NULL,
+    "Y" REAL NULL,
+    "ExtraProperties" TEXT NULL,
+    "LayoutOrder" INTEGER NULL
 );
 
 CREATE TABLE IF NOT EXISTS "switchbranchvector" (
@@ -97,7 +124,8 @@ CREATE TABLE IF NOT EXISTS "switchbranchvector" (
     "Sequence" INTEGER NULL,
     "X" REAL NULL,
     "Y" REAL NULL,
-    "BindingLinkID" TEXT NULL
+    "BindingLinkID" TEXT NULL,
+    "ExtraProperties" TEXT NULL
 );
 
 CREATE TABLE IF NOT EXISTS "stationrouteend" (
@@ -143,7 +171,9 @@ CREATE TABLE IF NOT EXISTS "cell" (
     "StationSchemeID" TEXT NULL,
     "ID" TEXT NULL,
     "LinkIDList" TEXT NULL,
-    "Name" TEXT NULL
+    "Name" TEXT NULL,
+    "ExtraProperties" TEXT NULL,
+    "LayoutOrder" INTEGER NULL
 );
 
 CREATE TABLE IF NOT EXISTS "annotation" (
@@ -158,7 +188,9 @@ CREATE TABLE IF NOT EXISTS "annotation" (
     "FontWeight" TEXT NULL,
     "FontStyle" TEXT NULL,
     "Angle" REAL NULL,
-    "TextColor" TEXT NULL
+    "TextColor" TEXT NULL,
+    "ExtraProperties" TEXT NULL,
+    "LayoutOrder" INTEGER NULL
 );
 
 CREATE TABLE IF NOT EXISTS "curve" (
@@ -168,7 +200,7 @@ CREATE TABLE IF NOT EXISTS "curve" (
     "BindingNodeID" TEXT NULL,
     "BindingLink1ID" TEXT NULL,
     "BindingLink2ID" TEXT NULL,
-    "Radius" INTEGER NULL,
+    "Radius" REAL NULL,
     "Angle" REAL NULL,
     "TangentDistance" REAL NULL,
     "StartX" REAL NULL,
@@ -178,7 +210,9 @@ CREATE TABLE IF NOT EXISTS "curve" (
     "CenterX" REAL NULL,
     "CenterY" REAL NULL,
     "LargeArcFlag" INTEGER NULL,
-    "SweepFlag" INTEGER NULL
+    "SweepFlag" INTEGER NULL,
+    "ExtraProperties" TEXT NULL,
+    "LayoutOrder" INTEGER NULL
 );
 
 CREATE TABLE IF NOT EXISTS "operationplan" (

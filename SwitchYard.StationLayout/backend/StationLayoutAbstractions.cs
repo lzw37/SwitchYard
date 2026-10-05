@@ -15,8 +15,8 @@ public interface IStationLayoutRepository
     /// Returns a detached layout snapshot, including its current revision. When
     /// <paramref name="requestedSchemeId"/> is null, the host applies its established
     /// default-scheme resolution rule.
-    /// Use StationLayoutDocument.FromJson/ToJson when cloning or persisting complete
-    /// archives so optional-field presence and case-distinct extensions are retained.
+    /// Read related tables and the revision from one consistent transaction. Preserve
+    /// optional-field presence and extension attributes when assembling the document.
     /// </summary>
     Task<StationLayoutRecord?> LoadAsync(
         string scopeId,
@@ -58,6 +58,8 @@ public interface IStationLayoutRepository
     /// the implementation must compare it with the persisted revision in the same
     /// transaction as the write, throw StationLayoutConflictException on mismatch, and
     /// increment the revision exactly once on success.
+    /// If the host assigns identities, return the persisted Document and per-collection
+    /// IdMappings so clients can acknowledge them without discarding newer edits.
     /// </summary>
     Task<StationLayoutWriteResult> ReplaceLayoutAsync(
         StationLayoutWriteRequest request,
@@ -110,7 +112,11 @@ public sealed record StationLayoutWriteRequest(
 
 public sealed record StationLayoutWriteResult(
     string SchemeId,
-    long Revision);
+    long Revision)
+{
+    public StationLayoutDocument? Document { get; init; }
+    public Dictionary<string, Dictionary<string, string>> IdMappings { get; init; } = [];
+}
 
 public sealed record StationLayoutReadResult(
     StationLayoutDocument Document,
@@ -140,6 +146,9 @@ public sealed class StationLayoutModuleOptions
     public string DefaultSchemeName { get; set; } = "车站布置图";
 
     public int MaximumSchemeNameLength { get; set; } = 100;
+
+    /// <summary>Maximum positional error, in layout coordinates, for an unambiguous binding repair.</summary>
+    public double TopologyRepairTolerance { get; set; } = 1;
 }
 
 public enum StationLayoutAccessStatus

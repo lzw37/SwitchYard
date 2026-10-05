@@ -1,22 +1,22 @@
-﻿using System;
+using System;
 using System.Linq;
 
 namespace SwitchYard.Capacity
 {
     public class DirectiveGraphLink
     {
-        public int ID { get; set; }
+        public string ID { get; set; } = string.Empty;
 
         public string? Name { get; set; }
 
-        public int FromNodeID { get; set; }
+        public string FromNodeID { get; set; } = string.Empty;
 
-        public int ToNodeID { get; set; }
+        public string ToNodeID { get; set; } = string.Empty;
     }
 
     public class DirectiveGraphNode
     {
-        public int ID { get; set; }
+        public string ID { get; set; } = string.Empty;
 
         public double X { get; set; }
 
@@ -92,9 +92,9 @@ namespace SwitchYard.Capacity
             return graph;
         }
 
-        private static Dictionary<int, StationNodeRow> BuildStationNodeLookup(IReadOnlyCollection<StationNodeRow> stationNodes)
+        private static Dictionary<string, StationNodeRow> BuildStationNodeLookup(IReadOnlyCollection<StationNodeRow> stationNodes)
         {
-            var nodeByID = new Dictionary<int, StationNodeRow>();
+            var nodeByID = new Dictionary<string, StationNodeRow>();
 
             foreach (var node in stationNodes)
             {
@@ -114,7 +114,7 @@ namespace SwitchYard.Capacity
 
         private static void EnsureUniqueStationLinkIDs(IReadOnlyCollection<StationLinkRow> stationLinks)
         {
-            var linkIDs = new HashSet<int>();
+            var linkIDs = new HashSet<string>();
 
             foreach (var link in stationLinks)
             {
@@ -127,7 +127,7 @@ namespace SwitchYard.Capacity
 
         private static DirectiveGraphLink BuildDirectiveGraphLink(
             StationLinkRow stationLink,
-            IReadOnlyDictionary<int, StationNodeRow> stationNodeByID,
+            IReadOnlyDictionary<string, StationNodeRow> stationNodeByID,
             DirectiveGraphDirections direction)
         {
             if (!stationNodeByID.TryGetValue(stationLink.FromNodeID, out var fromNode))
@@ -157,7 +157,7 @@ namespace SwitchYard.Capacity
             };
         }
 
-        private static (int LeftNodeID, int RightNodeID) GetDirectionalEndpointIDs(
+        private static (string LeftNodeID, string RightNodeID) GetDirectionalEndpointIDs(
             StationLinkRow stationLink,
             StationNodeRow fromNode,
             StationNodeRow toNode)
@@ -213,7 +213,7 @@ namespace SwitchYard.Capacity
                 incomingCountsByNodeID[link.ToNodeID]++;
             }
 
-            var readyNodeIDs = new Queue<int>(incomingCountsByNodeID
+            var readyNodeIDs = new Queue<string>(incomingCountsByNodeID
                 .Where(pair => pair.Value == 0)
                 .Select(pair => pair.Key));
             var visitedNodeCount = 0;

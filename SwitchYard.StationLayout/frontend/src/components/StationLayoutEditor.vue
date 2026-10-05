@@ -1,5 +1,6 @@
 <script setup>
 import { createStationLayoutTranslator } from "../messages";
+import { remapStationLayoutIds } from "../layoutJson";
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import {
     DEFAULT_BUFFER_STOP_DIRECTION,
@@ -45,6 +46,7 @@ const emit = defineEmits([
     "route-node-pick",
     "cell-name-click",
     "cell-rename",
+    "cell-links-change",
     "delete-selection-request",
     "topology-rebuilt",
 ]);
@@ -1458,9 +1460,47 @@ function applyState(state) {
     selectedPlatformIds.value = new Set(state.selectedPlatformIds || []);
     selectedAnnotationIds.value = new Set(state.selectedAnnotationIds || []);
     lastSelectedEquipmentRef.value = state.lastSelectedEquipment || null;
+    if (state.cellLinks) emit("cell-links-change", state.cellLinks);
     ensureCanvasForAllElements();
     emitSelectedAnnotationChange();
     emitSelectedEquipmentChange();
+}
+
+function applyPersistedIds(mappings) {
+    if (!mappings || !Object.values(mappings).some(map => Object.keys(map).length)) return;
+    finishedCmdList.value = finishedCmdList.value.map(state => remapStationLayoutIds(state, mappings));
+    revokedCmdList.value = revokedCmdList.value.map(state => remapStationLayoutIds(state, mappings));
+    applyState(remapStationLayoutIds(cloneState(), mappings));
+}
+
+function applySavedLayout(document) {
+    const prepared = prepareLayoutDocument(document, { preserveDocument: true });
+    const state = cloneState();
+    for (const name of layoutCollectionNames) state[name] = prepared.document[name];
+    state.importedCells = prepared.document.cells;
+    state.layoutMetadata = prepared.metadata;
+    state.layoutRootExtras = prepared.rootExtras;
+    state.preserveDocument = true;
+    applyState(state);
+}
+
+let mutationCells = null;
+
+function captureCellLinks(cell) {
+    return {
+        id: getCellId(cell),
+        fields: Object.fromEntries(["linkIDList", "LinkIDList"]
+            .filter((key) => hasOwnProperty(cell, key)).map((key) => [key, cell[key]])),
+    };
+}
+
+function captureHistoryState(target) {
+    const state = cloneState();
+    if (target.cellLinks) {
+        const ids = new Set(target.cellLinks.map((cell) => cell.id));
+        state.cellLinks = JSON.parse(JSON.stringify(props.cells.filter((cell) => ids.has(getCellId(cell))).map(captureCellLinks)));
+    }
+    return state;
 }
 
 function executeMutation(mutator, options = {}) {
@@ -1473,6 +1513,7 @@ function executeMutation(mutator, options = {}) {
             finishedCmdList.value.shift();
         }
         revokedCmdList.value = [];
+        mutationCells = JSON.parse(JSON.stringify(props.cells));
     }
 
     mutationDepth += 1;
@@ -1481,6 +1522,12 @@ function executeMutation(mutator, options = {}) {
     } finally {
         mutationDepth -= 1;
         if (isRootMutation) {
+            const changedCells = finishedCmdList.value.at(-1)?.cellLinks;
+            if (changedCells) {
+                const ids = new Set(changedCells.map((cell) => cell.id));
+                emit("cell-links-change", mutationCells.filter((cell) => ids.has(getCellId(cell))).map(captureCellLinks));
+            }
+            mutationCells = null;
             ensureCanvasForAllElements();
         }
     }
@@ -1490,8 +1537,8 @@ function revoke() {
     if (props.readonly) return;
 
     if (finishedCmdList.value.length === 0) return;
-    revokedCmdList.value.push(cloneState());
     const prev = finishedCmdList.value.pop();
+    revokedCmdList.value.push(captureHistoryState(prev));
     applyState(prev);
 }
 
@@ -1499,8 +1546,8 @@ function redo() {
     if (props.readonly) return;
 
     if (revokedCmdList.value.length === 0) return;
-    finishedCmdList.value.push(cloneState());
     const next = revokedCmdList.value.pop();
+    finishedCmdList.value.push(captureHistoryState(next));
     applyState(next);
 }
 
@@ -2072,7 +2119,7 @@ function drawingLineMouseMove(x, y) {
 function endDrawLine() {
     if (!tempLine.value) return;
     const line = {
-        id: nextId(),
+        id: "",
         name: "",
         x1: tempLine.value.x1,
         y1: tempLine.value.y1,
@@ -2084,6 +2131,7 @@ function endDrawLine() {
     const topologyBefore = props.autoGenerateTopology ? captureTopologyState() : null;
     let topologyImpact = null;
     executeMutation(() => {
+        line.id = nextId();
         tracks.value.push(line);
         if (props.autoGenerateTopology) {
             // Keep the completed stroke and all topology changes in one undo step.
@@ -2126,13 +2174,113 @@ function deleteLine() {
     if (props.readonly) return;
 
     if (selectedLineIds.value.size === 0) return;
+    const topologyBefore = captureTopologyState();
     executeMutation(() => {
+        const replacements = new Map(tracks.value.filter((line) => selectedLineIds.value.has(line.id))
+            .map((line) => [String(line.id), []]));
         tracks.value = tracks.value.filter((line) => !selectedLineIds.value.has(line.id));
+        replaceTrackReferences(replacements);
         selectedLineIds.value = new Set();
         clearLastSelectedEquipment((selection) => selection.kind === "link");
         finishAnchorInteraction();
     });
+    emitTopologyImpact(buildTopologyImpact(topologyBefore));
     emitSelectedEquipmentChange();
+}
+
+// Keep the edit and every dependent reference in the same undo transaction.
+function replaceTrackReferences(replacements) {
+    if (replacements.size === 0) return;
+    rebuildNodeAdjacentLineIds();
+    const replacementAtNode = (id, nodeID, position) => {
+        const candidates = replacements.get(String(id)) || [];
+        if (nodeID) return candidates.find((line) => String(line.fromNodeID) === String(nodeID) || String(line.toNodeID) === String(nodeID));
+        return candidates.find((line) => position && isLineEndpoint(line, position));
+    };
+
+    for (const sw of switches.value) {
+        if (!Array.isArray(sw.branchVectorList)) continue;
+        const nodeID = getEquipmentBindingNodeId(sw);
+        const node = getNodeById(nodeID);
+        sw.branchVectorList = sw.branchVectorList.flatMap((vector) => {
+            if (!replacements.has(String(vector.lineID))) return [vector];
+            const line = replacementAtNode(vector.lineID, nodeID, sw.position);
+            if (!line) return [];
+            const direction = getOutgoingLineVector(line, node || sw.position);
+            return [{ ...vector, ...(direction || {}), lineID: line.id }];
+        });
+    }
+
+    curves.value = curves.value.flatMap((curve) => {
+        const fields = ["tangentLinkID1", "tangentLinkID2", "linkID1", "linkID2"]
+            .filter((key) => replacements.has(String(curve[key])));
+        if (fields.length === 0) return [curve];
+        const nodeID = curve.nodeID || curve.vertexNodeID;
+        for (const key of fields) {
+            const line = replacementAtNode(curve[key], nodeID);
+            // A corner no longer exists when either incident track is deleted.
+            if (!line) return [];
+            curve[key] = line.id;
+        }
+        const node = getNodeById(nodeID);
+        const line1 = tracks.value.find((line) => line.id === (curve.tangentLinkID1 || curve.linkID1));
+        const line2 = tracks.value.find((line) => line.id === (curve.tangentLinkID2 || curve.linkID2));
+        const rebuilt = node && line1 && line2 && buildCurveForCorner(node, line1, line2, curve.radius, curve.id);
+        if (!rebuilt) return [curve];
+        return [mergeCurveGeometry(curve, rebuilt)];
+    });
+
+    const remapCell = (cell) => {
+        let updated = cell;
+        const keys = preserveDocument.value || hasOwnProperty(cell, "linkIDList") ? ["linkIDList"] : ["LinkIDList"];
+        for (const key of keys) {
+            if (!hasOwnProperty(cell, key)) continue;
+            const ids = parseCellLinkIdList(cell[key]);
+            if (!ids.some((id) => replacements.has(id))) continue;
+            const nextIds = [...new Set(ids.flatMap((id) => replacements.has(id)
+                ? replacements.get(id).map((line) => String(line.id)) : [id]))];
+            updated = { ...updated, [key]: Array.isArray(cell[key]) ? nextIds : nextIds.join(",") };
+        }
+        return updated;
+    };
+    importedCells.value = importedCells.value.map(remapCell);
+    if (mutationCells) {
+        const history = finishedCmdList.value.at(-1);
+        mutationCells = mutationCells.map((cell) => {
+            const updated = remapCell(cell);
+            if (updated !== cell) {
+                history.cellLinks ||= [];
+                if (!history.cellLinks.some((item) => item.id === getCellId(cell))) history.cellLinks.push(captureCellLinks(cell));
+            }
+            return updated;
+        });
+    }
+    selectedLineIds.value = new Set([...selectedLineIds.value].flatMap((id) => replacements.has(String(id))
+        ? replacements.get(String(id)).map((line) => line.id) : [id]));
+    clearLastSelectedEquipment((selection) => selection.kind === "link" && replacements.has(String(selection.id)));
+}
+
+function splitTrack(line, points, firstIndex = 0) {
+    const nodeAtPoint = (point, existingID) => {
+        const existing = getNodeById(existingID) || nodes.value.find((node) => isSamePoint(node, point));
+        if (existing) return existing;
+        const node = { id: nextId(), x: Number(point.x), y: Number(point.y), adjacentLineIDList: [] };
+        nodes.value.push(node);
+        return node;
+    };
+    const endpoints = points.map((point, index) => nodeAtPoint(point,
+        index === 0 ? line.fromNodeID : index === points.length - 1 ? line.toNodeID : ""));
+    return points.slice(0, -1).flatMap((point, index) => {
+        const end = points[index + 1];
+        if (isSamePoint(point, end)) return [];
+        const preferredID = `${line.id}s${index + firstIndex}`;
+        const id = tracks.value.some((track) => String(track.id) === preferredID) ? nextId() : preferredID;
+        const segment = { ...line, id, x1: point.x, y1: point.y, x2: end.x, y2: end.y,
+            fromNodeID: endpoints[index].id, toNodeID: endpoints[index + 1].id };
+        // Reserve each new ID before allocating the next segment or node.
+        tracks.value.push(segment);
+        return [segment];
+    });
 }
 
 function getBoundEquipmentForNodeIds(nodeIds) {
@@ -2215,6 +2363,12 @@ function deleteNode(options = {}) {
 
     executeMutation(() => {
         nodes.value = nodes.value.filter((n) => !selectedIds.has(n.id));
+        for (const line of tracks.value) {
+            if (selectedIds.has(line.fromNodeID)) line.fromNodeID = "";
+            if (selectedIds.has(line.toNodeID)) line.toNodeID = "";
+        }
+        curves.value = curves.value.filter((curve) => !selectedIds.has(curve.nodeID) && !selectedIds.has(curve.vertexNodeID));
+        rebuildNodeAdjacentLineIds();
         selectedNodeIds.value = new Set();
         if (options?.deleteBoundEquipment === true) {
             deleteBoundEquipment(boundEquipment);
@@ -2676,7 +2830,9 @@ function autoMergeNode() {
         finishAnchorInteraction();
         for (const curve of curves.value) {
             curve.nodeID = resolveNodeID(curve.nodeID);
+            if (curve.vertexNodeID != null) curve.vertexNodeID = resolveNodeID(curve.vertexNodeID);
         }
+        replaceTrackReferences(new Map([...removedLineIDs].map((id) => [String(id), []])));
         refreshCurvesForChangedGeometry({
             lineIds: new Set(tracks.value.map((line) => line.id)),
             nodeIds: new Set(nodes.value.map((node) => node.id)),
@@ -2737,6 +2893,7 @@ function autoSeparateLine() {
             }
         }
 
+        const replacements = new Map();
         const nextTracks = [...tracks.value.filter((line) => !candidateLineDict[line.id])];
 
         for (const lineID of Object.keys(candidateLineDict)) {
@@ -2750,24 +2907,23 @@ function autoSeparateLine() {
             }
             pList.sort((a, b) => (a.positionRate < b.positionRate ? -1 : 1));
 
-            for (let idx = 0; idx < pList.length - 1; idx += 1) {
-                const p1 = pList[idx];
-                const p2 = pList[idx + 1];
-                if (isSamePoint(p1, p2)) continue;
-                nextTracks.push({
-                    ...line,
-                    id: `${line.id}s${idx}`,
-                    x1: p1.x,
-                    y1: p1.y,
-                    x2: p2.x,
-                    y2: p2.y,
-                    fromNodeID: "",
-                    toNodeID: "",
-                });
-            }
+            const segments = splitTrack(line, pList);
+            replacements.set(String(line.id), segments);
+            nextTracks.push(...segments);
         }
 
         tracks.value = nextTracks;
+        if (replacements.size > 0) {
+            // A T-junction's unsplit branch must join the newly created node too.
+            for (const line of tracks.value) {
+                for (const [key, x, y] of [["fromNodeID", "x1", "y1"], ["toNodeID", "x2", "y2"]]) {
+                    if (line[key]) continue;
+                    const node = nodes.value.find((item) => isSamePoint(item, { x: line[x], y: line[y] }));
+                    if (node) line[key] = node.id;
+                }
+            }
+        }
+        replaceTrackReferences(replacements);
         markCrossPoint();
     });
     const topologyImpact = isRootMutation ? buildTopologyImpact(topologyBefore) : null;
@@ -2918,34 +3074,18 @@ function drawingNodeMouseDown(x, y) {
 
     if (!minSnapPoint || !minDistLine) return;
 
+    const topologyBefore = captureTopologyState();
     executeMutation(() => {
         const nodeX = roundLayoutNumber(minSnapPoint.x);
         const nodeY = roundLayoutNumber(minSnapPoint.y);
-        const n = { id: nextId(), x: nodeX, y: nodeY, adjacentLineIDList: [`${minDistLine.id}s1`, `${minDistLine.id}s2`] };
-
-        const l1 = {
-            id: `${minDistLine.id}s1`,
-            x1: minDistLine.x1,
-            y1: minDistLine.y1,
-            x2: nodeX,
-            y2: nodeY,
-            fromNodeID: minDistLine.fromNodeID,
-            toNodeID: n.id,
-        };
-        const l2 = {
-            id: `${minDistLine.id}s2`,
-            x1: nodeX,
-            y1: nodeY,
-            x2: minDistLine.x2,
-            y2: minDistLine.y2,
-            fromNodeID: n.id,
-            toNodeID: minDistLine.toNodeID,
-        };
-
+        const segments = splitTrack(minDistLine, [
+            { x: minDistLine.x1, y: minDistLine.y1 }, { x: nodeX, y: nodeY },
+            { x: minDistLine.x2, y: minDistLine.y2 },
+        ], 1);
         tracks.value = tracks.value.filter((line) => line.id !== minDistLine.id);
-        tracks.value.push(l1, l2);
-        nodes.value.push(n);
+        replaceTrackReferences(new Map([[String(minDistLine.id), segments]]));
     });
+    emitTopologyImpact(buildTopologyImpact(topologyBefore));
 }
 
 function autoGenerateNodes() {
@@ -2954,7 +3094,7 @@ function autoGenerateNodes() {
     executeMutation(() => {
         const previousNodeByID = new Map(nodes.value.map((node) => [node.id, { ...node }]));
         const previousNodes = nodes.value.map((node) => ({ ...node }));
-        nodes.value = [];
+        // Keep existing IDs reserved, including isolated equipment binding nodes.
         const nodeList = [];
         const findReusablePreviousNode = (x, y) => {
             const point = { x: Number(x), y: Number(y) };
@@ -2972,6 +3112,7 @@ function autoGenerateNodes() {
                 adjacentLineIDList: [],
             };
             nodeList.push(n);
+            if (!previousNode) nodes.value.push(n);
             return n;
         };
 
@@ -2984,7 +3125,9 @@ function autoGenerateNodes() {
             n2.adjacentLineIDList.push(l.id);
         }
 
-        nodes.value = nodeList;
+        const usedNodeIDs = new Set(nodeList.map((node) => node.id));
+        nodes.value = [...nodeList, ...previousNodes.filter((node) => !usedNodeIDs.has(node.id))
+            .map((node) => ({ ...node, adjacentLineIDList: [] }))];
         for (const curve of curves.value) {
             const previousNode = previousNodeByID.get(curve.nodeID);
             if (!previousNode) continue;
@@ -4039,14 +4182,21 @@ function refreshCurvesForChangedGeometry({ lineIds = new Set(), nodeIds = new Se
         const line2 = lineByID.get(curve.tangentLinkID2);
         if (!curveNode || !line1 || !line2) return curve;
 
-        return buildCurveForCorner(
+        const rebuilt = buildCurveForCorner(
             curveNode,
             line1,
             line2,
             toFiniteNumber(curve.radius) || defaultCurveRadius,
             curve.id
-        ) || curve;
+        );
+        return rebuilt ? mergeCurveGeometry(curve, rebuilt) : curve;
     });
+}
+
+function mergeCurveGeometry(curve, rebuilt) {
+    return { ...curve, ...rebuilt,
+        start: { ...curve.start, ...rebuilt.start }, end: { ...curve.end, ...rebuilt.end },
+        center: { ...curve.center, ...rebuilt.center } };
 }
 
 function updateCurvesForNodeMove(node) {
@@ -5331,6 +5481,8 @@ onBeforeUnmount(() => {
 });
 
 defineExpose({
+    applySavedLayout,
+    applyPersistedIds,
     editModeCode,
     drawingObject,
     mouseGridSnapModeCode,

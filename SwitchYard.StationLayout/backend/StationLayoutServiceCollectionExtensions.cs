@@ -34,6 +34,9 @@ public static class StationLayoutServiceCollectionExtensions
                 "MaximumSchemeNameLength must be greater than zero.");
         }
 
+        if (!double.IsFinite(options.TopologyRepairTolerance) || options.TopologyRepairTolerance <= 0)
+            throw new ArgumentOutOfRangeException(nameof(configure), "TopologyRepairTolerance must be positive and finite.");
+
         services.TryAddSingleton(options);
         services.TryAddSingleton<IStationLayoutArtifactSink, NullStationLayoutArtifactSink>();
         services.TryAddScoped<IStationLayoutService, StationLayoutService>();

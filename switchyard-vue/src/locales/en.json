@@ -2247,7 +2247,7 @@
                 "cellName": "Track circuit name",
                 "saved": "Display styles saved",
                 "saveFailed": "Failed to save display styles: ",
-                "invalidLayout": "Could not save display styles. Check the layout data."
+                "invalidLayout": "Could not save the station layout: layout data validation failed."
             },
             "arrows": {
                 "none": "Hidden",
@@ -2382,6 +2382,9 @@
                 "completed": "DWG extraction complete: {count} segments generated"
             },
             "topology": {
+                "repaired": "Automatically repaired {count} binding fields using positions. Save to persist the repairs.",
+                "repairSaved": "Automatically repaired {count} binding fields using positions and saved the layout.",
+                "repairNewEdits": "The saved layout was repaired. Newer canvas edits were kept; save again to include them.",
                 "recheck": "The latest topology was saved. Splitting tracks, generating nodes, or merging nodes may affect equipment bindings, switch and curve associations, cells, and existing routes. Check equipment with “Correct equipment node bindings”, review or regenerate cells, and revalidate any configured routes.",
                 "curvesGenerated": "{count} curves generated"
             }

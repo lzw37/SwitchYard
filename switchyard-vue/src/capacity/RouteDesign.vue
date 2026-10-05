@@ -2701,11 +2701,6 @@ function setRouteSearchCandidates(candidates: StationRouteSearchCandidate[]) {
     routeSearchDialogVisible.value = true
 }
 
-function parseRouteNodeIdNumber(nodeID: string): number | null {
-    const nodeNumber = Number(String(nodeID || '').trim())
-    return Number.isInteger(nodeNumber) ? nodeNumber : null
-}
-
 function readSearchRouteRows(responseData: any): any[] {
     return Array.isArray(responseData?.routes)
         ? responseData.routes
@@ -2721,17 +2716,11 @@ async function fetchStationRouteCandidates(startNodeID: string, endNodeID: strin
         throw new Error(t('routeDesign.stationRoute.messages.selectScheme'))
     }
 
-    const startNodeNumber = parseRouteNodeIdNumber(startNodeID)
-    const endNodeNumber = parseRouteNodeIdNumber(endNodeID)
-    if (startNodeNumber == null || endNodeNumber == null) {
-        throw new Error(t('routeDesign.stationRoute.messages.nodeIdMustBeInteger'))
-    }
-
     const response = await axios.post('/StationLayout/SearchRoutes', {
         instanceID,
         stationSchemeID,
-        startNodeId: startNodeNumber,
-        endNodeId: endNodeNumber,
+        startNodeId: startNodeID,
+        endNodeId: endNodeID,
     }, {
         params: { instanceID, stationSchemeID },
     })
@@ -2751,8 +2740,8 @@ async function searchStationRoutesForCreate() {
         return
     }
 
-    if (parseRouteNodeIdNumber(startNodeID) == null || parseRouteNodeIdNumber(endNodeID) == null) {
-        ElMessage.warning(t('routeDesign.stationRoute.messages.nodeIdMustBeInteger'))
+    if (!startNodeID || !endNodeID) {
+        ElMessage.warning(t('routeDesign.autoRoute.messages.startEndRequired'))
         return
     }
 
@@ -2981,13 +2970,6 @@ async function autoGenerateStationRoutes() {
     autoRouteEndNodeIds.value = normalizeRouteListValues(autoRouteEndNodeIds.value)
     if (autoRouteStartNodeIds.value.length === 0 || autoRouteEndNodeIds.value.length === 0) {
         ElMessage.warning(t('routeDesign.autoRoute.messages.startEndRequired'))
-        return
-    }
-
-    const invalidNodeID = [...autoRouteStartNodeIds.value, ...autoRouteEndNodeIds.value]
-        .find((nodeID) => parseRouteNodeIdNumber(nodeID) == null)
-    if (invalidNodeID) {
-        ElMessage.warning(t('routeDesign.stationRoute.messages.nodeIdMustBeInteger'))
         return
     }
 

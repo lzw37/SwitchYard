@@ -11,8 +11,8 @@ internal static partial class StationLayoutRouteSearcher
         string scopeId,
         string schemeId,
         StationLayoutDocument document,
-        int startNodeId,
-        int endNodeId)
+        string startNodeId,
+        string endNodeId)
     {
         ArgumentNullException.ThrowIfNull(document);
 
@@ -42,24 +42,22 @@ internal static partial class StationLayoutRouteSearcher
                 .Select(route => ToResult(route, document))
                 .OrderBy(result => result.CellIds.Count)
                 .ThenBy(result => result.LinkIds.Count)
-                .ThenBy(result => result.Direction, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(result => result.Direction, StringComparer.Ordinal)
                 .ThenBy(result => string.Join(",", result.NodeIds))
                 .ToList()
         };
         return response;
     }
 
-    private static Dictionary<int, StationRouteNode> BuildNodes(
+    private static Dictionary<string, StationRouteNode> BuildNodes(
         IEnumerable<StationLayoutNode> source)
     {
-        var nodes = new Dictionary<int, StationRouteNode>();
+        var nodes = new Dictionary<string, StationRouteNode>();
         foreach (var item in source)
         {
-            if (!TryParseIntegerId(item.ID, out var id))
-            {
-                throw new StationLayoutValidationException(
-                    $"Node ID '{item.ID}' must be an integer for route search.");
-            }
+            var id = item.ID;
+            if (string.IsNullOrWhiteSpace(id))
+                throw new StationLayoutValidationException("Element ID is required for route search.");
 
             if (!double.IsFinite(item.X) || !double.IsFinite(item.Y))
             {
@@ -75,24 +73,20 @@ internal static partial class StationLayoutRouteSearcher
         return nodes;
     }
 
-    private static Dictionary<int, StationRouteLink> BuildLinks(
+    private static Dictionary<string, StationRouteLink> BuildLinks(
         IEnumerable<StationLayoutTrack> source)
     {
-        var links = new Dictionary<int, StationRouteLink>();
+        var links = new Dictionary<string, StationRouteLink>();
         foreach (var item in source)
         {
-            if (!TryParseIntegerId(item.ID, out var id))
-            {
-                throw new StationLayoutValidationException(
-                    $"Track ID '{item.ID}' must be an integer for route search.");
-            }
+            var id = item.ID;
+            if (string.IsNullOrWhiteSpace(id))
+                throw new StationLayoutValidationException("Element ID is required for route search.");
 
-            if (!TryParseIntegerId(item.FromNodeID, out var fromNodeId) ||
-                !TryParseIntegerId(item.ToNodeID, out var toNodeId))
-            {
-                throw new StationLayoutValidationException(
-                    $"Track {id} must reference integer from/to node IDs.");
-            }
+            var fromNodeId = item.FromNodeID;
+            var toNodeId = item.ToNodeID;
+            if (string.IsNullOrWhiteSpace(fromNodeId) || string.IsNullOrWhiteSpace(toNodeId))
+                throw new StationLayoutValidationException($"Track {id} must reference endpoint node IDs.");
 
             var link = new StationRouteLink(
                 id,
@@ -111,10 +105,10 @@ internal static partial class StationLayoutRouteSearcher
     }
 
     private static IReadOnlyList<RoutePath> SearchDirection(
-        IReadOnlyDictionary<int, StationRouteNode> nodes,
-        IReadOnlyDictionary<int, StationRouteLink> links,
-        int startNodeId,
-        int endNodeId,
+        IReadOnlyDictionary<string, StationRouteNode> nodes,
+        IReadOnlyDictionary<string, StationRouteLink> links,
+        string startNodeId,
+        string endNodeId,
         string direction)
     {
         var outgoing = nodes.Keys.ToDictionary(id => id, _ => new List<DirectedLink>());
@@ -153,13 +147,13 @@ internal static partial class StationLayoutRouteSearcher
 
         var results = new List<RoutePath>();
         var currentLinks = new List<DirectedLink>();
-        var visitedNodes = new HashSet<int> { startNodeId };
+        var visitedNodes = new HashSet<string> { startNodeId };
 
-        void SearchFrom(int currentNodeId)
+        void SearchFrom(string currentNodeId)
         {
             if (currentNodeId == endNodeId)
             {
-                var nodeIds = new List<int> { startNodeId };
+                var nodeIds = new List<string> { startNodeId };
                 nodeIds.AddRange(currentLinks.Select(link => link.ToNodeId));
                 results.Add(new RoutePath(
                     direction,
@@ -187,11 +181,11 @@ internal static partial class StationLayoutRouteSearcher
     }
 
     private static void EnsureAcyclic(
-        IReadOnlyDictionary<int, List<DirectedLink>> outgoing,
-        Dictionary<int, int> incomingCounts,
+        IReadOnlyDictionary<string, List<DirectedLink>> outgoing,
+        Dictionary<string, int> incomingCounts,
         string direction)
     {
-        var queue = new Queue<int>(incomingCounts
+        var queue = new Queue<string>(incomingCounts
             .Where(pair => pair.Value == 0)
             .Select(pair => pair.Key));
         var visitedCount = 0;
@@ -227,28 +221,28 @@ internal static partial class StationLayoutRouteSearcher
         StationLayoutDocument document)
     {
         var nodeIndex = route.Nodes
-            .Select((node, index) => new { NodeId = node.ID.ToString(CultureInfo.InvariantCulture), index })
-            .ToDictionary(item => item.NodeId, item => item.index, StringComparer.OrdinalIgnoreCase);
-        var nodeIds = nodeIndex.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            .Select((node, index) => new { NodeId = node.ID, index })
+            .ToDictionary(item => item.NodeId, item => item.index, StringComparer.Ordinal);
+        var nodeIds = nodeIndex.Keys.ToHashSet(StringComparer.Ordinal);
         var linkIndex = route.Links
-            .Select((link, index) => new { LinkId = link.ID.ToString(CultureInfo.InvariantCulture), index })
-            .ToDictionary(item => item.LinkId, item => item.index, StringComparer.OrdinalIgnoreCase);
+            .Select((link, index) => new { LinkId = link.ID, index })
+            .ToDictionary(item => item.LinkId, item => item.index, StringComparer.Ordinal);
 
         var switches = document.Switches
             .Where(item => HasBindingNode(item.BindingNodeID, nodeIds))
             .OrderBy(item => NodeOrder(item.BindingNodeID, nodeIndex))
-            .ThenBy(item => item.ID ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(item => item.ID ?? string.Empty, StringComparer.Ordinal)
             .ToList();
         var signals = document.Signals
             .Where(item => HasBindingNode(item.BindingNodeID, nodeIds))
             .OrderBy(item => NodeOrder(item.BindingNodeID, nodeIndex))
-            .ThenBy(item => item.ID ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(item => item.ID ?? string.Empty, StringComparer.Ordinal)
             .ToList();
         var cells = document.Cells
             .Select(item => new { Cell = item, LinkOrder = FirstMatchingLink(item.LinkIDList, linkIndex) })
             .Where(item => item.LinkOrder < int.MaxValue)
             .OrderBy(item => item.LinkOrder)
-            .ThenBy(item => item.Cell.ID ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(item => item.Cell.ID ?? string.Empty, StringComparer.Ordinal)
             .Select(item => item.Cell)
             .ToList();
 
@@ -305,11 +299,8 @@ internal static partial class StationLayoutRouteSearcher
             .Split(value.Trim())
             .Select(item => item.Trim())
             .Where(NotEmpty)
-            .Distinct(StringComparer.OrdinalIgnoreCase)!;
+            .Distinct(StringComparer.Ordinal)!;
     }
-
-    private static bool TryParseIntegerId(string? value, out int id) =>
-        int.TryParse(value?.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out id);
 
     private static bool NotEmpty(string? value) => !string.IsNullOrWhiteSpace(value);
 
@@ -327,7 +318,7 @@ internal static partial class StationLayoutRouteSearcher
     [GeneratedRegex(@"[\s,，;；]+")]
     private static partial Regex DelimiterRegex();
 
-    private sealed record DirectedLink(StationRouteLink Source, int FromNodeId, int ToNodeId);
+    private sealed record DirectedLink(StationRouteLink Source, string FromNodeId, string ToNodeId);
     private sealed record RoutePath(
         string Direction,
         List<StationRouteNode> Nodes,

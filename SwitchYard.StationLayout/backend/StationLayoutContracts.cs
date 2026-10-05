@@ -8,6 +8,8 @@ public sealed class StationLayoutSaveRequest
     public long? ExpectedRevision { get; set; }
 }
 
+public sealed record StationLayoutRepairResult(string Json, int RepairCount, IReadOnlyList<string> Repairs);
+
 public sealed class StationSchemeCreateRequest
 {
     public string InstanceID { get; set; } = string.Empty;
@@ -32,8 +34,8 @@ public sealed class StationRouteSearchRequest
 {
     public string? InstanceID { get; set; }
     public string? StationSchemeID { get; set; }
-    public int StartNodeId { get; set; }
-    public int EndNodeId { get; set; }
+    public string StartNodeId { get; set; } = string.Empty;
+    public string EndNodeId { get; set; } = string.Empty;
 }
 
 public sealed record StationSchemeDto(string ID, string Name, long Revision = 0);
@@ -53,22 +55,29 @@ public sealed record StationLayoutSaveResult(
     int SwitchCount,
     int SwitchBranchVectorCount,
     int CellCount,
-    int AnnotationCount);
+    int AnnotationCount)
+{
+    public int RepairCount { get; init; }
+    public IReadOnlyList<string> Repairs { get; init; } = [];
+    public string? RepairedJson { get; init; }
+    public string? SavedJson { get; init; }
+    public Dictionary<string, Dictionary<string, string>> IdMappings { get; init; } = [];
+}
 
 public sealed class StationRouteSearchResponse
 {
     public string InstanceID { get; set; } = string.Empty;
     public string StationSchemeID { get; set; } = string.Empty;
-    public int StartNodeId { get; set; }
-    public int EndNodeId { get; set; }
+    public string StartNodeId { get; set; } = string.Empty;
+    public string EndNodeId { get; set; } = string.Empty;
     public List<StationRouteSearchResult> Routes { get; set; } = [];
 }
 
 public sealed class StationRouteSearchResult
 {
     public string Direction { get; set; } = string.Empty;
-    public List<int> NodeIds { get; set; } = [];
-    public List<int> LinkIds { get; set; } = [];
+    public List<string> NodeIds { get; set; } = [];
+    public List<string> LinkIds { get; set; } = [];
     public List<string> SwitchIds { get; set; } = [];
     public List<string> CellIds { get; set; } = [];
     public List<string> SignalIds { get; set; } = [];
@@ -79,15 +88,15 @@ public sealed class StationRouteSearchResult
     public List<StationLayoutSignal> Signals { get; set; } = [];
 }
 
-public sealed record StationRouteNode(int ID, double X, double Y);
+public sealed record StationRouteNode(string ID, double X, double Y);
 
 public sealed record StationRouteLink(
-    int ID,
+    string ID,
     string? Name,
     string? ArrowDirection,
     string? ArrowType,
-    int FromNodeID,
-    int ToNodeID);
+    string FromNodeID,
+    string ToNodeID);
 
 public sealed record StationLayoutDwgResult(
     string Message,

@@ -13,7 +13,7 @@ namespace SwitchYard.Capacity
 
     public sealed class StationNodeRow
     {
-        public int ID { get; set; }
+        public string ID { get; set; } = string.Empty;
 
         public double X { get; set; }
 
@@ -22,7 +22,7 @@ namespace SwitchYard.Capacity
 
     public sealed class StationLinkRow
     {
-        public int ID { get; set; }
+        public string ID { get; set; } = string.Empty;
 
         public string? Name { get; set; }
 
@@ -30,9 +30,9 @@ namespace SwitchYard.Capacity
 
         public string? ArrowType { get; set; }
 
-        public int FromNodeID { get; set; }
+        public string FromNodeID { get; set; } = string.Empty;
 
-        public int ToNodeID { get; set; }
+        public string ToNodeID { get; set; } = string.Empty;
     }
 
     public sealed class StationCurveRow

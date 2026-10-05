@@ -5,6 +5,11 @@ namespace SwitchYard.StationLayout;
 
 public interface IStationLayoutService
 {
+    Task<StationLayoutRepairResult> RepairJsonAsync(
+        ClaimsPrincipal user,
+        StationLayoutSaveRequest request,
+        CancellationToken cancellationToken = default);
+
     Task<IReadOnlyList<StationSchemeDto>> GetStationSchemesAsync(
         ClaimsPrincipal user,
         string scopeId,
@@ -246,6 +251,8 @@ public sealed class StationLayoutService : IStationLayoutService
             NormalizeOptionalId(document.Metadata?.InstanceID),
             "instanceID");
         await AuthorizeScopeAsync(user, scopeId, StationLayoutPermission.SaveLayout, cancellationToken);
+        var repair = RepairDocument(request.Json);
+        document = ParseDocument(repair.Json);
         var schemeId = NormalizeOptionalId(request.StationSchemeID) ??
                        NormalizeOptionalId(document.Metadata?.StationSchemeID);
         if (schemeId is null)
@@ -286,7 +293,41 @@ public sealed class StationLayoutService : IStationLayoutService
                 user.Identity?.Name),
             cancellationToken);
 
-        return BuildSaveResult(scopeId, writeResult, document);
+        document = writeResult.Document ?? document;
+        document.SetArchiveScope(scopeId, writeResult.SchemeId, writeResult.Revision);
+        return BuildSaveResult(scopeId, writeResult, document) with
+        {
+            RepairCount = repair.RepairCount,
+            Repairs = repair.Repairs,
+            RepairedJson = repair.RepairCount > 0 ? document.ToJson() : null,
+            SavedJson = document.ToJson(),
+            IdMappings = writeResult.IdMappings
+        };
+    }
+
+    public async Task<StationLayoutRepairResult> RepairJsonAsync(
+        ClaimsPrincipal user,
+        StationLayoutSaveRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var scopeId = RequireId(request.InstanceID, "instanceID");
+        // This endpoint only previews a detached document; it never writes a scheme.
+        await AuthorizeScopeAsync(user, scopeId, StationLayoutPermission.View, cancellationToken);
+        return RepairDocument(request.Json);
+    }
+
+    private StationLayoutRepairResult RepairDocument(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) throw new StationLayoutValidationException("Station-layout JSON is required.");
+        try
+        {
+            return StationLayoutTopologyRepair.Process(json, _options.TopologyRepairTolerance);
+        }
+        catch (Exception exception) when (exception is JsonException or InvalidOperationException or FormatException)
+        {
+            throw new StationLayoutValidationException("Station-layout JSON contains invalid fields and cannot be repaired.", exception);
+        }
     }
 
     public async Task<StationRouteSearchResponse> SearchRoutesAsync(

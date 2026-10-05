@@ -11,7 +11,7 @@ import { DEFAULT_SIGNAL_TYPE, normalizeSignalType, signalTypeMenuOptions, signal
 import StationLayoutEditor from "./components/StationLayoutEditor.vue";
 import StationLayoutEditToolbar from "./components/StationLayoutEditToolbar.vue";
 import { createStationLayoutTranslator } from "./messages";
-import { isStationLayoutArchive, parseStationLayoutJson, serializeStationLayoutJson, validateStationLayoutJson } from "./layoutJson";
+import { isStationLayoutArchive, parseStationLayoutJson, serializeStationLayoutJson, validateStationLayoutJson, remapStationLayoutIds } from "./layoutJson";
 import {
     Download, Upload, Aim, Hide, Connection, Scissor,
     Share, SetUp,
@@ -271,7 +271,8 @@ const layoutEditorCells = computed(() => cells.value.map((cell) => {
         id: String(cell.id || cellForm.value.id || "").trim(),
         isNew: selectedCellIsNew,
         name: selectedCellName || (selectedCellIsNew ? "" : String(cell.id || "").trim()),
-        linkIDList: normalizeLinkIdListString(cellForm.value.linkIDList),
+        linkIDList: normalizeLinkIdListString(cellForm.value.linkIDList) === normalizeLinkIdListString(cell.linkIDList)
+            ? cell.linkIDList : normalizeLinkIdListString(cellForm.value.linkIDList),
     };
 }));
 const cellLinkMembershipCounts = computed(() => {
@@ -560,6 +561,23 @@ function clearRouteSearchResult() {
     clearSelectedRoute();
 }
 
+function handleCellLinksChange(updates) {
+    const byID = new Map(updates.map((update) => [update.id, update.fields]));
+    cells.value = cells.value.map((cell) => {
+        const fields = byID.get(String(cell.id));
+        if (!fields) return cell;
+        const updated = { ...cell };
+        delete updated.linkIDList;
+        delete updated.LinkIDList;
+        return { ...updated, ...fields };
+    });
+    const selected = cells.value.find((cell) => cell.id === selectedCellId.value);
+    if (selected && byID.has(String(selected.id))) {
+        cellForm.value.linkIDList = normalizeLinkIdListString(selected.linkIDList ?? selected.LinkIDList);
+        if (!parseLinkIdList(cellForm.value.linkIDList).includes(selectedCellLinkId.value)) selectedCellLinkId.value = "";
+    }
+}
+
 function handleTopologyRebuilt(impact) {
     if (!impact?.requiresRepair) return;
 
@@ -802,7 +820,7 @@ function buildCellsForJson(options = {}) {
             ...cell,
             instanceID: props.selectedInstanceId || "",
             stationSchemeID: currentStationSchemeId.value || "",
-            id: !options.forFile && isCellPendingBackendId(cell) ? "" : cell.id,
+            id: !options.forFile && !options.forSave && isCellPendingBackendId(cell) ? "" : cell.id,
         };
         if (!options.forFile && isCellPendingBackendId(cell)) {
             delete result.isNew;
@@ -1196,20 +1214,13 @@ async function searchStationRoutes() {
         ElMessage.warning(t('stationLayout.editor.routes.endpointsRequired'));
         return;
     }
-    const startNodeNumber = Number(startNodeId);
-    const endNodeNumber = Number(endNodeId);
-    if (!Number.isInteger(startNodeNumber) || !Number.isInteger(endNodeNumber)) {
-        ElMessage.warning(t('stationLayout.editor.routes.integerRequired'));
-        return;
-    }
-
     routeSearchLoading.value = true;
     try {
         const response = await props.gateway.searchRoutes({
             instanceId: props.selectedInstanceId,
             stationSchemeId: currentStationSchemeId.value,
-            startNodeId: startNodeNumber,
-            endNodeId: endNodeNumber,
+            startNodeId,
+            endNodeId,
         });
         const routes = Array.isArray(response?.routes)
             ? response.routes
@@ -1314,7 +1325,21 @@ function buildLayoutJsonWithDisplayStyles(dataStr, options = {}) {
     if (jsonObj.metadata.revision === undefined) delete jsonObj.metadata.revision;
     if (jsonObj.metadata.displayStyles === undefined) delete jsonObj.metadata.displayStyles;
     if (jsonObj.metadata.gridSettings === undefined) delete jsonObj.metadata.gridSettings;
-    return serializeStationLayoutJson(jsonObj);
+    return serializeStationLayoutJson(jsonObj, {
+        allowUnresolvedReferences: options.forSave === true && Boolean(props.gateway.repairJson),
+    });
+}
+
+async function prepareLayoutInput(text, instanceId, stationSchemeId) {
+    const document = JSON.parse(text.replace(/^\uFEFF/, ""));
+    validateStationLayoutJson(document, { allowUnresolvedReferences: Boolean(props.gateway.repairJson) });
+    if (!props.gateway.repairJson) return { document, repairCount: 0 };
+    const result = await props.gateway.repairJson({ json: JSON.stringify(document), instanceId, stationSchemeId });
+    return { document: parseStationLayoutJson(result.json), repairCount: result.repairCount || 0 };
+}
+
+function notifyLayoutRepair(repairCount, saved = false) {
+    if (repairCount > 0) ElMessage.success(t(saved ? 'stationLayout.editor.topology.repairSaved' : 'stationLayout.editor.topology.repaired', { count: repairCount }));
 }
 function resetLayoutDisplayStyles() {
     layoutDisplayStyles.value = createDefaultLayoutDisplayStyles();
@@ -1745,9 +1770,9 @@ function saveData(options = {}) {
     }
 
     try {
-        dataStr = buildLayoutJsonWithDisplayStyles(dataStr);
+        dataStr = buildLayoutJsonWithDisplayStyles(dataStr, { forSave: true });
     } catch (err) {
-        console.error("Failed to attach layout display styles:", err);
+        console.error("Failed to validate station layout before saving:", err);
         ElMessage.error(`${t('stationLayout.editor.styles.invalidLayout')} ${getHttpErrorMessage(err, '')}`);
         return Promise.resolve(false);
     }
@@ -1755,6 +1780,7 @@ function saveData(options = {}) {
     const silentSuccessMessage = options?.successMessage || t('stationLayout.editor.equipment.saved');
     const silentFailurePrefix = options?.failurePrefix || t('stationLayout.editor.equipment.saveFailed');
     const shouldReloadGeneratedCellIds = cells.value.some(isCellPendingBackendId);
+    const saveLoadVersion = layoutLoadVersion;
     savingData.value = true;
     const saveRequest = {
         json: dataStr,
@@ -1769,17 +1795,55 @@ function saveData(options = {}) {
     return props.gateway
         .saveJson(saveRequest)
         .then((result) => {
+            const sameScope = props.selectedInstanceId === saveRequest.instanceId
+                && currentStationSchemeId.value === saveRequest.stationSchemeId && layoutLoadVersion === saveLoadVersion;
+            const repairCount = result?.repairCount || 0;
+            if (!sameScope) return true;
+            let unchanged = false;
+            try {
+                unchanged = (!selectedCellId.value || applyCellFormToSelected())
+                    && buildLayoutJsonWithDisplayStyles(stationLayoutEditorRef.value.buildJsonData(), { forSave: true }) === dataStr;
+            } catch { /* Preserve any new, incomplete edits. */ }
+            const mappings = result?.idMappings || {};
+            const mapped = (kind, value) => Object.hasOwn(mappings[kind] || {}, String(value)) ? mappings[kind][String(value)] : value;
+            // IDs are acknowledged even when the user kept editing during the request.
+            cells.value = remapStationLayoutIds({ cells: cells.value }, mappings).cells;
+            cellForm.value = remapStationLayoutIds({ cells: [cellForm.value] }, mappings).cells[0];
+            selectedCellId.value = mapped("cells", selectedCellId.value);
+            selectedCellLinkId.value = mapped("tracks", selectedCellLinkId.value);
+            routeSearchForm.value.startNodeId = mapped("nodes", routeSearchForm.value.startNodeId);
+            routeSearchForm.value.endNodeId = mapped("nodes", routeSearchForm.value.endNodeId);
+            stationLayoutEditorRef.value.applyPersistedIds?.(mappings);
+            const savedJson = result?.savedJson || result?.repairedJson;
+            let appliedSaved = false;
+            if (savedJson && unchanged) {
+                const saved = parseStationLayoutJson(savedJson);
+                if (repairCount > 0 || !stationLayoutEditorRef.value.applySavedLayout) {
+                    stationLayoutEditorRef.value.loadDataFromJson(saved, { preserveDocument: isStationLayoutArchive(saved), resetHistory: true });
+                } else {
+                    stationLayoutEditorRef.value.applySavedLayout(saved);
+                }
+                setLayoutSnapshotFromJson(saved);
+                setCellsFromLayout(saved);
+                appliedSaved = true;
+            } else {
+                refreshLayoutSnapshot();
+                if (repairCount > 0) ElMessage.warning(t('stationLayout.editor.topology.repairNewEdits'));
+            }
+            clearRouteSearchResult();
             const savedStationSchemeId = result?.stationSchemeId || result?.stationSchemeID || currentStationSchemeId.value;
             currentStationSchemeId.value = savedStationSchemeId;
             ensureCurrentStationSchemeOption(undefined, result?.revision ?? result?.Revision);
             updateStationSchemeRevision(savedStationSchemeId, result?.revision ?? result?.Revision);
             void loadStationSchemes();
-            if (silent) {
+            if (repairCount > 0) {
+                notifyLayoutRepair(repairCount, true);
+            } else if (silent) {
                 ElMessage.success(silentSuccessMessage);
             } else {
                 ElMessage.success(t('stationLayout.messages.saveSuccess') + (result?.message || result));
             }
-            if (shouldReloadGeneratedCellIds) {
+            if (shouldReloadGeneratedCellIds && !result?.savedJson && (repairCount === 0 || appliedSaved)) {
                 getData({ stationSchemeId: savedStationSchemeId });
             }
             showTopologyRepairReminderAfterSave();
@@ -1832,6 +1896,12 @@ function getData(options = {}) {
                 return;
             }
 
+            const prepared = props.gateway.repairJson
+                ? await prepareLayoutInput(JSON.stringify(layout), instanceId, requestedStationSchemeId)
+                : { document: layout, repairCount: 0 };
+            if (!isCurrentRequest()) return;
+            layout = prepared.document;
+
             currentStationSchemeId.value = layout?.metadata?.stationSchemeID || requestedStationSchemeId || "";
             expectedSelection = currentStationSchemeId.value;
             applyLayoutDisplayStyles(layout?.metadata?.displayStyles);
@@ -1847,6 +1917,7 @@ function getData(options = {}) {
             });
             setLayoutSnapshotFromJson(layout);
             setCellsFromLayout(layout);
+            notifyLayoutRepair(prepared.repairCount);
             routeNodePickTarget.value = "";
             clearRouteSearchResult();
             // Fit only after the loaded geometry and surrounding panels render.
@@ -2343,21 +2414,9 @@ async function importJson(text) {
     if (loadingData.value || savingData.value || importingData.value) throw new Error(t('stationLayout.editor.json.busy'));
     const editor = stationLayoutEditorRef.value;
     if (!editor) throw new Error(t('stationLayout.editor.json.noLayout'));
-    // Validate the entire file before changing either the canvas or side panels.
-    const jsonObj = parseStationLayoutJson(text);
-    const preserveDocument = isStationLayoutArchive(jsonObj);
     const instanceId = props.selectedInstanceId;
     const stationSchemeId = currentStationSchemeId.value;
     const loadVersion = ++layoutLoadVersion;
-    jsonObj.metadata = {
-        ...jsonObj.metadata,
-        instanceID: instanceId,
-        stationSchemeID: stationSchemeId,
-        revision: getStationSchemeRevision(),
-    };
-    jsonObj.cells = (jsonObj.cells || []).map(cell => ({
-        ...cell, instanceID: instanceId, stationSchemeID: stationSchemeId,
-    }));
     const previousStyles = layoutDisplayStyles.value;
     const previousGrid = { showGrid: showGrid.value, spacing: gridSpacing.value };
     const isCurrent = () => loadVersion === layoutLoadVersion && instanceId === props.selectedInstanceId
@@ -2367,6 +2426,15 @@ async function importJson(text) {
     let importedStyles;
     let importedGrid;
     try {
+        // Repair and revalidate the entire file before changing the canvas or panels.
+        const prepared = props.gateway.repairJson
+            ? await prepareLayoutInput(text, instanceId, stationSchemeId)
+            : { document: parseStationLayoutJson(text), repairCount: 0 };
+        if (!isCurrent() || props.readonly) throw new Error(t('stationLayout.editor.json.scopeChanged'));
+        const jsonObj = prepared.document;
+        const preserveDocument = isStationLayoutArchive(jsonObj);
+        jsonObj.metadata = { ...jsonObj.metadata, instanceID: instanceId, stationSchemeID: stationSchemeId, revision: getStationSchemeRevision() };
+        jsonObj.cells = (jsonObj.cells || []).map(cell => ({ ...cell, instanceID: instanceId, stationSchemeID: stationSchemeId }));
         applyLayoutDisplayStyles(jsonObj.metadata.displayStyles);
         applyLayoutGridSettings(jsonObj.metadata.gridSettings);
         importedStyles = layoutDisplayStyles.value;
@@ -2381,6 +2449,7 @@ async function importJson(text) {
         clearRouteSearchResult();
         topologyRepairPending.value = false;
         equipmentDrawerVisible.value = false;
+        notifyLayoutRepair(prepared.repairCount);
         await nextTick();
         if (isCurrent()) scheduleLoadedLayoutFit();
     } catch (err) {
@@ -3317,6 +3386,7 @@ defineExpose({ exportJson, importJson });
                     @cell-name-click="handleCellNameClick"
                     @cell-rename="handleCellRename"
                     @topology-rebuilt="handleTopologyRebuilt"
+                    @cell-links-change="handleCellLinksChange"
                     @delete-selection-request="deleteSelection" />
             </div>
             <aside v-if="cellPanelVisible" class="cell-side-panel">
@@ -3443,8 +3513,7 @@ defineExpose({ exportJson, importJson });
                             <el-tag type="info">{{ equipmentKindLabels[equipmentForm.kind] || t('stationLayout.equipment.generic') }}</el-tag>
                         </el-form-item>
                         <el-form-item :label="t('stationLayout.equipment.fields.id')">
-                            <el-input v-model="equipmentForm.id"
-                                :disabled="isEquipmentBatchMode || isEquipmentNodePositionLocked" />
+                            <el-input v-model="equipmentForm.id" readonly />
                         </el-form-item>
                         <el-form-item v-if="['link', 'signal', 'switch', 'platform'].includes(equipmentForm.kind)"
                             :label="t('stationLayout.equipment.fields.name')">

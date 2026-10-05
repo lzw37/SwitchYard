@@ -44,7 +44,7 @@ export const stationLayoutMessages = {
           "cellName": "轨道电路名称",
           "saved": "显示样式已保存",
           "saveFailed": "显示样式保存失败：",
-          "invalidLayout": "显示样式保存失败，请检查车站布置图数据"
+          "invalidLayout": "布置图数据校验失败，无法保存："
         },
         "arrows": {
           "none": "不绘制",
@@ -183,6 +183,9 @@ export const stationLayoutMessages = {
           "completed": "DWG 提取完成，共生成 {count} 条线段"
         },
         "topology": {
+          "repaired": "已根据位置关系自动修复 {count} 处绑定数据，保存后生效。",
+          "repairSaved": "已根据位置关系自动修复 {count} 处绑定数据并保存。",
+          "repairNewEdits": "后端已修复本次保存的数据。当前画布有新的修改，已保留这些修改，请再次保存。",
           "recheck": "已保存最新拓扑。线路分段、节点生成或节点合并可能已影响设备绑定、道岔/曲线关联、Cell 构成以及既有进路。请使用“修正设备绑定节点”检查设备，并在 Cell 面板中重新检查或生成 Cell；如已配置进路，也请重新校验进路。",
           "curvesGenerated": "已生成 {count} 条曲线"
         }
@@ -414,7 +417,7 @@ export const stationLayoutMessages = {
           "cellName": "Track circuit name",
           "saved": "Display styles saved",
           "saveFailed": "Failed to save display styles: ",
-          "invalidLayout": "Could not save display styles. Check the layout data."
+          "invalidLayout": "Could not save the station layout: layout data validation failed."
         },
         "arrows": {
           "none": "Hidden",
@@ -553,6 +556,9 @@ export const stationLayoutMessages = {
           "completed": "DWG extraction complete: {count} segments generated"
         },
         "topology": {
+          "repaired": "Automatically repaired {count} binding fields using positions. Save to persist the repairs.",
+          "repairSaved": "Automatically repaired {count} binding fields using positions and saved the layout.",
+          "repairNewEdits": "The saved layout was repaired. Newer canvas edits were kept; save again to include them.",
           "recheck": "The latest topology was saved. Splitting tracks, generating nodes, or merging nodes may affect equipment bindings, switch and curve associations, cells, and existing routes. Check equipment with “Correct equipment node bindings”, review or regenerate cells, and revalidate any configured routes.",
           "curvesGenerated": "{count} curves generated"
         }

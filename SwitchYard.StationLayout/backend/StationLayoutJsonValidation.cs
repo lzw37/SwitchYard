@@ -41,6 +41,19 @@ internal static class StationLayoutJsonValidation
             {
                 if (item.ValueKind != JsonValueKind.Object)
                     throw new StationLayoutValidationException($"Station-layout '{name}' contains an invalid element.");
+                ValidateGeometry(item, name, archive);
+                if (name == "nodes" && item.TryGetProperty("adjacentLineIDList", out var adjacency) && adjacency.ValueKind != JsonValueKind.Array)
+                    throw new StationLayoutValidationException("Node adjacentLineIDList must be an array.");
+                if (name == "switches" && item.TryGetProperty("branchVectorList", out var branches))
+                {
+                    if (branches.ValueKind != JsonValueKind.Array) throw new StationLayoutValidationException("Switch branchVectorList must be an array.");
+                    foreach (var branch in branches.EnumerateArray())
+                    {
+                        if (branch.ValueKind != JsonValueKind.Object) throw new StationLayoutValidationException("Invalid switch branch.");
+                        Number(branch, "x", archive);
+                        Number(branch, "y", archive);
+                    }
+                }
                 if (archive && name == "cells" && item.TryGetProperty("id", out var pendingId) &&
                     pendingId.ValueKind == JsonValueKind.String && string.IsNullOrWhiteSpace(pendingId.GetString()))
                     continue; // Legacy hosts allocate IDs for newly created cells on save.
@@ -51,6 +64,40 @@ internal static class StationLayoutJsonValidation
             }
         }
         ValidateNumbers(root);
+    }
+
+    private static void ValidateGeometry(JsonElement item, string collection, bool archive)
+    {
+        if (collection == "tracks")
+            foreach (var key in new[] { "x1", "y1", "x2", "y2" }) Number(item, key, archive);
+        else if (collection is "nodes" or "platforms")
+        {
+            Number(item, "x", archive);
+            Number(item, "y", archive);
+            if (collection == "platforms") { Number(item, "width", archive); Number(item, "height", archive); }
+        }
+        else if (collection == "curves")
+        {
+            Number(item, "radius", archive);
+            foreach (var key in new[] { "start", "end", "center" }) Position(item, key, archive);
+        }
+        else if (collection != "cells") Position(item, "position", archive);
+    }
+
+    private static void Number(JsonElement item, string key, bool required)
+    {
+        if (!item.TryGetProperty(key, out var value) && !required) return;
+        if (value.ValueKind != JsonValueKind.Number || !value.TryGetDouble(out var number) || !double.IsFinite(number))
+            throw new StationLayoutValidationException($"Station-layout '{key}' must be a finite number.");
+    }
+
+    private static void Position(JsonElement item, string key, bool required)
+    {
+        if (!item.TryGetProperty(key, out var position) && !required) return;
+        if (position.ValueKind != JsonValueKind.Object)
+            throw new StationLayoutValidationException($"Station-layout '{key}' must be a position object.");
+        Number(position, "x", required);
+        Number(position, "y", required);
     }
 
     private static void ValidateNumbers(JsonElement value)
