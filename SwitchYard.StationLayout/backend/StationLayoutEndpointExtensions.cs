@@ -97,7 +97,7 @@ public static class StationLayoutEndpointExtensions
                     cancellationToken);
                 SetRevisionHeaders(context.Response, result.Revision);
                 context.Response.Headers["X-Station-Layout-Exists"] = result.Exists ? "true" : "false";
-                return Results.Json(result.Document);
+                return Results.Text(result.Document.ToJson(), "application/json");
             }));
 
         group.MapPost("/SaveJson", (HttpContext context, IStationLayoutService service) =>

@@ -27,7 +27,7 @@
     "build": "vite build && vue-tsc --declaration --emitDeclarationOnly",
     "type-check": "vue-tsc --noEmit",
     "test:contract": "tsc -p tsconfig.contract.json --noEmit",
-    "test:runtime": "node tests/layout-runtime.mjs && node tests/layout-inline-rename.mjs",
+    "test:runtime": "node tests/layout-runtime.mjs && node tests/layout-inline-rename.mjs && node tests/layout-json-codec.mjs && node tests/layout-json-editor.mjs && node tests/layout-json-integration.mjs",
     "pack:offline": "npm pack"
   },
   "peerDependencies": {

@@ -375,8 +375,9 @@ switchyard-vue/src/assets/站场视频
 switchyardvid
 switchyard-vue/src/assets/capacity_fig
 SwitchYard.StationLayout/frontend/dist
-SwitchYard.StationLayout/frontend/tests
 SwitchYard.WebApi/SwitchYard.OperationProcess.Tests
+switchyard-vue/checks
+switchyard-vue/tests
+SwitchYard.WebApi/SwitchYard.Deletion.Tests
 SwitchYard.WebApi/SwitchYard.Service.StationLayout.IntegrationTests
 SwitchYard.WebApi/SwitchYard.StationLayout.SmokeTests
-switchyard-vue/checks

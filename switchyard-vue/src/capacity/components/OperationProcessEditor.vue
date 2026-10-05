@@ -50,48 +50,10 @@
                         <ActionButton variant="text" @click="cancelPrecedence" :icon="Close" :label="ui('取消（Esc）', 'Cancel (Esc)')" />
                     </div>
                     <div class="process-canvas-scroll" :class="{ 'process-is-busy': busy, 'process-is-connecting': connecting }">
-                        <svg ref="canvasRef" class="process-canvas" :width="canvasWidth * zoom" :height="canvasHeight * zoom" :viewBox="`0 0 ${canvasWidth} ${canvasHeight}`" role="group" :aria-label="ui('作业过程编排图，点击活动、事件、次序或锚以编辑属性', 'Operation process diagram. Select an activity, event, precedence or anchor to edit.')" @pointermove="moveActivity" @pointerup="endDrag" @pointercancel="endDrag">
-                            <defs>
-                                <pattern :id="`${canvasID}-grid`" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="#dce4ef" /></pattern>
-                                <marker :id="`${canvasID}-arrow`" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto" markerUnits="strokeWidth"><path d="M 0 0 L 9 4.5 L 0 9 z" fill="#8496af" /></marker>
-                                <marker :id="`${canvasID}-arrow-selected`" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto" markerUnits="strokeWidth"><path d="M 0 0 L 9 4.5 L 0 9 z" fill="#3265db" /></marker>
-                            </defs>
-                            <rect :width="canvasWidth" :height="canvasHeight" :fill="`url(#${canvasID}-grid)`" @click="selectObject('template', current.id)" />
-
-
-                            <g v-for="edge in graphEdges" :key="edge.item.id" class="process-edge" :class="{ selected: isSelected('precedence', edge.item.id) }" role="button" :tabindex="connecting ? -1 : 0" :aria-disabled="connecting" :aria-label="`${ui('编辑次序', 'Edit precedence')} ${eventName(edge.item.leadingEvent)} → ${eventName(edge.item.followingEvent)}`" @click.stop="selectObject('precedence', edge.item.id)" @keydown.enter="selectObject('precedence', edge.item.id)">
-                                <path :d="edge.path" class="process-edge-hit" />
-                                <path :d="edge.path" class="process-edge-line" :marker-end="`url(#${canvasID}-arrow${isSelected('precedence', edge.item.id) ? '-selected' : ''})`" />
-                                <rect :x="edge.labelX - 27" :y="edge.labelY - 11" width="54" height="22" rx="11" class="process-edge-label-bg" />
-                                <text :x="edge.labelX" :y="edge.labelY + 4" text-anchor="middle" class="process-edge-label">{{ edge.item.interval }} {{ ui('分钟', 'min') }}</text>
-                            </g>
-
-                            <g v-for="activity in current.activities" :key="activity.id" class="process-activity" :class="{ selected: isSelected('activity', activity.id) }" :transform="`translate(${activity.x}, ${activity.y})`" role="button" :tabindex="connecting ? -1 : 0" :aria-disabled="connecting" :aria-label="`${ui('编辑活动', 'Edit activity')}: ${activity.name}`" @pointerdown="startDrag($event, activity)" @click.stop="selectObject('activity', activity.id)" @keydown.enter="selectObject('activity', activity.id)">
-                                <rect x="0" y="0" :width="CARD_WIDTH" :height="activityHeight(activity)" rx="14" class="process-card-shadow" />
-                                <rect x="0" y="0" :width="CARD_WIDTH" :height="activityHeight(activity)" rx="14" :fill="typeColors[activity.type].fill" :stroke="isSelected('activity', activity.id) ? '#3265db' : typeColors[activity.type].border" :stroke-width="isSelected('activity', activity.id) ? 2.5 : 1.3" />
-                                <rect x="15" y="15" width="5" height="17" rx="2.5" :fill="typeColors[activity.type].ink" />
-                                <text x="29" y="28" class="process-card-type" :fill="typeColors[activity.type].ink">{{ activityLabel(activity.type) }}</text>
-                                <text x="15" y="51" class="process-card-name">{{ shortText(activity.name, 12) }}</text>
-                                <text x="15" y="71" class="process-card-duration">{{ activity.minDuration }}–{{ activity.maxDuration }} {{ ui('分钟', 'min') }}</text>
-                                <text class="process-card-candidates"><tspan v-for="(line, index) in activityCardLabels.get(activity.id)?.lines" :key="index" x="15" :y="91 + index * CANDIDATE_LINE_HEIGHT">{{ line }}</tspan></text>
-                                <title>{{ activity.name }} · {{ activityLabel(activity.type) }} · {{ activity.minDuration }}–{{ activity.maxDuration }} {{ ui('分钟', 'min') }} · {{ activityCardLabels.get(activity.id)?.text }}</title>
-                            </g>
-
-                            <path v-if="precedencePreview" :d="precedencePreview.path" class="process-precedence-preview" :marker-end="`url(#${canvasID}-arrow-selected)`" :aria-label="ui('次序虚线预览', 'Precedence preview')" />
-
-                            <g v-for="{ event, x, y, top, bottom, key, activityID, side } in renderedEvents" :key="key" class="process-event" :class="{ 'process-precedence-candidate': isPrecedenceCandidate(activityID, side), 'process-end-source': connecting && side === 'end' && precedenceSource?.eventID === event.id }" role="button" :tabindex="connecting && !isPrecedenceCandidate(activityID, side) ? -1 : 0" :aria-disabled="connecting && !isPrecedenceCandidate(activityID, side)" :aria-label="`${isPrecedenceCandidate(activityID, side) ? (precedenceSource ? ui('选择后序开始事件', 'Select the following start event') : ui('选择前序结束事件', 'Select the preceding end event')) : ui('编辑事件', 'Edit event')}：${event.name}`" @click.stop="activateEvent(event.id, activityID, side)" @keydown.enter.prevent="activateEvent(event.id, activityID, side)" @keydown.space.prevent="activateEvent(event.id, activityID, side)" @pointerenter="previewPrecedence(event.id, activityID, side)" @pointerleave="clearPrecedencePreview(activityID)" @focus="previewPrecedence(event.id, activityID, side)" @blur="clearPrecedencePreview(activityID)">
-                                <circle v-if="isPrecedenceCandidate(activityID, side)" :cx="x" :cy="y" r="15" class="process-precedence-halo" />
-                                <circle :cx="x" :cy="y" :r="isSelected('event', event.id) ? 10 : 7" :class="['process-event-dot', { selected: isSelected('event', event.id) }]" />
-                                <circle :cx="x" :cy="y" r="17" fill="transparent" />
-                                <text :x="x" :y="bottom + 19" text-anchor="middle" class="process-event-label">{{ shortText(event.name, 9) }}</text>
-                                <text v-if="event.time !== null" :x="x" :y="bottom + 36" text-anchor="middle" class="process-event-time">{{ formatTime(event.time) }}</text>
-                                <g v-if="event.selectedAnchor" class="process-anchor-badge" @click.stop="selectObject('anchor', event.selectedAnchor)">
-                                    <rect :x="x - 47" :y="top - 34" width="94" height="23" rx="6" :class="{ selected: isSelected('anchor', event.selectedAnchor) }" />
-                                    <text :x="x" :y="top - 19" text-anchor="middle">{{ shortText(anchorName(event.selectedAnchor), 6) }}</text>
-                                </g>
-                                <title>{{ [event.name, formatTime(event.time), eventNodeSummary(event.id)].filter(Boolean).join(' · ') }}</title>
-                            </g>
-                        </svg>
+                        <ProcessDiagram ref="canvasRef" :model="current" :catalog="catalog" :canvas-id="canvasID" :zoom="zoom"
+                            :selection="selection" :busy="busy" :connecting="connecting" :precedence-source="precedenceSource" :precedence-target="precedenceTarget" :candidate-activities="candidateActivities"
+                            @select-object="selectObject" @start-drag="startDrag" @move-activity="moveActivity" @end-drag="endDrag"
+                            @activate-event="activateEvent" @preview-precedence="previewPrecedence" @clear-precedence-preview="clearPrecedencePreview" />
                     </div>
                     <div class="process-legend"><span v-for="type in activityTypes" :key="type"><i :style="{ background: typeColors[type].ink }" />{{ activityLabel(type) }}</span><span class="process-legend-note">{{ ui('○ 事件　→ 次序　⚓ 锚', '○ Event · → Precedence · Anchor') }}</span></div>
 
@@ -199,6 +161,8 @@
 <script setup lang="ts">
 import ActionButton from '@/components/ui/ActionButton.vue'
 import PaneDivider from '@/components/ui/PaneDivider.vue'
+import ProcessDiagram from './ProcessDiagram.vue'
+import { processTypeColors as typeColors } from './processDiagram'
 import { useI18n } from 'vue-i18n'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -270,7 +234,6 @@ type Selection = { kind: ObjectKind | 'template'; id: string }
 type ListRow = { id: string; name: string; summary: string; detail: string }
 type ScopeState = { templates: ProcessTemplate[]; saved: Map<string, string>; selectedID: string | null; catalog: ProcessCatalog }
 type EventSide = 'start' | 'end' | 'standalone'
-type GraphPort = { x: number; y: number; bottom: number; side: 'left' | 'right' }
 const scope = computed<ProcessScope>(() => ({ instanceID: props.instanceID, stationSchemeID: props.stationSchemeID }))
 const scopeKey = computed(() => JSON.stringify([props.preview, props.instanceID, props.stationSchemeID]))
 const hasScope = computed(() => props.preview || !!(props.instanceID && props.stationSchemeID))
@@ -303,19 +266,9 @@ const selection = ref<Selection | null>(null)
 const listTab = ref<ObjectKind>('activity')
 const showObjectList = ref(true)
 const zoom = ref(1)
-const canvasRef = ref<SVGSVGElement | null>(null)
+const canvasRef = ref<InstanceType<typeof ProcessDiagram> | null>(null)
 const canvasID = makeID('process-canvas')
-const CARD_WIDTH = 174
-const CARD_HEIGHT = 86
-const CANDIDATE_LINE_HEIGHT = 18
 const objectTabs = computed<{ kind: ObjectKind; label: string }[]>(() => [{ kind: 'activity', label: ui('活动', 'Activity') }, { kind: 'event', label: ui('事件', 'Event') }, { kind: 'precedence', label: ui('次序', 'Precedence') }, { kind: 'anchor', label: ui('锚', 'Anchor') }])
-const typeColors: Record<ActivityType, { fill: string; border: string; ink: string }> = {
-    Arrival: { fill: '#edf5ff', border: '#a4c5ee', ink: '#3374c8' },
-    Departure: { fill: '#eef9f4', border: '#a5d6bf', ink: '#268263' },
-    Shunting: { fill: '#fff7e9', border: '#e7c992', ink: '#ad7b24' },
-    Locomotive: { fill: '#f4f0ff', border: '#c6b6eb', ink: '#8360c1' },
-    Dwelling: { fill: '#f0f5fa', border: '#b9c8d8', ink: '#657e98' },
-}
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T
 const dirty = computed(() => !!current.value && saved.value.get(current.value.id) !== JSON.stringify(current.value))
 const validationErrors = computed(() => current.value ? validateTemplate(current.value, catalog.value).map(translateValidation) : [])
@@ -331,90 +284,10 @@ const dwellingTracks = computed(() => namedTracks(catalog.value))
 function candidateNames(activity: ProcessActivity) {
     return activity.type === 'Dwelling' ? dwellingTrackNames(activity, catalog.value) : activity.routeList.map(routeName)
 }
-const activityCardLabels = computed(() => new Map((current.value?.activities || [])
-    .map(activity => {
-        const text = `${activity.type === 'Dwelling' ? ui('备选股道', 'Tracks') : ui('备选进路', 'Routes')}：${candidateNames(activity).join('、') || ui('未设置', 'Not set')}`
-        // Thirteen full-width characters fit within the 144px card content area.
-        const characters = Array.from(text)
-        const lines: string[] = []
-        for (let index = 0; index < characters.length; index += 13) lines.push(characters.slice(index, index + 13).join(''))
-        return [activity.id, { text, lines }] as const
-    })))
-function activityHeight(activity: ProcessActivity) { return CARD_HEIGHT + (activityCardLabels.value.get(activity.id)?.lines.length || 0) * CANDIDATE_LINE_HEIGHT }
 const availableAnchors = computed(() => current.value?.anchors.filter(anchor => selectedEvent.value?.anchorList.includes(anchor.id)) || [])
 const compatibleEventAnchors = computed(() => current.value?.anchors.filter(anchor => anchorFitsEvent(anchor.id, selectedEvent.value?.id || '')) || [])
 function routeAnchorBinding(routeID: string) { return current.value?.routeAnchors.find(item => item.routeID === routeID) }
 const anchorEventCount = computed(() => current.value?.events.filter(event => event.anchorList.includes(selectedAnchor.value?.id || '') || event.selectedAnchor === selectedAnchor.value?.id).length || 0)
-const standaloneEvents = computed(() => current.value?.events.filter(event => !current.value?.activities.some(activity => activity.startEvent === event.id || activity.endEvent === event.id)) || [])
-const standaloneStartY = computed(() => Math.max(160, ...(current.value?.activities.map(item => item.y + activityHeight(item) + 150) || [])))
-const canvasWidth = computed(() => Math.max(1000, ...(current.value?.activities.map(item => item.x + CARD_WIDTH + 110) || [])))
-const canvasHeight = computed(() => Math.max(390, standaloneStartY.value + (standaloneEvents.value.length ? Math.ceil(standaloneEvents.value.length / 5) * 125 : 0)))
-const eventPositions = computed(() => {
-    const positions = new Map<string, { x: number; y: number }>()
-    for (const activity of current.value?.activities || []) {
-        if (!positions.has(activity.startEvent)) positions.set(activity.startEvent, { x: activity.x, y: activity.y + activityHeight(activity) / 2 })
-        if (!positions.has(activity.endEvent)) positions.set(activity.endEvent, { x: activity.x + CARD_WIDTH, y: activity.y + activityHeight(activity) / 2 })
-    }
-    standaloneEvents.value.forEach((event, index) => positions.set(event.id, { x: 85 + index % 5 * 180, y: standaloneStartY.value + Math.floor(index / 5) * 125 }))
-    return positions
-})
-function eventPosition(id: string) { return eventPositions.value.get(id) || { x: 40, y: 100 } }
-const renderedEvents = computed(() => {
-    const points: { event: ProcessEvent; x: number; y: number; top: number; bottom: number; key: string; activityID: string | null; side: EventSide }[] = []
-    const events = new Map(current.value?.events.map(event => [event.id, event]) || [])
-    for (const activity of current.value?.activities || []) {
-        const start = events.get(activity.startEvent), end = events.get(activity.endEvent)
-        const height = activityHeight(activity)
-        const bounds = { y: activity.y + height / 2, top: activity.y, bottom: activity.y + height }
-        if (start) points.push({ event: start, x: activity.x, ...bounds, key: `${activity.id}-start`, activityID: activity.id, side: 'start' })
-        if (end) points.push({ event: end, x: activity.x + CARD_WIDTH, ...bounds, key: `${activity.id}-end`, activityID: activity.id, side: 'end' })
-    }
-    for (const event of standaloneEvents.value) {
-        const position = eventPosition(event.id)
-        points.push({ event, ...position, top: position.y - CARD_HEIGHT / 2, bottom: position.y + CARD_HEIGHT / 2, key: event.id, activityID: null, side: 'standalone' })
-    }
-    return points
-})
-function graphPort(eventID: string, preferredSide: 'left' | 'right' = 'left'): GraphPort {
-    // Shared events use an end port for the source and a start port for the target.
-    const starting = current.value?.activities.find(activity => activity.startEvent === eventID)
-    const ending = current.value?.activities.find(activity => activity.endEvent === eventID)
-    const useEnd = preferredSide === 'right' ? !!ending : !starting && !!ending
-    const activity = useEnd ? ending : starting
-    if (activity) return { x: activity.x + (useEnd ? CARD_WIDTH : 0), y: activity.y + activityHeight(activity) / 2, bottom: activity.y + activityHeight(activity), side: useEnd ? 'right' : 'left' }
-    const position = eventPosition(eventID)
-    return { ...position, bottom: position.y + CARD_HEIGHT / 2, side: preferredSide }
-}
-function precedenceGeometry(start: GraphPort, end: GraphPort) {
-    const sourceOnLeft = start.side === 'left'
-    const targetOnRight = end.side === 'right'
-    const sx = start.x + (sourceOnLeft ? -9 : 9)
-    const ex = end.x + (targetOnRight ? 11 : -11)
-    let path: string, labelX: number, labelY: number
-    if (!sourceOnLeft && !targetOnRight && end.x - start.x >= 60) {
-        const reach = Math.max(30, (end.x - start.x) / 2)
-        path = `M ${sx} ${start.y} C ${sx + reach} ${start.y}, ${ex - reach} ${end.y}, ${ex} ${end.y}`
-        labelX = (sx + ex) / 2
-        labelY = (start.y + end.y) / 2
-    } else if (!sourceOnLeft && targetOnRight && Math.abs(start.y - end.y) > 80) {
-        const rail = Math.max(start.x, end.x) + 67
-        path = `M ${sx} ${start.y} H ${rail - 10} Q ${rail} ${start.y} ${rail} ${start.y + (end.y > start.y ? 10 : -10)} V ${end.y + (end.y > start.y ? -10 : 10)} Q ${rail} ${end.y} ${rail - 10} ${end.y} H ${ex}`
-        labelX = rail
-        labelY = (start.y + end.y) / 2
-    } else {
-        const sourceRail = sourceOnLeft ? Math.max(12, start.x - 53) : start.x + 37
-        const targetRail = targetOnRight ? end.x + 53 : Math.max(12, end.x - 53)
-        const betweenRows = Math.abs(start.y - end.y) > 160
-        const bendY = betweenRows ? (start.y + end.y) / 2 : Math.max(start.bottom, end.bottom) + 69
-        path = `M ${sx} ${start.y} H ${sourceRail} V ${bendY} H ${targetRail} V ${end.y} H ${ex}`
-        labelX = (sourceRail + targetRail) / 2
-        labelY = bendY
-    }
-    return { path, labelX, labelY }
-}
-const graphEdges = computed(() => (current.value?.precedences || []).map(item => ({ item, ...precedenceGeometry(graphPort(item.leadingEvent, 'right'), graphPort(item.followingEvent)) })))
-const precedencePreview = computed(() => connecting.value && precedenceSource.value && precedenceTarget.value
-    ? precedenceGeometry(graphPort(precedenceSource.value.eventID, 'right'), graphPort(precedenceTarget.value.eventID)) : null)
 const listRows = computed<ListRow[]>(() => {
     const model = current.value
     if (!model) return []
@@ -423,15 +296,12 @@ const listRows = computed<ListRow[]>(() => {
     if (listTab.value === 'precedence') return model.precedences.map(item => ({ id: item.id, name: `${eventName(item.leadingEvent)} → ${eventName(item.followingEvent)}`, summary: `${ui('最小间隔', 'Minimum interval')} ${item.interval} ${ui('分钟', 'min')}`, detail: ui('前序事件 → 后序事件', 'Preceding event → following event') }))
     return model.anchors.map(item => ({ id: item.id, name: item.name, summary: trackName(item.trackID), detail: `${model.events.filter(event => event.anchorList.includes(item.id) || event.selectedAnchor === item.id).length} ${ui('个事件引用', 'event references')}` }))
 })
-function shortText(text: string, length: number) { return text.length > length ? `${text.slice(0, length)}…` : text }
 function eventName(id: string | null) { return current.value?.events.find(item => item.id === id)?.name || ui('未选择事件', 'No event selected') }
 function anchorName(id: string | null) { return current.value?.anchors.find(item => item.id === id)?.name || ui('未选择锚', 'No anchor selected') }
 function trackName(id: string | null) { const track = catalog.value.tracks.find(item => item.id === id); return track ? track.name.trim() || `${ui('轨道', 'Track')} ${track.id}` : (id ? ui('轨道不可用', 'Track unavailable') : ui('未选择轨道', 'No track selected')) }
 function nodeName(id: string | null) { return catalog.value.nodes.find(item => item.id === id)?.name || (id ? ui('节点不可用', 'Node unavailable') : ui('地点待定', 'Location pending')) }
 function routeName(id: string | null) { return catalog.value.routes.find(item => item.id === id)?.name || (id ? ui('进路不可用', 'Route unavailable') : ui('未选择进路', 'No route selected')) }
-function formatTime(time: number | null) { return time === null ? '' : `T${time >= 0 ? '+' : ''}${time} ${ui('分钟', 'min')}` }
 function eventNodeSummary(eventID: string) { return `${ui('备选节点', 'Candidate nodes')}: ${(eventNodeLists.value.get(eventID) || []).map(nodeName).join('、') || ui('暂无', 'None')}` }
-function isSelected(kind: ObjectKind, id: string) { return selection.value?.kind === kind && selection.value.id === id }
 function isUnsaved(template: ProcessTemplate) { return saved.value.get(template.id) !== JSON.stringify(template) }
 function selectObject(kind: ObjectKind | 'template', id: string) { if (connecting.value) return; selection.value = { kind, id }; if (kind !== 'template') listTab.value = kind }
 function selectListRow(row: ListRow) { selectObject(listTab.value, row.id) }
@@ -681,6 +551,11 @@ watch([scopeKey, () => current.value?.id], cancelPrecedence)
 watch(busy, value => { if (value) cancelPrecedence() })
 watch([() => current.value?.activities.map(activity => `${activity.id}:${activity.startEvent}:${activity.endEvent}`).join('|'), () => current.value?.events.map(event => event.id).join('|')], () => { if (connecting.value) cancelPrecedence() })
 watch(scopeKey, loadScope, { immediate: true })
+function getReportSnapshot(caption = current.value?.name || '', namesOnly = false) {
+    if (!current.value) return null
+    return { model: clone(current.value), catalog: clone(catalog.value), figure: canvasRef.value?.exportReportFigure(caption, namesOnly) || null, zoom: zoom.value }
+}
+defineExpose({ getReportSnapshot, getReportViewState: () => ({ zoom: zoom.value }) })
 onBeforeUnmount(() => { requestEpoch++; cancelPrecedence(); endDrag(); window.removeEventListener('beforeunload', protectDrafts); window.removeEventListener('keydown', handleConnectionEscape) })
 </script>
 
@@ -711,43 +586,7 @@ onBeforeUnmount(() => { requestEpoch++; cancelPrecedence(); endDrag(); window.re
 .process-zoom { display: flex; align-items: center; color: #8a97a8; font-size: 11px; }
 .process-zoom > span:not(.action-button-anchor) { width: 38px; text-align: center; }
 .process-canvas-scroll { flex: 1; min-height: 0; overflow: auto; background: #fbfcfe; }
-.process-canvas { display: block; touch-action: none; }
-.process-canvas-caption { fill: #96a3b5; font-size: 11px; pointer-events: none; }
-.process-activity { cursor: grab; outline: none; }
-.process-activity:active { cursor: grabbing; }
-.process-activity:focus-visible > rect:last-of-type { stroke: #3265db; stroke-width: 3; }
-.process-card-shadow { fill: #cfdae8; transform: translateY(3px); opacity: .22; }
-.process-card-type { font-size: 11px; font-weight: 650; pointer-events: none; }
-.process-card-name { fill: #34465e; font-size: 13px; font-weight: 600; pointer-events: none; }
-.process-card-duration { fill: #8492a5; font-size: 11px; pointer-events: none; }
-.process-card-candidates { fill: #526e88; font-size: 11px; white-space: pre; pointer-events: none; }
 .process-route-anchors :deep(.el-collapse-item__header) { height: auto; min-height: 38px; line-height: 1.5; padding: 8px 0; text-align: left; }
-.process-event { cursor: pointer; outline: none; }
-.process-event-dot { fill: #fff; stroke: #8096b2; stroke-width: 2; transition: r .12s; }
-.process-event:hover .process-event-dot, .process-event:focus-visible .process-event-dot, .process-event-dot.selected { stroke: #3265db; fill: #e9efff; stroke-width: 2.5; }
-.process-event-label { fill: #77889e; font-size: 10px; }
-.process-event-time { fill: #a0aabc; font-size: 10px; }
-.process-is-connecting .process-activity, .process-is-connecting .process-edge, .process-is-connecting .process-canvas-caption { opacity: .16; pointer-events: none; }
-.process-is-connecting .process-event { opacity: .18; pointer-events: none; }
-.process-is-connecting .process-event.process-end-source { opacity: 1; }
-.process-is-connecting .process-event.process-end-source .process-event-dot { fill: #3265db; stroke: #3265db; stroke-width: 2.5; }
-.process-is-connecting .process-event.process-precedence-candidate { opacity: 1; pointer-events: auto; cursor: crosshair; }
-.process-is-connecting .process-precedence-candidate .process-event-dot { fill: #fff; stroke: #397bf0; stroke-width: 2.5; filter: drop-shadow(0 0 5px #397bf0aa); }
-.process-is-connecting .process-precedence-candidate .process-event-label { fill: #3265db; font-weight: 650; }
-.process-is-connecting .process-anchor-badge { opacity: .16; pointer-events: none; }
-.process-precedence-halo { fill: #397bf029; stroke: #397bf066; stroke-width: 1; pointer-events: none; }
-.process-precedence-preview { fill: none; stroke: #3265db; stroke-width: 2.3; stroke-dasharray: 8 6; stroke-linejoin: round; pointer-events: none; }
-.process-anchor-badge rect { fill: #fff; stroke: #d6e1ef; }
-.process-anchor-badge rect.selected { fill: #e9efff; stroke: #3265db; stroke-width: 2; }
-.process-anchor-badge text { fill: #7b8ca4; font-size: 10px; }
-.process-edge { cursor: pointer; outline: none; }
-.process-edge-hit { fill: none; stroke: transparent; stroke-width: 20; }
-.process-edge-line { fill: none; stroke: #8496af; stroke-width: 1.6; stroke-linejoin: round; pointer-events: none; }
-.process-edge.selected .process-edge-line, .process-edge:hover .process-edge-line, .process-edge:focus-visible .process-edge-line { stroke: #3265db; stroke-width: 2.4; }
-.process-edge-label-bg { fill: #fbfcfe; stroke: #e2e8f1; }
-.process-edge-label { fill: #8290a5; font-size: 10px; }
-.process-edge.selected .process-edge-label { fill: #3265db; }
-.process-is-busy .process-activity { cursor: default; }
 .process-legend { border-top: 1px solid #e8edf5; display: flex; align-items: center; flex-wrap: wrap; gap: 16px; padding: 10px 16px; font-size: 11px; color: #8d98a9; }
 .process-legend span { display: flex; gap: 5px; align-items: center; }
 .process-legend i { width: 7px; height: 7px; border-radius: 2px; }

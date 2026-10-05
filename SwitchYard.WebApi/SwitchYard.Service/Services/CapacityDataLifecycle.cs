@@ -10,7 +10,7 @@ public static class CapacityDataLifecycle
     public static readonly IReadOnlyList<string> PlanTables = new[]
     {
         "trainprocesssnapshot", "operationthroughputsummaryroute", "operationthroughputsummaryresult",
-        "operationbottleneckanalysisresult", "operationoccupationtimesubtable", "stationplanviewsettings",
+        "operationbottleneckanalysisresult", "operationoccupationtimesubtable", "stationplanviewsettings", "resourceoccupancychartsettings", "stationplanchartsettings",
         "operationoccupationtimecell", "operationoccupationtimerow", "operationanalysiscell",
         "operationanalysismeta", "operationbottlenecksummarycategoryroute", "operationbottlenecksummarycategory",
         "movement", "train"

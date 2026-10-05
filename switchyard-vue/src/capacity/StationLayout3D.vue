@@ -12,7 +12,6 @@
                         :loading="loadingStationSchemes"
                         :disabled="!selectedInstanceId || loadingStationSchemes || loadingData"
                         :placeholder="t('stationLayout.placeholders.selectStationScheme')"
-                        @change="handleStationSchemeChange"
                     >
                         <el-option
                             v-for="option in stationSchemeOptions"
@@ -375,6 +374,8 @@ import { mapTrackOccupancyPaths } from './three/trackOccupancyPaths'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { CSS2DObject, CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js'
 import axios from '@/utils/axios'
+import { useCapacityStore } from '@/stores/capacity'
+import { useStationSchemeSelection } from './useStationSchemeSelection'
 import { getSignalStyleAsset } from '@switchyard/station-layout'
 import StationLayoutViewToolbar from './components/StationLayoutViewToolbar.vue'
 
@@ -771,7 +772,9 @@ const appliedDisplayRatio = ref(1)
 // when the slider is released, without distorting meshes or the physical gauge.
 const displayLayoutData = computed(() => transformLayoutCoordinates(layoutData.value, appliedDisplayRatio.value))
 const viewToolbarDensity = ref('compact')
-const currentStationSchemeId = ref('')
+const capacityStore = useCapacityStore()
+const currentStationSchemeId = useStationSchemeSelection(() => props.selectedInstanceId)
+const stationSchemesInstanceId = ref('')
 const currentOperationPlanId = ref('')
 const selectedTrainId = ref('')
 const loadingStationSchemes = ref(false)
@@ -841,6 +844,9 @@ let ganttSubTableSaveRequest: Promise<unknown> | null = null
 let lastMapper: LayoutMapper | null = null
 let layoutLoadVersion = 0
 let stationSchemeLoadVersion = 0
+let schemeDataLoadVersion = 0
+let loadedSchemeInstanceId = ''
+let loadedStationSchemeId = ''
 let operationPlanLoadVersion = 0
 let stationRouteLoadVersion = 0
 let stationRouteTimeLoadVersion = 0
@@ -1303,7 +1309,7 @@ function getLayoutCells(data: unknown): LayoutCell[] {
         .filter((cell) => cell.id || cell.name || cell.linkIDList)
 }
 
-function setStationSchemeOptions(options: StationSchemeOption[], includeCurrent = true) {
+function setStationSchemeOptions(options: StationSchemeOption[]) {
     const optionsById = new Map<string, StationSchemeOption>()
     for (const option of options) {
         if (!option.id || optionsById.has(option.id)) continue
@@ -1311,7 +1317,6 @@ function setStationSchemeOptions(options: StationSchemeOption[], includeCurrent 
     }
 
     stationSchemeOptions.value = Array.from(optionsById.values())
-    if (includeCurrent) ensureCurrentStationSchemeOption()
 }
 
 function ensureCurrentStationSchemeOption(name?: string) {
@@ -1344,13 +1349,12 @@ function formatTrainLabel(train: TrainOperationPlanTrain) {
     return `${number}${name}`
 }
 
-async function loadStationSchemes(options: { includeCurrent?: boolean } = {}) {
+async function loadStationSchemes() {
     if (isDisposed) return []
-    const includeCurrent = options.includeCurrent !== false
     const instanceID = selectedInstanceId.value
+    stationSchemesInstanceId.value = ''
     if (!instanceID) {
         stationSchemeLoadVersion++
-        currentStationSchemeId.value = ''
         stationSchemeOptions.value = []
         clearOperationPlans()
         clearStationRoutes()
@@ -1360,6 +1364,7 @@ async function loadStationSchemes(options: { includeCurrent?: boolean } = {}) {
     }
 
     const loadVersion = ++stationSchemeLoadVersion
+    const requestedSchemeId = currentStationSchemeId.value
     loadingStationSchemes.value = true
     try {
         const response = await axios.get('/StationLayout/GetStationSchemes', {
@@ -1371,20 +1376,24 @@ async function loadStationSchemes(options: { includeCurrent?: boolean } = {}) {
         const options = (Array.isArray(response.data) ? response.data : [])
             .map((item: any) => normalizeStationSchemeOption(item))
             .filter((item: StationSchemeOption | null): item is StationSchemeOption => item !== null)
-        const previousId = currentStationSchemeId.value
-        setStationSchemeOptions(options, includeCurrent)
-        currentStationSchemeId.value = stationSchemeOptions.value.some((item) => item.id === previousId)
-            ? previousId
-            : stationSchemeOptions.value[0]?.id || ''
-        await loadOperationPlans()
-        await refresh3DData()
+        setStationSchemeOptions(options)
+        if (currentStationSchemeId.value === requestedSchemeId) {
+            if (!stationSchemeOptions.value.some((item) => item.id === requestedSchemeId)) {
+                const fallbackId = stationSchemeOptions.value[0]?.id
+                if (fallbackId) currentStationSchemeId.value = fallbackId
+                else capacityStore.clearStationScheme(instanceID)
+            }
+        } else {
+            // A selection made while this list was loading takes precedence.
+            ensureCurrentStationSchemeOption()
+        }
+        stationSchemesInstanceId.value = instanceID
         return options
     } catch (error) {
         if (loadVersion !== stationSchemeLoadVersion || instanceID !== selectedInstanceId.value) return []
 
         console.error('Failed to load station schemes:', error)
         stationSchemeOptions.value = []
-        currentStationSchemeId.value = ''
         clearOperationPlans()
         clearStationRoutes()
         clearLayout()
@@ -1398,12 +1407,24 @@ async function loadStationSchemes(options: { includeCurrent?: boolean } = {}) {
 }
 
 async function handleStationSchemeChange() {
+    const loadVersion = ++schemeDataLoadVersion
+    const instanceID = selectedInstanceId.value
+    const stationSchemeID = currentStationSchemeId.value
+    const previousOperationPlanId = loadedSchemeInstanceId === instanceID && loadedStationSchemeId === stationSchemeID
+        ? currentOperationPlanId.value
+        : ''
+    loadedSchemeInstanceId = instanceID
+    loadedStationSchemeId = stationSchemeID
     stopPlaybackForReload()
-    currentOperationPlanId.value = ''
-    clearGanttSubTableState()
+    clearOperationPlans()
+    currentOperationPlanId.value = previousOperationPlanId
     clearStationRoutes()
-    clearTrainPlan()
+    clearLayout()
     await loadOperationPlans()
+    if (
+        isDisposed || loadVersion !== schemeDataLoadVersion ||
+        instanceID !== selectedInstanceId.value || stationSchemeID !== currentStationSchemeId.value
+    ) return
     await refresh3DData()
 }
 
@@ -3635,6 +3656,7 @@ function onResize() {
 
 function clearOperationPlans() {
     operationPlanLoadVersion++
+    loadingOperationPlans.value = false
     operationPlanOptions.value = []
     currentOperationPlanId.value = ''
     clearGanttSubTableState()
@@ -3643,6 +3665,7 @@ function clearOperationPlans() {
 
 function clearTrainPlan() {
     trainPlanLoadVersion++
+    loadingTrainOperationPlan.value = false
     trainOperationPlanTrains.value = []
     trainOperationPlanMovements.value = []
     selectedTrainId.value = ''
@@ -3652,6 +3675,7 @@ function clearTrainPlan() {
 
 function clearStationRoutes() {
     stationRouteLoadVersion++
+    loadingStationRoutes.value = false
     stationRouteOptions.value = []
     clearStationRouteTimes()
 }
@@ -3682,6 +3706,7 @@ function clearGanttSubTableState() {
 
 function clearLayout() {
     layoutLoadVersion++
+    loadingData.value = false
     layoutData.value = createEmptyLayout()
     layoutCells.value = []
     layoutGridSpacing.value = 20
@@ -4032,7 +4057,7 @@ async function loadLayout() {
     const stationSchemeID = currentStationSchemeId.value.trim()
     loadErrorMessage.value = ''
 
-    if (!instanceID) {
+    if (!instanceID || !stationSchemeID) {
         clearLayout()
         return
     }
@@ -4047,10 +4072,13 @@ async function loadLayout() {
             signal: dataRequests.signal,
             params,
         })
-        if (loadVersion !== layoutLoadVersion) return
+        if (
+            loadVersion !== layoutLoadVersion ||
+            instanceID !== selectedInstanceId.value ||
+            stationSchemeID !== currentStationSchemeId.value.trim()
+        ) return
         const resolvedStationSchemeId = readString(response.data?.metadata, 'stationSchemeID', 'StationSchemeID').trim()
-        if (resolvedStationSchemeId) {
-            currentStationSchemeId.value = resolvedStationSchemeId
+        if (resolvedStationSchemeId === stationSchemeID) {
             ensureCurrentStationSchemeOption()
         }
         layoutData.value = normalizeLayout(response.data)
@@ -4075,6 +4103,10 @@ async function loadLayout() {
 
 async function refresh3DData() {
     if (isDisposed) return
+    const loadVersion = schemeDataLoadVersion
+    const instanceID = selectedInstanceId.value
+    const stationSchemeID = currentStationSchemeId.value
+    const operationPlanID = currentOperationPlanId.value
     if (!hasScope.value) {
         clearStationRoutes()
         clearTrainPlan()
@@ -4084,16 +4116,29 @@ async function refresh3DData() {
     }
     stopPlaybackForReload()
     await Promise.all([loadStationRoutes(), loadTrainOperationPlan(), loadLayout()])
-    if (isDisposed) return
+    if (
+        isDisposed || loadVersion !== schemeDataLoadVersion ||
+        instanceID !== selectedInstanceId.value || stationSchemeID !== currentStationSchemeId.value ||
+        operationPlanID !== currentOperationPlanId.value
+    ) return
     await Promise.all([loadStationRouteTimes(), loadGanttSubTableSettings()])
 }
 
 watch(() => props.selectedInstanceId, () => {
+    schemeDataLoadVersion++
     stopPlaybackForReload()
-    currentStationSchemeId.value = ''
+    clearOperationPlans()
+    clearStationRoutes()
+    clearLayout()
     stationSchemeOptions.value = []
     void loadStationSchemes()
 }, { immediate: true })
+
+watch([currentStationSchemeId, stationSchemesInstanceId], () => {
+    if (selectedInstanceId.value && stationSchemesInstanceId.value === selectedInstanceId.value) {
+        void handleStationSchemeChange()
+    }
+})
 
 watch(() => props.activationKey, () => {
     if (selectedInstanceId.value) {
@@ -4172,6 +4217,7 @@ onBeforeUnmount(() => {
     // still complete, and chained loaders must not recreate an unmounted scene.
     layoutLoadVersion++
     stationSchemeLoadVersion++
+    schemeDataLoadVersion++
     operationPlanLoadVersion++
     stationRouteLoadVersion++
     stationRouteTimeLoadVersion++

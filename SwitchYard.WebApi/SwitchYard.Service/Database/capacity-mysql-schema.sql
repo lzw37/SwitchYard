@@ -11,7 +11,8 @@ CREATE TABLE IF NOT EXISTS `stationscheme` (
     `ID` VARCHAR(50) NULL,
     `Name` VARCHAR(100) NULL,
     `DisplayStyles` TEXT NULL,
-    `GridSettings` TEXT NULL
+    `GridSettings` TEXT NULL,
+    `LayoutDocument` LONGTEXT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE IF NOT EXISTS `stationlayoutrevision` (
@@ -313,6 +314,22 @@ CREATE TABLE IF NOT EXISTS `operationoccupationtimesubtable` (
     `SubTableName` VARCHAR(100) NULL,
     `CellIDList` LONGTEXT NULL,
     `SortOrder` INT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `resourceoccupancychartsettings` (
+    `InstanceID` VARCHAR(50) NOT NULL,
+    `StationSchemeID` VARCHAR(50) NOT NULL,
+    `OperationPlanID` VARCHAR(50) NOT NULL,
+    `ChartsJson` LONGTEXT NOT NULL,
+    PRIMARY KEY (`InstanceID`, `StationSchemeID`, `OperationPlanID`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `stationplanchartsettings` (
+    `InstanceID` VARCHAR(50) NOT NULL,
+    `StationSchemeID` VARCHAR(50) NOT NULL,
+    `OperationPlanID` VARCHAR(50) NOT NULL,
+    `ChartsJson` LONGTEXT NOT NULL,
+    PRIMARY KEY (`InstanceID`, `StationSchemeID`, `OperationPlanID`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `operationbottleneckanalysisresult` (

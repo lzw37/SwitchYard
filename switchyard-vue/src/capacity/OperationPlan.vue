@@ -1,5 +1,5 @@
 <template>
-    <section class="operation-plan-page" :class="{ 'is-process-tab': activeOperationPlanTab === 'operationProcess' }">
+    <section class="operation-plan-page" :class="{ 'is-process-tab': activeOperationPlanTab === 'operationProcess', 'is-template-workspace': isSchemeTemplateTab }">
         <div class="operation-plan-toolbar">
             <div class="operation-plan-scheme-control">
                 <span class="operation-plan-control-label">{{ t('stationLayout.menu.stationScheme') }}</span>
@@ -11,8 +11,9 @@
                     :loading="loadingStationSchemes"
                     :disabled="!selectedInstanceId || loadingStationSchemes || loadingTrainTemplates || savingTrainOperationPlanMovement || cellOccupancyImportBusy || refreshingCellOccupancyImport"
                     :placeholder="t('stationLayout.placeholders.selectStationScheme')"
-                    @change="handleStationSchemeChange"
+                    :aria-label="t('stationLayout.menu.stationScheme')"
                 >
+                    <template #label>{{ selectedStationSchemeName }}</template>
                     <el-option
                         v-for="option in stationSchemeOptions"
                         :key="option.id"
@@ -21,30 +22,8 @@
                     />
                 </el-select>
             </div>
-            <span v-if="isSchemeTemplateTab" class="operation-plan-scope-hint">{{ t('operationPlan.schemeTemplates') }}</span>
-            <div v-else class="operation-plan-object-control">
-                <span class="operation-plan-control-label">{{ t('operationPlan.planObject.label') }}</span>
+            <div v-if="!isSchemeTemplateTab" class="operation-plan-solve-controls">
                 <el-select
-                    v-model="currentOperationPlanId"
-                    size="small"
-                    filterable
-                    class="operation-plan-object-select"
-                    :loading="loadingOperationPlans"
-                    :disabled="!currentStationSchemeId || loadingOperationPlans || operationPlanInlineActive || savingTrainOperationPlanMovement || cellOccupancyImportBusy || refreshingCellOccupancyImport"
-                    :placeholder="t('operationPlan.planObject.placeholders.select')"
-                    @change="handleOperationPlanChange"
-                >
-                    <el-option
-                        v-for="option in operationPlanOptions"
-                        :key="option.operationPlanID"
-                        :label="formatOperationPlanLabel(option)"
-                        :value="option.operationPlanID"
-                    />
-                </el-select>
-            </div>
-            <div class="operation-plan-toolbar-actions">
-                <el-select
-                    v-if="!isSchemeTemplateTab"
                     v-model="selectedSaturatedPresetId"
                     size="small"
                     filterable
@@ -61,21 +40,11 @@
                     />
                 </el-select>
                 <ActionButton
-                    v-if="!isSchemeTemplateTab"
                     :icon="MagicStick"
                     type="success"
                     :loading="generatingSaturatedPlan"
                     :disabled="!canGenerateSaturatedPlan"
                     @click="generateSaturatedPlan" :label="saturatedPlanButtonText" />
-                <ActionButton
-                    v-if="!isSchemeTemplateTab"
-                    :icon="Setting"
-                    :disabled="!selectedInstanceId || !currentStationSchemeId"
-                    @click="openOperationPlanManager" :label="t('operationPlan.planObject.actions.manage')" />
-                <ActionButton
-                    :icon="Refresh"
-                    :disabled="!canLoadTemplates || operationPlanInlineActive"
-                    @click="refreshOperationPlanData" :label="t('operationPlan.actions.refresh')" />
             </div>
         </div>
 
@@ -348,7 +317,35 @@
             </div>
         </el-drawer>
 
-        <el-tabs v-model="activeOperationPlanTab" class="operation-plan-sub-tabs">
+        <div class="operation-plan-workspace">
+        <el-tabs v-model="activeOperationPlanWorkspace" class="operation-plan-sub-tabs operation-plan-workspace-tabs">
+            <el-tab-pane
+                :label="t('operationPlan.tabs.templateWorkspace')"
+                name="templates"
+                class="operation-plan-sub-tab-pane operation-plan-workspace-pane"
+            >
+                <template #label>
+                    <span class="operation-plan-workspace-label">
+                        <span>{{ t('operationPlan.tabs.templateWorkspace') }}</span>
+                        <el-radio-group
+                            v-if="activeOperationPlanWorkspace === 'templates'"
+                            v-model="activeOperationPlanTab"
+                            class="operation-plan-view-switcher"
+                            size="small"
+                            :aria-label="t('operationPlan.viewSelector')"
+                            @click.stop
+                            @keydown.stop
+                        >
+                            <el-radio-button
+                                v-for="view in operationPlanViewOptions"
+                                :key="view.value"
+                                :value="view.value"
+                                :title="view.label"
+                            >{{ view.label }}</el-radio-button>
+                        </el-radio-group>
+                    </span>
+                </template>
+                <el-tabs v-model="activeTemplateView" class="operation-plan-sub-tabs operation-plan-view-tabs">
             <el-tab-pane
                 :label="t('operationPlan.tabs.operationProcess')"
                 name="operationProcess"
@@ -356,6 +353,7 @@
                 lazy
             >
                 <OperationProcessEditor
+                    ref="operationProcessEditorRef"
                     class="operation-process-editor-host"
                     :instance-i-d="selectedInstanceId || ''"
                     :station-scheme-i-d="currentStationSchemeId"
@@ -740,8 +738,53 @@
                     </section>
                 </div>
             </el-tab-pane>
+                </el-tabs>
+            </el-tab-pane>
             <el-tab-pane
                 :label="t('operationPlan.tabs.trainOperationPlan')"
+                name="plans"
+                class="operation-plan-sub-tab-pane operation-plan-workspace-pane operation-plan-scoped-pane"
+            >
+                <template #label>
+                    <span class="operation-plan-workspace-label">
+                        <span>{{ t('operationPlan.tabs.trainOperationPlan') }}</span>
+                        <el-radio-group
+                            v-if="activeOperationPlanWorkspace === 'plans'"
+                            v-model="activePlanSection"
+                            class="operation-plan-view-switcher"
+                            size="small"
+                            :aria-label="t('operationPlan.viewSelector')"
+                            @click.stop
+                            @keydown.stop
+                        >
+                            <el-radio-button
+                                v-for="view in operationPlanViewOptions"
+                                :key="view.value"
+                                :value="view.value"
+                                :title="view.label"
+                            >{{ view.label }}</el-radio-button>
+                        </el-radio-group>
+                    </span>
+                </template>
+                <div class="operation-plan-context-toolbar">
+                    <OperationPlanSelector
+                        v-model="currentOperationPlanId"
+                        v-bind="operationPlanSelectorProps"
+                        @change="handleOperationPlanChange"
+                        @manage="openOperationPlanManager"
+                        @refresh="refreshOperationPlanData"
+                    />
+                    <div v-if="activePlanSection === 'planCharts'" class="operation-plan-chart-mode">
+                        <span>{{ t('operationPlan.chartMode.label') }}</span>
+                        <el-radio-group v-model="activePlanChartMode" size="small" :aria-label="t('operationPlan.chartMode.label')">
+                            <el-radio-button value="mesoscopic">{{ t('operationPlan.chartMode.mesoscopic') }}</el-radio-button>
+                            <el-radio-button value="microscopic">{{ t('operationPlan.chartMode.microscopic') }}</el-radio-button>
+                        </el-radio-group>
+                    </div>
+                </div>
+                <el-tabs v-model="activePlanSection" class="operation-plan-sub-tabs operation-plan-view-tabs">
+            <el-tab-pane
+                :label="t('operationPlan.tabs.planList')"
                 name="trainOperationPlan"
                 class="operation-plan-sub-tab-pane"
             >
@@ -1094,16 +1137,28 @@
             </el-tab-pane>
 
             <el-tab-pane
+                :label="t('operationPlan.tabs.planCharts')"
+                name="planCharts"
+                class="operation-plan-sub-tab-pane"
+            >
+                <el-tabs v-model="activePlanView" class="operation-plan-sub-tabs operation-plan-view-tabs">
+            <el-tab-pane
                 :label="t('operationPlan.tabs.trainOperationChart')"
                 name="trainOperationChart"
                 class="operation-plan-sub-tab-pane"
             >
                 <section
                     class="operation-plan-card operation-plan-chart-card"
+                    :aria-label="operationPlanChartCountText"
                     v-loading="loadingOperationPlanChart || loadingTrainOperationPlan || loadingStationRoutes || loadingStationRouteEnds"
                 >
-                    <header class="operation-plan-card-header">
-                        <span class="operation-plan-panel-summary" :title="operationPlanChartCountText">{{ operationPlanChartCountText }}</span>
+                    <header class="operation-plan-card-header resource-occupancy-chart-header">
+                        <ResourceOccupancyCharts
+                            :scope="resourceOccupancyChartScope"
+                            :cells="resourceOccupancyChartCellOptions"
+                            :disabled="!canConfigureResourceOccupancyCharts"
+                            @selection-change="selectResourceOccupancyChartCells"
+                        />
                         <div class="operation-plan-card-actions">
                             <span class="operation-plan-chart-hint">{{ t('capacityGantt.trackDragHint') }}</span>
                             <ActionButton
@@ -1149,8 +1204,24 @@
                 lazy
             >
                 <section class="operation-plan-card operation-plan-chart-card" v-loading="loadingOperationPlanChart || loadingTrainOperationPlan">
-                    <header class="operation-plan-card-header">
-                        <span class="operation-plan-panel-summary">{{ t('stationPlanView.summary', { trains: stationPlanTrains.length, rows: stationPlanRows.length }) }}</span>
+                    <header class="operation-plan-card-header station-plan-chart-header">
+                        <div class="station-plan-chart-tabs-toolbar">
+                            <el-tabs :model-value="activeStationPlanChartID" type="card" class="station-plan-chart-tabs"
+                                @tab-change="selectStationPlanChart" @tab-remove="removeStationPlanChart">
+                                <el-tab-pane v-for="chart in stationPlanCharts" :key="chart.chartID"
+                                    :name="chart.chartID" :label="chart.chartName"
+                                    :disabled="!canConfigureStationPlanCharts || stationPlanSettingsVisible"
+                                    :closable="stationPlanCharts.length > 1 && canConfigureStationPlanCharts && !stationPlanSettingsVisible" />
+                            </el-tabs>
+                            <ActionButton :icon="Edit" :label="t('operationPlan.stationPlanCharts.edit')"
+                                :disabled="!canConfigureStationPlanCharts || stationPlanSettingsVisible" @click="openStationPlanSettings()" />
+                            <ActionButton :icon="Plus" :label="t('operationPlan.stationPlanCharts.add')"
+                                :title="stationPlanCharts.length >= 100 ? t('operationPlan.stationPlanCharts.chartLimit') : undefined"
+                                :disabled="!canConfigureStationPlanCharts || stationPlanSettingsVisible || stationPlanCharts.length >= 100" @click="openStationPlanSettings(true)" />
+                            <ActionButton :icon="Download" type="primary" :label="t('stationCapacityReport.export')"
+                                :title="t('stationCapacityReport.hint')" :loading="exportingCapacityReport"
+                                :disabled="!canExportCapacityReport" @click="exportCapacityReport" />
+                        </div>
                         <div class="station-plan-time-range">
                             <span>{{ t('operationPlan.trainOperationPlan.timeRange') }}</span>
                             <el-input v-model="trainOperationPlanStartTime" :aria-label="t('stationPlanView.startTime')" size="small" />
@@ -1158,9 +1229,15 @@
                             <el-input v-model="trainOperationPlanEndTime" :aria-label="t('stationPlanView.endTime')" size="small" />
                         </div>
                     </header>
-                    <el-alert v-if="stationPlanSettingsError" :title="t('stationPlanView.loadSettingsFailed')" type="error" :closable="false" />
+                    <el-alert v-if="stationPlanSettingsError" :title="t('operationPlan.stationPlanCharts.loadFailed')" type="error" :closable="false">
+                        <el-button link type="primary" :disabled="loadingStationPlanSettings" @click="loadStationPlanSettings">{{ t('operationPlan.stationPlanCharts.retry') }}</el-button>
+                    </el-alert>
+                    <el-alert v-if="stationPlanSettingsSaveError && !stationPlanSettingsVisible" :title="t('operationPlan.stationPlanCharts.saveFailed')" type="error" :closable="false">
+                        <el-button link type="primary" :disabled="!canConfigureStationPlanCharts" @click="retryStationPlanChartSave">{{ t('operationPlan.stationPlanCharts.retry') }}</el-button>
+                    </el-alert>
                     <el-alert v-if="!loadingOperationPlanChart && !loadingTrainOperationPlan && !loadingProcessConstraintCatalog && stationPlanUnresolvedMovements.length" :title="t('stationPlanView.unresolvedMovements', { count: stationPlanUnresolvedMovements.length })" type="warning" :closable="false" show-icon />
                     <StationPlanView
+                        ref="stationPlanViewRef"
                         :rows="stationPlanPickMode ? stationPlanAxisOptions : stationPlanRows"
                         :tracks="stationPlanTracks"
                         :trains="stationPlanTrains"
@@ -1169,7 +1246,7 @@
                         :dwellingMovementIDs="stationPlanDwellingMovementIDs"
                         :pick-mode="stationPlanPickMode"
                         :draft-points="stationPlanPickedPreview"
-                        :selection-scope="operationPlanScopeKey"
+                        :selection-scope="stationPlanChartSelectionScope"
                         :editable="canEditOperationPlanChart && !stationPlanActions.busy && !stationPlanCreationActive && !stationProcessTrainVisible"
                         :readOnlyTrainIDs="stationPlanReadOnlyTrainIDs"
                         :undo-count="stationPlanActions.undoCount"
@@ -1178,7 +1255,7 @@
                         :end-minutes="parseOperationPlanTime(trainOperationPlanEndTime)"
                         :loading="loadingOperationPlanChart || loadingTrainOperationPlan"
                         :refresh-disabled="!canLoadOperationPlanChart || operationPlanInlineActive || stationPlanCreationActive || stationProcessTrainVisible"
-                        :empty-text="hasScope ? t('stationPlanView.emptyRows') : t('operationPlan.empty.selectScheme')"
+                        :empty-text="hasScope ? t(stationPlanChartsConfigured ? 'operationPlan.stationPlanCharts.emptySelection' : 'stationPlanView.emptyRows') : t('operationPlan.empty.selectScheme')"
                         @refresh="refreshStationPlanView"
                         @edit="saveStationPlanSegmentEdit"
                         @track-edit="saveStationPlanTrackEdit"
@@ -1206,7 +1283,6 @@
                                 :disabled="!canRecalculateCellOccupations"
                                 @click="recalculateCellOccupations"
                             />
-                            <ActionButton :icon="Setting" :label="t('stationPlanView.configure')" :loading="loadingStationPlanSettings" :disabled="!hasScope || loadingStationPlanSettings || stationPlanSettingsError || savingStationPlanSettings || stationPlanCreationActive" @click="openStationPlanSettings" />
                         </template>
                     </StationPlanView>
                     <StationPlanCreationDialog
@@ -1235,15 +1311,24 @@
                         @reload="loadStationProcessTrainSources" @preview="previewStationProcessTrain"
                         @confirm="confirmStationProcessTrain" @cancel="cancelStationProcessTrain"
                     />
-                    <p class="station-plan-note">{{ t('stationPlanView.note') }}</p>
                 </section>
             </el-tab-pane>
-
+                </el-tabs>
+            </el-tab-pane>
+                </el-tabs>
+            </el-tab-pane>
             <el-tab-pane
                 :label="t('operationPlan.tabs.operationOccupationTimeTable')"
                 name="operationOccupationTimeTable"
-                class="operation-plan-sub-tab-pane"
+                class="operation-plan-sub-tab-pane operation-plan-scoped-pane"
             >
+                <OperationPlanSelector
+                    v-model="currentOperationPlanId"
+                    v-bind="operationPlanSelectorProps"
+                    @change="handleOperationPlanChange"
+                    @manage="openOperationPlanManager"
+                    @refresh="refreshOperationPlanData"
+                />
                 <section
                     class="operation-plan-card operation-occupation-time-card"
                     v-loading="loadingOperationPlanChart || loadingTrainOperationPlan || loadingStationRoutes || loadingStationRouteEnds"
@@ -1431,8 +1516,15 @@
             <el-tab-pane
                 :label="t('operationPlan.tabs.operationBottleneckAnalysis')"
                 name="operationBottleneckAnalysis"
-                class="operation-plan-sub-tab-pane"
+                class="operation-plan-sub-tab-pane operation-plan-scoped-pane"
             >
+                <OperationPlanSelector
+                    v-model="currentOperationPlanId"
+                    v-bind="operationPlanSelectorProps"
+                    @change="handleOperationPlanChange"
+                    @manage="openOperationPlanManager"
+                    @refresh="refreshOperationPlanData"
+                />
                 <section
                     class="operation-plan-card operation-bottleneck-analysis-card"
                     v-loading="loadingOperationPlanChart || loadingTrainOperationPlan || loadingStationRoutes || loadingStationRouteEnds"
@@ -1528,8 +1620,15 @@
             <el-tab-pane
                 :label="t('operationPlan.tabs.operationThroughputSummary')"
                 name="operationThroughputSummary"
-                class="operation-plan-sub-tab-pane"
+                class="operation-plan-sub-tab-pane operation-plan-scoped-pane"
             >
+                <OperationPlanSelector
+                    v-model="currentOperationPlanId"
+                    v-bind="operationPlanSelectorProps"
+                    @change="handleOperationPlanChange"
+                    @manage="openOperationPlanManager"
+                    @refresh="refreshOperationPlanData"
+                />
                 <section
                     class="operation-plan-card operation-bottleneck-summary-card"
                     v-loading="loadingOperationPlanChart || loadingTrainOperationPlan || loadingStationRoutes || loadingStationRouteEnds || loadingOperationBottleneckSummaryCategories"
@@ -1625,6 +1724,7 @@
                 </section>
             </el-tab-pane>
         </el-tabs>
+        </div>
 
         <el-dialog
             v-model="routePickerVisible"
@@ -1938,29 +2038,38 @@
             </template>
         </el-dialog>
 
-        <el-dialog v-model="stationPlanSettingsVisible" :title="t('stationPlanView.configure')" width="720px" :close-on-click-modal="!savingStationPlanSettings" :close-on-press-escape="!savingStationPlanSettings" :show-close="!savingStationPlanSettings" append-to-body>
-            <p class="station-plan-settings-hint">{{ t('stationPlanView.settingsHint') }}</p>
+        <el-dialog v-model="stationPlanSettingsVisible" :title="t(stationPlanEditingChartID ? 'operationPlan.stationPlanCharts.editTitle' : 'operationPlan.stationPlanCharts.addTitle')" width="min(720px, 94vw)" :close-on-click-modal="false" :close-on-press-escape="!savingStationPlanSettings" :show-close="!savingStationPlanSettings" append-to-body @close="cancelStationPlanSettings">
+            <el-form label-position="top" @submit.prevent="saveStationPlanSettings">
+                <el-form-item :label="t('operationPlan.stationPlanCharts.name')" required :error="stationPlanChartNameError">
+                    <el-input v-model="stationPlanChartNameDraft" maxlength="100" :disabled="!canConfigureStationPlanCharts"
+                        :placeholder="t('operationPlan.stationPlanCharts.namePlaceholder')" @input="stationPlanChartNameError = ''" />
+                </el-form-item>
+            </el-form>
+            <p class="station-plan-settings-hint">{{ t('operationPlan.stationPlanCharts.settingsHint') }}</p>
             <section class="station-plan-settings-section">
                 <div class="station-plan-settings-heading"><strong>{{ t('stationPlanView.displayOrder') }}</strong>
-                    <el-button text size="small" :disabled="savingStationPlanSettings" @click="stationPlanNodeDraft = stationPlanNodeOptions.map(node => node.sourceID)">{{ t('stationPlanView.selectAll') }}</el-button>
-                    <el-button text size="small" :disabled="savingStationPlanSettings" @click="stationPlanNodeDraft = [...stationPlanUsedNodeIDs]">{{ t('stationPlanView.clearSelection') }}</el-button>
+                    <el-button text size="small" :disabled="!canConfigureStationPlanCharts" @click="stationPlanNodeDraft = stationPlanNodeOptions.map(node => node.sourceID)">{{ t('stationPlanView.selectAll') }}</el-button>
+                    <el-button text size="small" :disabled="!canConfigureStationPlanCharts" @click="stationPlanNodeDraft = []">{{ t('stationPlanView.clearSelection') }}</el-button>
                 </div>
                 <div class="station-plan-settings-options">
                     <div v-for="(row, index) in stationPlanAxisDraft" :key="row.key" class="station-plan-settings-row">
-                        <el-checkbox :model-value="isStationPlanRowSelected(row)" :disabled="savingStationPlanSettings || isStationPlanRowUsed(row)" @change="toggleStationPlanRowSelection(row, Boolean($event))">
+                        <el-checkbox :model-value="isStationPlanRowSelected(row)" :disabled="!canConfigureStationPlanCharts" @change="toggleStationPlanRowSelection(row, Boolean($event))">
                             <span :title="row.label">{{ row.label }}</span><span v-if="isStationPlanRowUsed(row)" class="station-plan-used-endpoint"> · {{ t('stationPlanView.usedNode') }}</span>
                         </el-checkbox>
-                        <el-button text size="small" :disabled="savingStationPlanSettings || index === 0" :aria-label="`${t('stationPlanView.moveUp')} ${row.label}`" @click="moveStationPlanAxisRow(row.key, -1)">{{ t('stationPlanView.moveUp') }}</el-button>
-                        <el-button text size="small" :disabled="savingStationPlanSettings || index === stationPlanAxisDraft.length - 1" :aria-label="`${t('stationPlanView.moveDown')} ${row.label}`" @click="moveStationPlanAxisRow(row.key, 1)">{{ t('stationPlanView.moveDown') }}</el-button>
+                        <el-button text size="small" :disabled="!canConfigureStationPlanCharts || index === 0" :aria-label="`${t('stationPlanView.moveUp')} ${row.label}`" @click="moveStationPlanAxisRow(row.key, -1)">{{ t('stationPlanView.moveUp') }}</el-button>
+                        <el-button text size="small" :disabled="!canConfigureStationPlanCharts || index === stationPlanAxisDraft.length - 1" :aria-label="`${t('stationPlanView.moveDown')} ${row.label}`" @click="moveStationPlanAxisRow(row.key, 1)">{{ t('stationPlanView.moveDown') }}</el-button>
                     </div>
                 </div>
                 <p v-if="stationPlanNodeOptions.length === 0" class="station-plan-settings-hint">{{ t('stationPlanView.emptyNodes') }}</p>
             </section>
+            <el-alert v-if="stationPlanSettingsSaveError" :title="t('operationPlan.stationPlanCharts.saveFailed')" type="error" :closable="false" show-icon />
             <template #footer>
-                <el-button :disabled="savingStationPlanSettings" @click="stationPlanSettingsVisible = false">{{ t('operationPlan.actions.cancel') }}</el-button>
-                <el-button type="primary" :loading="savingStationPlanSettings" @click="saveStationPlanSettings">{{ t('stationPlanView.saveSettings') }}</el-button>
+                <el-button :disabled="savingStationPlanSettings" @click="cancelStationPlanSettings">{{ t('operationPlan.actions.cancel') }}</el-button>
+                <el-button type="primary" :disabled="!canConfigureStationPlanCharts" :loading="savingStationPlanSettings" @click="saveStationPlanSettings">{{ t(stationPlanSettingsSaveError ? 'operationPlan.stationPlanCharts.retry' : 'stationPlanView.saveSettings') }}</el-button>
             </template>
         </el-dialog>
+        <component :is="capacityReportRenderer" v-if="capacityReportRenderJob && capacityReportRenderer"
+            ref="capacityReportRendererRef" :job="capacityReportRenderJob" />
     </section>
 </template>
 
@@ -1976,7 +2085,7 @@ import StationPlanProcessTrainDialog from './components/StationPlanProcessTrainD
 import { createProcessTrainSelections, validateProcessTrainSelections, type ProcessTrainActivitySelection, type ProcessTrainCreationForm } from './components/processTrainCreation'
 import { createStationPlanDraftMovements, rematchStationPlanDraftMovement, canConfirmStationPlanDraft, parseStationPlanDraftTime,
     type StationPlanDraftMovement, type StationPlanDraftPoint } from './components/stationPlanCreation'
-import { buildStationPlanAxisGroups, buildStationPlanTrains, resolveStationPlanMovementRouteID, stationPlanTimeLabel, type StationPlanAxisRow, type StationPlanMovement, type StationPlanSegmentEdit, type StationPlanTrack, type StationPlanTrackEdit } from './components/stationPlanView'
+import { buildStationPlanAxisGroups, buildStationPlanTrains, resolveStationPlanMovementRouteID, stationPlanDomain, stationPlanTimeLabel, type StationPlanAxisRow, type StationPlanMovement, type StationPlanSegmentEdit, type StationPlanTrack, type StationPlanTrackEdit } from './components/stationPlanView'
 import { alignStationPlanSegmentToAdjacent, editStationPlanSegment, editStationPlanTrack, StationPlanEditingError, StationPlanTrackEditingError } from './components/stationPlanEditing'
 import { operationPlanCellTracks, resolveOperationPlanTrackSource, planOperationPlanTrackEdit, OperationPlanTrackEditingError, type OperationPlanTrackSource } from './components/operationPlanTrackEditing'
 import { namedTrackCellNames } from './components/chartRowKinds'
@@ -1986,16 +2095,25 @@ import { StationPlanMovementAction } from './components/stationPlanActions'
 import { getTrackOccupancyGanttTimeScale, trackOccupancyGanttMetrics, type TrackOccupancyGanttRow, type TrackOccupancyGanttDragStart } from './components/trackOccupancyGantt'
 import { adjustOperationPlanGanttWindow, type OperationPlanGanttWindow } from './operationPlanGantt'
 import { normalizeMovementCellOccupations, type MovementCellOccupation } from './movementCellOccupation'
-import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, ref, shallowReactive, shallowRef, watch } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, ref, shallowReactive, shallowRef, watch, type Component } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox, type TableInstance } from 'element-plus'
-import { ArrowDown, ArrowRight, ArrowUp, Check, Close, CopyDocument, Delete, Edit, Filter, List, MagicStick, Plus, Refresh, Search, Setting, UploadFilled } from '@element-plus/icons-vue'
+import { ArrowDown, ArrowRight, ArrowUp, Check, Close, CopyDocument, Delete, Download, Edit, Filter, List, MagicStick, Plus, Refresh, Search, Setting, UploadFilled } from '@element-plus/icons-vue'
 import axios from '@/utils/axios'
+import { useCapacityStore } from '@/stores/capacity'
+import { useStationSchemeSelection } from './useStationSchemeSelection'
+import OperationPlanSelector from './components/OperationPlanSelector.vue'
+import ResourceOccupancyCharts from './components/ResourceOccupancyCharts.vue'
 import StationLayoutEditor from './components/StationLayoutEditor.vue'
 import StationLayoutViewToolbar from './components/StationLayoutViewToolbar.vue'
 import CellOccupancyImportDialog, { type CellOccupancyImportResult, type CellOccupancyImportScope } from './components/CellOccupancyImportDialog.vue'
 import { api as processTemplateAPI, type ProcessScope, type ProcessTemplate, type ProcessCatalog, type ProcessActivity } from './operationProcess'
 import { createProcessPlanSources, buildProcessPlanBatch, type ProcessPlanSource } from './processPlanBatch'
+import type { StationCapacityReportInput } from './report/stationCapacityReport'
+import type { ReportFigureRenderer, ReportRenderJob } from './report/reportRenderTypes'
+import type { StationPlanReportViewState } from './report/svgSnapshot'
+import type { GanttReportViewState } from './report/ganttSvgSnapshot'
+import { occupancyReportLabels, reportObjectName, stationReportLabels } from './report/reportNames'
 
 const OperationProcessEditor = defineAsyncComponent(() => import('./components/OperationProcessEditor.vue'))
 
@@ -2152,7 +2270,13 @@ interface TrainOperationPlanMovement {
 }
 
 type TemplateEditMode = 'create' | 'edit'
-type OperationPlanSubTab = 'operationProcess' | 'trainTemplate' | 'trainOperationPlan' | 'trainOperationChart' | 'stationPlanView' | 'operationOccupationTimeTable' | 'operationBottleneckAnalysis' | 'operationThroughputSummary'
+type OperationTemplateView = 'operationProcess' | 'trainTemplate'
+type OperationPlanView = 'trainOperationPlan' | 'trainOperationChart' | 'stationPlanView'
+type OperationPlanSection = 'trainOperationPlan' | 'planCharts'
+type OperationPlanChartMode = 'mesoscopic' | 'microscopic'
+type OperationAnalysisTab = 'operationOccupationTimeTable' | 'operationBottleneckAnalysis' | 'operationThroughputSummary'
+type OperationPlanSubTab = OperationTemplateView | OperationPlanView | OperationAnalysisTab
+type OperationPlanWorkspace = 'templates' | 'plans' | OperationAnalysisTab
 type OperationOccupationTimeUnit = 'seconds' | 'minutes'
 type RoutePickerTarget = 'movementTemplate' | 'trainOperationPlanMovement' | 'trainOperationPlanMovementRoute'
 type RoutePickerFilterField = 'types' | 'startNodeIds' | 'endNodeIds' | 'nodeIds' | 'linkIds' | 'cellIds' | 'switchIds' | 'signalIds'
@@ -2361,10 +2485,62 @@ const { t } = useI18n()
 
 const defaultOperationPlanID = 'default'
 const operationOccupationTimeDefaultSubTableCount = 3
-const currentStationSchemeId = ref('')
+const capacityStore = useCapacityStore()
+const currentStationSchemeId = useStationSchemeSelection(() => props.selectedInstanceId)
 const currentOperationPlanId = ref('')
-const activeOperationPlanTab = ref<OperationPlanSubTab>('trainTemplate')
+const activeOperationPlanWorkspace = ref<OperationPlanWorkspace>('templates')
+const activeTemplateView = ref<OperationTemplateView>('trainTemplate')
+const activePlanSection = ref<OperationPlanSection>('trainOperationPlan')
+const activePlanChartMode = ref<OperationPlanChartMode>('mesoscopic')
+// Retain the logical chart view for loading, draft cleanup, and programmatic navigation.
+const activePlanView = computed<OperationPlanView>({
+    get: () => activePlanSection.value === 'trainOperationPlan'
+        ? 'trainOperationPlan'
+        : activePlanChartMode.value === 'mesoscopic' ? 'stationPlanView' : 'trainOperationChart',
+    set: view => {
+        if (view === 'trainOperationPlan') {
+            activePlanSection.value = 'trainOperationPlan'
+        } else {
+            activePlanChartMode.value = view === 'stationPlanView' ? 'mesoscopic' : 'microscopic'
+            activePlanSection.value = 'planCharts'
+        }
+    },
+})
+// Keep the active leaf view as the source for data loading and programmatic navigation.
+const activeOperationPlanTab = computed<OperationPlanSubTab>({
+    get: () => {
+        if (activeOperationPlanWorkspace.value === 'templates') return activeTemplateView.value
+        if (activeOperationPlanWorkspace.value === 'plans') return activePlanView.value
+        return activeOperationPlanWorkspace.value
+    },
+    set: tab => {
+        if (tab === 'operationProcess' || tab === 'trainTemplate') {
+            activeTemplateView.value = tab
+            activeOperationPlanWorkspace.value = 'templates'
+        } else if (tab === 'trainOperationPlan' || tab === 'trainOperationChart' || tab === 'stationPlanView') {
+            activePlanView.value = tab
+            activeOperationPlanWorkspace.value = 'plans'
+        } else {
+            activeOperationPlanWorkspace.value = tab
+        }
+    },
+})
+const operationPlanViewOptions = computed(() => {
+    const views: Array<OperationTemplateView | OperationPlanSection> = activeOperationPlanWorkspace.value === 'templates'
+        ? ['operationProcess', 'trainTemplate']
+        : activeOperationPlanWorkspace.value === 'plans'
+            ? ['trainOperationPlan', 'planCharts']
+            : []
+    return views.map(value => ({
+        value,
+        label: t(`operationPlan.tabs.${value === 'trainOperationPlan' ? 'planList' : value}`),
+    }))
+})
 const stationSchemeOptions = ref<StationSchemeOption[]>([])
+const selectedStationSchemeName = computed(() => {
+    const option = stationSchemeOptions.value.find(item => item.id === currentStationSchemeId.value)
+    return option ? formatStationSchemeLabel(option) : t('operationPlan.unnamedStationScheme')
+})
 const operationPlanOptions = ref<StationOperationPlan[]>([])
 const solvePresets = ref<SolvePresetOption[]>([])
 const selectedSaturatedPresetId = ref('')
@@ -2434,6 +2610,18 @@ const stationPlanPickedPreview = computed(() => {
         !!point?.nodeID && Number.isFinite(point.timeMinutes)) : []
 })
 const stationPlanSettings = ref<{ nodeIDs: string[] | null }>({ nodeIDs: null })
+interface StationPlanChart { chartID: string; chartName: string; endpointNodeIDs: string[] }
+interface StationPlanChartSave { charts: StationPlanChart[]; selectedID: string; closeDialog: boolean }
+const stationPlanCharts = ref<StationPlanChart[]>([createDefaultStationPlanChart()])
+const activeStationPlanChartID = ref(stationPlanCharts.value[0]!.chartID)
+const stationPlanChartsConfigured = ref(false)
+const stationPlanChartsLoadedScope = ref('')
+const stationPlanChartSelectionRevision = ref(0)
+const stationPlanEditingChartID = ref('')
+const stationPlanChartNameDraft = ref('')
+const stationPlanChartNameError = ref('')
+const stationPlanSettingsSaveError = ref(false)
+let pendingStationPlanChartSave: StationPlanChartSave | null = null
 const loadingStationPlanSettings = ref(false)
 const savingStationPlanSettings = ref(false)
 const stationPlanSettingsError = ref(false)
@@ -2457,6 +2645,7 @@ const operationOccupationTimeSubTables = ref<OperationOccupationTimeSubTable[]>(
 )
 const activeOperationOccupationTimeSubTableId = ref(operationOccupationTimeSubTables.value[0]?.id || '')
 const loadingOperationOccupationTimeSubTableSettings = ref(false)
+const operationOccupationTimeSubTableSettingsError = ref(false)
 const savingOperationOccupationTimeSubTableSettings = ref(false)
 const operationOccupationTimeSubTableDialogVisible = ref(false)
 const operationOccupationTimeSubTableDialogMode = ref<'create' | 'edit'>('create')
@@ -2469,6 +2658,13 @@ const operationOccupationTimeSubTableDialogForm = ref<OperationOccupationTimeSub
 const operationBottleneckSummaryCategories = ref<OperationBottleneckSummaryCategory[]>([])
 const operationAnalysisSnapshot = ref<OperationAnalysisSnapshot | null>(null)
 const usingOperationAnalysisSnapshot = ref(false)
+const exportingCapacityReport = ref(false)
+const capacityReportLoadedScope = ref('')
+const capacityReportRenderer = shallowRef<Component | null>(null)
+const capacityReportRenderJob = shallowRef<ReportRenderJob | null>(null)
+const capacityReportRendererRef = ref<ReportFigureRenderer | null>(null)
+const stationPlanViewRef = ref<InstanceType<typeof StationPlanView> | null>(null)
+const operationProcessEditorRef = ref<{ getReportSnapshot(caption?: string, namesOnly?: boolean): ReportRenderJob['currentProcess'] } | null>(null)
 const operationBottleneckRoutePickerVisible = ref(false)
 const operationBottleneckRoutePickerCategoryId = ref('')
 const operationBottleneckRoutePickerSelectedIds = ref<string[]>([])
@@ -2491,6 +2687,7 @@ const loadingOperationPlanChart = ref(false)
 const operationPlanChartGanttRef = ref<InstanceType<typeof TrackOccupancyGantt> | null>(null)
 const operationPlanChartScaleX = ref(1)
 const operationPlanChartAutoFit = ref(false)
+const resourceOccupancyChartCellIDs = ref<string[] | null>(null)
 const operationPlanChartGeometry = ref<{ domain: { start: number; end: number }; pixelsPerMinute: number } | null>(null)
 const operationPlanChartDrag = shallowRef<OperationPlanChartDragState | null>(null)
 const operationPlanChartDragPreview = ref<{ startMinutes: number; endMinutes: number } | null>(null)
@@ -2587,6 +2784,8 @@ const operationPlanObjectMode = ref<TemplateEditMode>('create')
 const operationPlanObjectOriginalId = ref('')
 const operationPlanObjectForm = ref(createEmptyOperationPlanObject())
 
+let operationPlanDisposed = false
+let stationSchemeChangeVersion = 0
 let stationSchemeLoadVersion = 0
 let operationPlanObjectLoadVersion = 0
 let stationRouteLoadVersion = 0
@@ -2633,6 +2832,13 @@ const trainOperationPlanTrainInlineActive = computed(() => trainOperationPlanTra
 const trainOperationPlanMovementInlineActive = computed(() => trainOperationPlanMovementCreating.value || Boolean(trainOperationPlanMovementEditingKey.value))
 const trainOperationPlanInlineActive = computed(() => trainOperationPlanTrainInlineActive.value || trainOperationPlanMovementInlineActive.value)
 const operationPlanInlineActive = computed(() => trainTemplateInlineActive.value || movementTemplateInlineActive.value || trainOperationPlanInlineActive.value)
+const operationPlanSelectorProps = computed(() => ({
+    options: operationPlanOptions.value.map(option => ({ value: option.operationPlanID, label: formatOperationPlanLabel(option) })),
+    loading: loadingOperationPlans.value,
+    disabled: !currentStationSchemeId.value || loadingOperationPlans.value || operationPlanInlineActive.value || savingTrainOperationPlanMovement.value || cellOccupancyImportBusy.value || refreshingCellOccupancyImport.value,
+    manageDisabled: !props.selectedInstanceId || !currentStationSchemeId.value,
+    refreshDisabled: !canLoadTemplates.value || operationPlanInlineActive.value,
+}))
 const operationPlanObjectInlineActive = computed(() => (
     operationPlanOptions.value.some((item) => item.isDraft) ||
     Boolean(operationPlanObjectOriginalId.value)
@@ -2641,6 +2847,10 @@ const canLoadTemplates = computed(() => hasSchemeScope.value && !loadingTrainTem
 const canEditTrainTemplates = computed(() => hasSchemeScope.value && !savingTrainTemplate.value && !deletingTrainOperationPlanTrains.value)
 const processTrainScopeKey = computed(() => JSON.stringify(getStationSchemeScope()))
 const operationPlanScopeKey = computed(() => JSON.stringify(getOperationPlanScope()))
+const resourceOccupancyChartScope = computed(() => hasScope.value ? getOperationPlanScope() : null)
+const stationPlanChartSelectionScope = computed(() => JSON.stringify([
+    operationPlanScopeKey.value, activeStationPlanChartID.value, stationPlanChartSelectionRevision.value,
+]))
 const selectedProcessTrainSource = computed(() => processTrainSources.value.find(source => source.id === processTrainSourceID.value) || null)
 const processConstraintsByTrain = computed(() => new Map(trainProcessConstraints.value.map(snapshot => [snapshot.trainID, snapshot])))
 const selectedTrainProcessConstraints = computed(() => processConstraintsByTrain.value.get(selectedTrainOperationPlanTrainId.value) || null)
@@ -2679,6 +2889,149 @@ const canLoadOperationPlanChart = computed(() => (
     !loadingStationRoutes.value &&
     !loadingStationRouteEnds.value
 ))
+const canExportCapacityReport = computed(() => (
+    canLoadOperationPlanChart.value && !exportingCapacityReport.value &&
+    capacityReportLoadedScope.value === operationPlanScopeKey.value &&
+    stationPlanChartsLoadedScope.value === operationPlanScopeKey.value && !stationPlanSettingsError.value &&
+    (trainOperationPlanMovements.value.length > 0 || usingOperationAnalysisSnapshot.value) &&
+    !operationPlanInlineActive.value && !operationPlanObjectInlineActive.value &&
+    !stationPlanCreationActive.value && !stationProcessTrainVisible.value && !stationPlanActions.busy &&
+    !loadingStationSchemes.value && !loadingOperationPlans.value && !loadingStationPlanSettings.value &&
+    !loadingOperationBottleneckSummaryCategories.value && !loadingOperationOccupationTimeSubTableSettings.value &&
+    !loadingProcessConstraintCatalog.value && !savingTrainOperationPlanTrain.value &&
+    !savingOperationPlanObject.value && !generatingTrainOperationPlan.value && !generatingPlanFromProcess.value &&
+    !generatingTrainFromProcess.value && !generatingSaturatedPlan.value &&
+    !cellOccupancyImportBusy.value && !refreshingCellOccupancyImport.value &&
+    !savingStationPlanSettings.value && !stationPlanSettingsVisible.value && !stationPlanSettingsSaveError.value &&
+    !savingOperationBottleneckSummaryCategories.value && !savingOperationOccupationTimeSubTableSettings.value &&
+    !operationBottleneckRoutePickerVisible.value && !operationOccupationTimeSubTableDialogVisible.value &&
+    parseOperationPlanTime(trainOperationPlanStartTime.value) !== null && parseOperationPlanTime(trainOperationPlanEndTime.value) !== null
+))
+
+async function exportCapacityReport() {
+    if (!canExportCapacityReport.value) return
+    const scope = getOperationPlanScope()
+    const scopeKey = operationPlanScopeKey.value
+    const date = new Date()
+    exportingCapacityReport.value = true
+    try {
+        const domain = stationPlanDomain(stationPlanTrains.value,
+            parseOperationPlanTime(trainOperationPlanStartTime.value), parseOperationPlanTime(trainOperationPlanEndTime.value))
+        const stationView: StationPlanReportViewState = stationPlanViewRef.value?.getReportViewState() ||
+            { scaleX: 1, scaleY: 1, lineMode: 'straight', expandedTrackKeys: [], autoFit: true, width: 1000, height: 640 }
+        stationView.width = stationView.width > 0 ? stationView.width : 1000
+        stationView.height = stationView.height > 0 ? stationView.height : 640
+        const occupancyView: GanttReportViewState = operationPlanChartGanttRef.value?.getReportViewState() ||
+            { scaleX: operationPlanChartScaleX.value, scaleY: 1, autoFit: operationPlanChartAutoFit.value, width: stationView.width, height: stationView.height }
+        occupancyView.width = occupancyView.width > 0 ? occupancyView.width : stationView.width
+        occupancyView.height = occupancyView.height > 0 ? occupancyView.height : stationView.height
+        const reportTrains = stationPlanTrains.value.map(train => trainOperationPlanTrainMap.value.get(train.id) || { id: train.id, trainNumber: '', name: '' })
+        const planLabels = stationReportLabels(stationPlanAxisOptions.value, stationPlanTracks.value, reportTrains)
+        for (const node of stationPlanNodeOptions.value) {
+            const boundary = stationRouteEndByBindingNodeId.value.get(node.sourceID)
+            if (boundary && planLabels.rows?.[node.key] === boundary.id) planLabels.rows[node.key] = '节点名称未提供'
+        }
+        const occupancyLabels = occupancyReportLabels(operationPlanChartRows.value, trainOperationPlanTrains.value)
+        const currentProcess = operationProcessEditorRef.value?.getReportSnapshot(undefined, true) || null
+        const currentProcessInScope = currentProcess?.model.instanceID === scope.instanceID && currentProcess.model.stationSchemeID === scope.stationSchemeID ? currentProcess : null
+        const activeFigure = stationPlanViewRef.value?.exportReportFigure(stationPlanCharts.value.find(chart => chart.chartID === activeStationPlanChartID.value)?.chartName || '', planLabels)
+        const charts = stationPlanChartsConfigured.value ? stationPlanCharts.value.map(chart => {
+            const selected = new Set(chart.endpointNodeIDs)
+            const rows = buildStationPlanAxisGroups(stationPlanNodeOptions.value, stationPlanTracks.value, chart.endpointNodeIDs)
+                .filter(row => stationPlanRowNodeIDs(row).some(id => selected.has(id)))
+            return { name: chart.chartName, rows, chartID: chart.chartID }
+        }) : [{ name: stationPlanCharts.value[0]?.chartName || t('operationPlan.stationPlanCharts.defaultName'), rows: stationPlanRows.value, chartID: activeStationPlanChartID.value }]
+        // Copy before the first await. Editing the screen during generation cannot change this report.
+        const snapshot = {
+            input: {
+                ...scope,
+                schemeName: reportObjectName(stationSchemeOptions.value.find(item => item.id === scope.stationSchemeID)?.name, scope.stationSchemeID, '未命名车站方案'),
+                planName: reportObjectName(operationPlanOptions.value.find(item => item.operationPlanID === scope.operationPlanID)?.name, scope.operationPlanID, '未命名作业计划'),
+                generatedAt: date.toLocaleString('zh-CN', { hour12: false }),
+                startMinutes: domain.start, endMinutes: domain.end,
+                totalTimeSeconds: usingOperationAnalysisSnapshot.value ? operationAnalysisSnapshot.value?.totalTimeSeconds ?? null : operationOccupationTotalTimeSeconds.value,
+                emptyWasteFactor: usingOperationAnalysisSnapshot.value ? null : operationOccupationEmptyWasteFactor.value,
+                snapshot: usingOperationAnalysisSnapshot.value, snapshotDate: operationAnalysisSnapshot.value?.updatedDate,
+                warnings: [
+                    ...(stationPlanUnresolvedMovements.value.length ? [`有 ${stationPlanUnresolvedMovements.value.length} 项作业无法解析图形端点，请结合完整作业明细核对。`] : []),
+                    ...(processConstraintCatalogError.value ? ['作业过程资源目录加载失败，缺少名称的资源已标注“名称未提供”。'] : []),
+                    ...(operationOccupationTimeSubTableSettingsError.value ? ['占用分表配置加载失败，本报告按页面的默认分表排列，并补列全部资源。'] : []),
+                ],
+                trains: trainOperationPlanTrains.value.filter(row => !row.isDraft),
+                movements: trainOperationPlanMovements.value.filter(row => !row.isDraft),
+                processes: [], stationCharts: charts, stationTrains: stationPlanTrains.value, occupancyCharts: [],
+                cells: displayOperationOccupationTimeTableCells.value,
+                occupationRows: displayOperationOccupationTimeTableRows.value,
+                bottleneckRows: displayOperationBottleneckAnalysisRows.value,
+                summaryRows: displayOperationBottleneckSummaryRows.value,
+                occupationTables: operationOccupationTimeSubTables.value.map(table => ({ name: table.name, cellIds: table.cellIds })),
+            } satisfies StationCapacityReportInput,
+            occupancyRows: operationPlanChartRows.value,
+            occupancyDisplayRows: buildOperationPlanChartDisplayRows(operationPlanChartRows.value),
+            occupancyTicks: operationPlanChartDisplayTicks.value,
+            occupancyWidth: operationPlanChartTimelineWidth.value,
+            occupancyDisabled: !canEditOperationPlanChart.value,
+            occupancyView,
+            occupancyFigure: operationPlanChartGanttRef.value?.exportReportFigure('', occupancyLabels) || null,
+            occupancyLabels,
+            occupancySelectedKeys: resourceOccupancyChartRows.value.map(row => row.cellID),
+            usedProcesses: trainProcessConstraints.value.map(item => item.process),
+            currentProcess: currentProcessInScope,
+            stationPlans: charts.map(chart => ({
+                name: chart.name, rows: chart.rows, trains: stationPlanTrains.value, tracks: stationPlanTracks.value,
+                startMinutes: parseOperationPlanTime(trainOperationPlanStartTime.value), endMinutes: parseOperationPlanTime(trainOperationPlanEndTime.value),
+                view: { ...stationView, expandedTrackKeys: chart.chartID === activeStationPlanChartID.value ? stationView.expandedTrackKeys : [] },
+                labels: planLabels,
+                figure: chart.chartID === activeStationPlanChartID.value ? activeFigure : null,
+            })),
+        }
+        const captured: Omit<typeof snapshot, 'input'> & { input: StationCapacityReportInput } = JSON.parse(JSON.stringify(snapshot))
+        const [templates, resourceCharts, catalog, { buildStationCapacityReport }, { createWordReport }, helpers, renderer] = await Promise.all([
+            processTemplateAPI.list({ instanceID: scope.instanceID, stationSchemeID: scope.stationSchemeID }),
+            axios.get('/OperationPlan/GetResourceOccupancyCharts', { params: scope }),
+            processTemplateAPI.catalog({ instanceID: scope.instanceID, stationSchemeID: scope.stationSchemeID }),
+            import('./report/stationCapacityReport'), import('./report/wordReport'), import('./report/reportExport'),
+            import('./report/ReportFigureRenderer.vue'),
+        ])
+        if (operationPlanDisposed || scopeKey !== operationPlanScopeKey.value) return
+        captured.input.catalog = catalog
+        captured.input.processes = helpers.reportProcesses(templates, [...(captured.currentProcess ? [captured.currentProcess.model] : []), ...captured.usedProcesses], scope)
+        captured.input.occupancyCharts = helpers.reportOccupancyCharts(resourceCharts.data, captured.occupancyRows)
+        const displayRowsByID = new Map(captured.occupancyDisplayRows.map(row => [row.key, row]))
+        capacityReportRenderer.value = renderer.default
+        capacityReportRenderJob.value = {
+            processes: captured.input.processes, catalog, currentProcess: captured.currentProcess,
+            stationPlans: captured.stationPlans,
+            occupancies: captured.input.occupancyCharts.map(chart => ({
+                name: chart.name,
+                rows: chart.rows.flatMap(row => { const displayRow = displayRowsByID.get(row.cellID); return displayRow ? [displayRow] : [] }),
+                ticks: captured.occupancyTicks, timelineWidth: captured.occupancyWidth, view: captured.occupancyView, disabled: captured.occupancyDisabled,
+                labels: captured.occupancyLabels,
+                figure: captured.occupancyFigure && JSON.stringify(chart.rows.map(row => row.cellID)) === JSON.stringify(captured.occupancySelectedKeys)
+                    ? { ...captured.occupancyFigure, caption: chart.name } : null,
+            })),
+            cellAxisLabel: t('operationPlan.trainOperationChart.cellAxis'), timeAxisLabel: t('operationPlan.trainOperationChart.timeAxis'),
+        }
+        await nextTick()
+        if (!capacityReportRendererRef.value) throw new Error('The report chart renderer is not ready')
+        captured.input.renderedFigures = await capacityReportRendererRef.value.render()
+        if (operationPlanDisposed || scopeKey !== operationPlanScopeKey.value) return
+        const report = buildStationCapacityReport(captured.input)
+        const blob = await createWordReport(report)
+        if (operationPlanDisposed || scopeKey !== operationPlanScopeKey.value) return
+        helpers.downloadWordReport(blob, helpers.reportFilename(captured.input.schemeName, captured.input.planName, date))
+        ElMessage.success(t('stationCapacityReport.success'))
+    } catch (error) {
+        if (!operationPlanDisposed && scopeKey === operationPlanScopeKey.value) {
+            console.error('Failed to export station capacity report:', error)
+            ElMessage.error(t('stationCapacityReport.failed'))
+        }
+    } finally {
+        capacityReportRenderJob.value = null
+        capacityReportRenderer.value = null
+        exportingCapacityReport.value = false
+    }
+}
 const canGenerateTrainOperationPlan = computed(() => (
     hasScope.value &&
     !stationProcessTrainSaving.value &&
@@ -2730,6 +3083,14 @@ const canRecalculateCellOccupations = computed(() => (
     canEditOperationPlanChart.value && !stationPlanCreationActive.value && !stationProcessTrainVisible.value && operationPlanChartDrag.value === null && !stationPlanActions.busy &&
     !savingOperationPlanObject.value && !confirmingTrainBatchDelete.value && !savingOperationAnalysisSnapshot.value
 ))
+const canConfigureResourceOccupancyCharts = computed(() => (
+    canEditOperationPlanChart.value && operationPlanChartDrag.value === null && !stationPlanActions.busy
+))
+const canConfigureStationPlanCharts = computed(() => (
+    canEditOperationPlanChart.value && !stationPlanActions.busy && !stationPlanCreationActive.value &&
+    !stationProcessTrainVisible.value && !loadingStationPlanSettings.value && !savingStationPlanSettings.value &&
+    !stationPlanSettingsError.value && stationPlanChartsLoadedScope.value === operationPlanScopeKey.value
+))
 const canDeleteSelectedTrainOperationPlanTrains = computed(() => (
     canEditTrainOperationPlan.value && !operationPlanInlineActive.value && !operationPlanObjectInlineActive.value &&
     !loadingStationSchemes.value && !loadingOperationPlans.value && !loadingOperationPlanChart.value &&
@@ -2756,8 +3117,8 @@ const trainOperationPlanMovementCountText = computed(() => (
 ))
 const operationPlanChartCountText = computed(() => (
     t('operationPlan.trainOperationChart.count', {
-        cellCount: operationPlanChartRows.value.length,
-        barCount: operationPlanChartBars.value.length,
+        cellCount: resourceOccupancyChartRows.value.length,
+        barCount: resourceOccupancyChartRows.value.reduce((count, row) => count + row.bars.length, 0),
     })
 ))
 const operationOccupationTimeTableCountText = computed(() => (
@@ -2786,6 +3147,9 @@ const trainOperationPlanMovementEmptyText = computed(() => {
 })
 const operationPlanChartEmptyText = computed(() => {
     if (!hasScope.value) return t('operationPlan.empty.selectScheme')
+    if (resourceOccupancyChartCellIDs.value !== null && resourceOccupancyChartRows.value.length === 0) {
+        return t('operationPlan.resourceOccupancyCharts.emptySelection')
+    }
     if (trainOperationPlanMovements.value.length === 0) return t('operationPlan.trainOperationChart.emptyPlan')
     if (stationLayoutCells.value.length === 0) return t('operationPlan.trainOperationChart.emptyCells')
     return t('operationPlan.trainOperationChart.emptyOccupations')
@@ -2940,6 +3304,20 @@ const operationPlanChartRows = computed<OperationPlanChartRow[]>(() => {
         })
         .filter((row) => row.cellID)
 })
+// The full chart data remains available for analysis and movement editing.
+// Only the microscopic chart's display follows the active diagram's Cell order.
+const resourceOccupancyChartRows = computed<OperationPlanChartRow[]>(() => {
+    const cellIDs = resourceOccupancyChartCellIDs.value
+    if (cellIDs === null) return operationPlanChartRows.value
+    const rowsByID = new Map(operationPlanChartRows.value.map(row => [row.cellID, row]))
+    return normalizeRoutePickerValues(cellIDs).flatMap(id => {
+        const row = rowsByID.get(id)
+        return row ? [row] : []
+    })
+})
+const resourceOccupancyChartCellOptions = computed(() => (
+    operationPlanChartRows.value.map(row => ({ id: row.cellID, name: row.cellName }))
+))
 const operationOccupationTimeTableCells = computed<OperationPlanChartCell[]>(() => {
     const cellsByID = new Map<string, OperationPlanChartCell>()
     operationPlanChartCells.value.forEach((cell) => {
@@ -2982,11 +3360,21 @@ function isStationPlanRowUsed(row: StationPlanAxisRow) {
 }
 const stationPlanRows = computed<StationPlanAxisRow[]>(() => {
     const selected = new Set(stationPlanSettings.value.nodeIDs || [])
-    return stationPlanAxisOptions.value.filter(row => isStationPlanRowUsed(row) || stationPlanRowNodeIDs(row).some(id => selected.has(id)))
+    return stationPlanAxisOptions.value.filter(row => (!stationPlanChartsConfigured.value && isStationPlanRowUsed(row)) || stationPlanRowNodeIDs(row).some(id => selected.has(id)))
 })
 const stationPlanAxisDraft = computed(() => {
     const order = new Map(stationPlanAxisOrderDraft.value.map((key, index) => [key, index]))
-    return [...stationPlanAxisOptions.value].sort((a, b) => (order.get(a.key) ?? Infinity) - (order.get(b.key) ?? Infinity))
+    const nodes = [...stationPlanNodeOptions.value]
+    const knownIDs = new Set(nodes.map(node => node.sourceID))
+    // Keep saved nodes editable even if their catalog entry is temporarily unavailable.
+    stationPlanNodeDraft.value.forEach(id => {
+        if (!knownIDs.has(id)) {
+            nodes.push({ key: `node:${id}`, sourceID: id, label: id, kind: 'node' })
+            knownIDs.add(id)
+        }
+    })
+    const rows = buildStationPlanAxisGroups(nodes, stationPlanTracks.value, stationPlanSettings.value.nodeIDs)
+    return rows.sort((a, b) => (order.get(a.key) ?? Infinity) - (order.get(b.key) ?? Infinity))
 })
 const stationPlanActions = shallowReactive(new ActionStack())
 const stationPlanReadOnlyTrainIDs = computed(() => [...new Set(trainOperationPlanMovements.value.filter(movement => movement.isDraft).map(movement => movement.trainID))])
@@ -3456,8 +3844,8 @@ const operationPlanChartTicks = computed(() => {
     }
     return ticks
 })
-const operationPlanChartDisplayRows = computed<TrackOccupancyGanttRow[]>(() => {
-    const rows: TrackOccupancyGanttRow[] = operationPlanChartBars.value.length === 0 ? [] : operationPlanChartRows.value.map((row) => ({
+function buildOperationPlanChartDisplayRows(sourceRows: OperationPlanChartRow[]): TrackOccupancyGanttRow[] {
+    return operationPlanChartBars.value.length === 0 ? [] : sourceRows.map((row) => ({
         key: row.cellID,
         label: row.cellName,
         kind: operationPlanTrackCellNames.value.has(row.cellID) ? 'track' : 'cell',
@@ -3475,6 +3863,9 @@ const operationPlanChartDisplayRows = computed<TrackOccupancyGanttRow[]>(() => {
             className: operationPlanChartDrag.value?.blockKey === bar.key ? 'is-active' : '',
         })),
     }))
+}
+const operationPlanChartDisplayRows = computed<TrackOccupancyGanttRow[]>(() => {
+    const rows = buildOperationPlanChartDisplayRows(resourceOccupancyChartRows.value)
     const drag = operationPlanChartDrag.value
     const target = rows.find(row => row.key === operationPlanChartTrackTargetCellID.value)
     if (drag?.intent === 'track' && target && target.key !== drag.cellID) {
@@ -3742,7 +4133,7 @@ function normalizeStationSchemeOption(item: any): StationSchemeOption | null {
     if (!id) return null
     return {
         id,
-        name: readString(item, 'name', 'Name').trim() || id,
+        name: readString(item, 'name', 'Name').trim(),
     }
 }
 
@@ -4052,7 +4443,7 @@ function normalizeTrainOperationPlanResponse(data: any) {
 }
 
 function formatStationSchemeLabel(option: StationSchemeOption) {
-    return option.name && option.name !== option.id ? `${option.name} (${option.id})` : option.id
+    return option.name || t('operationPlan.unnamedStationScheme')
 }
 
 function formatOperationPlanLabel(option: StationOperationPlan) {
@@ -4430,6 +4821,7 @@ function buildOperationOccupationTimeSubTableSettingsPayload(): OperationOccupat
 }
 
 function clearOperationOccupationTimeSubTableState() {
+    operationOccupationTimeSubTableSettingsError.value = false
     if (operationOccupationTimeSubTableSaveTimer) {
         window.clearTimeout(operationOccupationTimeSubTableSaveTimer)
         operationOccupationTimeSubTableSaveTimer = null
@@ -5233,6 +5625,14 @@ function stopOperationPlanChartDrag() {
 
 function cancelOperationPlanChartDrag() {
     stopOperationPlanChartDrag()
+}
+
+function selectResourceOccupancyChartCells(cellIDs: string[] | null) {
+    cancelOperationPlanChartDrag()
+    operationPlanChartGeometry.value = null
+    resourceOccupancyChartCellIDs.value = cellIDs === null ? null : normalizeRoutePickerValues(cellIDs)
+    const viewport = operationPlanChartGanttRef.value?.viewport
+    if (viewport) viewport.scrollTop = 0
 }
 
 function handleOperationPlanChartDragKey(event: KeyboardEvent) {
@@ -6523,6 +6923,7 @@ function clearTrainOperationPlan() {
 }
 
 function clearOperationPlanChart() {
+    capacityReportLoadedScope.value = ''
     operationPlanChartLoadVersion++
     stationRouteEndLoadVersion++
     if (operationBottleneckSummaryCategorySaveTimer) {
@@ -6549,8 +6950,8 @@ async function loadStationSchemes() {
     const instanceID = props.selectedInstanceId
     if (!instanceID) {
         stationSchemeLoadVersion++
-        currentStationSchemeId.value = ''
         stationSchemeOptions.value = []
+        loadingStationSchemes.value = false
         clearOperationPlans()
         clearTrainTemplates()
         clearTrainOperationPlan()
@@ -6558,6 +6959,7 @@ async function loadStationSchemes() {
     }
 
     const loadVersion = ++stationSchemeLoadVersion
+    const requestedSchemeID = currentStationSchemeId.value
     loadingStationSchemes.value = true
     try {
         const response = await axios.get('/StationLayout/GetStationSchemes', { params: { instanceID } })
@@ -6566,15 +6968,16 @@ async function loadStationSchemes() {
         stationSchemeOptions.value = (Array.isArray(response.data) ? response.data : [])
             .map(normalizeStationSchemeOption)
             .filter((item): item is StationSchemeOption => item !== null)
-        if (!stationSchemeOptions.value.some((item) => item.id === currentStationSchemeId.value)) {
-            currentStationSchemeId.value = stationSchemeOptions.value[0]?.id || ''
+        if (currentStationSchemeId.value === requestedSchemeID &&
+            !stationSchemeOptions.value.some((item) => item.id === currentStationSchemeId.value)) {
+            const fallbackSchemeID = stationSchemeOptions.value[0]?.id
+            if (fallbackSchemeID) currentStationSchemeId.value = fallbackSchemeID
+            else capacityStore.clearStationScheme(instanceID)
         }
-        await loadOperationPlans()
     } catch (error) {
         if (loadVersion !== stationSchemeLoadVersion || instanceID !== props.selectedInstanceId) return
         console.error('Failed to load operation plan station schemes:', error)
         stationSchemeOptions.value = []
-        currentStationSchemeId.value = ''
         clearOperationPlans()
         ElMessage.error(t('stationLayout.messages.loadSchemesFailed'))
     } finally {
@@ -6984,6 +7387,7 @@ async function loadTrainOperationPlan() {
     }
 
     const loadVersion = ++trainOperationPlanLoadVersion
+    capacityReportLoadedScope.value = ''
     loadingTrainOperationPlan.value = true
     try {
         const response = await axios.get('/OperationPlan/GetTrainOperationPlan', {
@@ -7021,6 +7425,10 @@ async function loadTrainOperationPlan() {
             loadingOperationPlanChart.value = true
             clearOperationAnalysisSnapshotState()
             const fallbackLoaded = await loadOperationAnalysisSnapshotFallback(instanceID, stationSchemeID, fallbackVersion)
+            if (fallbackLoaded && fallbackVersion === operationPlanChartLoadVersion) {
+                if (activeOperationPlanTab.value === 'stationPlanView') await loadStationPlanSettings()
+                if (fallbackVersion === operationPlanChartLoadVersion) capacityReportLoadedScope.value = operationPlanScopeKey.value
+            }
             if (!fallbackLoaded) {
                 stationLayoutCells.value = []
                 stationRouteTimesByKey.value = {}
@@ -7176,6 +7584,7 @@ async function loadOperationOccupationTimeSubTableSettings(
     }
 
     loadingOperationOccupationTimeSubTableSettings.value = true
+    operationOccupationTimeSubTableSettingsError.value = false
     try {
         const response = await axios.get('/OperationPlan/GetOperationOccupationTimeSubTables', {
             params: {
@@ -7211,6 +7620,7 @@ async function loadOperationOccupationTimeSubTableSettings(
     } catch (error) {
         if (loadVersion !== operationPlanChartLoadVersion) return
         console.error('Failed to load operation occupation time sub table settings:', error)
+        operationOccupationTimeSubTableSettingsError.value = true
         runWithoutOperationOccupationTimeSubTableSave(() => {
             resetOperationOccupationTimeSubTables()
             syncOperationOccupationTimeSubTables(displayOperationOccupationTimeTableCells.value)
@@ -7739,15 +8149,28 @@ async function refreshStationPlanView() {
 
 async function loadStationPlanSettings() {
     const scope = getOperationPlanScope()
-    if (!scope.instanceID || !scope.stationSchemeID || !scope.operationPlanID) return
+    if (!scope.instanceID || !scope.stationSchemeID || !scope.operationPlanID || savingStationPlanSettings.value || stationPlanSettingsVisible.value) return
     const scopeKey = operationPlanScopeKey.value
     const version = ++stationPlanSettingsVersion
     loadingStationPlanSettings.value = true
     stationPlanSettingsError.value = false
     try {
-        const response = await axios.get('/OperationPlan/GetStationPlanViewSettings', { params: scope })
+        const response = await axios.get('/OperationPlan/GetStationPlanCharts', { params: scope })
         if (version !== stationPlanSettingsVersion || scopeKey !== operationPlanScopeKey.value) return
-        stationPlanSettings.value = normalizeStationPlanSettings(response.data)
+        const data = response.data
+        if (typeof data?.isConfigured !== 'boolean' || !Array.isArray(data.charts)) throw new Error('Invalid station plan charts')
+        if (data.isConfigured) {
+            applyStationPlanCharts(normalizeStationPlanCharts(data.charts), activeStationPlanChartID.value)
+        } else {
+            stationPlanCharts.value = [createDefaultStationPlanChart()]
+            activeStationPlanChartID.value = stationPlanCharts.value[0]!.chartID
+            stationPlanChartsConfigured.value = false
+            stationPlanSettings.value = normalizeStationPlanSettings(data.legacySettings)
+            stationPlanChartSelectionRevision.value++
+        }
+        stationPlanChartsLoadedScope.value = scopeKey
+        pendingStationPlanChartSave = null
+        stationPlanSettingsSaveError.value = false
     } catch {
         if (version === stationPlanSettingsVersion && scopeKey === operationPlanScopeKey.value) stationPlanSettingsError.value = true
     } finally {
@@ -7755,18 +8178,81 @@ async function loadStationPlanSettings() {
     }
 }
 
-function openStationPlanSettings() {
-    stationPlanNodeDraft.value = stationPlanRows.value.flatMap(stationPlanRowNodeIDs)
-    stationPlanAxisOrderDraft.value = stationPlanAxisOptions.value.map(row => row.key)
+function createDefaultStationPlanChart(): StationPlanChart {
+    return { chartID: crypto.randomUUID(), chartName: t('operationPlan.stationPlanCharts.defaultName'), endpointNodeIDs: [] }
+}
+
+function normalizeStationPlanCharts(source: unknown): StationPlanChart[] {
+    if (!Array.isArray(source) || source.length === 0 || source.length > 100) throw new Error('Invalid station plan charts')
+    const seen = new Set<string>()
+    return source.map(item => {
+        if (!item || typeof item.chartID !== 'string' || !item.chartID.trim() || seen.has(item.chartID.trim()) ||
+            typeof item.chartName !== 'string' || !item.chartName.trim() || !Array.isArray(item.endpointNodeIDs) ||
+            !item.endpointNodeIDs.every((id: unknown) => typeof id === 'string')) throw new Error('Invalid station plan chart')
+        const chartID = item.chartID.trim()
+        seen.add(chartID)
+        return { chartID, chartName: item.chartName.trim(), endpointNodeIDs: normalizeRoutePickerValues(item.endpointNodeIDs) }
+    })
+}
+
+function applyStationPlanCharts(charts: StationPlanChart[], selectedID: string) {
+    stationPlanCharts.value = charts
+    const chart = charts.find(item => item.chartID === selectedID) || charts[0]!
+    activeStationPlanChartID.value = chart.chartID
+    stationPlanChartsConfigured.value = true
+    stationPlanSettings.value = { nodeIDs: [...chart.endpointNodeIDs] }
+    stationPlanChartSelectionRevision.value++
+}
+
+function selectStationPlanChart(id: string | number) {
+    if (!canConfigureStationPlanCharts.value || stationPlanSettingsVisible.value || id === activeStationPlanChartID.value) return
+    const chart = stationPlanCharts.value.find(item => item.chartID === id)
+    if (!chart) return
+    activeStationPlanChartID.value = chart.chartID
+    stationPlanSettings.value = { nodeIDs: [...chart.endpointNodeIDs] }
+    stationPlanChartSelectionRevision.value++
+    stationPlanSettingsSaveError.value = false
+    pendingStationPlanChartSave = null
+}
+
+function materializeStationPlanCharts(): StationPlanChart[] {
+    return stationPlanCharts.value.map(chart => ({ ...chart, endpointNodeIDs: stationPlanChartsConfigured.value
+        ? [...chart.endpointNodeIDs]
+        : normalizeRoutePickerValues([...stationPlanRows.value.flatMap(stationPlanRowNodeIDs), ...(stationPlanSettings.value.nodeIDs || [])]),
+    }))
+}
+
+function openStationPlanSettings(create = false) {
+    if (!canConfigureStationPlanCharts.value || (create && stationPlanCharts.value.length >= 100)) return
+    const chart = stationPlanCharts.value.find(item => item.chartID === activeStationPlanChartID.value)
+    if (!create && !chart) return
+    stationPlanEditingChartID.value = create ? '' : chart!.chartID
+    stationPlanChartNameDraft.value = create
+        ? t('operationPlan.stationPlanCharts.newName', { number: stationPlanCharts.value.length + 1 }) : chart!.chartName
+    stationPlanChartNameError.value = ''
+    stationPlanSettingsSaveError.value = false
+    pendingStationPlanChartSave = null
+    stationPlanNodeDraft.value = create ? [] : normalizeRoutePickerValues([
+        ...stationPlanRows.value.flatMap(stationPlanRowNodeIDs), ...(stationPlanSettings.value.nodeIDs || []),
+    ])
+    stationPlanAxisOrderDraft.value = []
+    stationPlanAxisOrderDraft.value = stationPlanAxisDraft.value.map(row => row.key)
     stationPlanSettingsVisible.value = true
 }
 
 function isStationPlanRowSelected(row: StationPlanAxisRow) {
-    return isStationPlanRowUsed(row) || stationPlanRowNodeIDs(row).some(id => stationPlanNodeDraft.value.includes(id))
+    return stationPlanRowNodeIDs(row).some(id => stationPlanNodeDraft.value.includes(id))
+}
+
+function cancelStationPlanSettings() {
+    if (savingStationPlanSettings.value) return
+    stationPlanSettingsVisible.value = false
+    pendingStationPlanChartSave = null
+    stationPlanSettingsSaveError.value = false
 }
 
 function toggleStationPlanRowSelection(row: StationPlanAxisRow, selected: boolean) {
-    if (savingStationPlanSettings.value || isStationPlanRowUsed(row)) return
+    if (!canConfigureStationPlanCharts.value) return
     const ids = stationPlanRowNodeIDs(row)
     stationPlanNodeDraft.value = selected
         ? [...new Set([...stationPlanNodeDraft.value, ...ids])]
@@ -7774,7 +8260,7 @@ function toggleStationPlanRowSelection(row: StationPlanAxisRow, selected: boolea
 }
 
 function moveStationPlanAxisRow(key: string, direction: -1 | 1) {
-    if (savingStationPlanSettings.value) return
+    if (!canConfigureStationPlanCharts.value) return
     const keys = stationPlanAxisDraft.value.map(row => row.key)
     const index = keys.indexOf(key)
     const target = index + direction
@@ -7784,22 +8270,55 @@ function moveStationPlanAxisRow(key: string, direction: -1 | 1) {
 }
 
 async function saveStationPlanSettings() {
-    if (savingStationPlanSettings.value || !hasScope.value) return
+    if (!canConfigureStationPlanCharts.value) return
+    const chartName = stationPlanChartNameDraft.value.trim()
+    stationPlanChartNameError.value = !chartName ? t('operationPlan.stationPlanCharts.nameRequired')
+        : chartName.length > 100 ? t('operationPlan.stationPlanCharts.nameTooLong') : ''
+    if (stationPlanChartNameError.value || (!stationPlanEditingChartID.value && stationPlanCharts.value.length >= 100)) return
+    const chartID = stationPlanEditingChartID.value || pendingStationPlanChartSave?.selectedID || crypto.randomUUID()
+    const chart: StationPlanChart = { chartID, chartName, endpointNodeIDs: normalizeRoutePickerValues(stationPlanAxisDraft.value
+        .filter(isStationPlanRowSelected).flatMap(stationPlanRowNodeIDs)) }
+    const charts = materializeStationPlanCharts()
+    const index = charts.findIndex(item => item.chartID === chartID)
+    if (index >= 0) charts[index] = chart
+    else charts.push(chart)
+    await persistStationPlanCharts({ charts, selectedID: chartID, closeDialog: true })
+}
+
+async function removeStationPlanChart(id: string | number) {
+    if (!canConfigureStationPlanCharts.value || stationPlanSettingsVisible.value || stationPlanCharts.value.length <= 1) return
+    const index = stationPlanCharts.value.findIndex(chart => chart.chartID === id)
+    if (index < 0) return
+    const charts = materializeStationPlanCharts().filter(chart => chart.chartID !== id)
+    const selectedID = activeStationPlanChartID.value === id ? charts[Math.max(0, index - 1)]!.chartID : activeStationPlanChartID.value
+    await persistStationPlanCharts({ charts, selectedID, closeDialog: false })
+}
+
+async function retryStationPlanChartSave() {
+    if (pendingStationPlanChartSave) await persistStationPlanCharts(pendingStationPlanChartSave)
+}
+
+async function persistStationPlanCharts(request: StationPlanChartSave) {
+    if (!canConfigureStationPlanCharts.value) return
     const scope = getOperationPlanScope()
     const scopeKey = operationPlanScopeKey.value
     const version = ++stationPlanSettingsVersion
     savingStationPlanSettings.value = true
+    stationPlanSettingsSaveError.value = false
+    pendingStationPlanChartSave = request
     try {
-        const response = await axios.put('/OperationPlan/SaveStationPlanViewSettings', {
-            ...scope, cellIDs: [], endpointNodeIDs: [...new Set(stationPlanAxisDraft.value
-                .filter(isStationPlanRowSelected).flatMap(stationPlanRowNodeIDs))],
-        })
+        const response = await axios.put('/OperationPlan/SaveStationPlanCharts', { ...scope, charts: request.charts })
         if (version !== stationPlanSettingsVersion || scopeKey !== operationPlanScopeKey.value) return
-        stationPlanSettings.value = normalizeStationPlanSettings(response.data)
-        stationPlanSettingsVisible.value = false
+        if (response.data?.isConfigured !== true) throw new Error('Station plan charts were not saved')
+        applyStationPlanCharts(normalizeStationPlanCharts(response.data.charts), request.selectedID)
+        pendingStationPlanChartSave = null
+        if (request.closeDialog) stationPlanSettingsVisible.value = false
         ElMessage.success(t('stationPlanView.settingsSaved'))
     } catch {
-        if (version === stationPlanSettingsVersion && scopeKey === operationPlanScopeKey.value) ElMessage.error(t('stationPlanView.saveSettingsFailed'))
+        if (version === stationPlanSettingsVersion && scopeKey === operationPlanScopeKey.value) {
+            stationPlanSettingsSaveError.value = true
+            ElMessage.error(t('operationPlan.stationPlanCharts.saveFailed'))
+        }
     } finally {
         if (version === stationPlanSettingsVersion) savingStationPlanSettings.value = false
     }
@@ -7813,6 +8332,7 @@ async function loadOperationPlanChartData() {
     }
 
     const loadVersion = ++operationPlanChartLoadVersion
+    capacityReportLoadedScope.value = ''
     loadingOperationPlanChart.value = true
     clearOperationAnalysisSnapshotState()
     try {
@@ -7839,13 +8359,16 @@ async function loadOperationPlanChartData() {
         await nextTick()
         if (operationPlanChartBars.value.length === 0) {
             await loadOperationAnalysisSnapshotFallback(instanceID, stationSchemeID, loadVersion)
+            if (loadVersion === operationPlanChartLoadVersion) capacityReportLoadedScope.value = operationPlanScopeKey.value
             return
         }
+        capacityReportLoadedScope.value = operationPlanScopeKey.value
         scheduleSaveOperationAnalysisSnapshot(0)
     } catch (error) {
         if (loadVersion !== operationPlanChartLoadVersion) return
         console.error('Failed to load operation plan chart:', error)
         const fallbackLoaded = await loadOperationAnalysisSnapshotFallback(instanceID, stationSchemeID, loadVersion)
+        if (fallbackLoaded && loadVersion === operationPlanChartLoadVersion) capacityReportLoadedScope.value = operationPlanScopeKey.value
         if (!fallbackLoaded) {
             stationLayoutCells.value = []
             stationRouteTimesByKey.value = {}
@@ -8246,10 +8769,16 @@ async function refreshOperationPlanData() {
 }
 
 async function handleStationSchemeChange() {
+    if (operationPlanDisposed) return
+    const changeVersion = ++stationSchemeChangeVersion
+    const instanceID = props.selectedInstanceId
+    const stationSchemeID = currentStationSchemeId.value
     currentOperationPlanId.value = ''
     clearTrainTemplates()
     clearTrainOperationPlan()
     await loadOperationPlans()
+    if (operationPlanDisposed || changeVersion !== stationSchemeChangeVersion ||
+        instanceID !== props.selectedInstanceId || stationSchemeID !== currentStationSchemeId.value) return
     await refreshOperationPlanData()
 }
 
@@ -8642,6 +9171,7 @@ watch([trainOperationPlanStartTime, trainOperationPlanEndTime], () => {
 })
 
 watch(operationPlanScopeKey, () => {
+    selectResourceOccupancyChartCells(null)
     resetStationProcessTrain()
     resetStationPlanCreation()
     cellOccupationRecalculationVersion++
@@ -8649,6 +9179,16 @@ watch(operationPlanScopeKey, () => {
     stationPlanActions.clear()
     stationPlanSettingsVersion++
     stationPlanSettings.value = { nodeIDs: null }
+    stationPlanCharts.value = [createDefaultStationPlanChart()]
+    activeStationPlanChartID.value = stationPlanCharts.value[0]!.chartID
+    stationPlanChartsConfigured.value = false
+    stationPlanChartsLoadedScope.value = ''
+    stationPlanChartSelectionRevision.value++
+    stationPlanEditingChartID.value = ''
+    stationPlanChartNameDraft.value = ''
+    stationPlanChartNameError.value = ''
+    stationPlanSettingsSaveError.value = false
+    pendingStationPlanChartSave = null
     loadingStationPlanSettings.value = false
     savingStationPlanSettings.value = false
     stationPlanSettingsError.value = false
@@ -8734,19 +9274,41 @@ watch(
 void loadSolvePresets()
 
 watch(
+    [() => props.selectedInstanceId, currentStationSchemeId],
+    ([instanceID, schemeID], [previousInstanceID, previousSchemeID]) => {
+        // The instance loader refreshes once after validating the shared selection.
+        if (instanceID === previousInstanceID && schemeID !== previousSchemeID && !loadingStationSchemes.value) {
+            void handleStationSchemeChange()
+        }
+    },
+    { flush: 'sync' },
+)
+
+watch(
     () => props.selectedInstanceId,
-    async () => {
-        currentStationSchemeId.value = ''
+    async instanceID => {
+        const changeVersion = ++stationSchemeChangeVersion
         clearOperationPlans()
         stationRouteOptions.value = []
         clearTrainTemplates()
         await loadStationSchemes()
-        await refreshOperationPlanData()
+        if (operationPlanDisposed || changeVersion !== stationSchemeChangeVersion || instanceID !== props.selectedInstanceId) return
+        await handleStationSchemeChange()
     },
     { immediate: true },
 )
 
 onBeforeUnmount(() => {
+    operationPlanDisposed = true
+    stationSchemeChangeVersion++
+    stationSchemeLoadVersion++
+    operationPlanObjectLoadVersion++
+    stationRouteLoadVersion++
+    stationRouteEndLoadVersion++
+    trainTemplateLoadVersion++
+    movementTemplateLoadVersion++
+    trainOperationPlanLoadVersion++
+    operationPlanChartLoadVersion++
     resetStationProcessTrain()
     resetStationPlanCreation()
     cellOccupationRecalculationVersion++
@@ -8779,38 +9341,43 @@ onBeforeUnmount(() => {
 
 <style scoped lang="css">
 .operation-plan-page {
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-rows: 40px minmax(0, 1fr);
     width: 100%;
     height: 100%;
     min-height: 0;
-    gap: 12px;
+    gap: 10px 12px;
     overflow: hidden;
 }
 
 .operation-plan-toolbar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    min-height: 36px;
-    flex-wrap: wrap;
-}
-
-.operation-plan-scope-hint {
-    margin-right: auto;
-    color: var(--el-text-color-secondary);
-    font-size: 12px;
+    display: contents;
 }
 
 .operation-plan-scheme-control,
-.operation-plan-object-control,
-.operation-plan-toolbar-actions,
+.operation-plan-solve-controls,
 .operation-plan-card-actions,
 .operation-plan-row-actions {
     display: flex;
     align-items: center;
     gap: 8px;
+}
+
+.operation-plan-scheme-control {
+    grid-column: 1;
+    grid-row: 1;
+    align-self: center;
+    min-width: 0;
+}
+
+.operation-plan-solve-controls {
+    grid-column: 3;
+    grid-row: 1;
+    align-self: center;
+    justify-self: end;
+    min-width: 0;
+    max-width: 100%;
 }
 
 .operation-plan-control-label {
@@ -8821,15 +9388,13 @@ onBeforeUnmount(() => {
 }
 
 .operation-plan-scheme-select {
-    width: min(360px, 54vw);
-}
-
-.operation-plan-object-select {
-    width: min(300px, 38vw);
+    width: clamp(100px, 15vw, 220px);
+    min-width: 0;
 }
 
 .operation-plan-saturated-preset-select {
-    width: 220px;
+    width: clamp(110px, 13vw, 180px);
+    min-width: 0;
 }
 
 .operation-plan-object-dialog :deep(.el-dialog__body) {
@@ -8857,10 +9422,84 @@ onBeforeUnmount(() => {
     width: 86px;
 }
 
+.operation-plan-workspace {
+    display: contents;
+}
+
+.operation-plan-workspace > .operation-plan-workspace-tabs {
+    display: contents;
+}
+
+.operation-plan-workspace > .operation-plan-workspace-tabs :deep(> .el-tabs__header) {
+    grid-column: 2;
+    grid-row: 1;
+    min-width: 0;
+    margin: 0;
+}
+
+.is-template-workspace .operation-plan-workspace-tabs :deep(> .el-tabs__header) {
+    grid-column: 2 / -1;
+}
+
+.operation-plan-workspace-tabs :deep(> .el-tabs__header > .el-tabs__nav-wrap) {
+    min-width: 0;
+}
+
+.operation-plan-workspace > .operation-plan-workspace-tabs :deep(> .el-tabs__content) {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    min-width: 0;
+}
+
+.operation-plan-scoped-pane {
+    flex-direction: column;
+    gap: 10px;
+}
+
+.operation-plan-context-toolbar {
+    display: flex;
+    align-items: center;
+    flex: 0 0 auto;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+    min-width: 0;
+}
+
+.operation-plan-chart-mode,
+.operation-plan-chart-heading {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    min-width: 0;
+    font-size: 13px;
+}
+
+.operation-plan-chart-mode > .el-radio-group {
+    flex-wrap: nowrap;
+}
+
+.operation-plan-workspace-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    white-space: nowrap;
+}
+
+.operation-plan-view-switcher {
+    flex: 0 0 auto;
+    flex-wrap: nowrap;
+}
+
+.operation-plan-view-switcher :deep(.el-radio-button) {
+    flex: 0 0 auto;
+}
+
 .operation-plan-sub-tabs {
     display: flex;
     flex: 1;
     flex-direction: column;
+    min-width: 0;
     min-height: 0;
     overflow: hidden;
 }
@@ -8887,13 +9526,19 @@ onBeforeUnmount(() => {
     min-height: 0;
 }
 
-.operation-plan-page.is-process-tab,
-.operation-plan-page.is-process-tab > .operation-plan-sub-tabs {
+.operation-plan-workspace-pane,
+.operation-plan-view-tabs {
+    width: 100%;
     min-width: 0;
 }
 
-.operation-plan-page.is-process-tab > .operation-plan-toolbar {
-    flex: 0 0 auto;
+.operation-plan-view-tabs :deep(> .el-tabs__header) {
+    display: none;
+}
+
+.operation-plan-page.is-process-tab,
+.operation-plan-page.is-process-tab > .operation-plan-workspace {
+    min-width: 0;
 }
 
 .operation-process-tab-pane {
@@ -9357,9 +10002,17 @@ onBeforeUnmount(() => {
 }
 
 .operation-plan-chart-hint { color: var(--el-text-color-secondary); font-size: 12px; }
+.resource-occupancy-chart-header { flex-wrap: wrap; }
+.resource-occupancy-chart-header > :first-child { flex: 1; min-width: 240px; }
+.station-plan-chart-header { flex-wrap: wrap; }
+.station-plan-chart-tabs-toolbar { display: flex; flex: 1; align-items: center; gap: 6px; min-width: 240px; }
+.station-plan-chart-tabs { flex: 0 1 auto; min-width: 0; }
+.station-plan-chart-tabs :deep(.el-tabs__header) { margin: 0; border: 0; }
+.station-plan-chart-tabs :deep(.el-tabs__content) { display: none; }
+.station-plan-chart-tabs :deep(.el-tabs__nav) { border-radius: 4px; border-bottom: 1px solid var(--el-border-color-light); }
+.station-plan-chart-tabs :deep(.el-tabs__item) { height: 30px; padding: 0 12px; font-size: 12px; }
 .station-plan-time-range { display: flex; align-items: center; gap: 8px; font-size: 12px; white-space: nowrap; }
 .station-plan-time-range :deep(.el-input) { width: 90px; }
-.station-plan-note { margin: 0; padding: 5px 12px; color: var(--el-text-color-secondary); font-size: 11px; }
 .station-plan-pick-status { color: var(--el-color-primary); font-size: 13px; font-weight: 600; }
 .station-plan-settings-hint { color: var(--el-text-color-secondary); font-size: 12px; }
 .station-plan-missing-endpoints { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
@@ -9637,27 +10290,26 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 640px) {
-    .operation-plan-toolbar {
-        align-items: stretch;
-        flex-direction: column;
+    .operation-plan-page {
+        column-gap: 6px;
     }
 
-    .operation-plan-scheme-control,
-    .operation-plan-object-control,
-    .operation-plan-toolbar-actions {
-        align-items: stretch;
-        flex-direction: column;
+    .operation-plan-scheme-control > .operation-plan-control-label {
+        display: none;
+    }
+
+    .operation-plan-scheme-select {
+        width: 88px;
+    }
+
+    .operation-plan-saturated-preset-select {
+        width: 104px;
     }
 
     .train-operation-plan-toolbar,
     .train-operation-plan-time-range {
         align-items: stretch;
         flex-direction: column;
-    }
-
-    .operation-plan-scheme-select,
-    .operation-plan-object-select {
-        width: 100%;
     }
 
     .train-operation-plan-time-input {

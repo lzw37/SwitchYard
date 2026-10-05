@@ -60,6 +60,7 @@
                             v-for="block in row.blocks"
                             :key="block.key"
                             class="track-occupancy-gantt-block"
+                            :data-block-key="block.key"
                             :class="[block.className, { 'is-editable': editable && block.editable !== false }]"
                             :style="getBlockStyle(block)"
                             :title="block.title"
@@ -97,6 +98,7 @@ import { useI18n } from 'vue-i18n'
 import { ElSlider } from 'element-plus'
 import { FullScreen, Refresh } from '@element-plus/icons-vue'
 import ActionButton from '@/components/ui/ActionButton.vue'
+import { snapshotGanttSvg, type GanttReportLabels, type GanttReportViewState } from '../report/ganttSvgSnapshot'
 import {
     fitTrackOccupancyGantt,
     hitTestTrackOccupancyGanttRow,
@@ -160,7 +162,42 @@ watch([scaleX, scaleY], ([x, y]) => {
 // Parents use this same viewport for auto-fit and following the playback cursor.
 const viewport = ref<HTMLElement | null>(null)
 let resizeObserver: ResizeObserver | null = null
-defineExpose({ viewport, fitToViewport, hitTestRow })
+let lastVisibleReportSize = { width: 0, height: 0, viewportWidth: 0, viewportHeight: 0 }
+defineExpose({ viewport, fitToViewport, hitTestRow, exportReportFigure, getReportViewState, applyReportViewState })
+
+function exportReportFigure(caption: string, labels?: GanttReportLabels) {
+    return viewport.value ? snapshotGanttSvg(viewport.value, caption, labels) : null
+}
+
+function getReportViewState(): GanttReportViewState {
+    return {
+        ...rememberVisibleReportSize(), scaleX: scaleX.value, scaleY: scaleY.value, autoFit: autoFit.value,
+    }
+}
+
+function rememberVisibleReportSize() {
+    const element = viewport.value?.parentElement
+    if (viewport.value && element && viewport.value.clientWidth > 0 && viewport.value.clientHeight > 0) {
+        lastVisibleReportSize = {
+            width: element.clientWidth, height: element.clientHeight,
+            viewportWidth: viewport.value.clientWidth, viewportHeight: viewport.value.clientHeight,
+        }
+    }
+    return lastVisibleReportSize
+}
+
+async function applyReportViewState(state: GanttReportViewState) {
+    autoFit.value = false
+    const fallback = rememberVisibleReportSize()
+    const viewportWidth = state.viewportWidth && Number.isFinite(state.viewportWidth) && state.viewportWidth > 0 ? state.viewportWidth : fallback.viewportWidth
+    const viewportHeight = state.viewportHeight && Number.isFinite(state.viewportHeight) && state.viewportHeight > 0 ? state.viewportHeight : fallback.viewportHeight
+    const scales = state.autoFit && Number.isFinite(viewportWidth) && viewportWidth > 0 && Number.isFinite(viewportHeight) && viewportHeight > 0
+        ? fitTrackOccupancyGantt(viewportWidth, viewportHeight, props.timelineWidth, rowsHeight.value)
+        : state
+    if (Number.isFinite(scales.scaleX) && scales.scaleX > 0) scaleX.value = scales.scaleX
+    if (Number.isFinite(scales.scaleY) && scales.scaleY > 0) scaleY.value = scales.scaleY
+    await nextTick()
+}
 
 const contentStyle = computed(() => ({
     width: `${metrics.sidebarWidth + props.timelineWidth * scaleX.value}px`,
@@ -184,7 +221,8 @@ function hitTestRow(clientX: number, clientY: number, allowedRowKeys?: ReadonlyS
 }
 
 function fitToViewport() {
-    if (!viewport.value || props.rows.length === 0 || props.controlsDisabled) return
+    if (!viewport.value || props.rows.length === 0 || props.controlsDisabled || viewport.value.clientWidth <= 0 || viewport.value.clientHeight <= 0) return
+    rememberVisibleReportSize()
     const scales = fitTrackOccupancyGantt(viewport.value.clientWidth, viewport.value.clientHeight, props.timelineWidth, rowsHeight.value)
     scaleX.value = scales.scaleX
     scaleY.value = scales.scaleY
@@ -208,6 +246,7 @@ function setScaleY(value: number | number[]) {
 }
 
 function syncAutoFit() {
+    rememberVisibleReportSize()
     if (autoFit.value) fitToViewport()
 }
 

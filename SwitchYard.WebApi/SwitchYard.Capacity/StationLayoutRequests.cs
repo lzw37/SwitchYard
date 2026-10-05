@@ -9,6 +9,8 @@ namespace SwitchYard.Capacity
         public string? InstanceID { get; set; }
 
         public string? StationSchemeID { get; set; }
+
+        public long? ExpectedRevision { get; set; }
     }
 
     public sealed class StationSchemeRequest

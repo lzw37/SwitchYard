@@ -1,4 +1,10 @@
 {
+    "stationCapacityReport": {
+        "export": "导出 Word 报告",
+        "hint": "导出当前方案和计划的中文通过能力分析报告，含过程、计划、占用、瓶颈与能力汇总，以及 SVG 矢量图。请先完成数据加载和编辑。",
+        "success": "车站通过能力分析报告已生成，正在下载。",
+        "failed": "报告导出失败。请检查网络并刷新作业计划和图表后重试。"
+    },
     "capacityGantt": {
         "toolbar": "占用图功能区",
         "rowLegend": "行类型图例",
@@ -110,8 +116,8 @@
             "saveFailed": "生成列车失败，已保留草稿供修改或重试。",
             "saved": "列车及全部作业已生成"
         },
-        "toolbar": "中观作业计划图功能区",
-        "chartLabel": "车站中观作业计划图，每条折线代表一列车",
+        "toolbar": "作业计划大表功能区",
+        "chartLabel": "作业计划大表，每条折线代表一列车",
         "lineMode": "连线模式",
         "straightMode": "直线",
         "orthogonalMode": "折线",
@@ -137,11 +143,11 @@
         "selectAll": "全选",
         "clearSelection": "清空",
         "saveSettings": "保存配置",
-        "settingsSaved": "中观作业计划图显示配置已保存",
+        "settingsSaved": "作业计划大表显示配置已保存",
         "saveSettingsFailed": "保存显示配置失败，请重试",
         "loadSettingsFailed": "显示配置加载失败，请刷新后重试",
-        "startTime": "中观图开始时间",
-        "endTime": "中观图结束时间",
+        "startTime": "作业计划大表开始时间",
+        "endTime": "作业计划大表结束时间",
         "summary": "{trains} 列车，{rows} 项股道 / 节点",
         "trainLegend": "点击作业线或车次可多选；按 Esc 或点击图面空白处取消全部选择；悬停作业线临时加粗",
         "trainLine": "列车作业线 {train}",
@@ -1570,12 +1576,22 @@
         "fields": {
             "operation": "操作"
         },
+        "viewSelector": "切换视图",
+        "unnamedStationScheme": "未命名车站方案",
+        "chartMode": {
+            "label": "图表类型",
+            "mesoscopic": "作业计划大表",
+            "microscopic": "资源占用图"
+        },
         "tabs": {
+            "templateWorkspace": "作业模板",
+            "planList": "计划列表",
             "trainTemplate": "列车模板",
             "operationProcess": "作业过程编排",
             "trainOperationPlan": "列车作业计划",
-            "trainOperationChart": "作业计划图",
-            "stationPlanView": "中观作业计划图",
+            "planCharts": "作业计划图",
+            "trainOperationChart": "资源占用图",
+            "stationPlanView": "作业计划大表",
             "operationOccupationTimeTable": "作业占用时间表",
             "operationBottleneckAnalysis": "作业瓶颈分析",
             "operationThroughputSummary": "能力分类汇总"
@@ -1834,7 +1850,7 @@
             }
         },
         "trainOperationChart": {
-            "title": "作业计划图",
+            "title": "资源占用图",
             "recalculate": "重新推算 Cell 占用时间",
             "recalculateHint": "按数据库中最新的作业起止时刻和轨道电路偏移重新推算当前计划的全部 Cell，占用时刻的人工调整将被覆盖并保存。",
             "count": "{cellCount} 个轨道电路区段，{barCount} 条占用",
@@ -1844,10 +1860,56 @@
             "emptyCells": "暂无轨道电路区段",
             "emptyOccupations": "暂无占用记录",
             "messages": {
-                "loadFailed": "加载作业计划图失败",
+                "loadFailed": "加载资源占用图失败",
                 "recalculateSuccess": "已重新推算并保存当前计划的 Cell 占用时间",
                 "recalculateFailed": "重新推算 Cell 占用时间失败"
             }
+        },
+        "resourceOccupancyCharts": {
+            "defaultName": "资源占用图",
+            "newName": "资源占用图 {number}",
+            "add": "添加资源占用图",
+            "edit": "编辑当前资源占用图",
+            "addTitle": "添加资源占用图",
+            "editTitle": "编辑资源占用图",
+            "name": "图形名称",
+            "namePlaceholder": "请输入图形名称",
+            "nameRequired": "请输入图形名称",
+            "nameTooLong": "图形名称不能超过 100 个字符",
+            "cells": "包含的 Cell",
+            "selectCells": "请选择要显示的 Cell",
+            "order": "已选 Cell 的显示顺序",
+            "orderHint": "使用上移、下移调整图中 Cell 的顺序。未选择 Cell 时保存为空图。",
+            "selectAll": "全选",
+            "clear": "清空",
+            "moveUp": "上移",
+            "moveDown": "下移",
+            "removeCell": "移除此 Cell",
+            "emptySelection": "当前图形未选择 Cell，请编辑图形添加。",
+            "loading": "正在加载图形配置…",
+            "loadFailed": "加载图形配置失败，请重试。",
+            "saveFailed": "保存图形配置失败，修改已保留，请重试。",
+            "retry": "重试",
+            "save": "保存",
+            "cancel": "取消"
+        },
+        "stationPlanCharts": {
+            "defaultName": "作业计划大表",
+            "settingsHint": "每张大表可独立选择股道、节点及其显示顺序。不选择任何股道或节点可保存为空图；端点被隐藏的作业线段不会显示。",
+            "newName": "作业计划大表 {number}",
+            "add": "添加作业计划大表",
+            "edit": "编辑当前作业计划大表",
+            "addTitle": "添加作业计划大表",
+            "editTitle": "编辑作业计划大表",
+            "name": "图形名称",
+            "namePlaceholder": "请输入图形名称",
+            "nameRequired": "请输入图形名称",
+            "nameTooLong": "图形名称不能超过 100 个字符",
+            "loadFailed": "加载大表配置失败，请重试。",
+            "saveFailed": "保存大表配置失败，修改已保留，请重试。",
+            "retry": "重试",
+            "emptySelection": "当前图形未选择股道或节点，请编辑图形添加。",
+            "chartLimit": "最多可添加 100 张作业计划大表。"
         },
         "operationOccupationTimeTable": {
             "title": "作业占用时间表",

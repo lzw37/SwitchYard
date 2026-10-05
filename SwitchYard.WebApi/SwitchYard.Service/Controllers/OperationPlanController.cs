@@ -3719,6 +3719,8 @@ namespace SwitchYard.Service.Controllers
             EnsureOperationBottleneckSummaryCategorySchema(dbConnector);
             EnsureOperationAnalysisResultSchema(dbConnector);
             EnsureStationPlanViewSettingsSchema(dbConnector);
+            EnsureResourceOccupancyChartSettingsSchema(dbConnector);
+            EnsureStationPlanChartSettingsSchema(dbConnector);
         }
 
         private static void EnsureOperationPlanObjectSchema(DBConnector dbConnector)

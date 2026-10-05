@@ -221,6 +221,7 @@ public sealed class StationLayoutService : IStationLayoutService
         var document = CloneDocument(record.Document);
         NormalizeDocument(document, scopeId, record.Scheme.SchemeId);
         document.Metadata!.Revision = record.Scheme.Revision;
+        if (document.IsArchive) document.SetArchiveScope(scopeId, record.Scheme.SchemeId, record.Scheme.Revision);
         return new StationLayoutReadResult(
             document,
             record.Scheme.SchemeId,
@@ -386,8 +387,8 @@ public sealed class StationLayoutService : IStationLayoutService
 
         try
         {
-            return JsonSerializer.Deserialize<StationLayoutDocument>(json, JsonOptions)
-                   ?? throw new StationLayoutValidationException("Station-layout JSON is empty.");
+            StationLayoutJsonValidation.Validate(json);
+            return StationLayoutDocument.FromJson(json, JsonOptions);
         }
         catch (JsonException exception)
         {
@@ -402,6 +403,11 @@ public sealed class StationLayoutService : IStationLayoutService
         string scopeId,
         string schemeId)
     {
+        if (document.IsArchive)
+        {
+            document.SetArchiveScope(scopeId, schemeId);
+            return;
+        }
         document.Metadata ??= new StationLayoutMetadata();
         document.Metadata.InstanceID = scopeId;
         document.Metadata.StationSchemeID = schemeId;
@@ -520,11 +526,6 @@ public sealed class StationLayoutService : IStationLayoutService
     private static StationLayoutDocument CloneDocument(StationLayoutDocument document)
     {
         ArgumentNullException.ThrowIfNull(document);
-        return JsonSerializer.Deserialize<StationLayoutDocument>(
-                   JsonSerializer.Serialize(document, JsonOptions),
-                   JsonOptions)
-               ?? throw new StationLayoutStoreException(
-                   "The station-layout repository returned an invalid document.",
-                   new InvalidOperationException("Document cloning returned null."));
+        return StationLayoutDocument.FromJson(document.ToJson(), JsonOptions);
     }
 }

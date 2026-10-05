@@ -125,6 +125,10 @@ export const stationLayoutMessages = {
           "exportFailed": "导出 JSON 文件失败",
           "fileRequired": "请选择 JSON 格式文件",
           "imported": "JSON 文件已导入",
+          "importReady": "已导入当前方案，点击“保存数据”后持久保存",
+          "busy": "正在加载或保存布置图，请稍后再试",
+          "scopeChanged": "读取文件期间当前方案已改变，请重新导入",
+          "invalidCell": "轨道电路表单未通过校验，请修改后重试",
           "importFailed": "导入 JSON 文件失败，请检查文件格式"
         },
         "binding": {
@@ -491,6 +495,10 @@ export const stationLayoutMessages = {
           "exportFailed": "Failed to export JSON file",
           "fileRequired": "Select a JSON file",
           "imported": "JSON file imported",
+          "importReady": "Imported into the current scheme. Use Save data to persist the layout.",
+          "busy": "The layout is loading or saving. Try again when it finishes.",
+          "scopeChanged": "The current scheme changed while reading the file. Import it again.",
+          "invalidCell": "Correct the track circuit form before exporting.",
           "importFailed": "Could not import JSON. Check the file format."
         },
         "binding": {

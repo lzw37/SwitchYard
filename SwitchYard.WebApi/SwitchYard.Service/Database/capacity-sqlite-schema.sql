@@ -11,7 +11,8 @@ CREATE TABLE IF NOT EXISTS "stationscheme" (
     "ID" TEXT NULL,
     "Name" TEXT NULL,
     "DisplayStyles" TEXT NULL,
-    "GridSettings" TEXT NULL
+    "GridSettings" TEXT NULL,
+    "LayoutDocument" TEXT NULL
 );
 
 CREATE TABLE IF NOT EXISTS "stationlayoutrevision" (
@@ -313,6 +314,22 @@ CREATE TABLE IF NOT EXISTS "operationoccupationtimesubtable" (
     "SubTableName" TEXT NULL,
     "CellIDList" TEXT NULL,
     "SortOrder" INTEGER NULL
+);
+
+CREATE TABLE IF NOT EXISTS "resourceoccupancychartsettings" (
+    "InstanceID" TEXT NOT NULL,
+    "StationSchemeID" TEXT NOT NULL,
+    "OperationPlanID" TEXT NOT NULL,
+    "ChartsJson" TEXT NOT NULL,
+    PRIMARY KEY ("InstanceID", "StationSchemeID", "OperationPlanID")
+);
+
+CREATE TABLE IF NOT EXISTS "stationplanchartsettings" (
+    "InstanceID" TEXT NOT NULL,
+    "StationSchemeID" TEXT NOT NULL,
+    "OperationPlanID" TEXT NOT NULL,
+    "ChartsJson" TEXT NOT NULL,
+    PRIMARY KEY ("InstanceID", "StationSchemeID", "OperationPlanID")
 );
 
 CREATE TABLE IF NOT EXISTS "operationbottleneckanalysisresult" (

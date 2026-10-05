@@ -22,7 +22,6 @@
                         :loading="loadingStationSchemes"
                         :disabled="!selectedInstanceId || loadingStationSchemes || loadingData"
                         :placeholder="t('stationLayout.placeholders.selectStationScheme')"
-                        @change="handleStationSchemeChange"
                     >
                         <el-option
                             v-for="option in stationSchemeOptions"
@@ -938,6 +937,8 @@ import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Aim, Check, Close, Delete, Filter, Guide, Location, MagicStick, Plus, Refresh } from '@element-plus/icons-vue'
 import axios from '@/utils/axios'
+import { useCapacityStore } from '@/stores/capacity'
+import { useStationSchemeSelection } from './useStationSchemeSelection'
 import StationLayoutEditor from './components/StationLayoutEditor.vue'
 import StationLayoutViewToolbar from './components/StationLayoutViewToolbar.vue'
 import { getStationRouteHighlightColor, routeHighlightColors } from './routeColors'
@@ -1075,7 +1076,8 @@ const layoutViewportRef = ref<HTMLElement | null>(null)
 const stationRouteContentRef = ref<HTMLElement | null>(null)
 const routeEndContentRef = ref<HTMLElement | null>(null)
 const routeEndTableRef = ref<any>(null)
-const currentStationSchemeId = ref('')
+const capacityStore = useCapacityStore()
+const currentStationSchemeId = useStationSchemeSelection(() => props.selectedInstanceId)
 const loadingStationSchemes = ref(false)
 const loadingData = ref(false)
 const loadingRouteEnds = ref(false)
@@ -1315,7 +1317,7 @@ const routeFilterFieldControls: RouteFilterControl[] = [
     },
 ]
 
-const selectedInstanceId = computed(() => props.selectedInstanceId || '')
+const selectedInstanceId = computed(() => props.selectedInstanceId?.trim() || '')
 const leftPaneStyle = computed(() => {
     if (!isRouteDataPaneVisible.value) {
         return { flexBasis: '100%', flexGrow: '1' }
@@ -1602,6 +1604,7 @@ const canSaveRouteEnd = computed(() => (
 ))
 
 let stationSchemeLoadVersion = 0
+let disposed = false
 let layoutLoadVersion = 0
 let routeLoadVersion = 0
 let routeEndLoadVersion = 0
@@ -2451,9 +2454,9 @@ function getHttpErrorMessage(error: any, fallback: string): string {
 async function loadStationSchemes(options: { includeCurrent?: boolean } = {}) {
     const includeCurrent = options.includeCurrent !== false
     const instanceID = selectedInstanceId.value
+    const requestedSchemeId = currentStationSchemeId.value
     if (!instanceID) {
         stationSchemeLoadVersion++
-        currentStationSchemeId.value = ''
         stationSchemeOptions.value = []
         loadingStationSchemes.value = false
         return []
@@ -2470,6 +2473,10 @@ async function loadStationSchemes(options: { includeCurrent?: boolean } = {}) {
         const options = (Array.isArray(response.data) ? response.data : [])
             .map((item: any) => normalizeStationSchemeOption(item))
             .filter((item: StationSchemeOption | null): item is StationSchemeOption => item !== null)
+        if (currentStationSchemeId.value === requestedSchemeId && !options.some((option: StationSchemeOption) => option.id === requestedSchemeId)) {
+            if (options[0]) currentStationSchemeId.value = options[0].id
+            else capacityStore.clearStationScheme(instanceID)
+        }
         setStationSchemeOptions(options, includeCurrent)
         return options
     } catch (error) {
@@ -3641,9 +3648,10 @@ async function loadLayout() {
     const instanceID = selectedInstanceId.value
     const stationSchemeID = currentStationSchemeId.value.trim()
 
-    if (!instanceID) {
+    if (!instanceID || !stationSchemeID) {
         layoutLoadVersion++
         clearLayout()
+        loadingData.value = false
         return
     }
 
@@ -3656,7 +3664,7 @@ async function loadLayout() {
         const response = await axios.post('/StationLayout/GetJson', null, {
             params,
         })
-        if (loadVersion !== layoutLoadVersion || instanceID !== selectedInstanceId.value) return
+        if (loadVersion !== layoutLoadVersion || instanceID !== selectedInstanceId.value || stationSchemeID !== currentStationSchemeId.value) return
 
         const resolvedStationSchemeId = readString(response.data?.metadata, 'stationSchemeID', 'StationSchemeID').trim()
         if (resolvedStationSchemeId) {
@@ -3672,35 +3680,42 @@ async function loadLayout() {
         showLayoutGrid.value = getLayoutGridVisible(response.data)
         routeObjectOptions.value = buildRouteObjectOptions(response.data)
         await nextTick()
+        if (loadVersion !== layoutLoadVersion || instanceID !== selectedInstanceId.value || stationSchemeID !== currentStationSchemeId.value) return
         stationLayoutEditorRef.value?.loadDataFromJson(response.data)
     } catch (error) {
-        if (loadVersion !== layoutLoadVersion || instanceID !== selectedInstanceId.value) return
+        if (loadVersion !== layoutLoadVersion || instanceID !== selectedInstanceId.value || stationSchemeID !== currentStationSchemeId.value) return
 
         console.error('Failed to load route design layout:', error)
         clearLayout()
         ElMessage.error(t('routeDesign.messages.loadFailed'))
     } finally {
-        if (loadVersion === layoutLoadVersion && instanceID === selectedInstanceId.value) {
+        if (loadVersion === layoutLoadVersion && instanceID === selectedInstanceId.value && stationSchemeID === currentStationSchemeId.value) {
             loadingData.value = false
         }
     }
 }
 
 async function refreshForInstance() {
+    const instanceID = selectedInstanceId.value
     await loadStationSchemes()
-    await loadLayout()
-    await loadStationRoutes()
-    await loadRouteEnds()
+    if (disposed || instanceID !== selectedInstanceId.value) return
+    await handleStationSchemeChange()
 }
 
 async function handleStationSchemeChange() {
+    const instanceID = selectedInstanceId.value
+    const stationSchemeID = currentStationSchemeId.value
     routeNodePickStage.value = 'none'
     routeSearchDialogVisible.value = false
     routeEndPickingNode.value = false
     clearAutoRouteGenerateForm()
     clearRouteFilters()
+    clearStationRoutes()
+    clearRouteEnds()
     await loadLayout()
+    if (disposed || instanceID !== selectedInstanceId.value || stationSchemeID !== currentStationSchemeId.value) return
     await loadStationRoutes()
+    if (disposed || instanceID !== selectedInstanceId.value || stationSchemeID !== currentStationSchemeId.value) return
     await loadRouteEnds()
 }
 
@@ -3776,13 +3791,18 @@ function clampRouteEndStackListHeight(height: number) {
     return Math.round(Math.min(maxList, Math.max(minList, height)))
 }
 
-watch(() => props.selectedInstanceId, () => {
-    currentStationSchemeId.value = ''
+watch(selectedInstanceId, () => {
     stationSchemeOptions.value = []
     clearStationRoutes()
     clearRouteEnds()
     void refreshForInstance()
 }, { immediate: true })
+
+watch([selectedInstanceId, currentStationSchemeId], ([instanceID, schemeID], [previousInstanceID, previousSchemeID]) => {
+    if (instanceID === previousInstanceID && schemeID !== previousSchemeID && !loadingStationSchemes.value) {
+        void handleStationSchemeChange()
+    }
+}, { flush: 'sync' })
 
 watch(showStationRouteCard, (visible) => {
     if (visible) return
@@ -3826,6 +3846,11 @@ watch([stationRouteContentRef, routeEndContentRef], (current, previous) => {
 }, { flush: 'post' })
 
 onBeforeUnmount(() => {
+    disposed = true
+    stationSchemeLoadVersion++
+    layoutLoadVersion++
+    routeLoadVersion++
+    routeEndLoadVersion++
     resizeObserver?.disconnect()
     window.removeEventListener('resize', ensureSplitWidth)
 })

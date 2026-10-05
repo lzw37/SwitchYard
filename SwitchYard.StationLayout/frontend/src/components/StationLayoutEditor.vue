@@ -249,6 +249,15 @@ function buildRouteHighlightArrow(routeNodes, visible = true) {
 
 const latestElementID = ref(0);
 const layoutMetadata = ref({});
+const layoutRootExtras = ref({});
+const importedCells = ref([]);
+const preserveDocument = ref(false);
+const importedGridBaseline = ref(null);
+const importedLatestElementID = ref(0);
+const layoutCollectionNames = [
+    "tracks", "curves", "nodes", "signals", "insulationJoints", "bufferStops",
+    "platforms", "switches", "annotations", "cells",
+];
 
 const tracks = ref([]);
 const curves = ref([]);
@@ -454,7 +463,22 @@ function resetGridOrigin() {
 }
 
 function buildGridSettingsMetadata() {
+    const original = layoutMetadata.value.gridSettings;
+    const baseline = importedGridBaseline.value;
+    if (preserveDocument.value && baseline) {
+        // Keep imported precision and extension fields until the corresponding
+        // control actually changes. Importing must not round saved grid origins.
+        if (props.showGrid === baseline.showGrid && props.gridSpacing === baseline.spacing &&
+            grid.originX === baseline.originX && grid.originY === baseline.originY) return original;
+        const settings = original && typeof original === "object" ? { ...original } : {};
+        if (props.showGrid !== baseline.showGrid) settings.showGrid = props.showGrid !== false;
+        if (props.gridSpacing !== baseline.spacing) settings.spacing = canvasStepX();
+        if (grid.originX !== baseline.originX) settings.originX = canvasOriginX();
+        if (grid.originY !== baseline.originY) settings.originY = canvasOriginY();
+        return Object.keys(settings).length > 0 || original ? settings : undefined;
+    }
     return {
+        ...(original && typeof original === "object" ? original : {}),
         showGrid: props.showGrid !== false,
         spacing: canvasStepX(),
         originX: roundLayoutNumber(canvasOriginX()),
@@ -579,6 +603,7 @@ function anchorScreenY(anchor) {
 
 function normalizePosition(position) {
     return {
+        ...(position && typeof position === "object" ? position : {}),
         x: toFiniteNumber(position?.x),
         y: toFiniteNumber(position?.y),
     };
@@ -586,6 +611,7 @@ function normalizePosition(position) {
 
 function normalizeAnnotation(annotation) {
     return {
+        ...annotation,
         id: annotation?.id ?? nextId(),
         text: annotation?.text ?? "Annotation",
         position: normalizePosition(annotation?.position),
@@ -621,6 +647,7 @@ function getCanvasViewportState() {
 
 function normalizeCurve(curve) {
     return {
+        ...curve,
         id: curve?.id ?? nextId(),
         nodeID: curve?.nodeID ?? curve?.vertexNodeID ?? "",
         tangentLinkID1: curve?.tangentLinkID1 ?? curve?.linkID1 ?? "",
@@ -1369,6 +1396,14 @@ function cloneState() {
     return JSON.parse(
         JSON.stringify({
             latestElementID: latestElementID.value,
+            layoutMetadata: layoutMetadata.value,
+            layoutRootExtras: layoutRootExtras.value,
+            importedCells: importedCells.value,
+            preserveDocument: preserveDocument.value,
+            importedGridBaseline: importedGridBaseline.value,
+            importedLatestElementID: importedLatestElementID.value,
+            grid: { ...grid },
+            canvasBounds: canvasBounds.value,
             tracks: tracks.value,
             curves: curves.value,
             nodes: nodes.value,
@@ -1392,18 +1427,28 @@ function cloneState() {
 }
 
 function applyState(state) {
+    // History is already a complete editor snapshot. Re-normalizing or syncing
+    // it would silently modify imported geometry and discard extension fields.
+    state = JSON.parse(JSON.stringify(state));
     cancelInlineRename();
     latestElementID.value = state.latestElementID;
+    layoutMetadata.value = state.layoutMetadata || {};
+    layoutRootExtras.value = state.layoutRootExtras || {};
+    importedCells.value = state.importedCells || [];
+    preserveDocument.value = state.preserveDocument === true;
+    importedGridBaseline.value = state.importedGridBaseline || null;
+    importedLatestElementID.value = state.importedLatestElementID ?? 0;
+    if (state.grid) Object.assign(grid, state.grid);
+    if (state.canvasBounds) canvasBounds.value = state.canvasBounds;
     tracks.value = state.tracks || [];
-    curves.value = (state.curves || []).map((curve) => normalizeCurve(curve));
+    curves.value = state.curves || [];
     nodes.value = state.nodes || [];
-    signals.value = (state.signals || []).map((signal) => normalizeNamedBoundEquipment(signal));
-    insulationJoints.value = (state.insulationJoints || []).map((ij) => normalizeBoundEquipment(ij));
-    bufferStops.value = (state.bufferStops || []).map((bufferStop) => normalizeBufferStop(bufferStop));
-    platforms.value = (state.platforms || []).map((platform) => normalizeNamedEquipment(platform));
-    switches.value = (state.switches || []).map((sw) => normalizeNamedBoundEquipment(sw));
+    signals.value = state.signals || [];
+    insulationJoints.value = state.insulationJoints || [];
+    bufferStops.value = state.bufferStops || [];
+    platforms.value = state.platforms || [];
+    switches.value = state.switches || [];
     annotations.value = state.annotations || [];
-    syncBoundEquipmentToBindingNodes();
     selectedLineIds.value = new Set(state.selectedLineIds || []);
     selectedNodeIds.value = new Set(state.selectedNodeIds || []);
     selectedSignalIds.value = new Set(state.selectedSignalIds || []);
@@ -1460,9 +1505,28 @@ function redo() {
 }
 
 function nextId() {
-    const id = String(latestElementID.value);
-    latestElementID.value += 1;
-    return id;
+    const usedIds = new Set([
+        tracks.value, curves.value, nodes.value, signals.value, insulationJoints.value,
+        bufferStops.value, platforms.value, switches.value, annotations.value,
+        importedCells.value, props.cells,
+    ].flat().map((item) => String(item?.id)));
+    const allocated = allocateElementId(latestElementID.value, usedIds);
+    latestElementID.value = allocated.next;
+    return allocated.id;
+}
+
+function allocateElementId(value, usedIds) {
+    // The persisted counter is an Int32. Reserve its upper bound for the
+    // next-counter value so generating an element never makes saving invalid.
+    const maximumCounter = 2147483647;
+    let candidate = Number(value);
+    if (!Number.isSafeInteger(candidate) || candidate < 0 || candidate >= maximumCounter) candidate = 0;
+    while (usedIds.has(String(candidate))) {
+        candidate = candidate >= maximumCounter - 1 ? 0 : candidate + 1;
+    }
+    const id = String(candidate);
+    usedIds.add(id);
+    return { id, next: candidate + 1 };
 }
 
 function normalizeNamedEquipment(equipment) {
@@ -3395,12 +3459,14 @@ const tempPlatformView = computed(() => {
 });
 
 function buildJsonData() {
+    const metadata = { ...layoutMetadata.value, gridSettings: buildGridSettingsMetadata() };
+    if (!preserveDocument.value || Object.hasOwn(layoutMetadata.value, "latestElementID") ||
+        latestElementID.value !== importedLatestElementID.value) {
+        metadata.latestElementID = latestElementID.value;
+    }
     return JSON.stringify({
-        metadata: {
-            ...layoutMetadata.value,
-            latestElementID: latestElementID.value,
-            gridSettings: buildGridSettingsMetadata(),
-        },
+        ...layoutRootExtras.value,
+        metadata,
         tracks: tracks.value,
         curves: curves.value,
         nodes: nodes.value,
@@ -3410,12 +3476,19 @@ function buildJsonData() {
         platforms: platforms.value,
         switches: switches.value,
         annotations: annotations.value,
+        cells: importedCells.value,
     });
 }
 
 function clearElements() {
     cancelInlineRename();
+    latestElementID.value = 0;
     layoutMetadata.value = {};
+    layoutRootExtras.value = {};
+    importedCells.value = [];
+    preserveDocument.value = false;
+    importedGridBaseline.value = null;
+    importedLatestElementID.value = 0;
     tracks.value = [];
     curves.value = [];
     nodes.value = [];
@@ -3432,30 +3505,88 @@ function clearElements() {
     resetCanvasBounds();
 }
 
-function loadDataFromJson(jsonObj) {
+function prepareLayoutDocument(jsonObj, options) {
+    if (!jsonObj || typeof jsonObj !== "object" || Array.isArray(jsonObj)) {
+        throw new TypeError("The station layout must be a JSON object.");
+    }
+    // Complete cloning, shape checks and conversion before touching current
+    // state or history, including any nested data supplied by a host component.
+    const document = JSON.parse(JSON.stringify(jsonObj));
+    if (document.metadata != null && (typeof document.metadata !== "object" || Array.isArray(document.metadata))) {
+        throw new TypeError("Layout metadata must be an object.");
+    }
+    for (const name of layoutCollectionNames) {
+        if (document[name] == null && !options.preserveDocument) document[name] = [];
+        if (document[name] === undefined) document[name] = [];
+        if (!Array.isArray(document[name]) || document[name].some((item) => !item || typeof item !== "object" || Array.isArray(item))) {
+            throw new TypeError(`Layout ${name} must be an array of objects.`);
+        }
+    }
+    const metadata = document.metadata || {};
+    const rootExtras = Object.fromEntries(Object.entries(document).filter(([key]) => key !== "metadata" && !layoutCollectionNames.includes(key)));
+    let nextElementID = options.preserveDocument ? (metadata.latestElementID ?? 0) : Number(metadata.latestElementID || 0);
+    if (!options.preserveDocument) {
+        const usedIds = new Set(layoutCollectionNames.flatMap((name) => document[name]).map((item) => String(item.id)));
+        const withId = (item) => {
+            if (item.id != null) return item;
+            const allocated = allocateElementId(nextElementID, usedIds);
+            nextElementID = allocated.next;
+            return { ...item, id: allocated.id };
+        };
+        document.tracks = document.tracks.map((track) => ({ name: "", ...track }));
+        document.curves = document.curves.map((curve) => normalizeCurve(withId(curve)));
+        document.signals = document.signals.map(normalizeNamedBoundEquipment);
+        document.insulationJoints = document.insulationJoints.map(normalizeBoundEquipment);
+        document.bufferStops = document.bufferStops.map(normalizeBufferStop);
+        document.platforms = document.platforms.map(normalizeNamedEquipment);
+        document.switches = document.switches.map(normalizeNamedBoundEquipment);
+        document.annotations = document.annotations.map((annotation) => normalizeAnnotation(withId(annotation)));
+    }
+    return { document, metadata, rootExtras, nextElementID };
+}
+
+function loadDataFromJson(jsonObj, options = {}) {
+    const prepared = prepareLayoutDocument(jsonObj, options);
     executeMutation(() => {
         clearElements();
-        layoutMetadata.value = { ...(jsonObj?.metadata || {}) };
-        latestElementID.value = Number(jsonObj?.metadata?.latestElementID || 0);
-        tracks.value = (jsonObj?.tracks || []).map((track) => ({ name: "", ...track }));
-        curves.value = (jsonObj?.curves || []).map((curve) => normalizeCurve(curve));
-        nodes.value = (jsonObj?.nodes || []).map((node) => ({ ...node }));
-        signals.value = (jsonObj?.signals || []).map((signal) => normalizeNamedBoundEquipment(signal));
-        insulationJoints.value = (jsonObj?.insulationJoints || []).map((ij) => normalizeBoundEquipment(ij));
-        bufferStops.value = (jsonObj?.bufferStops || []).map((bufferStop) => normalizeBufferStop(bufferStop));
-        platforms.value = (jsonObj?.platforms || []).map((platform) => normalizeNamedEquipment(platform));
-        switches.value = (jsonObj?.switches || []).map((sw) => normalizeNamedBoundEquipment(sw));
-        annotations.value = (jsonObj?.annotations || []).map((annotation) => normalizeAnnotation(annotation));
-        // Track endpoints are authoritative. Rebuild this derived node field so
-        // layouts saved by older module versions still restore switch branches.
-        rebuildNodeAdjacentLineIds();
-        syncBoundEquipmentToBindingNodes();
-        if (!applyGridSettingsMetadata(jsonObj?.metadata?.gridSettings)) {
+        layoutMetadata.value = prepared.metadata;
+        layoutRootExtras.value = prepared.rootExtras;
+        latestElementID.value = prepared.nextElementID;
+        importedLatestElementID.value = prepared.nextElementID;
+        preserveDocument.value = options.preserveDocument === true;
+        tracks.value = prepared.document.tracks;
+        curves.value = prepared.document.curves;
+        nodes.value = prepared.document.nodes;
+        signals.value = prepared.document.signals;
+        insulationJoints.value = prepared.document.insulationJoints;
+        bufferStops.value = prepared.document.bufferStops;
+        platforms.value = prepared.document.platforms;
+        switches.value = prepared.document.switches;
+        annotations.value = prepared.document.annotations;
+        importedCells.value = prepared.document.cells;
+        if (preserveDocument.value) {
+            const settings = prepared.metadata.gridSettings;
+            grid.originX = toFiniteNumber(settings?.originX ?? settings?.OriginX);
+            grid.originY = toFiniteNumber(settings?.originY ?? settings?.OriginY);
+            importedGridBaseline.value = {
+                showGrid: props.showGrid, spacing: props.gridSpacing,
+                originX: grid.originX, originY: grid.originY,
+            };
+        } else {
+            // Existing backend layouts retain topology repair and position sync.
+            rebuildNodeAdjacentLineIds();
+            syncBoundEquipmentToBindingNodes();
+        }
+        if (!preserveDocument.value && !applyGridSettingsMetadata(prepared.metadata.gridSettings)) {
             alignGridOriginToCurrentContent();
         }
         resetCanvasBounds();
         ensureCanvasForAllElements();
     }, { allowReadonly: true });
+    if (options.resetHistory === true) {
+        finishedCmdList.value = [];
+        revokedCmdList.value = [];
+    }
     emitSelectedAnnotationChange();
 }
 
@@ -4600,15 +4731,15 @@ function signalTransform(signal) {
         const bounds = signalAssetBounds(asset);
         const anchorX = signalAssetDimension(asset, "width");
         const svgCoefScaleX = d.horizontalSide === "right" ? -1 : 1;
-        const x = screenX(signal.position.x) - svgCoefScaleX * anchorX * scale + signalHorizontalGap(d);
+        const x = screenX(signal.position?.x) - svgCoefScaleX * anchorX * scale + signalHorizontalGap(d);
         const y = d.verticalSide === "top"
-            ? screenY(signal.position.y) - bounds.maxY * scale + signalVerticalGap(d)
-            : screenY(signal.position.y) - bounds.minY * scale + signalVerticalGap(d);
+            ? screenY(signal.position?.y) - bounds.maxY * scale + signalVerticalGap(d)
+            : screenY(signal.position?.y) - bounds.minY * scale + signalVerticalGap(d);
         return `translate(${x},${y})scale(${scale * svgCoefScaleX},${scale})`;
     }
 
-    const x = screenX(signal.position.x) - scale * d.coefScaleX + signalHorizontalGap(d);
-    return `translate(${x},${screenY(signal.position.y) - 40 * scale * d.coefShiftY + signalVerticalGap(d)})scale(${scale * d.coefScaleX},${scale})`;
+    const x = screenX(signal.position?.x) - scale * d.coefScaleX + signalHorizontalGap(d);
+    return `translate(${x},${screenY(signal.position?.y) - 40 * scale * d.coefShiftY + signalVerticalGap(d)})scale(${scale * d.coefScaleX},${scale})`;
 }
 
 function getSignalTypeValue(signal) {
@@ -4635,8 +4766,8 @@ function signalScreenBounds(signal) {
     if (asset.placement === "quadrant") {
         const width = bounds.width * scale;
         const height = bounds.height * scale;
-        const anchorX = screenX(signal.position.x) + signalHorizontalGap(d);
-        const anchorY = screenY(signal.position.y) + signalVerticalGap(d);
+        const anchorX = screenX(signal.position?.x) + signalHorizontalGap(d);
+        const anchorY = screenY(signal.position?.y) + signalVerticalGap(d);
         const left = d.horizontalSide === "right" ? anchorX : anchorX - width;
         const right = d.horizontalSide === "right" ? anchorX + width : anchorX;
         const top = d.verticalSide === "top" ? anchorY - height : anchorY;
@@ -4644,8 +4775,8 @@ function signalScreenBounds(signal) {
         return { left, right, top, bottom };
     }
 
-    const x = screenX(signal.position.x) - scale * d.coefScaleX + signalHorizontalGap(d);
-    const y = screenY(signal.position.y) - 40 * scale * d.coefShiftY + signalVerticalGap(d);
+    const x = screenX(signal.position?.x) - scale * d.coefScaleX + signalHorizontalGap(d);
+    const y = screenY(signal.position?.y) - 40 * scale * d.coefShiftY + signalVerticalGap(d);
     const x1 = x + bounds.minX * scale * d.coefScaleX;
     const x2 = x + bounds.maxX * scale * d.coefScaleX;
     const y1 = y + bounds.minY * scale;
@@ -4722,7 +4853,7 @@ function bufferStopLineStyle(bufferStop) {
 function bufferStopTransform(bufferStop) {
     const direction = normalizeBufferStopDirection(getBufferStopDirectionValue(bufferStop));
     const coefScaleX = direction === "left" ? -1 : 1;
-    return `translate(${screenX(bufferStop.position.x)},${screenY(bufferStop.position.y)})scale(${coefScaleX},1)`;
+    return `translate(${screenX(bufferStop.position?.x)},${screenY(bufferStop.position?.y)})scale(${coefScaleX},1)`;
 }
 
 function textDisplayStyle(styleKey, highlighted = false, highlightColor = selectedHighlightColor) {
@@ -5148,7 +5279,7 @@ function tempBufferStopTransform() {
 }
 
 function switchTransform(sw) {
-    return `translate(${screenX(sw.position.x)},${screenY(sw.position.y)})`;
+    return `translate(${screenX(sw.position?.x)},${screenY(sw.position?.y)})`;
 }
 
 function switchBranch(sw, lineVec) {
@@ -5384,7 +5515,7 @@ defineExpose({
             <g v-for="ij in insulationJoints" :id="String(ij.id)" :key="`ij-${ij.id}`"
                 class="insulationjoint insulationjoint-normal"
                 :class="{ 'insulationjoint-selected': isInsulationJointHighlighted(ij.id) }"
-                :transform="`translate(${screenX(ij.position.x)},${screenY(ij.position.y)})`"
+                :transform="`translate(${screenX(ij.position?.x)},${screenY(ij.position?.y)})`"
                 :style="elementHighlightStyle('insulationJoint', ij.id)"
                 @mouseenter="setHoveredElement('insulationJoint', ij.id)"
                 @mouseleave="clearHoveredElement('insulationJoint', ij.id)"

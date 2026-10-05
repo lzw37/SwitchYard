@@ -1,10 +1,73 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
 namespace SwitchYard.StationLayout;
 
-public sealed class StationLayoutDocument
+public sealed class StationLayoutDocument : StationLayoutJsonObject
 {
+    public const string ArchiveFormat = "switchyard.station-layout";
+
+    [JsonPropertyName("format")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Format { get; set; }
+
+    [JsonPropertyName("formatVersion")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? FormatVersion { get; set; }
+
+    [JsonIgnore]
+    public bool IsArchive => Format == ArchiveFormat && FormatVersion == 1;
+
+    // Keep the JSON shape as well as its values: a missing optional field must
+    // not turn into a DTO default (for example fontSize: 0) during persistence.
+    [JsonIgnore]
+    public JsonObject? ArchiveJson { get; set; }
+
+    public string ToJson() => ArchiveJson?.ToJsonString() ?? JsonSerializer.Serialize(this);
+
+    public static StationLayoutDocument FromJson(string json, JsonSerializerOptions? legacyOptions = null)
+    {
+        var source = JsonNode.Parse(json) as JsonObject;
+        var archive = source?["format"] is JsonValue format && format.TryGetValue<string>(out var name) && name == ArchiveFormat;
+        var document = JsonSerializer.Deserialize<StationLayoutDocument>(json, archive ? null : legacyOptions)
+            ?? throw new JsonException("Station-layout document is empty.");
+        if (document.IsArchive) document.ArchiveJson = source;
+        return document;
+    }
+
+    public void SetArchiveScope(string scopeId, string schemeId, long? revision = null)
+    {
+        Metadata ??= new StationLayoutMetadata();
+        Metadata.InstanceID = scopeId;
+        Metadata.StationSchemeID = schemeId;
+        if (revision.HasValue) Metadata.Revision = revision;
+        foreach (var cell in Cells)
+        {
+            cell.InstanceID = scopeId;
+            cell.StationSchemeID = schemeId;
+        }
+        if (ArchiveJson is null) return;
+        var metadata = ArchiveJson["metadata"] as JsonObject;
+        if (metadata is null) ArchiveJson["metadata"] = metadata = new JsonObject();
+        metadata["instanceID"] = scopeId;
+        metadata["stationSchemeID"] = schemeId;
+        if (revision.HasValue) metadata["revision"] = revision.Value;
+        if (ArchiveJson["cells"] is not JsonArray cells) return;
+        for (var index = 0; index < cells.Count; index++)
+        {
+            if (cells[index] is not JsonObject cell) continue;
+            cell["instanceID"] = scopeId;
+            cell["stationSchemeID"] = schemeId;
+            if (index < Cells.Count && string.IsNullOrWhiteSpace(cell["id"]?.GetValue<string>()))
+            {
+                cell["id"] = Cells[index].ID;
+                cell.Remove("isNew");
+                cell.Remove("IsNew");
+            }
+        }
+    }
+
     [JsonPropertyName("metadata")]
     public StationLayoutMetadata? Metadata { get; set; }
 
@@ -39,7 +102,7 @@ public sealed class StationLayoutDocument
     public List<StationLayoutAnnotation> Annotations { get; set; } = [];
 }
 
-public sealed class StationLayoutMetadata
+public sealed class StationLayoutMetadata : StationLayoutJsonObject
 {
     [JsonPropertyName("revision")]
     public long? Revision { get; set; }
@@ -63,7 +126,7 @@ public sealed class StationLayoutMetadata
     public JsonElement? GridSettings { get; set; }
 }
 
-public sealed class StationLayoutCoordinateTransform
+public sealed class StationLayoutCoordinateTransform : StationLayoutJsonObject
 {
     [JsonPropertyName("applied")]
     public bool Applied { get; set; }
@@ -81,7 +144,7 @@ public sealed class StationLayoutCoordinateTransform
     public double Padding { get; set; }
 }
 
-public sealed class StationLayoutTrack
+public sealed class StationLayoutTrack : StationLayoutJsonObject
 {
     [JsonPropertyName("id")]
     public string? ID { get; set; }
@@ -114,7 +177,7 @@ public sealed class StationLayoutTrack
     public string? ToNodeID { get; set; }
 }
 
-public sealed class StationLayoutCurve
+public sealed class StationLayoutCurve : StationLayoutJsonObject
 {
     [JsonPropertyName("id")]
     public string? ID { get; set; }
@@ -153,7 +216,7 @@ public sealed class StationLayoutCurve
     public int SweepFlag { get; set; }
 }
 
-public sealed class StationLayoutNode
+public sealed class StationLayoutNode : StationLayoutJsonObject
 {
     [JsonPropertyName("id")]
     public string? ID { get; set; }
@@ -168,7 +231,7 @@ public sealed class StationLayoutNode
     public List<string> AdjacentLineIDList { get; set; } = [];
 }
 
-public sealed class StationLayoutPosition
+public sealed class StationLayoutPosition : StationLayoutJsonObject
 {
     [JsonPropertyName("x")]
     public double X { get; set; }
@@ -177,7 +240,7 @@ public sealed class StationLayoutPosition
     public double Y { get; set; }
 }
 
-public sealed class StationLayoutSignal
+public sealed class StationLayoutSignal : StationLayoutJsonObject
 {
     [JsonPropertyName("id")]
     public string? ID { get; set; }
@@ -198,7 +261,7 @@ public sealed class StationLayoutSignal
     public string? BindingNodeID { get; set; }
 }
 
-public sealed class StationLayoutInsulationJoint
+public sealed class StationLayoutInsulationJoint : StationLayoutJsonObject
 {
     [JsonPropertyName("id")]
     public string? ID { get; set; }
@@ -213,7 +276,7 @@ public sealed class StationLayoutInsulationJoint
     public string? BindingNodeID { get; set; }
 }
 
-public sealed class StationLayoutBufferStop
+public sealed class StationLayoutBufferStop : StationLayoutJsonObject
 {
     [JsonPropertyName("id")]
     public string? ID { get; set; }
@@ -231,7 +294,7 @@ public sealed class StationLayoutBufferStop
     public string? BindingNodeID { get; set; }
 }
 
-public sealed class StationLayoutPlatform
+public sealed class StationLayoutPlatform : StationLayoutJsonObject
 {
     [JsonPropertyName("id")]
     public string? ID { get; set; }
@@ -252,7 +315,7 @@ public sealed class StationLayoutPlatform
     public double Height { get; set; }
 }
 
-public sealed class StationLayoutSwitch
+public sealed class StationLayoutSwitch : StationLayoutJsonObject
 {
     [JsonPropertyName("id")]
     public string? ID { get; set; }
@@ -273,7 +336,7 @@ public sealed class StationLayoutSwitch
     public List<StationLayoutSwitchBranch> BranchVectorList { get; set; } = [];
 }
 
-public sealed class StationLayoutSwitchBranch
+public sealed class StationLayoutSwitchBranch : StationLayoutJsonObject
 {
     [JsonPropertyName("x")]
     public double X { get; set; }
@@ -285,7 +348,7 @@ public sealed class StationLayoutSwitchBranch
     public string? LineID { get; set; }
 }
 
-public sealed class StationLayoutCell
+public sealed class StationLayoutCell : StationLayoutJsonObject
 {
     [JsonPropertyName("instanceID")]
     public string? InstanceID { get; set; }
@@ -303,7 +366,7 @@ public sealed class StationLayoutCell
     public string? Name { get; set; }
 }
 
-public sealed class StationLayoutAnnotation
+public sealed class StationLayoutAnnotation : StationLayoutJsonObject
 {
     [JsonPropertyName("id")]
     public string? ID { get; set; }
@@ -331,4 +394,11 @@ public sealed class StationLayoutAnnotation
 
     [JsonPropertyName("textColor")]
     public string? TextColor { get; set; }
+}
+
+/// <summary>Preserves host and future-version extensions through JSON round trips.</summary>
+public abstract class StationLayoutJsonObject
+{
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? AdditionalProperties { get; set; }
 }

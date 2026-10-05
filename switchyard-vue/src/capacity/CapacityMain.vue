@@ -224,19 +224,22 @@ onMounted(() => {
 
 <style scoped>
 .capacity-main { display:flex; flex-direction:column; width:100%; height:100dvh; padding:12px 16px; overflow:hidden; background:var(--sy-surface,#fff); }
-.capacity-tabs-wrapper { display:flex; flex:1; flex-direction:column; min-height:0; min-width:0; }
-.workspace-topbar { display:flex; justify-content:space-between; align-items:center; gap:12px; padding-bottom:8px; flex:0 0 auto; }
-.left-controls, .right-controls { display:flex; align-items:center; gap:8px; min-width:0; }
-.instance-select { width:220px; max-width:calc(100vw - 156px); }
+.capacity-tabs-wrapper { display:grid; grid-template-columns:auto minmax(0,1fr) auto; grid-template-rows:40px minmax(0,1fr); gap:10px 12px; flex:1; min-height:0; min-width:0; }
+.workspace-topbar { display:contents; }
+.left-controls, .right-controls { display:flex; align-items:center; align-self:center; gap:8px; min-width:0; grid-row:1; }
+.left-controls { grid-column:1; }
+.right-controls { grid-column:3; }
+.instance-select { width:clamp(90px,17vw,220px); min-width:0; }
 .language-code { font-size:11px; font-weight:600; }
 .user-menu-trigger { display:inline-flex; align-items:center; justify-content:center; width:30px; height:30px; border:1px solid var(--sy-border,#dfe4ea); border-radius:50%; color:var(--el-color-primary); background:#fff; cursor:pointer; }
 .user-menu-trigger:hover { background:var(--el-color-primary-light-9); }
-.capacity-tabs { display:flex; flex:1; flex-direction:column; width:100%; min-width:0; min-height:0; overflow:hidden; }
-.capacity-tabs :deep(> .el-tabs__header) { margin-bottom:10px; }
+.capacity-tabs { display:contents; }
+.capacity-tabs :deep(> .el-tabs__header) { grid-column:2; grid-row:1; min-width:0; margin:0; }
+.capacity-tabs :deep(> .el-tabs__header > .el-tabs__nav-wrap) { min-width:0; }
 .capacity-tabs :deep(> .el-tabs__content), .capacity-tabs :deep(> .el-tabs__content > .el-tab-pane) { width:100%; min-width:0; min-height:0; overflow:hidden; }
-.capacity-tabs :deep(> .el-tabs__content) { flex:1; }
+.capacity-tabs :deep(> .el-tabs__content) { grid-column:1 / -1; grid-row:2; }
 .capacity-tabs :deep(> .el-tabs__content > .el-tab-pane) { height:100%; }
 .station-layout-pane, .route-design-pane, .station-layout-3d-pane, .calculation-parameters-pane, .operation-plan-pane, .operation-simulation-pane, .model-solving-pane { width:100%; height:100%; min-width:0; min-height:0; overflow:hidden; }
 .tab-placeholder { display:flex; height:100%; align-items:center; justify-content:center; }
-@media (max-width:768px) { .capacity-main { padding:8px; } }
+@media (max-width:768px) { .capacity-main { padding:8px; } .capacity-tabs-wrapper { column-gap:8px; } }
 </style>

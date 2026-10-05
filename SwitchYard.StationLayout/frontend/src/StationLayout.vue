@@ -11,6 +11,7 @@ import { DEFAULT_SIGNAL_TYPE, normalizeSignalType, signalTypeMenuOptions, signal
 import StationLayoutEditor from "./components/StationLayoutEditor.vue";
 import StationLayoutEditToolbar from "./components/StationLayoutEditToolbar.vue";
 import { createStationLayoutTranslator } from "./messages";
+import { isStationLayoutArchive, parseStationLayoutJson, serializeStationLayoutJson, validateStationLayoutJson } from "./layoutJson";
 import {
     Download, Upload, Aim, Hide, Connection, Scissor,
     Share, SetUp,
@@ -30,6 +31,10 @@ const props = defineProps({
         type: String,
         default: "",
     },
+    stationSchemeId: {
+        type: String,
+        default: undefined,
+    },
     gateway: {
         type: Object,
         required: true,
@@ -47,6 +52,7 @@ const props = defineProps({
         default: false,
     },
 });
+const emit = defineEmits(['update:stationSchemeId']);
 const fallbackTranslate = createStationLayoutTranslator("zh");
 const t = (key, parameters) => props.translate?.(key, parameters) ?? fallbackTranslate(key, parameters);
 
@@ -111,12 +117,13 @@ const selectedDwgFile = ref(null);
 const dwgLayerName = ref("0");
 const extractingDwg = ref(false);
 const loadingData = ref(false);
+const importingData = ref(false);
 let layoutLoadVersion = 0;
 let pendingLoadedLayoutFit = false;
 let loadedLayoutResizeObserver = null;
 const savingData = ref(false);
 const editToolbarDensity = ref("compact");
-const currentStationSchemeId = ref("");
+const currentStationSchemeId = ref(props.stationSchemeId || "");
 const loadingStationSchemes = ref(false);
 const stationSchemeOptions = ref([]);
 const stationSchemeManagerVisible = ref(false);
@@ -652,6 +659,7 @@ function normalizeCell(cell, reservedIds = new Set()) {
     }
 
     return {
+        ...cell,
         instanceID: readStringField(cell, "instanceID", "InstanceID").trim() || props.selectedInstanceId || "",
         stationSchemeID: readStringField(cell, "stationSchemeID", "StationSchemeID").trim() || currentStationSchemeId.value || "",
         id,
@@ -686,7 +694,9 @@ function resetCells() {
 }
 
 function setCellsFromLayout(jsonObj) {
-    cells.value = normalizeCells(jsonObj?.cells || []);
+    cells.value = isStationLayoutArchive(jsonObj)
+        ? JSON.parse(JSON.stringify(jsonObj.cells || []))
+        : normalizeCells(jsonObj?.cells || []);
     const nextSelectedCell = cells.value.find((cell) => cell.id === selectedCellId.value) || cells.value[0] || null;
     if (nextSelectedCell) {
         selectCell(nextSelectedCell);
@@ -704,7 +714,7 @@ function buildCellForm(cell) {
         stationSchemeID: cell?.stationSchemeID || currentStationSchemeId.value || "",
         id: cell?.id || "",
         isNew: isCellPendingBackendId(cell),
-        name: cell?.name || (isCellPendingBackendId(cell) ? "" : cell?.id) || "",
+        name: cell?.name ?? (isCellPendingBackendId(cell) ? "" : cell?.id) ?? "",
         linkIDList: normalizeLinkIdListString(cell?.linkIDList),
     };
 }
@@ -761,7 +771,10 @@ function applyCellFormToSelected(options = {}) {
     const previousId = selectedCellId.value;
     if (!previousId) return true;
 
-    const nextCell = normalizeCell(cellForm.value);
+    const original = cells.value.find((cell) => cell.id === previousId);
+    if (original && JSON.stringify(cellForm.value) === JSON.stringify(buildCellForm(original))) return true;
+
+    const nextCell = normalizeCell({ ...original, ...cellForm.value });
     if (!nextCell.id) {
         if (options.showWarning) ElMessage.warning(t('stationLayout.editor.cells.idRequired'));
         return false;
@@ -782,17 +795,20 @@ function applyCellFormToSelected(options = {}) {
     return true;
 }
 
-function buildCellsForJson() {
+function buildCellsForJson(options = {}) {
     applyCellFormToSelected();
     return cells.value.map((cell) => {
-        const normalized = normalizeCell(cell);
-        return {
-            instanceID: props.selectedInstanceId || normalized.instanceID,
-            stationSchemeID: currentStationSchemeId.value || normalized.stationSchemeID,
-            id: isCellPendingBackendId(normalized) ? "" : normalized.id,
-            linkIDList: normalized.linkIDList,
-            name: normalized.name,
+        const result = {
+            ...cell,
+            instanceID: props.selectedInstanceId || "",
+            stationSchemeID: currentStationSchemeId.value || "",
+            id: !options.forFile && isCellPendingBackendId(cell) ? "" : cell.id,
         };
+        if (!options.forFile && isCellPendingBackendId(cell)) {
+            delete result.isNew;
+            delete result.IsNew;
+        }
+        return result;
     });
 }
 
@@ -929,21 +945,25 @@ function toggleCellPanel() {
     }
 }
 
+function snapshotText(value) {
+    return typeof value === "string" || typeof value === "number" ? String(value).trim() : "";
+}
+
 function normalizeSnapshotTrack(track) {
     return {
         ...track,
-        id: String(track?.id ?? track?.ID ?? "").trim(),
-        name: String(track?.name ?? track?.Name ?? "").trim(),
-        fromNodeID: String(track?.fromNodeID ?? track?.FromNodeID ?? "").trim(),
-        toNodeID: String(track?.toNodeID ?? track?.ToNodeID ?? "").trim(),
+        id: snapshotText(track?.id ?? track?.ID),
+        name: snapshotText(track?.name ?? track?.Name),
+        fromNodeID: snapshotText(track?.fromNodeID ?? track?.FromNodeID),
+        toNodeID: snapshotText(track?.toNodeID ?? track?.ToNodeID),
     };
 }
 
 function normalizeSnapshotInsulationJoint(insulationJoint) {
     return {
         ...insulationJoint,
-        id: String(insulationJoint?.id ?? insulationJoint?.ID ?? "").trim(),
-        bindingNodeID: String(insulationJoint?.bindingNodeID ?? insulationJoint?.BindingNodeID ?? "").trim(),
+        id: snapshotText(insulationJoint?.id ?? insulationJoint?.ID),
+        bindingNodeID: snapshotText(insulationJoint?.bindingNodeID ?? insulationJoint?.BindingNodeID),
     };
 }
 
@@ -1211,17 +1231,21 @@ function createDefaultLayoutDisplayStyles() {
     return JSON.parse(JSON.stringify(defaultLayoutDisplayStyles));
 }
 function normalizeLayoutDisplayStyles(styles) {
-    const normalized = createDefaultLayoutDisplayStyles();
     const source = styles && typeof styles === "object" && !Array.isArray(styles) ? styles : {};
+    const normalized = { ...createDefaultLayoutDisplayStyles(), ...source };
     for (const row of layoutTextStyleRows.value) {
         if (source[row.key] && typeof source[row.key] === "object" && !Array.isArray(source[row.key])) {
-            normalized[row.key] = { ...normalized[row.key], ...source[row.key] };
+            normalized[row.key] = { ...defaultLayoutDisplayStyles[row.key], ...source[row.key] };
+        } else {
+            normalized[row.key] = { ...defaultLayoutDisplayStyles[row.key] };
         }
     }
 
     for (const key of ["track", "curve", "platform", "signal", "switch", "node"]) {
         if (source[key] && typeof source[key] === "object" && !Array.isArray(source[key])) {
-            normalized[key] = { ...normalized[key], ...source[key] };
+            normalized[key] = { ...defaultLayoutDisplayStyles[key], ...source[key] };
+        } else {
+            normalized[key] = { ...defaultLayoutDisplayStyles[key] };
         }
     }
 
@@ -1253,8 +1277,11 @@ function buildCurrentLayoutGridSettings(settings) {
     const normalized = normalizeLayoutGridSettings(settings);
     return {
         ...normalized,
-        showGrid: showGrid.value !== false,
-        spacing: normalizeGridSpacingValue(gridSpacing.value),
+        ...settings,
+        showGrid: normalized.showGrid === showGrid.value && settings?.showGrid !== undefined
+            ? settings.showGrid : showGrid.value !== false,
+        spacing: normalized.spacing === gridSpacing.value && settings?.spacing !== undefined
+            ? settings.spacing : normalizeGridSpacingValue(gridSpacing.value),
     };
 }
 function applyLayoutGridSettings(settings) {
@@ -1266,15 +1293,28 @@ function applyLayoutGridSettings(settings) {
 function resetLayoutGridSettings() {
     applyLayoutGridSettings();
 }
-function buildLayoutJsonWithDisplayStyles(dataStr) {
+function buildLayoutJsonWithDisplayStyles(dataStr, options = {}) {
     const jsonObj = JSON.parse(dataStr);
-    jsonObj.cells = buildCellsForJson();
+    jsonObj.cells = buildCellsForJson(options);
+    const preserveDocument = isStationLayoutArchive(jsonObj);
+    const originalStyles = jsonObj.metadata?.displayStyles;
+    const displayStyles = (preserveDocument || originalStyles !== undefined)
+        && JSON.stringify(normalizeLayoutDisplayStyles(originalStyles)) === JSON.stringify(layoutDisplayStyles.value)
+        ? originalStyles : normalizeLayoutDisplayStyles(layoutDisplayStyles.value);
     jsonObj.metadata = {
         ...(jsonObj.metadata || {}),
-        displayStyles: normalizeLayoutDisplayStyles(layoutDisplayStyles.value),
-        gridSettings: buildCurrentLayoutGridSettings(jsonObj.metadata?.gridSettings),
+        instanceID: props.selectedInstanceId || "",
+        stationSchemeID: currentStationSchemeId.value || "",
+        revision: getStationSchemeRevision(),
+        displayStyles,
+        // The editor owns grid precision and detects actual grid-property edits.
+        gridSettings: preserveDocument ? jsonObj.metadata?.gridSettings
+            : buildCurrentLayoutGridSettings(jsonObj.metadata?.gridSettings),
     };
-    return JSON.stringify(jsonObj);
+    if (jsonObj.metadata.revision === undefined) delete jsonObj.metadata.revision;
+    if (jsonObj.metadata.displayStyles === undefined) delete jsonObj.metadata.displayStyles;
+    if (jsonObj.metadata.gridSettings === undefined) delete jsonObj.metadata.gridSettings;
+    return serializeStationLayoutJson(jsonObj);
 }
 function resetLayoutDisplayStyles() {
     layoutDisplayStyles.value = createDefaultLayoutDisplayStyles();
@@ -1633,6 +1673,7 @@ async function saveStationSchemeEdit() {
 
 async function deleteStationScheme(row) {
     if (!ensureWritable()) return;
+    const instanceId = props.selectedInstanceId;
     try {
         await ElMessageBox.confirm(
             t('stationLayout.schemeManager.deleteConfirm', { name: formatStationSchemeLabel(row) }),
@@ -1647,21 +1688,24 @@ async function deleteStationScheme(row) {
         return;
     }
 
-    const deletedCurrent = currentStationSchemeId.value === row.id;
+    if (props.selectedInstanceId !== instanceId) return;
     stationSchemeManagerSaving.value = true;
     try {
         await props.gateway.deleteStationScheme({
-            instanceId: props.selectedInstanceId,
+            instanceId,
             stationSchemeId: row.id,
         });
+        if (props.selectedInstanceId !== instanceId) return;
 
+        const deletedCurrent = currentStationSchemeId.value === row.id;
         if (deletedCurrent) {
             currentStationSchemeId.value = "";
         }
         cancelStationSchemeEdit();
         await loadStationSchemes({ includeCurrent: !deletedCurrent });
 
-        if (deletedCurrent) {
+        if (props.selectedInstanceId !== instanceId) return;
+        if (deletedCurrent && !currentStationSchemeId.value) {
             const nextStationSchemeId = stationSchemeOptions.value[0]?.id || "";
             currentStationSchemeId.value = nextStationSchemeId;
             if (nextStationSchemeId) {
@@ -1681,6 +1725,7 @@ async function deleteStationScheme(row) {
 
 function saveData(options = {}) {
     const silent = options?.silent === true;
+    if (loadingData.value || savingData.value || importingData.value) return Promise.resolve(false);
     if (!ensureWritable({ silent })) {
         return Promise.resolve(false);
     }
@@ -1703,7 +1748,7 @@ function saveData(options = {}) {
         dataStr = buildLayoutJsonWithDisplayStyles(dataStr);
     } catch (err) {
         console.error("Failed to attach layout display styles:", err);
-        ElMessage.error(t('stationLayout.editor.styles.invalidLayout'));
+        ElMessage.error(`${t('stationLayout.editor.styles.invalidLayout')} ${getHttpErrorMessage(err, '')}`);
         return Promise.resolve(false);
     }
 
@@ -1772,6 +1817,10 @@ function getData(options = {}) {
 
     const instanceId = props.selectedInstanceId;
     const requestedStationSchemeId = options?.stationSchemeId ?? currentStationSchemeId.value;
+    let expectedSelection = currentStationSchemeId.value;
+    const isCurrentRequest = () => loadVersion === layoutLoadVersion && props.selectedInstanceId === instanceId
+        && currentStationSchemeId.value === expectedSelection
+        && (props.stationSchemeId === undefined || props.stationSchemeId === expectedSelection);
     loadingData.value = true;
     props.gateway
         .getJson({
@@ -1779,30 +1828,33 @@ function getData(options = {}) {
             stationSchemeId: requestedStationSchemeId,
         })
         .then(async (layout) => {
-            if (loadVersion !== layoutLoadVersion || props.selectedInstanceId !== instanceId) {
+            if (!isCurrentRequest()) {
                 return;
             }
 
             currentStationSchemeId.value = layout?.metadata?.stationSchemeID || requestedStationSchemeId || "";
+            expectedSelection = currentStationSchemeId.value;
             applyLayoutDisplayStyles(layout?.metadata?.displayStyles);
             applyLayoutGridSettings(layout?.metadata?.gridSettings);
             ensureCurrentStationSchemeOption(undefined, layout?.metadata?.revision ?? layout?.metadata?.Revision);
             await nextTick();
-            if (loadVersion !== layoutLoadVersion || props.selectedInstanceId !== instanceId) {
+            if (!isCurrentRequest()) {
                 return;
             }
 
-            stationLayoutEditorRef.value?.loadDataFromJson(layout);
+            stationLayoutEditorRef.value?.loadDataFromJson(layout, {
+                preserveDocument: isStationLayoutArchive(layout), resetHistory: true,
+            });
             setLayoutSnapshotFromJson(layout);
             setCellsFromLayout(layout);
             routeNodePickTarget.value = "";
             clearRouteSearchResult();
             // Fit only after the loaded geometry and surrounding panels render.
             await nextTick();
-            if (loadVersion === layoutLoadVersion && props.selectedInstanceId === instanceId) scheduleLoadedLayoutFit();
+            if (isCurrentRequest()) scheduleLoadedLayoutFit();
         })
         .catch((err) => {
-            if (loadVersion !== layoutLoadVersion || props.selectedInstanceId !== instanceId) {
+            if (!isCurrentRequest()) {
                 return;
             }
 
@@ -1810,7 +1862,7 @@ function getData(options = {}) {
             ElMessage.error(t('stationLayout.messages.loadFailed') + serverMsg);
         })
         .finally(() => {
-            if (loadVersion === layoutLoadVersion && props.selectedInstanceId === instanceId) {
+            if (isCurrentRequest()) {
                 loadingData.value = false;
             }
         });
@@ -1824,16 +1876,22 @@ function handleStationSchemeChange(stationSchemeId) {
     getData({ stationSchemeId });
 }
 
-function exportJsonFile() {
-    const dataStr = stationLayoutEditorRef.value?.buildJsonData();
-    if (!dataStr) {
-        ElMessage.warning(t('stationLayout.editor.json.noLayout'));
-        return;
+function exportJson() {
+    if (loadingData.value || savingData.value || importingData.value) {
+        throw new Error(t('stationLayout.editor.json.busy'));
     }
+    const dataStr = stationLayoutEditorRef.value?.buildJsonData();
+    if (!dataStr) throw new Error(t('stationLayout.editor.json.noLayout'));
+    if (!applyCellFormToSelected({ showWarning: true })) {
+        throw new Error(t('stationLayout.editor.json.invalidCell'));
+    }
+    return buildLayoutJsonWithDisplayStyles(dataStr, { forFile: true });
+}
 
+function exportJsonFile() {
     try {
-        const jsonObj = JSON.parse(buildLayoutJsonWithDisplayStyles(dataStr));
-        const prettyJson = JSON.stringify(jsonObj, null, 2);
+        const prettyJson = exportJson();
+        const jsonObj = JSON.parse(prettyJson);
         const blob = new Blob([prettyJson], { type: "application/json;charset=utf-8" });
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
@@ -1846,7 +1904,7 @@ function exportJsonFile() {
         ElMessage.success(t('stationLayout.editor.json.exported'));
     } catch (err) {
         console.error("Failed to export station layout JSON:", err);
-        ElMessage.error(t('stationLayout.editor.json.exportFailed'));
+        ElMessage.error(`${t('stationLayout.editor.json.exportFailed')} ${getHttpErrorMessage(err, '')}`);
     }
 }
 
@@ -2240,6 +2298,7 @@ function buildExportJsonFileName(jsonObj) {
 
 function openImportJsonFile() {
     if (!ensureWritable()) return;
+    if (loadingData.value || savingData.value || importingData.value) return;
     if (importJsonFileInputRef.value) {
         importJsonFileInputRef.value.value = "";
         importJsonFileInputRef.value.click();
@@ -2262,37 +2321,80 @@ async function handleImportJsonFileChange(event) {
         return;
     }
 
+    const instanceId = props.selectedInstanceId;
+    const stationSchemeId = currentStationSchemeId.value;
+    const loadVersion = layoutLoadVersion;
     try {
         const text = await file.text();
-        const jsonObj = JSON.parse(text);
-        validateStationLayoutJson(jsonObj);
-        currentStationSchemeId.value = jsonObj?.metadata?.stationSchemeID || currentStationSchemeId.value;
-        applyLayoutDisplayStyles(jsonObj?.metadata?.displayStyles);
-        applyLayoutGridSettings(jsonObj?.metadata?.gridSettings);
-        ensureCurrentStationSchemeOption();
-        await nextTick();
-        stationLayoutEditorRef.value?.loadDataFromJson(jsonObj);
-        setLayoutSnapshotFromJson(jsonObj);
-        setCellsFromLayout(jsonObj);
-        ElMessage.success(t('stationLayout.editor.json.imported'));
+        if (instanceId !== props.selectedInstanceId || stationSchemeId !== currentStationSchemeId.value
+            || loadVersion !== layoutLoadVersion) throw new Error(t('stationLayout.editor.json.scopeChanged'));
+        await importJson(text);
+        ElMessage.success(t('stationLayout.editor.json.importReady'));
     } catch (err) {
         console.error("Failed to import station layout JSON:", err);
-        ElMessage.error(t('stationLayout.editor.json.importFailed'));
+        ElMessage.error(`${t('stationLayout.editor.json.importFailed')} ${getHttpErrorMessage(err, '')}`);
     } finally {
         event.target.value = "";
     }
 }
 
-function validateStationLayoutJson(jsonObj) {
-    if (!jsonObj || typeof jsonObj !== "object" || Array.isArray(jsonObj)) {
-        throw new Error("Invalid station layout JSON root.");
-    }
-
-    const arrayFields = ["tracks", "curves", "nodes", "signals", "insulationJoints", "bufferStops", "platforms", "switches", "cells", "annotations"];
-    for (const field of arrayFields) {
-        if (jsonObj[field] !== undefined && !Array.isArray(jsonObj[field])) {
-            throw new Error(`Invalid station layout JSON field: ${field}`);
+async function importJson(text) {
+    if (props.readonly) throw new Error(t('stationLayout.messages.readonly'));
+    if (loadingData.value || savingData.value || importingData.value) throw new Error(t('stationLayout.editor.json.busy'));
+    const editor = stationLayoutEditorRef.value;
+    if (!editor) throw new Error(t('stationLayout.editor.json.noLayout'));
+    // Validate the entire file before changing either the canvas or side panels.
+    const jsonObj = parseStationLayoutJson(text);
+    const preserveDocument = isStationLayoutArchive(jsonObj);
+    const instanceId = props.selectedInstanceId;
+    const stationSchemeId = currentStationSchemeId.value;
+    const loadVersion = ++layoutLoadVersion;
+    jsonObj.metadata = {
+        ...jsonObj.metadata,
+        instanceID: instanceId,
+        stationSchemeID: stationSchemeId,
+        revision: getStationSchemeRevision(),
+    };
+    jsonObj.cells = (jsonObj.cells || []).map(cell => ({
+        ...cell, instanceID: instanceId, stationSchemeID: stationSchemeId,
+    }));
+    const previousStyles = layoutDisplayStyles.value;
+    const previousGrid = { showGrid: showGrid.value, spacing: gridSpacing.value };
+    const isCurrent = () => loadVersion === layoutLoadVersion && instanceId === props.selectedInstanceId
+        && stationSchemeId === currentStationSchemeId.value;
+    importingData.value = true;
+    cancelLoadedLayoutFit();
+    let importedStyles;
+    let importedGrid;
+    try {
+        applyLayoutDisplayStyles(jsonObj.metadata.displayStyles);
+        applyLayoutGridSettings(jsonObj.metadata.gridSettings);
+        importedStyles = layoutDisplayStyles.value;
+        importedGrid = { showGrid: showGrid.value, spacing: gridSpacing.value };
+        await nextTick();
+        if (!isCurrent() || props.readonly) throw new Error(t('stationLayout.editor.json.scopeChanged'));
+        editor.loadDataFromJson(jsonObj, { preserveDocument, resetHistory: true });
+        setLayoutSnapshotFromJson(jsonObj);
+        setCellsFromLayout(jsonObj);
+        routeNodePickTarget.value = "";
+        cellLinkPickMode.value = false;
+        clearRouteSearchResult();
+        topologyRepairPending.value = false;
+        equipmentDrawerVisible.value = false;
+        await nextTick();
+        if (isCurrent()) scheduleLoadedLayoutFit();
+    } catch (err) {
+        // A scheme switch may cancel us before its own request succeeds. Roll
+        // back our staged controls only if no newer layout has replaced them.
+        if (layoutDisplayStyles.value === importedStyles) {
+            layoutDisplayStyles.value = previousStyles;
+            if (showGrid.value === importedGrid.showGrid && gridSpacing.value === importedGrid.spacing) {
+                applyLayoutGridSettings(previousGrid);
+            }
         }
+        throw err;
+    } finally {
+        importingData.value = false;
     }
 }
 
@@ -2620,7 +2722,7 @@ watch(
         stationSchemeManagerVisible.value = false;
         resetStationSchemeDraft();
         cancelStationSchemeEdit();
-        currentStationSchemeId.value = "";
+        currentStationSchemeId.value = props.stationSchemeId || "";
         stationSchemeOptions.value = [];
         routeNodePickTarget.value = "";
         clearRouteSearchResult();
@@ -2630,6 +2732,29 @@ watch(
         getData();
     }
 );
+
+watch(currentStationSchemeId, (stationSchemeId) => {
+    emit('update:stationSchemeId', stationSchemeId);
+}, { flush: 'sync' });
+
+watch(() => props.stationSchemeId, (stationSchemeId) => {
+    if (stationSchemeId === undefined || stationSchemeId === currentStationSchemeId.value) return;
+    currentStationSchemeId.value = stationSchemeId;
+    if (stationSchemeId) {
+        ensureCurrentStationSchemeOption();
+        handleStationSchemeChange(stationSchemeId);
+        void loadStationSchemes();
+    } else {
+        layoutLoadVersion += 1;
+        loadingData.value = false;
+        cancelLoadedLayoutFit();
+        stationLayoutEditorRef.value?.clearElements();
+        routeNodePickTarget.value = "";
+        clearRouteSearchResult();
+        resetCells();
+        setLayoutSnapshotFromJson({});
+    }
+});
 
 watch(
     () => props.readonly,
@@ -2645,10 +2770,11 @@ watch(
     },
     { immediate: true }
 );
+defineExpose({ exportJson, importJson });
 </script>
 
 <template>
-    <div v-loading="loadingData || savingData" class="station-layout-page">
+    <div v-loading="loadingData || savingData || importingData" class="station-layout-page">
         <StationLayoutEditToolbar v-model:density="editToolbarDensity" :translate="t">
             <template #context>
                 <div class="station-scheme-control-row">

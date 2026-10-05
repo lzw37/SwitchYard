@@ -5,6 +5,8 @@ import {
     type StationLayoutTranslate,
 } from "@switchyard/station-layout";
 import { useI18n } from "vue-i18n";
+import { useCapacityStore } from "@/stores/capacity";
+import { useStationSchemeSelection } from "./useStationSchemeSelection";
 import {
     formatSwitchYardStationLayoutError,
     switchyardStationLayoutGateway,
@@ -16,6 +18,16 @@ const props = defineProps({
         default: "",
     },
 });
+
+const capacityStore = useCapacityStore();
+const currentStationSchemeId = useStationSchemeSelection(() => props.selectedInstanceId);
+function updateStationScheme(stationSchemeId: string) {
+    if (stationSchemeId) {
+        currentStationSchemeId.value = stationSchemeId;
+    } else {
+        capacityStore.clearStationScheme(props.selectedInstanceId);
+    }
+}
 
 const { t, te, locale } = useI18n();
 const fallbackTranslators = {
@@ -37,6 +49,8 @@ const translate: StationLayoutTranslate = (key, parameters) => (
 <template>
     <SharedStationLayout
         :selected-instance-id="props.selectedInstanceId"
+        :station-scheme-id="currentStationSchemeId"
+        @update:station-scheme-id="updateStationScheme"
         :gateway="switchyardStationLayoutGateway"
         :translate="translate"
         :format-error="formatSwitchYardStationLayoutError"

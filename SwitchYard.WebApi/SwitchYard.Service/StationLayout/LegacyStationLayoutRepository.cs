@@ -126,10 +126,23 @@ public sealed class LegacyStationLayoutRepository : IStationLayoutRepository
         }
 
         var scheme = (database.Query<SchemeRow>(
-                $"SELECT ID, Name, DisplayStyles, GridSettings FROM {Q("stationscheme")} " +
+                $"SELECT ID, Name, DisplayStyles, GridSettings, LayoutDocument FROM {Q("stationscheme")} " +
                 "WHERE InstanceID = @scopeId AND ID = @schemeId LIMIT 1",
                 new { scopeId, schemeId }) ?? [])
             .FirstOrDefault();
+        if (!string.IsNullOrWhiteSpace(scheme?.LayoutDocument))
+        {
+            var snapshot = StationLayoutDocument.FromJson(scheme.LayoutDocument);
+            if (!snapshot.IsArchive)
+                throw new InvalidDataException("Stored station-layout document format is unsupported.");
+            var snapshotRevision = ReadRevision(database, scopeId, schemeId);
+            SetSnapshotScope(snapshot, scopeId, schemeId, snapshotRevision);
+            return Task.FromResult<StationLayoutRecord?>(new StationLayoutRecord(
+                new StationSchemeRecord(scopeId, schemeId,
+                    string.IsNullOrWhiteSpace(scheme.Name) ? schemeId : scheme.Name.Trim(), snapshotRevision,
+                    string.Equals(schemeId, ResolveDefaultSchemeId(database, scopeId), StringComparison.OrdinalIgnoreCase)),
+                snapshot));
+        }
         var nodes = Query<StationNodeRow>(database, "node", scopeId, schemeId);
         var links = Query<StationLinkRow>(database, "link", scopeId, schemeId);
         var curves = Query<StationCurveRow>(database, "curve", scopeId, schemeId);
@@ -341,17 +354,18 @@ public sealed class LegacyStationLayoutRepository : IStationLayoutRepository
                 scopeId, sourceSchemeId, new StationLayoutDocument(), null, null));
 
             var source = (database.Query<SchemeRow>(
-                $"SELECT DisplayStyles, GridSettings FROM {Q("stationscheme")} " +
+                $"SELECT DisplayStyles, GridSettings, LayoutDocument FROM {Q("stationscheme")} " +
                 "WHERE InstanceID = @scopeId AND ID = @sourceSchemeId",
                 new { scopeId, sourceSchemeId }) ?? []).FirstOrDefault();
             database.ExecuteNonQuery(
-                $"INSERT INTO {Q("stationscheme")} (InstanceID, ID, Name, DisplayStyles, GridSettings) " +
-                "VALUES (@scopeId, @targetSchemeId, @Name, @DisplayStyles, @GridSettings)",
+                $"INSERT INTO {Q("stationscheme")} (InstanceID, ID, Name, DisplayStyles, GridSettings, LayoutDocument) " +
+                "VALUES (@scopeId, @targetSchemeId, @Name, @DisplayStyles, @GridSettings, @LayoutDocument)",
                 new
                 {
                     scopeId, targetSchemeId, targetScheme.Name,
                     source?.DisplayStyles,
-                    GridSettings = source?.GridSettings ?? DefaultGridSettings
+                    GridSettings = source?.GridSettings ?? DefaultGridSettings,
+                    LayoutDocument = CopySnapshot(source?.LayoutDocument, scopeId, targetSchemeId)
                 });
 
             // Child identifiers are scoped by InstanceID and StationSchemeID, so retaining
@@ -503,6 +517,26 @@ public sealed class LegacyStationLayoutRepository : IStationLayoutRepository
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (request.Document.IsArchive)
+        {
+            // Allocate pending cell IDs on a detached snapshot, retaining the legacy
+            // save contract without changing IDs or precision of other elements.
+            var document = StationLayoutDocument.FromJson(request.Document.ToJson());
+            var used = document.Cells.Where(cell => !string.IsNullOrWhiteSpace(cell.ID))
+                .Select(cell => cell.ID!).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            foreach (var cell in document.Cells)
+            {
+                if (string.IsNullOrWhiteSpace(cell.ID))
+                {
+                    string id;
+                    do { id = _idGenerator.NextId(); } while (!used.Add(id));
+                    cell.ID = id;
+                }
+                cell.AdditionalProperties?.Remove("isNew");
+                cell.AdditionalProperties?.Remove("IsNew");
+            }
+            request = request with { Document = document };
+        }
         var nodes = BuildNodes(request.Document);
         var links = BuildLinks(request.Document, nodes);
         var database = OpenDatabase();
@@ -538,6 +572,16 @@ public sealed class LegacyStationLayoutRepository : IStationLayoutRepository
             InsertSwitches(database, request, nodes, links);
 
             var nextRevision = checked(currentRevision + 1);
+            if (request.Document.IsArchive)
+                SetSnapshotScope(request.Document, request.ScopeId, request.SchemeId, nextRevision);
+            database.ExecuteNonQuery(
+                $"UPDATE {Q("stationscheme")} SET LayoutDocument = @document " +
+                "WHERE InstanceID = @ScopeId AND ID = @SchemeId",
+                new
+                {
+                    request.ScopeId, request.SchemeId,
+                    document = request.Document.IsArchive ? request.Document.ToJson() : null
+                });
             database.ExecuteNonQuery(
                 $"UPDATE {Q("stationlayoutrevision")} " +
                 "SET Revision = @nextRevision, UpdatedBy = @ActorName, UpdatedAtUtc = @updatedAtUtc " +
@@ -558,6 +602,19 @@ public sealed class LegacyStationLayoutRepository : IStationLayoutRepository
             database.Rollback();
             throw;
         }
+    }
+
+    private static string? CopySnapshot(string? json, string scopeId, string schemeId)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        var document = StationLayoutDocument.FromJson(json);
+        SetSnapshotScope(document, scopeId, schemeId, 0);
+        return document.ToJson();
+    }
+
+    private static void SetSnapshotScope(StationLayoutDocument document, string scopeId, string schemeId, long revision)
+    {
+        document.SetArchiveScope(scopeId, schemeId, revision);
     }
 
     private static void EnsureRevisionRowLocked(
@@ -1099,7 +1156,7 @@ public sealed class LegacyStationLayoutRepository : IStationLayoutRepository
                     bindingLink1Id = ResolveLinkText(links, item.TangentLinkID1),
                     bindingLink2Id = ResolveLinkText(links, item.TangentLinkID2),
                     radius = Convert.ToInt32(Math.Round(
-                        item.Radius <= 0 ? 100 : item.Radius,
+                        Math.Min(item.Radius <= 0 ? 100 : item.Radius, int.MaxValue),
                         MidpointRounding.AwayFromZero)),
                     item.Angle,
                     item.TangentDistance,
@@ -1469,6 +1526,8 @@ public sealed class LegacyStationLayoutRepository : IStationLayoutRepository
         public string? DisplayStyles { get; set; }
 
         public string? GridSettings { get; set; }
+
+        public string? LayoutDocument { get; set; }
     }
 
     private sealed class RevisionRow

@@ -15,6 +15,8 @@ public interface IStationLayoutRepository
     /// Returns a detached layout snapshot, including its current revision. When
     /// <paramref name="requestedSchemeId"/> is null, the host applies its established
     /// default-scheme resolution rule.
+    /// Use StationLayoutDocument.FromJson/ToJson when cloning or persisting complete
+    /// archives so optional-field presence and case-distinct extensions are retained.
     /// </summary>
     Task<StationLayoutRecord?> LoadAsync(
         string scopeId,

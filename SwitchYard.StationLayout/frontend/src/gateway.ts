@@ -3,15 +3,15 @@ export type LayoutEntity = Record<string, unknown>;
 export interface StationLayoutMetadata {
   instanceID?: string;
   stationSchemeID?: string;
-  revision?: number;
+  revision?: number | null;
   latestElementID?: number;
-  displayStyles?: Record<string, unknown>;
-  gridSettings?: Record<string, unknown>;
+  displayStyles?: Record<string, unknown> | null;
+  gridSettings?: Record<string, unknown> | null;
   [key: string]: unknown;
 }
 
 export interface StationLayoutDocument {
-  metadata?: StationLayoutMetadata;
+  metadata?: StationLayoutMetadata | null;
   tracks?: LayoutEntity[];
   curves?: LayoutEntity[];
   nodes?: LayoutEntity[];

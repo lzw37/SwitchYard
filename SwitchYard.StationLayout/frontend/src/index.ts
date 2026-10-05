@@ -5,3 +5,4 @@ export { createStationLayoutTranslator, stationLayoutMessages } from "./messages
 export * from "./assets/stationLayoutBufferStopStyles";
 export * from "./assets/stationLayoutSignalStyles";
 export type * from "./gateway";
+export * from "./layoutJson";

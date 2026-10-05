@@ -1,4 +1,10 @@
 {
+    "stationCapacityReport": {
+        "export": "Export Word report",
+        "hint": "Export a Chinese capacity report for this scheme and plan, covering processes, plans, occupancy, bottlenecks and capacity summaries with SVG figures. Finish loading and editing first.",
+        "success": "The station capacity report is ready and downloading.",
+        "failed": "Report export failed. Check your connection, refresh the plan and charts, then retry."
+    },
     "capacityGantt": {
         "toolbar": "Occupancy chart controls",
         "rowLegend": "Row type legend",
@@ -110,8 +116,8 @@
             "saveFailed": "Could not create the train. Your draft is retained for editing or retrying.",
             "saved": "Train and all movements created"
         },
-        "toolbar": "Station plan view controls",
-        "chartLabel": "Mesoscopic station operation plan, one line per train",
+        "toolbar": "Station operation plan chart controls",
+        "chartLabel": "Station operation plan chart, one line per train",
         "lineMode": "Movement lines",
         "straightMode": "Straight",
         "orthogonalMode": "Orthogonal",
@@ -137,11 +143,11 @@
         "selectAll": "Select all",
         "clearSelection": "Clear",
         "saveSettings": "Save settings",
-        "settingsSaved": "Station plan display settings saved",
+        "settingsSaved": "Station operation plan chart display settings saved",
         "saveSettingsFailed": "Could not save display settings. Please retry.",
         "loadSettingsFailed": "Could not load display settings. Refresh to retry.",
-        "startTime": "Station plan start time",
-        "endTime": "Station plan end time",
+        "startTime": "Station operation plan chart start time",
+        "endTime": "Station operation plan chart end time",
         "summary": "{trains} trains, {rows} tracks / nodes",
         "trainLegend": "Click lines or train numbers to select multiple trains; Esc or clicking empty chart space clears selection; hovering a line temporarily thickens it",
         "trainLine": "Train operation line {train}",
@@ -1570,12 +1576,22 @@
         "fields": {
             "operation": "Operation"
         },
+        "viewSelector": "Switch view",
+        "unnamedStationScheme": "Unnamed station scheme",
+        "chartMode": {
+            "label": "Chart type",
+            "mesoscopic": "Station Operation Plan Chart",
+            "microscopic": "Resource Occupancy Chart"
+        },
         "tabs": {
+            "templateWorkspace": "Operation Templates",
+            "planList": "Plan List",
             "trainTemplate": "Train Templates",
             "operationProcess": "Operation Process",
             "trainOperationPlan": "Train Operation Plan",
-            "trainOperationChart": "Operation Plan Chart",
-            "stationPlanView": "Mesoscopic Station Plan",
+            "planCharts": "Operation Plan Charts",
+            "trainOperationChart": "Resource Occupancy Chart",
+            "stationPlanView": "Station Operation Plan Chart",
             "operationOccupationTimeTable": "Operation Occupancy Time Table",
             "operationBottleneckAnalysis": "Operation Bottleneck Analysis",
             "operationThroughputSummary": "Capacity Category Summary"
@@ -1834,7 +1850,7 @@
             }
         },
         "trainOperationChart": {
-            "title": "Operation Plan Chart",
+            "title": "Resource Occupancy Chart",
             "recalculate": "Recalculate Cell Occupancy",
             "recalculateHint": "Recalculate all cells in the current plan using the latest saved operation times and track circuit offsets. Manual occupancy edits will be replaced and saved.",
             "count": "{cellCount} track circuit sections, {barCount} occupancy records",
@@ -1844,10 +1860,56 @@
             "emptyCells": "No track circuit sections",
             "emptyOccupations": "No occupancy records",
             "messages": {
-                "loadFailed": "Failed to load operation plan chart",
+                "loadFailed": "Failed to load resource occupancy chart",
                 "recalculateSuccess": "Cell occupancy times recalculated and saved for the current plan",
                 "recalculateFailed": "Failed to recalculate cell occupancy times"
             }
+        },
+        "resourceOccupancyCharts": {
+            "defaultName": "Resource Occupancy",
+            "newName": "Resource Occupancy {number}",
+            "add": "Add resource occupancy chart",
+            "edit": "Edit current resource occupancy chart",
+            "addTitle": "Add Resource Occupancy Chart",
+            "editTitle": "Edit Resource Occupancy Chart",
+            "name": "Chart name",
+            "namePlaceholder": "Enter chart name",
+            "nameRequired": "Enter a chart name",
+            "nameTooLong": "Chart names cannot exceed 100 characters",
+            "cells": "Included Cells",
+            "selectCells": "Select Cells to display",
+            "order": "Selected Cell display order",
+            "orderHint": "Move Cells up or down to set their chart order. Selecting no Cells saves an empty chart.",
+            "selectAll": "Select all",
+            "clear": "Clear",
+            "moveUp": "Move up",
+            "moveDown": "Move down",
+            "removeCell": "Remove this Cell",
+            "emptySelection": "This chart has no selected Cells. Edit the chart to add Cells.",
+            "loading": "Loading chart settings…",
+            "loadFailed": "Failed to load chart settings. Please retry.",
+            "saveFailed": "Failed to save chart settings. Your changes were kept; please retry.",
+            "retry": "Retry",
+            "save": "Save",
+            "cancel": "Cancel"
+        },
+        "stationPlanCharts": {
+            "defaultName": "Station Operation Plan Chart",
+            "settingsHint": "Choose tracks, nodes, and their display order independently for each chart. Select none to save an empty chart. Operation segments with hidden endpoints are not shown.",
+            "newName": "Station Operation Plan Chart {number}",
+            "add": "Add station operation plan chart",
+            "edit": "Edit current station operation plan chart",
+            "addTitle": "Add Station Operation Plan Chart",
+            "editTitle": "Edit Station Operation Plan Chart",
+            "name": "Chart name",
+            "namePlaceholder": "Enter chart name",
+            "nameRequired": "Enter a chart name",
+            "nameTooLong": "Chart names cannot exceed 100 characters",
+            "loadFailed": "Failed to load station chart settings. Please retry.",
+            "saveFailed": "Failed to save station chart settings. Your changes were kept; please retry.",
+            "retry": "Retry",
+            "emptySelection": "This chart has no selected tracks or nodes. Edit the chart to add them.",
+            "chartLimit": "You can add up to 100 station operation plan charts."
         },
         "operationOccupationTimeTable": {
             "title": "Operation Occupancy Time Table",

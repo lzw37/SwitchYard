@@ -366,6 +366,8 @@ import ActionButton from '@/components/ui/ActionButton.vue'
 import PaneDivider from '@/components/ui/PaneDivider.vue'
 import { Check, Close, Delete, Download, MagicStick, Plus, Refresh, Setting, VideoPlay } from '@element-plus/icons-vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useCapacityStore } from '@/stores/capacity'
+import { useStationSchemeSelection } from './useStationSchemeSelection'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useI18n } from 'vue-i18n'
 import axios from '@/utils/axios'
@@ -468,7 +470,8 @@ const stationSchemes = ref<StationScheme[]>([])
 const operationPlans = ref<OperationPlan[]>([])
 const agents = ref<CapacityAgent[]>([])
 const presets = ref<SolvePreset[]>([])
-const stationSchemeId = ref('')
+const capacityStore = useCapacityStore()
+const stationSchemeId = useStationSchemeSelection(() => props.selectedInstanceId)
 const operationPlanId = ref('')
 const selectedAgentId = ref('')
 const selectedModelId = ref('')
@@ -487,6 +490,8 @@ const generatingInput = ref(false)
 const submitting = ref(false)
 const pollingJob = ref(false)
 let pollingTimer: number | undefined
+let schemeLoadVersion = 0
+let planLoadVersion = 0
 
 const connectedAgents = computed(() => agents.value.filter((agent) => agent.isConnected))
 const selectedAgent = computed(() =>
@@ -574,40 +579,50 @@ function normalizePreset(value: any): SolvePreset | null {
 
 async function loadStationSchemes() {
     const instanceID = props.selectedInstanceId
+    const requestedSchemeId = stationSchemeId.value
+    const loadVersion = ++schemeLoadVersion
     stationSchemes.value = []
-    stationSchemeId.value = ''
-    clearPlansAndInput()
+    loadingSchemes.value = false
     if (!instanceID) return
 
     loadingSchemes.value = true
     try {
         const response = await axios.get('/StationLayout/GetStationSchemes', { params: { instanceID } })
+        if (loadVersion !== schemeLoadVersion || instanceID !== props.selectedInstanceId) return
         stationSchemes.value = (Array.isArray(response.data) ? response.data : [])
             .map((item: any) => ({ id: String(item.id || '').trim(), name: String(item.name || '').trim() }))
             .filter((item: StationScheme) => item.id)
-        stationSchemeId.value = stationSchemes.value[0]?.id || ''
+        if (requestedSchemeId === stationSchemeId.value && !stationSchemes.value.some(scheme => scheme.id === stationSchemeId.value)) {
+            const firstScheme = stationSchemes.value[0]?.id
+            if (firstScheme) stationSchemeId.value = firstScheme
+            else capacityStore.clearStationScheme(instanceID)
+        }
     } catch (error) {
+        if (loadVersion !== schemeLoadVersion || instanceID !== props.selectedInstanceId) return
         console.error(error)
         ElMessage.error(t('modelSolving.messages.loadSchemesFailed'))
     } finally {
-        loadingSchemes.value = false
+        if (loadVersion === schemeLoadVersion) loadingSchemes.value = false
     }
 }
 
 async function loadOperationPlans() {
-    operationPlans.value = []
-    operationPlanId.value = ''
-    inputJson.value = ''
-    if (!props.selectedInstanceId || !stationSchemeId.value) return
+    const instanceID = props.selectedInstanceId
+    const stationSchemeID = stationSchemeId.value
+    const loadVersion = ++planLoadVersion
+    clearPlansAndInput()
+    loadingPlans.value = false
+    if (!instanceID || !stationSchemeID) return
 
     loadingPlans.value = true
     try {
         const response = await axios.get('/OperationPlan/GetOperationPlans', {
             params: {
-                instanceID: props.selectedInstanceId,
-                stationSchemeID: stationSchemeId.value,
+                instanceID,
+                stationSchemeID,
             },
         })
+        if (loadVersion !== planLoadVersion || instanceID !== props.selectedInstanceId || stationSchemeID !== stationSchemeId.value) return
         operationPlans.value = (Array.isArray(response.data) ? response.data : [])
             .map((item: any) => ({
                 operationPlanID: String(item.operationPlanID || '').trim(),
@@ -618,10 +633,11 @@ async function loadOperationPlans() {
             || operationPlans.value[0]?.operationPlanID
             || ''
     } catch (error) {
+        if (loadVersion !== planLoadVersion || instanceID !== props.selectedInstanceId || stationSchemeID !== stationSchemeId.value) return
         console.error(error)
         ElMessage.error(t('modelSolving.messages.loadPlansFailed'))
     } finally {
-        loadingPlans.value = false
+        if (loadVersion === planLoadVersion) loadingPlans.value = false
     }
 }
 
@@ -1003,7 +1019,7 @@ function apiErrorMessage(error: any, fallback: string) {
 }
 
 watch(() => props.selectedInstanceId, () => void loadStationSchemes(), { immediate: true })
-watch(stationSchemeId, () => void loadOperationPlans())
+watch([() => props.selectedInstanceId, stationSchemeId], () => void loadOperationPlans(), { immediate: true })
 watch(operationPlanId, () => { inputJson.value = '' })
 
 onMounted(() => {
@@ -1018,6 +1034,8 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+    schemeLoadVersion++
+    planLoadVersion++
     if (pollingTimer !== undefined) window.clearInterval(pollingTimer)
 })
 </script>

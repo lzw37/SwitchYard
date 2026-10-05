@@ -61,8 +61,9 @@ namespace SwitchYard.Service.Controllers
         
         [HttpPost(Name ="SaveJson")]
         [Authorize(Roles = "Admin")]
-        public IActionResult SaveJson(
+        public async Task<IActionResult> SaveJson(
             [FromBody] StationLayoutSaveRequest? request,
+            [FromServices] SwitchYard.StationLayout.IStationLayoutService service,
             [FromQuery] string? instanceID = null,
             [FromQuery] string? stationSchemeID = null)
         {
@@ -73,6 +74,18 @@ namespace SwitchYard.Service.Controllers
 
             try
             {
+                using var payload = JsonDocument.Parse(request.Json);
+                if (payload.RootElement.ValueKind == JsonValueKind.Object &&
+                    (payload.RootElement.TryGetProperty("format", out _) || payload.RootElement.TryGetProperty("formatVersion", out _)))
+                {
+                    return Ok(await service.SaveJsonAsync(User, new SwitchYard.StationLayout.StationLayoutSaveRequest
+                    {
+                        Json = request.Json,
+                        InstanceID = FirstNonEmpty(instanceID, request.InstanceID),
+                        StationSchemeID = FirstNonEmpty(stationSchemeID, request.StationSchemeID),
+                        ExpectedRevision = request.ExpectedRevision
+                    }, HttpContext.RequestAborted));
+                }
                 var layout = JsonSerializer.Deserialize<StationLayoutJson>(
                     request.Json,
                     StationLayoutJsonOptions) ?? new StationLayoutJson();
@@ -108,6 +121,11 @@ namespace SwitchYard.Service.Controllers
                     saveResult.LinkCount);
                 return Ok(saveResult);
             }
+            catch (SwitchYard.StationLayout.StationLayoutValidationException ex) { return BadRequest(ex.Message); }
+            catch (SwitchYard.StationLayout.StationLayoutNotFoundException ex) { return NotFound(ex.Message); }
+            catch (SwitchYard.StationLayout.StationLayoutUnauthenticatedException ex) { return Unauthorized(ex.Message); }
+            catch (SwitchYard.StationLayout.StationLayoutForbiddenException ex) { return StatusCode(403, ex.Message); }
+            catch (SwitchYard.StationLayout.StationLayoutConflictException ex) { return Conflict(ex.Message); }
             catch (JsonException ex)
             {
                 _logger.LogWarning(ex, "Invalid station layout JSON payload.");
@@ -121,7 +139,9 @@ namespace SwitchYard.Service.Controllers
         }
 
         [HttpPost(Name = "GetJson")]
-        public IActionResult GetJson([FromQuery] string? instanceID = null, [FromQuery] string? stationSchemeID = null)
+        public async Task<IActionResult> GetJson(
+            [FromServices] SwitchYard.StationLayout.IStationLayoutService service,
+            [FromQuery] string? instanceID = null, [FromQuery] string? stationSchemeID = null)
         {
             try
             {
@@ -143,6 +163,15 @@ namespace SwitchYard.Service.Controllers
                 if (string.IsNullOrWhiteSpace(normalizedStationSchemeID))
                 {
                     return Content(BuildEmptyStationLayoutJson(), "application/json", Encoding.UTF8);
+                }
+
+                var snapshot = dbConnector.Query<string>(
+                    $"SELECT LayoutDocument FROM {QuoteIdentifier("stationscheme")} WHERE InstanceID=@instanceID AND ID=@stationSchemeID LIMIT 1",
+                    new { instanceID = normalizedInstanceID, stationSchemeID = normalizedStationSchemeID })?.FirstOrDefault();
+                if (!string.IsNullOrWhiteSpace(snapshot))
+                {
+                    var result = await service.GetJsonAsync(User, normalizedInstanceID, normalizedStationSchemeID, HttpContext.RequestAborted);
+                    return Content(result.Document.ToJson(), "application/json", Encoding.UTF8);
                 }
 
                 var layoutJson = BuildStationLayoutJsonFromDatabase(
@@ -2387,6 +2416,12 @@ namespace SwitchYard.Service.Controllers
                     stationSchemeID,
                     layout.Metadata?.GridSettings);
 
+                // A legacy save replaces the drawing too; it must invalidate any
+                // previously stored complete document in the same transaction.
+                dbConnector.ExecuteNonQuery(
+                    $"UPDATE {QuoteIdentifier("stationscheme")} SET LayoutDocument=NULL WHERE InstanceID=@instanceID AND ID=@stationSchemeID",
+                    new { instanceID, stationSchemeID });
+
                 DeleteStationLayoutTableRows(dbConnector, switchBranchVectorTable, instanceID, stationSchemeID);
                 DeleteStationLayoutTableRows(dbConnector, switchTable, instanceID, stationSchemeID);
                 DeleteStationLayoutTableRows(dbConnector, bufferStopTable, instanceID, stationSchemeID);
@@ -3958,7 +3993,8 @@ namespace SwitchYard.Service.Controllers
                             {QuoteIdentifier("ID")} VARCHAR(50) NULL,
                             {QuoteIdentifier("Name")} VARCHAR(100) NULL,
                             {QuoteIdentifier("DisplayStyles")} TEXT NULL,
-                            {QuoteIdentifier("GridSettings")} TEXT NULL
+                            {QuoteIdentifier("GridSettings")} TEXT NULL,
+                            {QuoteIdentifier("LayoutDocument")} LONGTEXT NULL
                         )");
                 }
                 else
@@ -3969,7 +4005,8 @@ namespace SwitchYard.Service.Controllers
                             {QuoteIdentifier("ID")} TEXT NULL,
                             {QuoteIdentifier("Name")} TEXT NULL,
                             {QuoteIdentifier("DisplayStyles")} TEXT NULL,
-                            {QuoteIdentifier("GridSettings")} TEXT NULL
+                            {QuoteIdentifier("GridSettings")} TEXT NULL,
+                            {QuoteIdentifier("LayoutDocument")} TEXT NULL
                         )");
                 }
 
@@ -3984,7 +4021,8 @@ namespace SwitchYard.Service.Controllers
                     ["ID"] = "VARCHAR(50) NULL",
                     ["Name"] = "VARCHAR(100) NULL",
                     ["DisplayStyles"] = "TEXT NULL",
-                    ["GridSettings"] = "TEXT NULL"
+                    ["GridSettings"] = "TEXT NULL",
+                    ["LayoutDocument"] = "LONGTEXT NULL"
                 }
                 : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
                 {
@@ -3992,7 +4030,8 @@ namespace SwitchYard.Service.Controllers
                     ["ID"] = "TEXT NULL",
                     ["Name"] = "TEXT NULL",
                     ["DisplayStyles"] = "TEXT NULL",
-                    ["GridSettings"] = "TEXT NULL"
+                    ["GridSettings"] = "TEXT NULL",
+                    ["LayoutDocument"] = "TEXT NULL"
                 };
 
             foreach (var column in requiredColumns)

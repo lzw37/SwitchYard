@@ -36,7 +36,7 @@
                 <div :style="{ height: `${contentHeight}px` }" class="station-plan-row-axis">
                     <div v-for="(row, index) in displayRows" :key="`band:${row.key}`" class="station-plan-axis-row-band" :class="isTrackRow(row) ? 'is-track-row' : 'is-node-row'"
                         :style="{ top: `${rowToY(index) - rowPitch / 2}px`, height: `${rowPitch}px` }" aria-hidden="true" />
-                    <div v-for="(row, index) in displayRows" :key="row.key" class="station-plan-row-label" :class="[`is-${row.kind}`, isTrackRow(row) ? 'is-track-row' : 'is-node-row', { 'is-track-node': trackChildKeys.has(row.key), 'is-drop-target': trackTargetRowIndexes.has(index) }]" :style="{ top: `${rowToY(index)}px` }" :title="row.label">
+                    <div v-for="(row, index) in displayRows" :key="row.key" class="station-plan-row-label" :data-row-key="row.key" :class="[`is-${row.kind}`, isTrackRow(row) ? 'is-track-row' : 'is-node-row', { 'is-track-node': trackChildKeys.has(row.key), 'is-drop-target': trackTargetRowIndexes.has(index) }]" :style="{ top: `${rowToY(index)}px` }" :title="row.label">
                         <button v-if="row.kind === 'track' && row.children?.length" type="button" class="station-plan-track-label" :data-track-key="row.key"
                             :disabled="pickMode"
                             :aria-expanded="false" :title="`${row.label}\n${t('stationPlanView.expandTrack')}`" @dblclick.stop="toggleTrackExpansion(row.key)">
@@ -142,13 +142,6 @@
         </Teleport>
         <div v-if="dragPreview" class="station-plan-drag-feedback" role="status">{{ dragPreview.segment.detail || dragPreview.segment.movementID }} · {{ rowLabels.get(dragPreview.segment.startRowKey) }} → {{ rowLabels.get(dragPreview.segment.endRowKey) }} · {{ stationPlanTimeLabel(previewMovementSegment?.startMinutes ?? dragPreview.startMinutes) }} – {{ stationPlanTimeLabel(previewMovementSegment?.endMinutes ?? dragPreview.endMinutes) }} · {{ t(dragPreview.shiftFollowing === false ? 'stationPlanView.singleEndpoint' : 'stationPlanView.shiftFollowing') }}</div>
         <div v-if="trackDrag || trackDropInvalid" class="station-plan-drag-feedback" :class="{ 'is-invalid': trackDropInvalid || !trackDrag?.targetTrackID }" role="status">{{ trackDragMessage }}</div>
-        <p v-if="showTrackDragHint" class="station-plan-track-hint">{{ t('stationPlanView.trackDragHint') }}</p>
-        <p v-if="pickMode" class="station-plan-pick-hint">{{ t('stationPlanView.creation.pickHint') }}</p>
-        <div v-if="lines.length" class="station-plan-legend" :aria-label="t('stationPlanView.trainLegend')">
-            <button v-for="line in lines" :key="line.train.id" type="button" :disabled="pickMode" :aria-pressed="selectedTrainIDs.has(line.train.id)" @click="toggleTrainSelection(line.train.id)">
-                <span :style="{ background: line.train.color }" />{{ line.train.label }}
-            </button>
-        </div>
     </div>
 </template>
 
@@ -163,6 +156,8 @@ import { stationPlanHistoryShortcut } from './stationPlanActions'
 import type { StationPlanDraftPoint } from './stationPlanCreation'
 import type { StationPlanEditMovement, StationPlanEditRoute } from './stationPlanEditing'
 import { resolveStationPlanDwellingTarget, type StationPlanDwellingTarget } from './stationPlanDwelling'
+import { cloneSvgWithStyles, createSvgElement, hasRenderedLayout, serializeReportSvg, snapshotHtmlText, stripReportInteractionMetadata, type StationPlanReportViewState, type StationPlanReportLabels } from '../report/svgSnapshot'
+import type { ReportFigure } from '../report/wordReport'
 
 const props = withDefaults(defineProps<{
     rows: StationPlanAxisRow[]
@@ -473,7 +468,6 @@ function handleSelectionKeydown(event: KeyboardEvent) {
     if (operation === 'redo' && canRedo.value) emit('redo')
 }
 const canEditTrain = (id: string) => !props.pickMode && props.editable && !props.loading && !props.readOnlyTrainIDs.includes(id)
-const showTrackDragHint = computed(() => trackDragSegments.value.some(item => canEditTrain(item.train.id)))
 function makeEdit(train: StationPlanTrain, segment: StationPlanEditableSegment, mode: StationPlanSegmentEdit['mode'], ctrlKey = false): StationPlanSegmentEdit {
     const segments = lines.value.find(line => line.train.id === train.id)?.editableSegments || [segment]
     return { trainID: train.id, segment, mode, startMinutes: segment.startMinutes, endMinutes: segment.endMinutes, rowKey: segment.rowKey, shiftFollowing: !ctrlKey,
@@ -649,11 +643,16 @@ function syncScroll() {
     if (rowViewport.value) rowViewport.value.scrollTop = viewport.value.scrollTop
     updateTrackDragTarget()
 }
+function fitScale(width: number, height: number) {
+    if (!displayRows.value.length) return
+    scaleX.value = Math.max(0.001, (width - chartPadding.value.x * 2 - 1) / ((domain.value.end - domain.value.start) * 6))
+    scaleY.value = Math.max(0.01, (height - chartPadding.value.y * 2 - 1) / (displayRows.value.length * 52))
+}
 function fitToViewport() {
     if (drag.value || trackDrag.value) return
     if (!viewport.value || !displayRows.value.length) return
-    scaleX.value = Math.max(0.001, (viewport.value.clientWidth - chartPadding.value.x * 2 - 1) / ((domain.value.end - domain.value.start) * 6))
-    scaleY.value = Math.max(0.01, (viewport.value.clientHeight - chartPadding.value.y * 2 - 1) / (displayRows.value.length * 52))
+    if (viewport.value.clientWidth <= 0 || viewport.value.clientHeight <= 0) return
+    fitScale(viewport.value.clientWidth, viewport.value.clientHeight)
     viewport.value.scrollLeft = 0
     viewport.value.scrollTop = 0
     syncScroll()
@@ -665,7 +664,7 @@ function syncAutoFit() { if (autoFit.value) fitToViewport() }
 let observer: ResizeObserver | null = null
 onMounted(() => {
     window.addEventListener('keydown', handleSelectionKeydown)
-    observer = new ResizeObserver(() => { syncAutoFit(); syncScroll() })
+    observer = new ResizeObserver(() => { rememberReportSize(); syncAutoFit(); syncScroll() })
     if (viewport.value) observer.observe(viewport.value)
     syncAutoFit()
 })
@@ -687,7 +686,176 @@ onBeforeUnmount(() => {
     observer?.disconnect()
     window.removeEventListener('keydown', handleSelectionKeydown)
 })
-defineExpose({ viewport, fitToViewport })
+let lastReportSize = { width: 0, height: 0, viewportWidth: 0, viewportHeight: 0 }
+function rememberReportSize() {
+    const bounds = viewRoot.value?.getBoundingClientRect()
+    if (bounds && bounds.width > 0 && bounds.height > 0 && viewport.value?.clientWidth && viewport.value.clientHeight) {
+        lastReportSize = { width: bounds.width, height: bounds.height,
+            viewportWidth: viewport.value.clientWidth, viewportHeight: viewport.value.clientHeight }
+    }
+}
+function getReportViewState(): StationPlanReportViewState {
+    rememberReportSize()
+    return { scaleX: scaleX.value, scaleY: scaleY.value, lineMode: lineMode.value,
+        expandedTrackKeys: [...expandedTrackKeys.value], autoFit: autoFit.value,
+        ...lastReportSize }
+}
+
+async function applyReportViewState(state: StationPlanReportViewState): Promise<void> {
+    cancelSegmentDrag()
+    // Keep captured scales even if a ResizeObserver runs during an offscreen mount.
+    autoFit.value = false
+    expandedTrackKeys.value = new Set(state.expandedTrackKeys)
+    lineMode.value = state.lineMode
+    scaleX.value = state.scaleX
+    scaleY.value = state.scaleY
+    const width = state.viewportWidth || viewport.value?.clientWidth || 0
+    const height = state.viewportHeight || viewport.value?.clientHeight || 0
+    if (state.autoFit && width > 0 && height > 0) fitScale(width, height)
+    await nextTick()
+    syncScroll()
+}
+
+/** Snapshot actual chart vectors and HTML axes at the current scale. */
+function exportReportFigure(caption: string, labels: StationPlanReportLabels = {}): ReportFigure | null {
+    const root = viewRoot.value
+    const canvas = root?.querySelector<SVGSVGElement>('.station-plan-canvas')
+    const timeAxis = root?.querySelector<SVGSVGElement>('.station-plan-time-axis')
+    const corner = root?.querySelector<HTMLElement>('.station-plan-corner')
+    const rowAxis = root?.querySelector<HTMLElement>('.station-plan-row-axis')
+    const grid = root?.querySelector<HTMLElement>('.station-plan-grid')
+    if (!root || !canvas || !timeAxis || !corner || !rowAxis || !grid || !rowViewport.value || !timeViewport.value) return null
+    if (!hasRenderedLayout(grid)) return null
+    // A drag preview is not a saved plan; the caller may retry once it is committed.
+    if (dragPreview.value || trackDrag.value) return null
+    const document = root.ownerDocument
+    const view = document.defaultView!
+    const gridStyle = view.getComputedStyle(grid)
+    const border = Number.parseFloat(gridStyle.borderLeftWidth) || 0
+    const left = corner.getBoundingClientRect().width
+    const top = corner.getBoundingClientRect().height
+    const width = left + contentWidth.value + border * 2
+    const height = top + contentHeight.value + border * 2
+    const svg = createSvgElement(document, 'svg')
+    const defs = createSvgElement(document, 'defs')
+    svg.appendChild(defs)
+    const clip = createSvgElement(document, 'clipPath', { id: 'station-plan-report-grid' })
+    clip.appendChild(createSvgElement(document, 'rect', { x: border, y: border, width: width - border * 2, height: height - border * 2,
+        rx: Math.max(0, (Number.parseFloat(gridStyle.borderTopLeftRadius) || 0) - border) }))
+    defs.appendChild(clip)
+    const chart = createSvgElement(document, 'g', { 'clip-path': 'url(#station-plan-report-grid)' })
+    svg.appendChild(chart)
+    chart.appendChild(createSvgElement(document, 'rect', { x: border, y: border, width: width - border * 2, height: height - border * 2, fill: '#fff' }))
+
+    let gradientID = 0
+    const number = (value: string) => Number.parseFloat(value) || 0
+    const transparent = (value: string) => !value || value === 'transparent' || /^rgba\([^)]*,\s*0\)$/.test(value)
+    const addBox = (element: HTMLElement, x: number, y: number, boxWidth: number, boxHeight: number) => {
+        const style = view.getComputedStyle(element)
+        if (style.display === 'none' || style.visibility === 'hidden' || boxWidth <= 0 || boxHeight <= 0) return
+        let fill = style.backgroundColor
+        const colors = style.backgroundImage.match(/rgba?\([^)]+\)|#[\da-f]+/gi)
+        if (style.backgroundImage.startsWith('linear-gradient(') && colors && colors.length >= 2) {
+            const id = `station-plan-report-gradient-${gradientID++}`
+            const horizontal = style.backgroundImage.startsWith('linear-gradient(90deg')
+            const gradient = createSvgElement(document, 'linearGradient', { id, x1: '0%', y1: '0%', x2: horizontal ? '100%' : '0%', y2: horizontal ? '0%' : '100%' })
+            colors.forEach((color, index) => gradient.appendChild(createSvgElement(document, 'stop', { offset: `${index / (colors.length - 1) * 100}%`, 'stop-color': color })))
+            defs.appendChild(gradient)
+            fill = `url(#${id})`
+        }
+        if (!transparent(fill)) chart.appendChild(createSvgElement(document, 'rect', { x, y, width: boxWidth, height: boxHeight, fill }))
+        for (const edge of ['Top', 'Right', 'Bottom', 'Left'] as const) {
+            const thickness = number(style[`border${edge}Width`])
+            const color = style[`border${edge}Color`]
+            if (!thickness || transparent(color) || style[`border${edge}Style`] === 'none') continue
+            const vertical = edge === 'Left' || edge === 'Right'
+            const a = edge === 'Right' ? x + boxWidth - thickness / 2 : vertical ? x + thickness / 2 : x
+            const b = edge === 'Bottom' ? y + boxHeight - thickness / 2 : vertical ? y : y + thickness / 2
+            const line = createSvgElement(document, 'line', { x1: a, y1: b, x2: a + (vertical ? 0 : boxWidth), y2: b + (vertical ? boxHeight : 0), stroke: color, 'stroke-width': thickness })
+            if (style[`border${edge}Style`] === 'dashed') line.setAttribute('stroke-dasharray', `${thickness * 3} ${thickness * 2}`)
+            chart.appendChild(line)
+        }
+    }
+    const measure = document.createElement('canvas').getContext('2d')
+    const addHtmlContents = (element: HTMLElement, originX: number, originY: number) => {
+        const style = view.getComputedStyle(element)
+        if (style.display === 'none' || style.visibility === 'hidden') return
+        const bounds = element.getBoundingClientRect()
+        addBox(element, bounds.left + originX, bounds.top + originY, bounds.width, bounds.height)
+        for (const node of Array.from(element.childNodes)) {
+            if (node.nodeType === 1) { addHtmlContents(node as HTMLElement, originX, originY); continue }
+            if (node.nodeType !== 3 || !node.textContent?.trim()) continue
+            const range = document.createRange()
+            range.selectNodeContents(node)
+            const bounds = range.getBoundingClientRect()
+            if (!bounds.width || !bounds.height) continue
+            let label = node.textContent.replace(/\s+/g, ' ')
+            let reportLabel: string | undefined
+            let reportWidth: number | undefined
+            if (element.matches('.station-plan-row-label > span:last-child, .station-plan-track-label > span:last-child')) {
+                const owner = element.closest<HTMLElement>('[data-track-key], [data-row-key]')
+                const key = owner?.dataset.trackKey || owner?.dataset.rowKey
+                if (key && labels.rows && Object.prototype.hasOwnProperty.call(labels.rows, key)) reportLabel = labels.rows[key]
+            }
+            if (reportLabel !== undefined) {
+                label = reportLabel
+                // An original short ID gives its text span an intrinsic width of
+                // just a few pixels. Report names can use the remaining row-axis
+                // space without moving the label or changing any chart geometry.
+                const row = element.closest<HTMLElement>('.station-plan-row-label, .station-plan-expanded-track-label')
+                if (row) {
+                    const rowStyle = view.getComputedStyle(row)
+                    reportWidth = Math.max(0, row.getBoundingClientRect().right - number(rowStyle.paddingRight) - number(rowStyle.borderRightWidth) - bounds.left)
+                }
+            }
+            let baseline = number(style.fontSize) * 0.8
+            if (measure) {
+                measure.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`
+                const metrics = measure.measureText(label)
+                const ascent = metrics.fontBoundingBoxAscent
+                const descent = metrics.fontBoundingBoxDescent
+                baseline = Number.isFinite(ascent + descent) && ascent + descent > 0 ? bounds.height * ascent / (ascent + descent) : baseline
+                label = snapshotHtmlText(label, element, value => measure.measureText(value).width, reportLabel !== undefined, reportWidth)
+            }
+            const text = createSvgElement(document, 'text', { x: bounds.left + originX, y: bounds.top + originY + baseline,
+                fill: style.color, 'font-family': style.fontFamily, 'font-size': style.fontSize,
+                'font-weight': style.fontWeight, 'font-style': style.fontStyle,
+                'letter-spacing': style.letterSpacing, 'word-spacing': style.wordSpacing })
+            text.textContent = label
+            chart.appendChild(text)
+        }
+    }
+    // Origins are relative to the axis itself, so scrolling cannot crop the report.
+    const cornerBounds = corner.getBoundingClientRect()
+    addHtmlContents(corner, border - cornerBounds.left, border - cornerBounds.top)
+    addBox(timeViewport.value, border + left, border, contentWidth.value, top)
+    addBox(rowViewport.value, border, border + top, left, contentHeight.value)
+    const rowBounds = rowAxis.getBoundingClientRect()
+    addHtmlContents(rowAxis, border - rowBounds.left, border + top - rowBounds.top)
+    const header = cloneSvgWithStyles(timeAxis)
+    header.setAttribute('x', String(border + left))
+    header.setAttribute('y', String(border))
+    header.style.setProperty('overflow', 'hidden')
+    chart.appendChild(header)
+    const body = cloneSvgWithStyles(canvas, { exclude: '.station-plan-train-hit-area, .station-plan-track-drag, .station-plan-segment-controls, .station-plan-track-target, .station-plan-pick-layer' })
+    if (labels.trains) {
+        for (const train of Array.from(body.querySelectorAll<SVGGElement>('.station-plan-train[data-train-id]'))) {
+            const id = train.dataset.trainId
+            if (!id || !Object.prototype.hasOwnProperty.call(labels.trains, id)) continue
+            for (const text of Array.from(train.querySelectorAll('text'))) text.textContent = labels.trains[id]!
+        }
+    }
+    body.setAttribute('x', String(border + left))
+    body.setAttribute('y', String(border + top))
+    chart.appendChild(body)
+    if (border) svg.appendChild(createSvgElement(document, 'rect', { x: border / 2, y: border / 2,
+        width: width - border, height: height - border, rx: number(gridStyle.borderTopLeftRadius),
+        fill: 'none', stroke: gridStyle.borderLeftColor, 'stroke-width': border }))
+    stripReportInteractionMetadata(svg)
+    return serializeReportSvg(svg, caption, width, height)
+}
+
+defineExpose({ viewport, fitToViewport, getReportViewState, applyReportViewState, exportReportFigure })
 </script>
 
 <style scoped>
@@ -761,19 +929,12 @@ defineExpose({ viewport, fitToViewport })
 .station-plan-handle-info strong { font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .station-plan-drag-feedback { position: absolute; right: 16px; top: 58px; z-index: 2; padding: 5px 10px; font-size: 12px; background: #fff; border: 1px solid var(--el-color-primary); border-radius: 4px; pointer-events: none; }
 .station-plan-drag-feedback.is-invalid { color: var(--el-color-danger); border-color: var(--el-color-danger); }
-.station-plan-track-hint { margin: 0; padding: 5px 12px; color: var(--el-text-color-secondary); font-size: 11px; }
-.station-plan-pick-hint { margin: 0; padding: 6px 12px; color: var(--el-color-primary); font-size: 12px; }
 .station-plan-pick-surface { fill: transparent; pointer-events: all; cursor: crosshair; }
 .station-plan-draft-points { pointer-events: none; }
 .station-plan-draft-marker { pointer-events: all; cursor: crosshair; }
 .station-plan-draft-line { stroke: var(--el-color-primary); stroke-width: 2; stroke-dasharray: 6 4; fill: none; }
 .station-plan-draft-point { fill: #fff; stroke: var(--el-color-primary); stroke-width: 2; }
 .station-plan-draft-point-label { fill: var(--el-color-primary); font-size: 12px; font-weight: 600; text-anchor: middle; paint-order: stroke; stroke: #fff; stroke-width: 3px; }
-.station-plan-legend { display: flex; flex-wrap: wrap; gap: 6px; max-height: 64px; overflow: auto; padding: 6px 12px; border-top: 1px solid var(--el-border-color-lighter); }
-.station-plan-legend button { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; color: var(--el-text-color-regular); background: transparent; border: 1px solid var(--el-border-color-lighter); border-radius: 4px; cursor: pointer; font-size: 12px; }
-.station-plan-legend button[aria-pressed='true'] { background: var(--el-color-primary-light-9); border-color: var(--el-color-primary); }
-.station-plan-legend button[aria-pressed='true'] span { height: 4px; }
-.station-plan-legend button span { width: 14px; height: 3px; }
 .station-plan-empty { flex: 1; display: grid; place-items: center; color: var(--el-text-color-secondary); font-size: 13px; }
 .station-plan-empty-label { fill: #909399; font-size: 12px; }
 @media (max-width: 760px) { .station-plan-grid { grid-template-columns: 132px minmax(0, 1fr); } .station-plan-scale :deep(.el-slider) { width: 100px; } }
