@@ -44,10 +44,7 @@ public partial class OperationPlanController
             db = GetCapacityDbConnector();
             var permissionError = AuthorizeProcessGenerationScope(db, scope);
             if (permissionError is not null) return permissionError;
-            EnsureTrainOperationPlanSchema(db);
-            OperationProcessController.EnsureSchema(db);
-            SchemeTemplateStore.Migrate(db, scope.InstanceID, scope.StationSchemeID);
-            TrainProcessSnapshotStore.EnsureSchema(db);
+
             db.BeginTransaction();
             var catalog = OperationProcessController.LoadCatalog(db, scope);
             var generatedTrainIDs = new List<string>();

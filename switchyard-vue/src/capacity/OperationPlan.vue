@@ -2092,6 +2092,7 @@ import { namedTrackCellNames } from './components/chartRowKinds'
 import { editStationPlanDwelling, type StationPlanDwellingTarget } from './components/stationPlanDwelling'
 import { ActionStack } from '@/utils/actionStack'
 import { StationPlanMovementAction } from './components/stationPlanActions'
+import { AnalysisSaveQueue } from './analysisSaveQueue'
 import { getTrackOccupancyGanttTimeScale, trackOccupancyGanttMetrics, type TrackOccupancyGanttRow, type TrackOccupancyGanttDragStart } from './components/trackOccupancyGantt'
 import { adjustOperationPlanGanttWindow, type OperationPlanGanttWindow } from './operationPlanGantt'
 import { normalizeMovementCellOccupations, type MovementCellOccupation } from './movementCellOccupation'
@@ -2806,7 +2807,11 @@ let processPlanGenerationVersion = 0
 let processConstraintCatalogVersion = 0
 let routePickerLayoutLoadVersion = 0
 let routePickerResizeState: RoutePickerResizeState | null = null
-let operationAnalysisSnapshotSaveTimer: ReturnType<typeof window.setTimeout> | null = null
+let operationAnalysisSnapshotEpoch = 0
+const savedAnalysisSignatures = new Map<string, string>()
+type AnalysisSaveRequest = { payload: NonNullable<ReturnType<typeof buildOperationAnalysisSnapshotPayload>>; scopeKey: string; signature: string; epoch: number }
+const analysisSaveQueue = new AnalysisSaveQueue<AnalysisSaveRequest>(saveOperationAnalysisSnapshotNow,
+    error => console.error('Failed to save operation analysis result:', error))
 let operationBottleneckSummaryCategorySaveTimer: ReturnType<typeof window.setTimeout> | null = null
 let operationOccupationTimeSubTableSaveTimer: ReturnType<typeof window.setTimeout> | null = null
 let suppressOperationOccupationTimeSubTableSave = false
@@ -5348,23 +5353,19 @@ function buildOperationAnalysisSnapshotPayload() {
 }
 
 function clearOperationAnalysisSnapshotState() {
-    if (operationAnalysisSnapshotSaveTimer) {
-        window.clearTimeout(operationAnalysisSnapshotSaveTimer)
-        operationAnalysisSnapshotSaveTimer = null
-    }
+    operationAnalysisSnapshotEpoch++
     operationAnalysisSnapshot.value = null
     usingOperationAnalysisSnapshot.value = false
-    savingOperationAnalysisSnapshot.value = false
 }
 
-async function saveOperationAnalysisSnapshotNow() {
-    if (recalculatingCellOccupations.value) return
-    const payload = buildOperationAnalysisSnapshotPayload()
-    if (!payload || savingOperationAnalysisSnapshot.value) return
-
+async function saveOperationAnalysisSnapshotNow({ payload, scopeKey, signature, epoch }: AnalysisSaveRequest) {
+    if (savedAnalysisSignatures.get(scopeKey) === signature) return
     savingOperationAnalysisSnapshot.value = true
     try {
         const response = await axios.put('/OperationPlan/SaveOperationAnalysisResult', payload)
+        savedAnalysisSignatures.set(scopeKey, signature)
+        if (savedAnalysisSignatures.size > 20) savedAnalysisSignatures.delete(savedAnalysisSignatures.keys().next().value!)
+        if (operationPlanDisposed || epoch !== operationAnalysisSnapshotEpoch) return
         if (
             payload.instanceID !== props.selectedInstanceId ||
             payload.stationSchemeID !== currentStationSchemeId.value.trim() ||
@@ -5390,17 +5391,12 @@ async function saveOperationAnalysisSnapshotNow() {
     }
 }
 
-function scheduleSaveOperationAnalysisSnapshot(delay = 400) {
-    if (recalculatingCellOccupations.value) return
-    if (usingOperationAnalysisSnapshot.value) return
-    if (operationPlanChartBars.value.length === 0) return
-    if (operationAnalysisSnapshotSaveTimer) {
-        window.clearTimeout(operationAnalysisSnapshotSaveTimer)
-    }
-    operationAnalysisSnapshotSaveTimer = window.setTimeout(() => {
-        operationAnalysisSnapshotSaveTimer = null
-        void saveOperationAnalysisSnapshotNow()
-    }, delay)
+function scheduleSaveOperationAnalysisSnapshot(delay = 800) {
+    if (operationPlanDisposed || loadingOperationPlanChart.value || loadingTrainOperationPlan.value || recalculatingCellOccupations.value) return
+    const payload = buildOperationAnalysisSnapshotPayload()
+    if (!payload) return
+    analysisSaveQueue.schedule(operationPlanScopeKey.value, { payload, scopeKey: operationPlanScopeKey.value,
+        signature: JSON.stringify(payload), epoch: operationAnalysisSnapshotEpoch }, delay)
 }
 
 async function loadOperationAnalysisSnapshotFallback(
@@ -5556,10 +5552,6 @@ function startOperationPlanChartDrag({ event, blockKey, mode }: TrackOccupancyGa
         previousUserSelect: document.body.style.userSelect,
     }
     operationPlanChartDragPreview.value = { startMinutes: bar.startMinutes, endMinutes: bar.endMinutes }
-    if (operationAnalysisSnapshotSaveTimer) {
-        window.clearTimeout(operationAnalysisSnapshotSaveTimer)
-        operationAnalysisSnapshotSaveTimer = null
-    }
     document.body.style.cursor = mode === 'move' ? 'grabbing' : 'ew-resize'
     document.body.style.userSelect = 'none'
     window.addEventListener('pointermove', moveOperationPlanChartDrag)
@@ -5720,7 +5712,7 @@ async function saveOperationPlanChartMovement(movement: TrainOperationPlanMoveme
         if (!isCurrent()) return
         replaceOperationPlanChartMovement(normalizeTrainOperationPlanMovement(Array.isArray(response.data) ? response.data[0] : response.data) || movement)
         clearOperationAnalysisSnapshotState()
-        scheduleSaveOperationAnalysisSnapshot(0)
+        scheduleSaveOperationAnalysisSnapshot()
         ElMessage.success(t('capacityGantt.saveSuccess'))
     } catch (error) {
         if (!isCurrent()) return
@@ -7345,10 +7337,7 @@ async function recalculateCellOccupations() {
     const scope = getOperationPlanScope()
     const version = ++cellOccupationRecalculationVersion
     const isCurrent = () => version === cellOccupationRecalculationVersion && matchesOperationPlanScope(scope)
-    if (operationAnalysisSnapshotSaveTimer) {
-        window.clearTimeout(operationAnalysisSnapshotSaveTimer)
-        operationAnalysisSnapshotSaveTimer = null
-    }
+    analysisSaveQueue.cancelPending(operationPlanScopeKey.value)
     recalculatingCellOccupations.value = true
     try {
         const response = await axios.post('/OperationPlan/RecalculateCellOccupations', scope)
@@ -7372,12 +7361,13 @@ async function recalculateCellOccupations() {
     } finally {
         if (version === cellOccupationRecalculationVersion) {
             recalculatingCellOccupations.value = false
-            if (isCurrent()) scheduleSaveOperationAnalysisSnapshot(0)
+            if (isCurrent()) scheduleSaveOperationAnalysisSnapshot()
         }
     }
 }
 
 async function loadTrainOperationPlan() {
+    savedAnalysisSignatures.delete(operationPlanScopeKey.value)
     if (recalculatingCellOccupations.value) return
     clearTrainOperationPlanSelection()
     const { instanceID, stationSchemeID, operationPlanID } = getOperationPlanScope()
@@ -7462,82 +7452,37 @@ function getOperationPlanChartRouteTimePairs() {
     return Array.from(pairs.values())
 }
 
-async function loadOperationPlanChartCells(
-    instanceID: string,
-    stationSchemeID: string,
-    loadVersion: number,
-) {
-    const response = await axios.post('/StationLayout/GetJson', null, {
-        params: { instanceID, stationSchemeID },
-    })
-    if (
-        loadVersion !== operationPlanChartLoadVersion ||
-        instanceID !== props.selectedInstanceId ||
-        stationSchemeID !== currentStationSchemeId.value.trim()
-    ) {
-        return
-    }
-
-    stationLayoutCells.value = getLayoutCells(response.data)
-        .map((cell: { id: string; name: string; linkIDList: string }) => ({
-            id: cell.id, name: cell.name || cell.id, linkIDs: parseRouteReferenceList(cell.linkIDList),
-        }))
-        .filter((cell: OperationPlanChartCell) => cell.id)
-    stationPlanNodeNames.value = Object.fromEntries((Array.isArray(response.data?.nodes) ? response.data.nodes : [])
-        .map((node: any) => [readString(node, 'id', 'ID').trim(), readString(node, 'name', 'Name', 'description', 'Description').trim()])
-        .filter(([id]: string[]) => id))
-    stationPlanTracks.value = readArray(response.data, 'tracks', 'Tracks')
-        .map((track: any) => ({
-            id: readString(track, 'id', 'ID').trim(),
-            name: readString(track, 'name', 'Name').trim(),
-            fromNodeID: readString(track, 'fromNodeID', 'FromNodeID').trim(),
-            toNodeID: readString(track, 'toNodeID', 'ToNodeID').trim(),
-        }))
-        .filter(track => track.id && track.name && track.fromNodeID && track.toNodeID)
-}
-
-async function loadOperationPlanChartRouteTimes(
-    instanceID: string,
-    stationSchemeID: string,
-    loadVersion: number,
-) {
+const chartResourceRequests = new Map<string, Promise<any>>()
+async function loadOperationPlanChartResources(instanceID: string, stationSchemeID: string, loadVersion: number) {
     const pairs = getOperationPlanChartRouteTimePairs()
-    if (pairs.length === 0) {
-        if (loadVersion === operationPlanChartLoadVersion) {
-            stationRouteTimesByKey.value = {}
-        }
-        return
+    const key = JSON.stringify([instanceID, stationSchemeID, pairs])
+    let pending = chartResourceRequests.get(key)
+    if (!pending) {
+        pending = axios.post('/StationLayout/GetOperationPlanChartResources', { instanceID, stationSchemeID, pairs })
+        chartResourceRequests.set(key, pending)
     }
-
-    const entries = await Promise.all(pairs.map(async (pair) => {
-        const response = await axios.get('/StationLayout/GetStationRouteTimes', {
-            params: {
-                instanceID,
-                stationSchemeID,
-                routeID: pair.routeID,
-                trainTypeID: pair.trainTypeID,
-            },
-        })
-        const rows = (Array.isArray(response.data) ? response.data : [])
-            .map(normalizeStationRouteTimeOption)
-            .filter((item): item is StationRouteTimeOption => item !== null)
-            .map((time) => ({
-                ...time,
-                routeID: time.routeID || pair.routeID,
-                trainTypeID: time.trainTypeID || pair.trainTypeID,
-            }))
-        return [getOperationPlanChartRouteTimeKey(pair.routeID, pair.trainTypeID), rows] as const
+    let data: any
+    try { data = (await pending).data }
+    finally { if (chartResourceRequests.get(key) === pending) chartResourceRequests.delete(key) }
+    if (loadVersion !== operationPlanChartLoadVersion || instanceID !== props.selectedInstanceId ||
+        stationSchemeID !== currentStationSchemeId.value.trim()) return
+    stationLayoutCells.value = readArray(data, 'cells', 'Cells').map((cell: any) => ({
+        id: readString(cell, 'id', 'ID'), name: readString(cell, 'name', 'Name') || readString(cell, 'id', 'ID'),
+        linkIDs: parseRouteReferenceList(readString(cell, 'linkIDList', 'LinkIDList')),
+    })).filter(cell => cell.id)
+    stationPlanNodeNames.value = Object.fromEntries(readArray(data, 'nodes', 'Nodes').map((node: any) =>
+        [readString(node, 'id', 'ID'), readString(node, 'name', 'Name')]))
+    stationPlanTracks.value = readArray(data, 'tracks', 'Tracks').map((track: any) => ({
+        id: readString(track, 'id', 'ID'), name: readString(track, 'name', 'Name'),
+        fromNodeID: readString(track, 'fromNodeID', 'FromNodeID'), toNodeID: readString(track, 'toNodeID', 'ToNodeID'),
+    })).filter(track => track.id && track.name && track.fromNodeID && track.toNodeID)
+    stationRouteTimesByKey.value = Object.fromEntries(readArray(data, 'routeTimes', 'RouteTimes').map((pair: any) => {
+        const routeID = readString(pair, 'routeID', 'RouteID'), trainTypeID = readString(pair, 'trainTypeID', 'TrainTypeID')
+        const rows = readArray(pair, 'rows', 'Rows').map(normalizeStationRouteTimeOption)
+            .filter((row): row is StationRouteTimeOption => row !== null)
+            .map(row => ({ ...row, routeID: row.routeID || routeID, trainTypeID: row.trainTypeID || trainTypeID }))
+        return [getOperationPlanChartRouteTimeKey(routeID, trainTypeID), rows]
     }))
-
-    if (
-        loadVersion !== operationPlanChartLoadVersion ||
-        instanceID !== props.selectedInstanceId ||
-        stationSchemeID !== currentStationSchemeId.value.trim()
-    ) {
-        return
-    }
-
-    stationRouteTimesByKey.value = Object.fromEntries(entries)
 }
 
 async function loadOperationBottleneckSummaryCategories(instanceID: string, stationSchemeID: string, loadVersion = operationPlanChartLoadVersion) {
@@ -7857,7 +7802,7 @@ async function confirmStationProcessTrain() {
         selectedTrainOperationPlanTrainId.value = result.train.id
         stationPlanActions.clear()
         clearOperationAnalysisSnapshotState()
-        scheduleSaveOperationAnalysisSnapshot(0)
+        scheduleSaveOperationAnalysisSnapshot()
         resetStationProcessTrain()
         ElMessage.success(t('stationPlanView.fromProcess.saved'))
     } catch (error) {
@@ -7977,7 +7922,7 @@ async function confirmStationPlanCreation() {
             ...savedMovements.filter((row): row is TrainOperationPlanMovement => row !== null)]
         selectedTrainOperationPlanTrainId.value = train.id
         clearOperationAnalysisSnapshotState()
-        scheduleSaveOperationAnalysisSnapshot(0)
+        scheduleSaveOperationAnalysisSnapshot()
         resetStationPlanCreation()
         ElMessage.success(t('stationPlanView.creation.saved'))
     } catch (error) {
@@ -8111,7 +8056,6 @@ async function persistStationPlanAction(expected: TrainOperationPlanMovement[], 
     const saveVersion = ++operationPlanChartSaveVersion
     const isCurrent = () => scopeKey === operationPlanScopeKey.value && saveVersion === operationPlanChartSaveVersion
     savingTrainOperationPlanMovement.value = true
-    if (operationAnalysisSnapshotSaveTimer) { window.clearTimeout(operationAnalysisSnapshotSaveTimer); operationAnalysisSnapshotSaveTimer = null }
     items.forEach(item => replaceOperationPlanChartMovement(item.updated))
     try {
         const response = await axios.put('/OperationPlan/EditMovements', { items })
@@ -8120,7 +8064,7 @@ async function persistStationPlanAction(expected: TrainOperationPlanMovement[], 
             .map(normalizeTrainOperationPlanMovement).filter((row: TrainOperationPlanMovement | null): row is TrainOperationPlanMovement => row !== null)
         saved.forEach(replaceOperationPlanChartMovement)
         clearOperationAnalysisSnapshotState()
-        scheduleSaveOperationAnalysisSnapshot(0)
+        scheduleSaveOperationAnalysisSnapshot()
         return saved
     } catch (error) {
         if (isCurrent()) items.forEach(item => replaceOperationPlanChartMovement(item.original))
@@ -8340,8 +8284,7 @@ async function loadOperationPlanChartData() {
             await loadStationRoutes()
         }
         await Promise.all([
-            loadOperationPlanChartCells(instanceID, stationSchemeID, loadVersion),
-            loadOperationPlanChartRouteTimes(instanceID, stationSchemeID, loadVersion),
+            loadOperationPlanChartResources(instanceID, stationSchemeID, loadVersion),
             loadStationRouteEnds(),
             loadOperationBottleneckSummaryCategories(instanceID, stationSchemeID, loadVersion),
         ])
@@ -8363,7 +8306,6 @@ async function loadOperationPlanChartData() {
             return
         }
         capacityReportLoadedScope.value = operationPlanScopeKey.value
-        scheduleSaveOperationAnalysisSnapshot(0)
     } catch (error) {
         if (loadVersion !== operationPlanChartLoadVersion) return
         console.error('Failed to load operation plan chart:', error)
@@ -9243,6 +9185,7 @@ watch(processTrainScopeKey, () => {
 
 watch([operationOccupationTotalTimeSeconds, operationOccupationEmptyWasteFactor], () => {
     if (
+        savingTrainOperationPlanMovement.value || stationPlanActions.busy ||
         usingOperationAnalysisSnapshot.value ||
         !isOperationPlanChartDataTab(activeOperationPlanTab.value) ||
         operationPlanChartBars.value.length === 0
@@ -9299,6 +9242,7 @@ watch(
 )
 
 onBeforeUnmount(() => {
+    void analysisSaveQueue.flush()
     operationPlanDisposed = true
     stationSchemeChangeVersion++
     stationSchemeLoadVersion++
@@ -9323,10 +9267,6 @@ onBeforeUnmount(() => {
     saturatedPlanRunVersion += 1
     processTrainSourceRequestVersion++
     processTrainGenerationVersion++
-    if (operationAnalysisSnapshotSaveTimer) {
-        window.clearTimeout(operationAnalysisSnapshotSaveTimer)
-        operationAnalysisSnapshotSaveTimer = null
-    }
     if (operationBottleneckSummaryCategorySaveTimer) {
         window.clearTimeout(operationBottleneckSummaryCategorySaveTimer)
         operationBottleneckSummaryCategorySaveTimer = null

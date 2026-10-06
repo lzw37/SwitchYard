@@ -24,7 +24,7 @@ public partial class OperationPlanController
             db = GetCapacityDbConnector();
             var auth = ValidateCapacityInstanceOwnershipOrFail(db, scope.InstanceID);
             if (auth is not null) return auth;
-            EnsureTrainOperationPlanSchema(db);
+
             db.BeginTransaction();
             inTransaction = true;
             const string filter = "InstanceID=@InstanceID AND StationSchemeID=@StationSchemeID AND OperationPlanID=@OperationPlanID";

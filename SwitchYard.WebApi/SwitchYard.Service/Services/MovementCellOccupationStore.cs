@@ -16,18 +16,25 @@ public sealed class MovementCellOccupationStore
     private static string Key(MovementRow movement) => movement.TrainID + "\0" + movement.MovementID;
 
     public MovementCellOccupationStore(DBConnector db, string instanceID, string stationSchemeID, string operationPlanID,
-        TrainRow? previewTrain = null, TrainProcessSnapshot? previewSnapshot = null)
+        TrainRow? previewTrain = null, TrainProcessSnapshot? previewSnapshot = null, IReadOnlyList<MovementRow>? movements = null)
     {
         var scope = new ProcessScope { InstanceID = instanceID, StationSchemeID = stationSchemeID, OperationPlanID = operationPlanID };
         const string station = "InstanceID=@InstanceID AND StationSchemeID=@StationSchemeID";
-        _routes = (db.Query<StationRouteRow>($"SELECT * FROM stationroute WHERE {station}", scope) ?? new())
+        var routeIDs = movements?.Select(ResolveRouteID).Where(id => id.Length > 0).Distinct(StringComparer.Ordinal).ToArray();
+        var trainIDs = movements?.Select(row => row.TrainID).Where(id => !string.IsNullOrEmpty(id)).Distinct(StringComparer.Ordinal).ToArray();
+        var parameters = new { scope.InstanceID, scope.StationSchemeID, scope.OperationPlanID, routeIDs, trainIDs };
+        _routes = (routeIDs is { Length: 0 } ? [] : db.Query<StationRouteRow>($"SELECT ID,CellList,InterruptCellList FROM stationroute WHERE {station}" +
+            (routeIDs is null ? "" : " AND ID IN @routeIDs"), parameters) ?? [])
             .Where(row => !string.IsNullOrWhiteSpace(row.ID)).ToDictionary(row => row.ID!, StringComparer.OrdinalIgnoreCase);
-        _times = db.Query<StationRouteTimeRow>($"SELECT * FROM stationroutetime WHERE {station}", scope) ?? new();
-        _trainTypes = (db.Query<TrainRow>($"SELECT * FROM train WHERE {station} AND OperationPlanID=@OperationPlanID", scope) ?? new())
+        _times = routeIDs is { Length: 0 } ? [] : db.Query<StationRouteTimeRow>($"SELECT RouteID,TrainTypeID,CellID,StartOccupationShift,EndOccupationShift FROM stationroutetime WHERE {station}" +
+            (routeIDs is null ? "" : " AND RouteID IN @routeIDs"), parameters) ?? [];
+        _trainTypes = (trainIDs is { Length: 0 } ? [] : db.Query<TrainRow>($"SELECT ID,TrainType FROM train WHERE {station} AND OperationPlanID=@OperationPlanID" +
+            (trainIDs is null ? "" : " AND ID IN @trainIDs"), parameters) ?? [])
             .Where(row => !string.IsNullOrWhiteSpace(row.ID)).ToDictionary(row => row.ID!, row => row.TrainType ?? "", StringComparer.OrdinalIgnoreCase);
         if (previewTrain?.ID is not null) _trainTypes[previewTrain.ID] = previewTrain.TrainType ?? "";
-        _cells = db.Query<CellRow>($"SELECT ID,LinkIDList FROM cell WHERE {station}", scope) ?? new();
-        var snapshots = TrainProcessSnapshotStore.LoadAll(db, scope);
+        var needsDwelling = movements is null || movements.Any(row => ResolveRouteID(row).Length == 0);
+        _cells = needsDwelling ? db.Query<CellRow>($"SELECT ID,LinkIDList FROM cell WHERE {station}", scope) ?? [] : [];
+        var snapshots = needsDwelling ? TrainProcessSnapshotStore.LoadAll(db, scope, trainIDs) : [];
         if (previewSnapshot is not null) snapshots.Add(previewSnapshot);
         foreach (var snapshot in snapshots)
             foreach (var (activityID, trackID) in snapshot.SelectedTrackIDs)
@@ -130,19 +137,10 @@ public sealed class MovementCellOccupationStore
         {
             movement.CellOccupations = MovementCellOccupations.Read(movement.CellOccupationsJson);
             if (movement.CellOccupations is not null) continue;
-            catalog ??= new(db, instanceID, stationSchemeID, operationPlanID);
+            // A read-only fallback supports externally imported legacy rows. Startup migration
+            // persists historical values in batches; GET requests never write to the database.
+            catalog ??= new(db, instanceID, stationSchemeID, operationPlanID, movements: movements);
             catalog.Prepare(movement);
-            // Compare-and-set prevents a late migration read from replacing a concurrently saved edit.
-            var changed = db.ExecuteNonQuery(@"UPDATE movement SET CellOccupationsJson=@CellOccupationsJson
-                WHERE InstanceID=@InstanceID AND StationSchemeID=@StationSchemeID AND OperationPlanID=@OperationPlanID
-                  AND TrainID=@TrainID AND MovementID=@MovementID AND CellOccupationsJson IS NULL", movement);
-            if (changed == 0) {
-                movement.CellOccupationsJson = db.Query<string>(@"SELECT CellOccupationsJson FROM movement
-                    WHERE InstanceID=@InstanceID AND StationSchemeID=@StationSchemeID AND OperationPlanID=@OperationPlanID
-                      AND TrainID=@TrainID AND MovementID=@MovementID", movement)?.SingleOrDefault();
-                movement.CellOccupations = MovementCellOccupations.Read(movement.CellOccupationsJson)
-                    ?? throw new InvalidOperationException("Cell occupation times were not saved.");
-            }
         }
     }
 

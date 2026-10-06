@@ -147,8 +147,7 @@ public sealed class OperationProcessController : ControllerBase
             var db = DBConnector.GetDBConnector(DBConnector.CapacityDatabaseSectionName);
             var permissionError = AuthorizeScope(db, normalized);
             if (permissionError is not null) return permissionError;
-            EnsureSchema(db);
-            SchemeTemplateStore.Migrate(db, normalized.InstanceID, normalized.StationSchemeID);
+
             return action(db, normalized);
         }
         catch (ProcessRequestException ex) { return StatusCode(ex.StatusCode, new { message = ex.Message, errors = ex.Errors }); }

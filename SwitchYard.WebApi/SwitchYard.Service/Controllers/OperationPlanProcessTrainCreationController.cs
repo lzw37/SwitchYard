@@ -39,10 +39,7 @@ public partial class OperationPlanController
             db = GetCapacityDbConnector();
             var permission = AuthorizeProcessGenerationScope(db, scope);
             if (permission is not null) return permission;
-            EnsureTrainOperationPlanSchema(db);
-            OperationProcessController.EnsureSchema(db);
-            SchemeTemplateStore.Migrate(db, scope.InstanceID, scope.StationSchemeID);
-            TrainProcessSnapshotStore.EnsureSchema(db);
+
             db.BeginTransaction();
             inTransaction = true;
             var lockSuffix = DBConnector.IsMySql(DBConnector.CapacityDatabaseSectionName) ? " FOR UPDATE" : "";

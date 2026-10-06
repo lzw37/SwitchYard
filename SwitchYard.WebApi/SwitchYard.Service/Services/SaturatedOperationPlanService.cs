@@ -39,7 +39,7 @@ public sealed class SaturatedOperationPlanService
         }
 
         var db = DBConnector.GetDBConnector(DBConnector.CapacityDatabaseSectionName);
-        OperationPlanController.EnsureMovementSchema(db);
+
         var instance = (db.Query<CapacityInstance>(
             "SELECT ID, Name, Owner, CreatedDate, IsActive FROM capacityinstance WHERE ID = @id",
             new { id = context.InstanceId }) ?? new List<CapacityInstance>()).FirstOrDefault()
@@ -65,7 +65,6 @@ public sealed class SaturatedOperationPlanService
             }) ?? new List<OperationPlanRow>()).FirstOrDefault()
             ?? throw new InvalidOperationException("源作业计划不存在。");
 
-        SchemeTemplateStore.Migrate(db, context.InstanceId, context.StationSchemeId);
         var sourceTrains = db.Query<TrainRow>(
             $@"SELECT InstanceID, StationSchemeID, OperationPlanID, {Quote("ID")}, TrainTemplateID,
                       TrainNumber, Name, TrainType, IsFixedOperation

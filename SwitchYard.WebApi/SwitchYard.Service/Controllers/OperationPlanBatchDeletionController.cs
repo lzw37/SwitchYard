@@ -30,9 +30,7 @@ public partial class OperationPlanController
             var permissionError = AuthorizeProcessGenerationScope(db, scope);
             if (permissionError is not null) return permissionError;
             // MySQL schema changes may commit implicitly; finish them before deletion starts.
-            EnsureTrainSchema(db);
-            EnsureMovementSchema(db);
-            TrainProcessSnapshotStore.EnsureSchema(db);
+
             db.BeginTransaction();
 
             const string scopeFilter = "InstanceID = @InstanceID AND StationSchemeID = @StationSchemeID AND OperationPlanID = @OperationPlanID";

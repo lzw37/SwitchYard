@@ -19,14 +19,14 @@ public partial class OperationPlanController
             var db = GetCapacityDbConnector();
             var auth = ValidateCapacityInstanceOwnershipOrFail(db, scope.InstanceID!);
             if (auth is not null) return auth;
-            EnsureOperationPlanObjectSchema(db);
+
             EnsureDefaultOperationPlan(db, scope.InstanceID!, scope.StationSchemeID!);
             if (!OperationPlanExists(db, scope.InstanceID!, scope.StationSchemeID!, scope.OperationPlanID!)) return NotFound("Operation plan not found.");
-            EnsureStationPlanChartSettingsSchema(db);
+
             var settings = LoadStationPlanCharts(db, scope.InstanceID!, scope.StationSchemeID!, scope.OperationPlanID!);
             if (!settings.IsConfigured)
             {
-                EnsureStationPlanViewSettingsSchema(db);
+
                 settings.LegacySettings = LoadStationPlanViewSettings(db, scope.InstanceID!, scope.StationSchemeID!, scope.OperationPlanID!);
             }
             return Ok(settings);
@@ -52,23 +52,21 @@ public partial class OperationPlanController
             db = GetCapacityDbConnector();
             var auth = ValidateCapacityInstanceOwnershipOrFail(db, scope.InstanceID!);
             if (auth is not null) return auth;
-            EnsureOperationPlanObjectSchema(db);
+
             EnsureDefaultOperationPlan(db, scope.InstanceID!, scope.StationSchemeID!);
             if (!OperationPlanExists(db, scope.InstanceID!, scope.StationSchemeID!, scope.OperationPlanID!)) return NotFound("Operation plan not found.");
-            EnsureStationPlanChartSettingsSchema(db);
+
             var parameters = new
             {
                 instanceID = scope.InstanceID, stationSchemeID = scope.StationSchemeID, operationPlanID = scope.OperationPlanID,
                 chartsJson = JsonSerializer.Serialize(charts)
             };
-            db.BeginTransaction();
-            db.ExecuteNonQuery($@"DELETE FROM {QuoteIdentifier(StationPlanChartSettingsTable)}
-                WHERE InstanceID=@instanceID AND StationSchemeID=@stationSchemeID AND OperationPlanID=@operationPlanID", parameters);
-            var inserted = db.ExecuteNonQuery($@"INSERT INTO {QuoteIdentifier(StationPlanChartSettingsTable)}
+            var upsert = DBConnector.IsMySql(DBConnector.CapacityDatabaseSectionName)
+                ? "ON DUPLICATE KEY UPDATE ChartsJson=VALUES(ChartsJson)"
+                : "ON CONFLICT(InstanceID,StationSchemeID,OperationPlanID) DO UPDATE SET ChartsJson=excluded.ChartsJson";
+            db.ExecuteNonQuery($@"INSERT INTO {QuoteIdentifier(StationPlanChartSettingsTable)}
                 (InstanceID,StationSchemeID,OperationPlanID,ChartsJson)
-                VALUES (@instanceID,@stationSchemeID,@operationPlanID,@chartsJson)", parameters);
-            if (inserted != 1) throw new InvalidOperationException("Station plan charts were not saved.");
-            db.Commit();
+                VALUES (@instanceID,@stationSchemeID,@operationPlanID,@chartsJson) {upsert}", parameters);
             return Ok(new StationPlanChartSettings { IsConfigured = true, Charts = charts });
         }
         catch (Exception ex)

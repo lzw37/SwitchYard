@@ -14,7 +14,6 @@ public sealed class StationCapacityInputBuilder
         var stationSchemeId = request.StationSchemeId.Trim();
         var operationPlanId = request.OperationPlanId.Trim();
         var dbConnector = DBConnector.GetDBConnector(DBConnector.CapacityDatabaseSectionName);
-        OperationPlanController.EnsureMovementSchema(dbConnector);
 
         var routeRows = dbConnector.Query<StationRouteRow>(
             @"SELECT InstanceID, StationSchemeID, ID, `Type` AS `Type`, Description,

@@ -19,10 +19,10 @@ public partial class OperationPlanController
             var db = GetCapacityDbConnector();
             var auth = ValidateCapacityInstanceOwnershipOrFail(db, scope.InstanceID!);
             if (auth is not null) return auth;
-            EnsureOperationPlanObjectSchema(db);
+
             EnsureDefaultOperationPlan(db, scope.InstanceID!, scope.StationSchemeID!);
             if (!OperationPlanExists(db, scope.InstanceID!, scope.StationSchemeID!, scope.OperationPlanID!)) return NotFound("Operation plan not found.");
-            EnsureStationPlanViewSettingsSchema(db);
+
             return Ok(LoadStationPlanViewSettings(db, scope.InstanceID!, scope.StationSchemeID!, scope.OperationPlanID!));
         }
         catch (Exception ex)
@@ -50,23 +50,21 @@ public partial class OperationPlanController
             db = GetCapacityDbConnector();
             var auth = ValidateCapacityInstanceOwnershipOrFail(db, scope.InstanceID!);
             if (auth is not null) return auth;
-            EnsureOperationPlanObjectSchema(db);
+
             EnsureDefaultOperationPlan(db, scope.InstanceID!, scope.StationSchemeID!);
             if (!OperationPlanExists(db, scope.InstanceID!, scope.StationSchemeID!, scope.OperationPlanID!)) return NotFound("Operation plan not found.");
-            EnsureStationPlanViewSettingsSchema(db);
+
             var parameters = new
             {
                 instanceID = scope.InstanceID, stationSchemeID = scope.StationSchemeID, operationPlanID = scope.OperationPlanID,
                 cellIDsJson = JsonSerializer.Serialize(cells), endpointNodeIDsJson = JsonSerializer.Serialize(endpoints)
             };
-            db.BeginTransaction();
-            db.ExecuteNonQuery($@"DELETE FROM {QuoteIdentifier(StationPlanViewSettingsTable)}
-                WHERE InstanceID=@instanceID AND StationSchemeID=@stationSchemeID AND OperationPlanID=@operationPlanID", parameters);
-            var inserted = db.ExecuteNonQuery($@"INSERT INTO {QuoteIdentifier(StationPlanViewSettingsTable)}
+            var upsert = DBConnector.IsMySql(DBConnector.CapacityDatabaseSectionName)
+                ? "ON DUPLICATE KEY UPDATE CellIDsJson=VALUES(CellIDsJson), EndpointNodeIDsJson=VALUES(EndpointNodeIDsJson)"
+                : "ON CONFLICT(InstanceID,StationSchemeID,OperationPlanID) DO UPDATE SET CellIDsJson=excluded.CellIDsJson, EndpointNodeIDsJson=excluded.EndpointNodeIDsJson";
+            db.ExecuteNonQuery($@"INSERT INTO {QuoteIdentifier(StationPlanViewSettingsTable)}
                 (InstanceID,StationSchemeID,OperationPlanID,CellIDsJson,EndpointNodeIDsJson)
-                VALUES (@instanceID,@stationSchemeID,@operationPlanID,@cellIDsJson,@endpointNodeIDsJson)", parameters);
-            if (inserted != 1) throw new InvalidOperationException("Station plan view settings were not saved.");
-            db.Commit();
+                VALUES (@instanceID,@stationSchemeID,@operationPlanID,@cellIDsJson,@endpointNodeIDsJson) {upsert}", parameters);
             return Ok(new StationPlanViewSettings { IsConfigured = true, CellIDs = cells, EndpointNodeIDs = endpoints });
         }
         catch (Exception ex)

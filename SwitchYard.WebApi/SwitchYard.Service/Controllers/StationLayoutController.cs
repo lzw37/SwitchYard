@@ -173,9 +173,6 @@ namespace SwitchYard.Service.Controllers
                     return authResult;
                 }
 
-                EnsureStationSchemeSchema(dbConnector);
-                EnsureLinkSchema(dbConnector);
-                EnsureCellSchema(dbConnector);
                 var normalizedStationSchemeID = ResolveStationSchemeID(
                     dbConnector,
                     normalizedInstanceID,
@@ -351,8 +348,6 @@ namespace SwitchYard.Service.Controllers
                     return authResult;
                 }
 
-                EnsureStationSchemeSchema(dbConnector);
-                EnsureStationRouteSchema(dbConnector);
                 var normalizedStationSchemeID = ResolveStationSchemeID(dbConnector, normalizedInstanceID, stationSchemeID);
                 if (string.IsNullOrWhiteSpace(normalizedStationSchemeID))
                 {
@@ -386,9 +381,6 @@ namespace SwitchYard.Service.Controllers
                     return authResult;
                 }
 
-                EnsureStationSchemeSchema(dbConnector);
-                EnsureCellSchema(dbConnector);
-                EnsureStationRouteSchema(dbConnector);
                 var normalizedStationSchemeID = ResolveStationSchemeID(
                     dbConnector,
                     normalizedInstanceID,
@@ -464,7 +456,6 @@ namespace SwitchYard.Service.Controllers
                     return authResult;
                 }
 
-                EnsureStationRouteSchema(dbConnector);
                 if (!StationSchemeIDExists(dbConnector, route.InstanceID!, route.StationSchemeID!))
                 {
                     return NotFound("Station scheme not found.");
@@ -543,7 +534,6 @@ namespace SwitchYard.Service.Controllers
                     return authResult;
                 }
 
-                EnsureStationRouteTimeSchema(dbConnector);
                 var route = FindStationRouteByID(
                     dbConnector,
                     normalizedInstanceID,
@@ -591,8 +581,6 @@ namespace SwitchYard.Service.Controllers
                     return authResult;
                 }
 
-                EnsureStationRouteSchema(dbConnector);
-                EnsureStationRouteTimeSchema(dbConnector);
                 var route = FindStationRouteByID(dbConnector, instanceID, stationSchemeID, routeID);
                 if (route == null)
                 {
@@ -654,8 +642,6 @@ namespace SwitchYard.Service.Controllers
                     return authResult;
                 }
 
-                EnsureStationRouteSchema(dbConnector);
-                EnsureStationRouteTimeSchema(dbConnector);
                 var route = FindStationRouteByID(dbConnector, instanceID, stationSchemeID, routeID);
                 if (route == null)
                 {
@@ -757,8 +743,6 @@ namespace SwitchYard.Service.Controllers
                     return authResult;
                 }
 
-                EnsureStationRouteSchema(dbConnector);
-                EnsureStationRouteTimeSchema(dbConnector);
                 var routes = LoadStationRoutes(dbConnector, instanceID, stationSchemeID);
                 var updatedRouteCount = 0;
                 var updatedRowCount = 0;
@@ -836,7 +820,6 @@ namespace SwitchYard.Service.Controllers
                     return authResult;
                 }
 
-                EnsureStationRouteSchema(dbConnector);
                 if (!StationRouteIDExists(dbConnector, route.InstanceID!, route.StationSchemeID!, originalID!))
                 {
                     return NotFound("Station route not found.");
@@ -933,7 +916,6 @@ namespace SwitchYard.Service.Controllers
                     return authResult;
                 }
 
-                EnsureStationSchemeSchema(dbConnector);
                 if (!StationSchemeIDExists(dbConnector, route.InstanceID!, route.StationSchemeID!))
                 {
                     return NotFound("Station scheme not found.");
@@ -984,7 +966,6 @@ namespace SwitchYard.Service.Controllers
                     return authResult;
                 }
 
-                EnsureStationRouteSchema(dbConnector);
                 if (!StationRouteIDExists(dbConnector, normalizedInstanceID, normalizedStationSchemeID, normalizedID))
                 {
                     return NotFound("Station route not found.");
@@ -1037,8 +1018,6 @@ namespace SwitchYard.Service.Controllers
                     return authResult;
                 }
 
-                EnsureStationSchemeSchema(dbConnector);
-                EnsureStationRouteEndSchema(dbConnector);
                 var normalizedStationSchemeID = ResolveStationSchemeID(dbConnector, normalizedInstanceID, stationSchemeID);
                 if (string.IsNullOrWhiteSpace(normalizedStationSchemeID))
                 {
@@ -1075,7 +1054,6 @@ namespace SwitchYard.Service.Controllers
                     return authResult;
                 }
 
-                EnsureStationRouteEndSchema(dbConnector);
                 if (!StationSchemeIDExists(dbConnector, routeEnd.InstanceID!, routeEnd.StationSchemeID!))
                 {
                     return NotFound("Station scheme not found.");
@@ -1148,7 +1126,6 @@ namespace SwitchYard.Service.Controllers
                     return authResult;
                 }
 
-                EnsureStationRouteEndSchema(dbConnector);
                 if (!StationRouteEndIDExists(dbConnector, routeEnd.InstanceID!, routeEnd.StationSchemeID!, originalID!))
                 {
                     return NotFound("Station route end not found.");
@@ -1226,7 +1203,6 @@ namespace SwitchYard.Service.Controllers
                     return authResult;
                 }
 
-                EnsureStationRouteEndSchema(dbConnector);
                 if (!StationRouteEndIDExists(dbConnector, normalizedInstanceID, normalizedStationSchemeID, normalizedID))
                 {
                     return NotFound("Station route end not found.");
@@ -1295,7 +1271,6 @@ namespace SwitchYard.Service.Controllers
                     return authResult;
                 }
 
-                EnsureStationSchemeSchema(dbConnector);
                 var normalizedID = GenerateStationSchemeID(dbConnector, normalizedInstanceID);
                 var normalizedName = NormalizeStationSchemeName(request?.Name, normalizedID);
 
@@ -1369,7 +1344,6 @@ namespace SwitchYard.Service.Controllers
                     return authResult;
                 }
 
-                EnsureStationSchemeSchema(dbConnector);
                 if (!StationSchemeIDExists(dbConnector, normalizedInstanceID, originalID))
                 {
                     return NotFound("Station scheme not found.");
@@ -1417,7 +1391,6 @@ namespace SwitchYard.Service.Controllers
                     return authResult;
                 }
 
-                EnsureStationSchemeSchema(dbConnector);
                 if (!StationSchemeIDExists(dbConnector, normalizedInstanceID, normalizedStationSchemeID))
                 {
                     return NotFound("Station scheme not found.");
@@ -1594,7 +1567,6 @@ namespace SwitchYard.Service.Controllers
 
         private List<StationSchemeLookupRow> LoadStationSchemes(DBConnector dbConnector, string instanceID)
         {
-            EnsureStationSchemeSchema(dbConnector);
 
             var stationSchemeTable = QuoteIdentifier("stationscheme");
             var rows = dbConnector.Query<StationSchemeLookupRow>(
@@ -1728,7 +1700,7 @@ namespace SwitchYard.Service.Controllers
 
         private static bool StationSchemeMetadataExists(DBConnector dbConnector, string instanceID, string stationSchemeID)
         {
-            EnsureStationSchemeSchema(dbConnector);
+
             var stationSchemeTable = QuoteIdentifier("stationscheme");
             return (dbConnector.Query<StationSchemeLookupRow>(
                 $@"SELECT ID
@@ -1795,7 +1767,7 @@ namespace SwitchYard.Service.Controllers
             string instanceID,
             string stationSchemeID)
         {
-            EnsureStationSchemeSchema(dbConnector);
+
             var stationSchemeTable = QuoteIdentifier("stationscheme");
             return (dbConnector.Query<StationSchemeLookupRow>(
                 $@"SELECT {QuoteIdentifier("DisplayStyles")} AS DisplayStyles
@@ -1856,7 +1828,7 @@ namespace SwitchYard.Service.Controllers
             string instanceID,
             string stationSchemeID)
         {
-            EnsureStationSchemeSchema(dbConnector);
+
             var stationSchemeTable = QuoteIdentifier("stationscheme");
             return (dbConnector.Query<StationSchemeLookupRow>(
                 $@"SELECT {QuoteIdentifier("GridSettings")} AS GridSettings
@@ -1948,7 +1920,7 @@ namespace SwitchYard.Service.Controllers
 
         private void EnsureStationSchemeExists(DBConnector dbConnector, string instanceID, string stationSchemeID)
         {
-            EnsureStationSchemeSchema(dbConnector);
+
             var stationSchemeTable = QuoteIdentifier("stationscheme");
             var exists = (dbConnector.Query<StationSchemeLookupRow>(
                 $@"SELECT ID
@@ -2058,7 +2030,7 @@ namespace SwitchYard.Service.Controllers
             string instanceID,
             string stationSchemeID)
         {
-            EnsureStationRouteTimeSchema(dbConnector);
+
             var tableName = QuoteIdentifier("stationroute");
             var timeTableName = QuoteIdentifier("stationroutetime");
             return dbConnector.Query<StationRouteRow>(
@@ -2089,7 +2061,6 @@ namespace SwitchYard.Service.Controllers
                 return false;
             }
 
-            EnsureStationRouteSchema(dbConnector);
             var tableName = QuoteIdentifier("stationroute");
             return (dbConnector.Query<StationRouteRow>(
                 $@"SELECT ID
@@ -2107,7 +2078,7 @@ namespace SwitchYard.Service.Controllers
             string stationSchemeID,
             string id)
         {
-            EnsureStationRouteSchema(dbConnector);
+
             var tableName = QuoteIdentifier("stationroute");
             return (dbConnector.Query<StationRouteRow>(
                 $@"SELECT InstanceID, StationSchemeID, ID, {QuoteIdentifier("Type")} AS {QuoteIdentifier("Type")},
@@ -2406,7 +2377,7 @@ namespace SwitchYard.Service.Controllers
             string trainTypeID,
             List<StationRouteTimeRow> rows)
         {
-            EnsureStationRouteTimeSchema(dbConnector);
+
             var tableName = QuoteIdentifier("stationroutetime");
             dbConnector.ExecuteNonQuery(
                 $@"DELETE FROM {tableName}
@@ -2451,7 +2422,7 @@ namespace SwitchYard.Service.Controllers
             string routeID,
             string trainTypeID)
         {
-            EnsureStationRouteTimeSchema(dbConnector);
+
             var tableName = QuoteIdentifier("stationroutetime");
             return dbConnector.Query<StationRouteTimeRow>(
                 $@"SELECT InstanceID, StationSchemeID, RouteID, TrainTypeID, CellID,
@@ -2578,7 +2549,6 @@ namespace SwitchYard.Service.Controllers
                 return false;
             }
 
-            EnsureStationRouteEndSchema(dbConnector);
             var tableName = QuoteIdentifier("stationrouteend");
             return (dbConnector.Query<StationRouteEndRow>(
                 $@"SELECT ID
@@ -2623,7 +2593,6 @@ namespace SwitchYard.Service.Controllers
                 return null;
             }
 
-            EnsureStationRouteEndSchema(dbConnector);
             var tableName = QuoteIdentifier("stationrouteend");
             return (dbConnector.Query<StationRouteEndRow>(
                 $@"SELECT InstanceID, StationSchemeID, ID, BindingNodeID, {QuoteIdentifier("Type")} AS {QuoteIdentifier("Type")}, SegmentTag, SidingTag
@@ -2681,7 +2650,6 @@ namespace SwitchYard.Service.Controllers
                 }
             }
 
-            EnsureStationRouteEndSchema(dbConnector);
             var startRouteEnd = FindStationRouteEndByBindingNodeID(
                 dbConnector,
                 instanceID,
@@ -2817,6 +2785,16 @@ namespace SwitchYard.Service.Controllers
             }
 
             return $"\"{escapedIdentifier}\"";
+        }
+
+        internal static void EnsureChartSchemaForMigration(DBConnector dbConnector)
+        {
+            EnsureStationSchemeSchema(dbConnector);
+            EnsureLinkSchema(dbConnector);
+            EnsureCellSchema(dbConnector);
+            EnsureStationRouteSchema(dbConnector);
+            EnsureStationRouteTimeSchema(dbConnector);
+            EnsureStationRouteEndSchema(dbConnector);
         }
 
         private static void EnsureStationSchemeSchema(DBConnector dbConnector)

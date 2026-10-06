@@ -44,9 +44,11 @@ namespace SwitchYard.Service.Services
                         DBConnector.CapacityDatabaseSectionName,
                         CapacityMySqlUnicodeTables);
                 }
+                OperationPlanSchemaMigration.EnsureSchema(DBConnector.GetDBConnector(DBConnector.CapacityDatabaseSectionName));
                 SwitchYard.Service.StationLayout.StationLayoutSchemaMigration.Apply(
                     DBConnector.GetDBConnector(DBConnector.CapacityDatabaseSectionName),
                     DBConnector.IsMySql(DBConnector.CapacityDatabaseSectionName));
+                OperationPlanSchemaMigration.MigrateData(DBConnector.GetDBConnector(DBConnector.CapacityDatabaseSectionName));
             }
         }
 

@@ -26,9 +26,7 @@ public partial class OperationPlanController
             var permissionError = AuthorizeProcessGenerationScope(db, scope, requirePlan: false);
             if (permissionError is not null) return permissionError;
             // Schema preparation may issue DDL (and backfills); keep it outside the atomic insert.
-            EnsureOperationPlanTemplateSchema(db);
-            OperationProcessController.EnsureSchema(db);
-            SchemeTemplateStore.Migrate(db, scope.InstanceID, scope.StationSchemeID);
+
             db.BeginTransaction();
             // SQLite's write transaction and MySQL's locking read serialize source edits/deletes
             // until commit. All validation and inserts use this same transaction connection.

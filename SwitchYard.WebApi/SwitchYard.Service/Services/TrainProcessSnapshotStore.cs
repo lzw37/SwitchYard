@@ -24,10 +24,10 @@ public static class TrainProcessSnapshotStore
                 PRIMARY KEY (InstanceID, StationSchemeID, OperationPlanID, TrainID))");
     }
 
-    public static List<TrainProcessSnapshot> LoadAll(DBConnector db, ProcessScope scope)
+    public static List<TrainProcessSnapshot> LoadAll(DBConnector db, ProcessScope scope, string?[]? trainIDs = null)
     {
-        if (!Exists(db)) return new();
-        return (db.Query<SnapshotRow>($"SELECT TrainID, Document FROM trainprocesssnapshot WHERE {ScopeFilter} ORDER BY TrainID", scope) ?? new())
+        if (trainIDs is { Length: 0 }) return new();
+        return (db.Query<SnapshotRow>($"SELECT TrainID, Document FROM trainprocesssnapshot WHERE {ScopeFilter}" + (trainIDs is null ? "" : " AND TrainID IN @trainIDs") + " ORDER BY TrainID", new { scope.InstanceID, scope.StationSchemeID, scope.OperationPlanID, trainIDs }) ?? new())
             .Select(row => {
                 var snapshot = JsonSerializer.Deserialize<TrainProcessSnapshot>(row.Document, JsonOptions)
                     ?? throw new InvalidOperationException("Stored train process snapshot is null.");

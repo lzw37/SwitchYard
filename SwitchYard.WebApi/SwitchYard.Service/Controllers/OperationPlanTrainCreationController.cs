@@ -47,7 +47,7 @@ public partial class OperationPlanController
             db = GetCapacityDbConnector();
             var auth = ValidateCapacityInstanceOwnershipOrFail(db, train.InstanceID!);
             if (auth is not null) return auth;
-            EnsureTrainOperationPlanSchema(db);
+
             var scope = new ProcessScope { InstanceID = train.InstanceID!, StationSchemeID = train.StationSchemeID!, OperationPlanID = train.OperationPlanID! };
             var scopeError = AuthorizeProcessGenerationScope(db, scope);
             if (scopeError is not null) return scopeError;

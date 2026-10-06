@@ -40,17 +40,24 @@ public partial class OperationPlanController
             db = GetCapacityDbConnector();
             var auth = ValidateCapacityInstanceOwnershipOrFail(db, first.InstanceID!);
             if (auth is not null) return auth;
-            EnsureTrainOperationPlanSchema(db);
+
             db.BeginTransaction();
             inTransaction = true;
+            var lockSuffix = DBConnector.IsMySql(DBConnector.CapacityDatabaseSectionName) ? " FOR UPDATE" : "";
+            var ids = items.Select(item => item.Updated.MovementID).ToArray();
+            var currentRows = (db.Query<MovementRow>($@"SELECT * FROM {QuoteIdentifier("movement")}
+                WHERE InstanceID=@InstanceID AND StationSchemeID=@StationSchemeID AND OperationPlanID=@OperationPlanID
+                  AND TrainID=@TrainID AND MovementID IN @ids ORDER BY MovementID{lockSuffix}",
+                new { first.InstanceID, first.StationSchemeID, first.OperationPlanID, first.TrainID, ids }) ?? [])
+                .ToDictionary(row => row.MovementID!, StringComparer.Ordinal);
+            var occupations = new MovementCellOccupationStore(db, first.InstanceID!, first.StationSchemeID!, first.OperationPlanID!,
+                movements: currentRows.Values.Concat(items.Select(item => item.Updated)).ToList());
             foreach (var item in items)
             {
-                var lockSuffix = DBConnector.IsMySql(DBConnector.CapacityDatabaseSectionName) ? " FOR UPDATE" : "";
-                var current = db.Query<MovementRow>($@"SELECT * FROM {QuoteIdentifier("movement")}
-                    WHERE InstanceID=@InstanceID AND StationSchemeID=@StationSchemeID AND OperationPlanID=@OperationPlanID
-                      AND TrainID=@TrainID AND MovementID=@MovementID{lockSuffix}", item.Updated)?.SingleOrDefault();
+                var current = currentRows.GetValueOrDefault(item.Updated.MovementID!);
                 if (current is null) { db.Rollback(); inTransaction = false; return NotFound("Movement not found."); }
                 current.CellOccupations = MovementCellOccupations.Read(current.CellOccupationsJson);
+                if (current.CellOccupations is null) occupations.Prepare(current);
                 var normalized = NormalizeMovementRowRequest(current, false, limitOccupationOffsets: false).Movement!;
                 // The UI represents an absent override document as an empty string.
                 normalized.CellOccupationOverridesJson ??= "{}";
@@ -63,9 +70,8 @@ public partial class OperationPlanController
                 { db.Rollback(); inTransaction = false; return Conflict("The plan has changed. Refresh before editing."); }
                 item.Updated.CellOccupationOverridesJson ??= current.CellOccupationOverridesJson;
             }
-            var occupations = new MovementCellOccupationStore(db, first.InstanceID!, first.StationSchemeID!, first.OperationPlanID!);
             foreach (var item in items)
-                if (UpdateMovement(db, item.Updated, occupations) != 1) throw new InvalidOperationException("Movement edit was not saved.");
+                if (UpdateMovement(db, item.Updated, occupations, currentRows[item.Updated.MovementID!]) != 1) throw new InvalidOperationException("Movement edit was not saved.");
             db.Commit();
             inTransaction = false;
             return Ok(items.Select(item => item.Updated).ToList());
