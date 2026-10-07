@@ -1,19 +1,19 @@
 <template>
-<svg ref="canvasRef" class="process-canvas" :class="{ 'process-is-busy': busy, 'process-is-connecting': connecting }" :width="canvasWidth * zoom" :height="canvasHeight * zoom" :viewBox="`0 0 ${canvasWidth} ${canvasHeight}`" role="group" :aria-label="ui('作业过程编排图，点击活动、事件、次序或锚以编辑属性', 'Operation process diagram. Select an activity, event, precedence or anchor to edit.')" @pointermove="emit('moveActivity', $event)" @pointerup="emit('endDrag')" @pointercancel="emit('endDrag')">
+<svg ref="canvasRef" class="process-canvas" :class="{ 'process-is-busy': busy, 'process-is-connecting': connecting }" :width="canvasWidth * zoom" :height="canvasHeight * zoom" :viewBox="`0 ${canvasTop} ${canvasWidth} ${canvasHeight}`" role="group" :aria-label="ui('作业过程编排图，点击活动、事件、次序或锚以编辑属性', 'Operation process diagram. Select an activity, event, precedence or anchor to edit.')" @pointermove="emit('moveActivity', $event)" @pointerup="emit('endDrag')" @pointercancel="emit('endDrag')">
     <defs>
         <pattern :id="`${canvasID}-grid`" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="#dce4ef" /></pattern>
         <marker :id="`${canvasID}-arrow`" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto" markerUnits="strokeWidth"><path d="M 0 0 L 9 4.5 L 0 9 z" fill="#8496af" /></marker>
         <marker :id="`${canvasID}-arrow-selected`" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto" markerUnits="strokeWidth"><path d="M 0 0 L 9 4.5 L 0 9 z" fill="#3265db" /></marker>
     </defs>
-    <rect :width="canvasWidth" :height="canvasHeight" fill="#fbfcfe" />
-    <rect :width="canvasWidth" :height="canvasHeight" :fill="`url(#${canvasID}-grid)`" @click="emit('selectObject', 'template', model.id)" />
+    <rect :y="canvasTop" :width="canvasWidth" :height="canvasHeight" fill="#fbfcfe" />
+    <rect :y="canvasTop" :width="canvasWidth" :height="canvasHeight" :fill="`url(#${canvasID}-grid)`" @click="emit('selectObject', 'template', model.id)" />
 
 
     <g v-for="edge in graphEdges" :key="edge.item.id" class="process-edge" :class="{ selected: isSelected('precedence', edge.item.id) }" role="button" :tabindex="connecting ? -1 : 0" :aria-disabled="connecting" :aria-label="`${ui('编辑次序', 'Edit precedence')} ${eventName(edge.item.leadingEvent)} → ${eventName(edge.item.followingEvent)}`" @click.stop="emit('selectObject', 'precedence', edge.item.id)" @keydown.enter="emit('selectObject', 'precedence', edge.item.id)">
         <path :d="edge.path" class="process-edge-hit" />
-        <path :d="edge.path" class="process-edge-line" :marker-end="`url(#${canvasID}-arrow${isSelected('precedence', edge.item.id) ? '-selected' : ''})`" />
-        <rect :x="edge.labelX - 27" :y="edge.labelY - 11" width="54" height="22" rx="11" class="process-edge-label-bg" />
-        <text :x="edge.labelX" :y="edge.labelY + 4" text-anchor="middle" class="process-edge-label">{{ edge.item.interval }} {{ ui('分钟', 'min') }}</text>
+        <path :d="edge.path" class="process-edge-line" :stroke-dasharray="edge.item.isExact ? undefined : '7 5'" :marker-end="`url(#${canvasID}-arrow${isSelected('precedence', edge.item.id) ? '-selected' : ''})`" />
+        <rect :x="edge.labelX - 38" :y="edge.labelY - 11" width="76" height="22" rx="11" class="process-edge-label-bg" />
+        <text :x="edge.labelX" :y="edge.labelY + 4" text-anchor="middle" class="process-edge-label">{{ edge.item.isExact ? '=' : '≥' }} {{ edge.item.interval }} {{ ui('分钟', 'min') }}</text>
     </g>
 
     <g v-for="activity in model.activities" :key="activity.id" class="process-activity" :class="{ selected: isSelected('activity', activity.id) }" :transform="`translate(${activity.x}, ${activity.y})`" role="button" :tabindex="connecting ? -1 : 0" :aria-disabled="connecting" :aria-label="`${ui('编辑活动', 'Edit activity')}: ${activity.name}`" @pointerdown="emit('startDrag', $event, activity)" @click.stop="emit('selectObject', 'activity', activity.id)" @keydown.enter="emit('selectObject', 'activity', activity.id)">
@@ -35,11 +35,12 @@
         <circle :cx="x" :cy="y" r="17" fill="transparent" />
         <text :x="x" :y="bottom + 19" text-anchor="middle" class="process-event-label">{{ shortText(event.name, 9) }}</text>
         <text v-if="event.time !== null" :x="x" :y="bottom + 36" text-anchor="middle" class="process-event-time">{{ formatTime(event.time) }}</text>
-        <g v-if="event.selectedAnchor" class="process-anchor-badge" @click.stop="emit('selectObject', 'anchor', event.selectedAnchor)">
-            <rect :x="x - 47" :y="top - 34" width="94" height="23" rx="6" :class="{ selected: isSelected('anchor', event.selectedAnchor) }" />
-            <text :x="x" :y="top - 19" text-anchor="middle">{{ shortText(anchorName(event.selectedAnchor), 6) }}</text>
+        <g v-for="(anchorID, index) in event.anchorList" :key="anchorID" class="process-anchor-badge" :transform="`translate(${x}, ${top - 34 - (event.anchorList.length - 1 - index) * ANCHOR_ROW_HEIGHT})`" role="button" :tabindex="connecting ? -1 : 0" :aria-disabled="connecting" :aria-label="`${ui('备选锚', 'Candidate anchor')}：${anchorName(anchorID)}`" @click.stop="emit('selectObject', 'anchor', anchorID)" @keydown.enter.stop.prevent="emit('selectObject', 'anchor', anchorID)" @keydown.space.stop.prevent="emit('selectObject', 'anchor', anchorID)">
+            <rect x="-47" y="0" width="94" height="23" rx="6" :class="{ selected: isSelected('anchor', anchorID) }" />
+            <text x="0" y="15" text-anchor="middle">{{ shortText(anchorName(anchorID), 6) }}</text>
+            <title>{{ ui('备选锚', 'Candidate anchor') }}：{{ anchorName(anchorID) }}</title>
         </g>
-        <title>{{ [event.name, formatTime(event.time), eventNodeSummary(event.id)].filter(Boolean).join(' · ') }}</title>
+        <title>{{ [event.name, formatTime(event.time), eventNodeSummary(event.id), eventAnchorSummary(event.anchorList)].filter(Boolean).join(' · ') }}</title>
     </g>
 </svg>
 </template>
@@ -76,9 +77,14 @@ const emit = defineEmits<{
 }>()
 const { locale } = useI18n()
 const canvasRef = ref<SVGSVGElement | null>(null)
+const ANCHOR_ROW_HEIGHT = 27
 const diagram = computed(() => createProcessDiagram(props.model, props.catalog, locale.value.startsWith('en')))
 const canvasWidth = computed(() => diagram.value.canvasWidth)
-const canvasHeight = computed(() => diagram.value.canvasHeight)
+// Keep every candidate visible when stacked badges extend above the first activity row.
+const canvasTop = computed(() => Math.min(0, ...diagram.value.renderedEvents
+    .filter(({ event }) => event.anchorList.length)
+    .map(({ event, top }) => top - 42 - (event.anchorList.length - 1) * ANCHOR_ROW_HEIGHT)))
+const canvasHeight = computed(() => diagram.value.canvasHeight - canvasTop.value)
 const activityCardLabels = computed(() => diagram.value.activityCardLabels)
 const renderedEvents = computed(() => diagram.value.renderedEvents)
 const graphEdges = computed(() => diagram.value.graphEdges)
@@ -93,6 +99,7 @@ function anchorName(id: string | null) { return props.model.anchors.find(item =>
 function nodeName(id: string | null) { return props.catalog.nodes.find(item => item.id === id)?.name || (id ? ui('节点不可用', 'Node unavailable') : ui('地点待定', 'Location pending')) }
 function formatTime(time: number | null) { return time === null ? '' : `T${time >= 0 ? '+' : ''}${time} ${ui('分钟', 'min')}` }
 function eventNodeSummary(eventID: string) { return `${ui('备选节点', 'Candidate nodes')}: ${(eventNodeLists.value.get(eventID) || []).map(nodeName).join('、') || ui('暂无', 'None')}` }
+function eventAnchorSummary(anchorIDs: string[]) { return `${ui('备选锚', 'Candidate anchors')}: ${anchorIDs.map(anchorName).join('、') || ui('未设置', 'Not set')}` }
 function isSelected(kind: ProcessObjectKind, id: string) { return props.selection?.kind === kind && props.selection.id === id }
 function isPrecedenceCandidate(activityID: string | null, side: ProcessEventSide) { return props.connecting && side === (props.precedenceSource ? 'start' : 'end') && !!activityID && props.candidateActivities.has(activityID) }
 function exportReportFigure(caption: string, namesOnly = false): ReportFigure | null {
@@ -101,7 +108,6 @@ function exportReportFigure(caption: string, namesOnly = false): ReportFigure | 
     if (namesOnly) {
         const catalog: ProcessCatalog = {
             nodes: props.catalog.nodes.map(item => ({ ...item, name: reportObjectName(item.name, item.id, ui('节点名称未提供', 'Unnamed node')) })),
-            tracks: props.catalog.tracks.map(item => ({ ...item, name: reportObjectName(item.name, item.id, ui('股道名称未提供', 'Unnamed track')) })),
             routes: props.catalog.routes.map(item => ({ ...item, name: reportObjectName(item.name, item.id, ui('进路名称未提供', 'Unnamed route')) })),
         }
         const labels = createProcessDiagram(props.model, catalog, locale.value.startsWith('en')).activityCardLabels
@@ -123,8 +129,9 @@ function exportReportFigure(caption: string, namesOnly = false): ReportFigure | 
             if (!event) return
             const name = group.querySelector('.process-event-label')
             if (name) name.textContent = shortText(reportObjectName(event.name, event.id, ui('未命名事件', 'Unnamed event')), 9)
-            const anchor = group.querySelector('.process-anchor-badge text')
-            if (anchor) anchor.textContent = shortText(reportAnchorName(props.model.anchors.find(item => item.id === event.selectedAnchor), catalog), 6)
+            group.querySelectorAll('.process-anchor-badge text').forEach((anchor, index) => {
+                anchor.textContent = shortText(reportAnchorName(props.model.anchors.find(item => item.id === event.anchorList[index]), catalog), 6)
+            })
         })
         caption = reportObjectName(caption, props.model.id, '未命名作业过程')
         stripReportInteractionMetadata(svg)
@@ -166,6 +173,8 @@ defineExpose({
 .process-precedence-halo { fill: #397bf029; stroke: #397bf066; stroke-width: 1; pointer-events: none; }
 .process-precedence-preview { fill: none; stroke: #3265db; stroke-width: 2.3; stroke-dasharray: 8 6; stroke-linejoin: round; pointer-events: none; }
 .process-anchor-badge rect { fill: #fff; stroke: #d6e1ef; }
+.process-anchor-badge { outline: none; }
+.process-anchor-badge:focus-visible rect { stroke: #3265db; stroke-width: 2; }
 .process-anchor-badge rect.selected { fill: #e9efff; stroke: #3265db; stroke-width: 2; }
 .process-anchor-badge text { fill: #7b8ca4; font-size: 10px; }
 .process-edge { cursor: pointer; outline: none; }

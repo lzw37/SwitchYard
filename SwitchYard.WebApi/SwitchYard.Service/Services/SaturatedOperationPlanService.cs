@@ -177,8 +177,9 @@ public sealed class SaturatedOperationPlanService
                 movements.Count != snapshot.Process.Activities.Count ||
                 snapshot.ActivityMovementMap.Values.Distinct(StringComparer.Ordinal).Count() != snapshot.Process.Activities.Count)
                 throw new InvalidOperationException($"列车 {snapshot.TrainID} 的过程活动映射不完整。");
-            var locationsByEvent = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
-            var selectedTracks = new Dictionary<string, string>(StringComparer.Ordinal);
+            var locationsByEvent = OperationProcessResourceLocations.StandaloneEvents(snapshot.Process, catalog);
+            var anchorDomains = snapshot.Process.Anchors.ToDictionary(a => a.Id, a => a.RouteIDs.ToHashSet(StringComparer.Ordinal), StringComparer.Ordinal);
+            var selectedRoutes = new Dictionary<string, string>(StringComparer.Ordinal);
             foreach (var activity in snapshot.Process.Activities)
             {
                 if (!snapshot.ActivityMovementMap.TryGetValue(activity.Id, out var movementId) ||
@@ -188,35 +189,30 @@ public sealed class SaturatedOperationPlanService
                     Math.Abs(movement.StartSeconds - solved.EventTimes[activity.StartEvent]) > 0.0000001 ||
                     Math.Abs(movement.EndSeconds - solved.EventTimes[activity.EndEvent]) > 0.0000001)
                     throw new InvalidOperationException($"求解结果的活动 {activity.Id} 端点时刻与事件图不一致。");
-                string resourceId;
-                if (activity.Type == "Dwelling")
-                {
-                    if (movement.TrackId is null || !resources[activity.Id].TrackIDs.Contains(movement.TrackId, StringComparer.Ordinal) ||
-                        !string.IsNullOrEmpty(movement.RouteId))
-                        throw new InvalidOperationException($"求解结果的停留活动 {activity.Id} 股道不符合原约束。");
-                    resourceId = movement.TrackId;
-                    selectedTracks[activity.Id] = resourceId;
-                }
-                else
-                {
-                    if (movement.TrackId is not null || !resources[activity.Id].RouteIDs.Contains(movement.RouteId, StringComparer.Ordinal))
-                        throw new InvalidOperationException($"求解结果的活动 {activity.Id} 进路不符合原约束。");
-                    resourceId = movement.RouteId;
-                }
+                if (!resources[activity.Id].RouteIDs.Contains(movement.RouteId, StringComparer.Ordinal))
+                    throw new InvalidOperationException($"求解结果的活动 {activity.Id} 进路不符合原约束。");
+                var resourceId = movement.RouteId;
+                selectedRoutes[activity.Id] = resourceId;
+                foreach (var anchor in snapshot.Process.Anchors.Where(a => a.DwellingActivityID == activity.Id))
+                    anchorDomains[anchor.Id].IntersectWith([resourceId]);
                 Intersect(activity.StartEvent, OperationProcessResourceLocations.Get(snapshot.Process, catalog, activity, resourceId, true));
                 Intersect(activity.EndEvent, OperationProcessResourceLocations.Get(snapshot.Process, catalog, activity, resourceId, false));
             }
+            if (!OperationProcessResourceLocations.Compatible(locationsByEvent, anchorDomains))
+                throw new InvalidOperationException($"求解结果中同一锚没有一致的地点（停留进路）。");
             var copy = JsonSerializer.Deserialize<TrainProcessSnapshot>(
                 JsonSerializer.Serialize(snapshot, TrainProcessSnapshotStore.JsonOptions), TrainProcessSnapshotStore.JsonOptions)!;
             copy.EventTimes = new Dictionary<string, double>(solved.EventTimes, StringComparer.Ordinal);
-            copy.SelectedTrackIDs = selectedTracks;
+            copy.SelectedRouteIDs = selectedRoutes;
             copies.Add(copy);
 
             void Intersect(string eventId, List<string> locations)
             {
+                if (snapshot.Process.Activities.Sum(a => (a.StartEvent == eventId ? 1 : 0) + (a.EndEvent == eventId ? 1 : 0)) > 1)
+                    locations = locations.Where(OperationProcessResourceLocations.HasNode).ToList();
                 if (locationsByEvent.TryGetValue(eventId, out var known)) known.IntersectWith(locations);
                 else locationsByEvent[eventId] = known = locations.ToHashSet(StringComparer.Ordinal);
-                if (known.Count == 0) throw new InvalidOperationException($"求解结果的共享事件 {eventId} 没有一致的地点或锚。");
+                if (known.Count == 0) throw new InvalidOperationException($"求解结果在共享事件 {eventId} 处没有一致的地点或锚。");
             }
         }
         return copies;

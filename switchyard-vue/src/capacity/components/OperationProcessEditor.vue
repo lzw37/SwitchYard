@@ -7,6 +7,7 @@
                 </el-select>
                 <span v-if="current" :class="['process-save-state', { dirty }]">{{ dirty ? ui('有未保存的修改', 'Unsaved changes') : ui('已保存', 'Saved') }}</span>
                 <ActionButton :icon="Plus" :disabled="editingLocked || !hasScope" @click="newTemplate" :label="ui('新建', 'New template')" />
+                <ActionButton variant="icon-text" :icon="DocumentCopy" :disabled="editingLocked || !hasScope || !current" @click="copyTemplate" :label="ui('复制作业过程', 'Duplicate process')" />
                 <ActionButton :icon="DocumentCopy" :disabled="editingLocked || !hasScope" @click="loadExample" :label="ui('加载测试案例', 'Load example')" />
                 <ActionButton type="primary" :icon="Check" :loading="saving" :disabled="loading || connecting || !current" @click="saveTemplate" :label="ui('保存模板', 'Save template')" />
                 <ActionButton :icon="Delete" :disabled="editingLocked || !current" @click="deleteTemplate" :label="ui('删除模板', 'Delete template')" />
@@ -19,12 +20,11 @@
         </el-alert>
         <el-alert v-if="conflictMessage" :title="conflictMessage" type="warning" show-icon :closable="false" class="process-alert">
             <div class="process-recovery-actions">
-                <ActionButton variant="text" type="primary" :disabled="editingLocked" @click="saveConflictCopy" :icon="DocumentCopy" :label="ui('保留修改并另存为新模板', 'Save changes as a new template')" />
+                <ActionButton variant="text" type="primary" :disabled="editingLocked" @click="copyTemplate" :icon="DocumentCopy" :label="ui('保留修改并另存为新模板', 'Save changes as a new template')" />
                 <ActionButton variant="text" :disabled="editingLocked" @click="reloadConflictingTemplate" :icon="Refresh" :label="ui('放弃本地修改并重新加载', 'Discard changes and reload')" />
             </div>
         </el-alert>
         <el-alert v-if="preview" :title="ui('这是可交互的测试案例：可拖动活动、点击图形并修改右侧属性；保存仅保留在本次演示中。', 'Interactive demo. Drag activities and select objects to edit. Saves last for this session only.')" type="info" show-icon :closable="false" class="process-alert" />
-        <el-alert v-if="trackCleanupNotice" :title="ui('已从草稿中移除未命名或已不存在的备选轨道，请保存需要保留此修正的模板。', 'Removed unnamed or missing tracks from drafts. Save a template to keep these corrections.')" type="info" show-icon :closable="false" class="process-alert" />
 
         <template v-if="current">
             <div class="process-workspace" :class="{ 'process-list-hidden': !showObjectList }" :style="{ '--inspector-width': `${inspectorWidth}px`, '--object-list-width': `${objectListWidth}px` }">
@@ -55,7 +55,7 @@
                             @select-object="selectObject" @start-drag="startDrag" @move-activity="moveActivity" @end-drag="endDrag"
                             @activate-event="activateEvent" @preview-precedence="previewPrecedence" @clear-precedence-preview="clearPrecedencePreview" />
                     </div>
-                    <div class="process-legend"><span v-for="type in activityTypes" :key="type"><i :style="{ background: typeColors[type].ink }" />{{ activityLabel(type) }}</span><span class="process-legend-note">{{ ui('○ 事件　→ 次序　⚓ 锚', '○ Event · → Precedence · Anchor') }}</span></div>
+                    <div class="process-legend"><span v-for="type in activityTypes" :key="type"><i :style="{ background: typeColors[type].ink }" />{{ activityLabel(type) }}</span><span class="process-legend-note">{{ ui('○ 事件　实线 = 严格间隔　虚线 ≥ 最小间隔　⚓ 锚', '○ Event · Solid = exact interval · Dashed ≥ minimum interval · Anchor') }}</span></div>
 
                 </div>
 
@@ -73,24 +73,19 @@
                                     <el-form-item :label="ui('开始事件', 'Start event')"><el-input :model-value="eventName(selectedActivity.startEvent)" readonly /></el-form-item>
                                     <el-form-item :label="ui('结束事件', 'End event')"><el-input :model-value="eventName(selectedActivity.endEvent)" readonly /></el-form-item>
 
-                                    <template v-if="selectedActivity.type === 'Dwelling'">
-                                        <div class="process-section-label">{{ ui('停留轨道', 'Dwelling tracks') }}</div>
-                                        <el-form-item :label="ui('备选轨道 TrackList', 'Candidate tracks')"><el-select v-model="selectedActivity.trackList" multiple filterable @change="syncSelectedTrack"><el-option v-for="track in dwellingTracks" :key="track.id" :label="track.name" :value="track.id" /></el-select></el-form-item>
+                                    <div class="process-section-label">{{ ui('作业进路', 'Activity routes') }}</div>
+                                    <el-form-item :label="ui('备选进路 RouteList', 'Candidate routes')"><el-select v-model="selectedActivity.routeList" multiple filterable @change="syncSelectedRoute"><el-option v-for="route in compatibleRoutes" :key="route.id" :label="route.name" :value="route.id" /></el-select></el-form-item>
+                                    <p v-if="selectedActivity.type === 'Dwelling'" class="process-field-help">{{ ui('起止事件共用自动生成的锚，锚的停留进路随备选进路同步。', 'Start and end events share an automatic anchor that follows the candidate dwelling routes.') }}</p>
+                                    <template v-if="availableRoutes.length && selectedActivity.type !== 'Dwelling'">
+                                        <div class="process-section-label">{{ ui('进路端点锚', 'Route endpoint anchors') }} <span>{{ ui('可留空', 'Optional') }}</span></div>
+                                        <el-collapse class="process-route-anchors">
+                                            <el-collapse-item v-for="route in availableRoutes" :key="route.id" :name="route.id" :title="route.name">
+                                                <p class="process-field-help">{{ nodeName(route.startNodeID) }} → {{ nodeName(route.endNodeID) }}</p>
+                                                <el-form-item :label="ui('起点锚', 'Start anchor')"><el-select :model-value="routeAnchorBinding(route.id)?.startAnchor" filterable clearable :placeholder="ui('不设置锚', 'No anchor')" @update:model-value="setRouteAnchor(route.id, 'startAnchor', $event)"><el-option v-for="anchor in endpointAnchors(route.id, 'startAnchor')" :key="anchor.id" :label="anchor.name" :value="anchor.id" /></el-select></el-form-item>
+                                                <el-form-item :label="ui('终点锚', 'End anchor')"><el-select :model-value="routeAnchorBinding(route.id)?.endAnchor" filterable clearable :placeholder="ui('不设置锚', 'No anchor')" @update:model-value="setRouteAnchor(route.id, 'endAnchor', $event)"><el-option v-for="anchor in endpointAnchors(route.id, 'endAnchor')" :key="anchor.id" :label="anchor.name" :value="anchor.id" /></el-select></el-form-item>
+                                            </el-collapse-item>
+                                        </el-collapse>
 
-                                    </template>
-                                    <template v-else>
-                                        <div class="process-section-label">{{ ui('移动进路', 'Movement routes') }}</div>
-                                        <el-form-item :label="ui('备选进路 RouteList', 'Candidate routes')"><el-select v-model="selectedActivity.routeList" multiple filterable @change="syncSelectedRoute"><el-option v-for="route in compatibleRoutes" :key="route.id" :label="route.name" :value="route.id" /></el-select></el-form-item>
-                                        <template v-if="availableRoutes.length">
-                                            <div class="process-section-label">{{ ui('进路端点锚', 'Route endpoint anchors') }} <span>{{ ui('可留空', 'Optional') }}</span></div>
-                                            <el-collapse class="process-route-anchors">
-                                                <el-collapse-item v-for="route in availableRoutes" :key="route.id" :name="route.id" :title="route.name">
-                                                    <p class="process-field-help">{{ nodeName(route.startNodeID) }} → {{ nodeName(route.endNodeID) }}</p>
-                                                    <el-form-item :label="ui('起点锚', 'Start anchor')"><el-select :model-value="routeAnchorBinding(route.id)?.startAnchor" filterable clearable :placeholder="ui('不设置锚', 'No anchor')" @update:model-value="setRouteAnchor(route.id, 'startAnchor', $event)"><el-option v-for="anchor in endpointAnchors(route.id, 'startAnchor')" :key="anchor.id" :label="anchor.name" :value="anchor.id" /></el-select></el-form-item>
-                                                    <el-form-item :label="ui('终点锚', 'End anchor')"><el-select :model-value="routeAnchorBinding(route.id)?.endAnchor" filterable clearable :placeholder="ui('不设置锚', 'No anchor')" @update:model-value="setRouteAnchor(route.id, 'endAnchor', $event)"><el-option v-for="anchor in endpointAnchors(route.id, 'endAnchor')" :key="anchor.id" :label="anchor.name" :value="anchor.id" /></el-select></el-form-item>
-                                                </el-collapse-item>
-                                            </el-collapse>
-                                        </template>
                                     </template>
                                 </template>
 
@@ -104,8 +99,12 @@
                                     </el-form-item>
 
                                     <div class="process-section-label">{{ ui('事件锚', 'Event anchors') }}</div>
-                                    <el-form-item :label="ui('备选锚 AnchorList', 'Candidate anchors')"><el-select v-model="selectedEvent.anchorList" multiple filterable collapse-tags collapse-tags-tooltip @change="syncSelectedAnchor"><el-option v-for="anchor in compatibleEventAnchors" :key="anchor.id" :label="`${anchor.name} · ${trackName(anchor.trackID)}`" :value="anchor.id" /></el-select></el-form-item>
-                                    <el-form-item :label="ui('选定锚 SelectedAnchor', 'Selected anchor')"><el-select :model-value="selectedEvent.selectedAnchor" clearable filterable :placeholder="ui('可暂不选择', 'Optional')" @update:model-value="selectedEvent.selectedAnchor = $event || null"><el-option v-for="anchor in availableAnchors" :key="anchor.id" :label="anchor.name" :value="anchor.id" /></el-select></el-form-item>
+                                    <el-form-item :label="ui('备选锚 AnchorList', 'Candidate anchors')">
+                                        <div v-if="selectedEventIsDwelling" class="process-node-candidates" role="list" :aria-label="ui('停留事件锚（自动生成，只读）', 'Dwelling event anchors (automatic, read only)')"><span v-for="id in selectedEvent.anchorList" :key="id" role="listitem"><el-tag effect="plain">{{ anchorName(id) }}</el-tag></span></div>
+                                        <el-select v-else v-model="selectedEvent.anchorList" multiple filterable collapse-tags collapse-tags-tooltip @change="syncSelectedAnchor"><el-option v-for="anchor in compatibleEventAnchors" :key="anchor.id" :label="`${anchor.name} · ${anchor.routeIDs.map(routeName).join('、')}`" :value="anchor.id" :disabled="selectedEvent.automaticAnchorIDs?.includes(anchor.id)" /></el-select>
+                                    </el-form-item>
+                                    <p v-if="selectedEventIsDwelling" class="process-field-help">{{ ui('由停留活动的备选进路自动生成，不可手工修改。', 'Generated from the dwelling activity’s candidate routes; cannot be edited manually.') }}</p>
+                                    <p v-else-if="selectedEvent.automaticAnchorIDs?.length" class="process-field-help">{{ ui('连接的停留事件锚已自动加入，断开或改接时同步更新。', 'Anchors from connected dwelling events are added automatically and follow connection changes.') }}</p>
 
                                 </template>
 
@@ -114,12 +113,20 @@
                                     <el-form-item :label="ui('前序事件 LeadingEvent', 'Preceding event')"><el-select v-model="selectedPrecedence.leadingEvent" filterable><el-option v-for="event in current.events" :key="event.id" :label="event.name" :value="event.id" :disabled="event.id === selectedPrecedence.followingEvent" /></el-select></el-form-item>
                                     <div class="process-flow-divider">↓</div>
                                     <el-form-item :label="ui('后序事件 FollowingEvent', 'Following event')"><el-select v-model="selectedPrecedence.followingEvent" filterable><el-option v-for="event in current.events" :key="event.id" :label="event.name" :value="event.id" :disabled="event.id === selectedPrecedence.leadingEvent" /></el-select></el-form-item>
-                                    <el-form-item :label="ui('最小间隔 Interval（分钟）', 'Minimum interval (min)')"><el-input-number v-model="selectedPrecedence.interval" :min="0" :precision="2" controls-position="right" /></el-form-item>
+                                    <el-form-item :label="ui('次序类型', 'Precedence type')">
+                                        <el-radio-group :model-value="selectedPrecedence.isExact ?? false" @update:model-value="selectedPrecedence.isExact = $event === true">
+                                            <el-radio :value="true">{{ ui('严格等于（=）', 'Exactly (=)') }}</el-radio>
+                                            <el-radio :value="false">{{ ui('至少间隔（≥）', 'At least (≥)') }}</el-radio>
+                                        </el-radio-group>
+                                    </el-form-item>
+                                    <el-form-item :label="ui('事件间隔 Interval（分钟）', 'Event interval (min)')"><el-input-number v-model="selectedPrecedence.interval" :min="0" :precision="2" controls-position="right" /></el-form-item>
+                                    <p class="process-field-help">{{ selectedPrecedence.isExact ? ui('后序事件与前序事件的时刻差必须等于规定间隔，图中用实线表示。', 'The event time difference must equal the interval, shown as a solid line.') : ui('后序事件与前序事件的时刻差必须大于等于规定间隔，图中用虚线表示。', 'The event time difference must be at least the interval, shown as a dashed line.') }}</p>
                                 </template>
 
                                 <template v-else-if="selectedAnchor">
                                     <el-form-item :label="ui('锚名称', 'Anchor name')"><el-input v-model="selectedAnchor.name" maxlength="100" /></el-form-item>
-                                    <el-form-item :label="ui('对应轨道 Track', 'Track')"><el-select v-model="selectedAnchor.trackID" filterable :placeholder="ui('选择锚所对应的轨道', 'Select a track for this anchor')"><el-option v-for="track in catalog.tracks" :key="track.id" :label="trackName(track.id)" :value="track.id" /></el-select></el-form-item>
+                                    <el-form-item :label="ui('对应停留进路', 'Dwelling routes')"><el-select v-model="selectedAnchor.routeIDs" multiple filterable :disabled="!!selectedAnchor.dwellingActivityID" :placeholder="ui('选择锚所对应的停留进路（可多选）', 'Select dwelling routes for this anchor')"><el-option v-for="route in catalog.routes.filter(route => route.type === 'Dwelling')" :key="route.id" :label="routeName(route.id)" :value="route.id" /></el-select></el-form-item>
+                                    <p v-if="selectedAnchor.dwellingActivityID" class="process-field-help">{{ ui('此锚由停留活动管理，请在该活动中修改备选进路。', 'This anchor is managed by a dwelling activity. Edit its candidate routes in that activity.') }}</p>
 
                                     <div class="process-reference-box"><span>{{ ui('引用此锚的事件', 'Events using this anchor') }}</span><b>{{ anchorEventCount }}</b></div>
                                 </template>
@@ -132,10 +139,10 @@
 
                                 </template>
                             </el-form>
-                            <ActionButton v-if="selection && selection.kind !== 'template'" class="process-delete-object" type="danger" :icon="Delete" :disabled="editingLocked" @click="deleteSelected" :label="ui('删除', 'Delete') + ' ' + inspectorTitle" />
+                            <ActionButton v-if="selection && selection.kind !== 'template' && !selectedAnchor?.dwellingActivityID" class="process-delete-object" type="danger" :icon="Delete" :disabled="editingLocked" @click="deleteSelected" :label="ui('删除', 'Delete') + ' ' + inspectorTitle" />
                         </fieldset>
                     </div>
-                    <div class="process-validation" :class="{ invalid: validationErrors.length }"><span>{{ validationErrors.length ? ui(`有 ${validationErrors.length} 项配置待完善`, `${validationErrors.length} configuration issues`) : ui('✓ 模板配置校验通过', 'Configuration valid') }}</span><ul v-if="validationErrors.length"><li v-for="message in validationErrors.slice(0, 5)" :key="message">{{ message }}</li><li v-if="validationErrors.length > 5">{{ ui(`其余 ${validationErrors.length - 5} 项将在保存时提示`, `${validationErrors.length - 5} more issues will be shown when saving`) }}</li></ul></div>
+                    <div class="process-validation" :class="{ invalid: validationErrors.length }"><span>{{ validationErrors.length ? ui(`有 ${validationErrors.length} 项配置待完善，可随时保存`, `${validationErrors.length} configuration issues; you can save at any time`) : ui('✓ 模板配置校验通过', 'Configuration valid') }}</span><ul v-if="validationErrors.length"><li v-for="message in validationErrors.slice(0, 5)" :key="message">{{ message }}</li><li v-if="validationErrors.length > 5">{{ ui(`另有 ${validationErrors.length - 5} 项，生成列车或计划前需完善配置`, `${validationErrors.length - 5} more issues; complete the configuration before generating trains or plans`) }}</li></ul></div>
                 </aside>
                 <PaneDivider v-if="showObjectList" v-model="objectListWidth" reverse :min="280" :max="640" :label="ui('对象列表', 'Objects')" />
                 <aside v-show="showObjectList" :id="`${canvasID}-objects`" class="process-object-list" :aria-label="ui('作业过程对象列表', 'Operation process objects')">
@@ -167,7 +174,7 @@ import { useI18n } from 'vue-i18n'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Edit, Refresh, CirclePlus, Check, Close, Connection, Delete, DocumentCopy, List, Location, Plus, ZoomIn, ZoomOut } from '@element-plus/icons-vue'
-import { activityLabels, activityTypes, api, createEmptyTemplate, createExampleTemplate, createDemoCatalog, deriveEventNodeLists, dwellingTrackNames, getPrecedenceEndCandidates, getPrecedenceStartCandidates, makeID, namedTracks, reconcileDwellingTracks, removeActivity, removeAnchor, removeEvent, renameActivity, syncEventNodeLists, validateTemplate, type ActivityType, type PrecedenceEndpoint, type ProcessActivity, type ProcessCatalog, type ProcessEvent, type ProcessScope, type ProcessTemplate, type ProcessTranslate } from '../operationProcess'
+import { activityLabels, activityTypes, anchorConnectsNodes, api, createEmptyTemplate, createExampleTemplate, createDemoCatalog, deriveEventNodeLists, getPrecedenceEndCandidates, getPrecedenceStartCandidates, makeID, removeActivity, removeAnchor, removeEvent, renameActivity, syncDwellingAnchors, syncEventNodeLists, validateTemplate, type ActivityType, type PrecedenceEndpoint, type ProcessActivity, type ProcessCatalog, type ProcessEvent, type ProcessScope, type ProcessTemplate, type ProcessTranslate } from '../operationProcess'
 
 const inspectorWidth = ref(300)
 const objectListWidth = ref(360)
@@ -191,20 +198,18 @@ const validationText = new Map<string, string>([
     ['进路锚引用了不存在的进路。', 'A route anchor references a missing route.'],
     ['进路起终点锚必须存在或留空。', 'Route endpoint anchors must exist or be empty.'],
     ['活动和次序关系形成了循环，请检查箭头方向。', 'Activities and precedences form a cycle. Check the arrow directions.'],
-    ['锚的轨道不连接任何候选节点。', 'The anchor track does not connect to any candidate node.'],
+    ['锚的停留进路不连接任何候选节点。', 'The anchor dwelling route does not connect to any candidate node.'],
     ['活动类型无效。', 'Invalid activity type.'],
     ['持续时间应满足 0 ≤ 最小值 ≤ 最大值。', 'Durations must satisfy 0 ≤ minimum ≤ maximum.'],
     ['画布位置无效。', 'Invalid canvas position.'],
     ['请指定两个不同且有效的起止事件。', 'Select two distinct valid start and end events.'],
     ['起止时刻与持续时间范围不一致。', 'Start and end times do not match the duration range.'],
-    ['停留活动仅使用轨道。', 'Dwelling activities can only use tracks.'],
-    ['备选轨道必须具名，名称为空的轨道不能用于停留活动。', 'Candidate tracks for dwelling activities must have names.'],
-    ['移动活动仅使用进路。', 'Movement activities can only use routes.'],
     ['进路类型必须与活动类型一致。', 'Route types must match the activity type.'],
     ['时刻必须是非负分钟数或留空。', 'Time must be nonnegative minutes or empty.'],
     ['节点不属于当前站场方案。', 'This node is not part of the current station scheme.'],
     ['时刻不满足最小间隔。', 'These times do not satisfy the minimum interval.'],
-    ['请选择当前站场方案的轨道。', 'Select a track from the current station scheme.'],
+    ['时刻差必须严格等于规定间隔。', 'The time difference must equal the specified interval.'],
+    ['请选择当前站场方案的停留进路。', 'Select a dwelling route from the current station scheme.'],
     ['包含不存在的对象。', 'contains missing objects.'],
     ['不能重复。', 'must not contain duplicates.'],
     ['的选定值必须属于备选列表。', 'must include the selected value.'],
@@ -219,10 +224,10 @@ function translateValidation(message: string) {
         const label = name === '进路起点' ? 'Route start' : name === '进路终点' ? 'Route end' : name
         if (detail) return `${label}: ${detail}`
     }
-    const listMessage = message.match(/^(.*)(备选进路|备选轨道|备选锚)(包含不存在的对象。|不能重复。|的选定值必须属于备选列表。)$/)
+    const listMessage = message.match(/^(.*)(备选进路|备选锚)(包含不存在的对象。|不能重复。|的选定值必须属于备选列表。)$/)
     if (listMessage) {
         const [, name, kind, detail] = listMessage
-        const label = kind === '备选进路' ? 'candidate routes' : kind === '备选轨道' ? 'candidate tracks' : 'candidate anchors'
+        const label = kind === '备选进路' ? 'candidate routes' : 'candidate anchors'
         return `${name}: ${label} ${validationText.get(detail!)}`
     }
     return message
@@ -239,12 +244,11 @@ const scopeKey = computed(() => JSON.stringify([props.preview, props.instanceID,
 const hasScope = computed(() => props.preview || !!(props.instanceID && props.stationSchemeID))
 const templates = ref<ProcessTemplate[]>([])
 const current = ref<ProcessTemplate | null>(null)
-const catalog = ref<ProcessCatalog>({ nodes: [], tracks: [], routes: [] })
+const catalog = ref<ProcessCatalog>({ nodes: [], routes: [] })
 const loading = ref(false)
 const saving = ref(false)
 const loadError = ref('')
 const conflictMessage = ref('')
-const trackCleanupNotice = ref(false)
 const busy = computed(() => loading.value || saving.value)
 const connecting = ref(false)
 const precedenceSource = ref<PrecedenceEndpoint | null>(null)
@@ -274,31 +278,29 @@ const dirty = computed(() => !!current.value && saved.value.get(current.value.id
 const validationErrors = computed(() => current.value ? validateTemplate(current.value, catalog.value).map(translateValidation) : [])
 const selectedActivity = computed(() => selection.value?.kind === 'activity' ? current.value?.activities.find(item => item.id === selection.value?.id) : undefined)
 const selectedEvent = computed(() => selection.value?.kind === 'event' ? current.value?.events.find(item => item.id === selection.value?.id) : undefined)
+const selectedEventIsDwelling = computed(() => !!selectedEvent.value && current.value?.activities.some(activity => activity.type === 'Dwelling' && (activity.startEvent === selectedEvent.value!.id || activity.endEvent === selectedEvent.value!.id)))
 const eventNodeLists = computed(() => current.value ? deriveEventNodeLists(current.value, catalog.value) : new Map<string, string[]>())
 const selectedPrecedence = computed(() => selection.value?.kind === 'precedence' ? current.value?.precedences.find(item => item.id === selection.value?.id) : undefined)
 const selectedAnchor = computed(() => selection.value?.kind === 'anchor' ? current.value?.anchors.find(item => item.id === selection.value?.id) : undefined)
 const inspectorTitle = computed(() => ({ template: ui('模板信息', 'Template'), activity: ui('活动', 'Activity'), event: ui('事件', 'Event'), precedence: ui('次序', 'Precedence'), anchor: ui('锚', 'Anchor') })[selection.value?.kind || 'template'])
 const compatibleRoutes = computed(() => catalog.value.routes.filter(route => route.type.toLowerCase() === selectedActivity.value?.type.toLowerCase()))
 const availableRoutes = computed(() => compatibleRoutes.value.filter(route => selectedActivity.value?.routeList.includes(route.id)))
-const dwellingTracks = computed(() => namedTracks(catalog.value))
 function candidateNames(activity: ProcessActivity) {
-    return activity.type === 'Dwelling' ? dwellingTrackNames(activity, catalog.value) : activity.routeList.map(routeName)
+    return activity.routeList.map(routeName)
 }
-const availableAnchors = computed(() => current.value?.anchors.filter(anchor => selectedEvent.value?.anchorList.includes(anchor.id)) || [])
-const compatibleEventAnchors = computed(() => current.value?.anchors.filter(anchor => anchorFitsEvent(anchor.id, selectedEvent.value?.id || '')) || [])
+const compatibleEventAnchors = computed(() => current.value?.anchors.filter(anchor => selectedEvent.value?.automaticAnchorIDs?.includes(anchor.id) || anchorFitsEvent(anchor.id, selectedEvent.value?.id || '')) || [])
 function routeAnchorBinding(routeID: string) { return current.value?.routeAnchors.find(item => item.routeID === routeID) }
 const anchorEventCount = computed(() => current.value?.events.filter(event => event.anchorList.includes(selectedAnchor.value?.id || '') || event.selectedAnchor === selectedAnchor.value?.id).length || 0)
 const listRows = computed<ListRow[]>(() => {
     const model = current.value
     if (!model) return []
-    if (listTab.value === 'activity') return model.activities.map(item => ({ id: item.id, name: item.name, summary: `${activityLabel(item.type)} · ${item.minDuration}–${item.maxDuration} ${ui('分钟', 'min')}`, detail: candidateNames(item).join('、') || (item.type === 'Dwelling' ? ui('未设置备选轨道', 'No candidate tracks') : ui('未设置备选进路', 'No candidate routes')) }))
-    if (listTab.value === 'event') return model.events.map(item => ({ id: item.id, name: item.name, summary: eventNodeSummary(item.id), detail: item.selectedAnchor ? anchorName(item.selectedAnchor) : ui('未选定锚', 'No selected anchor') }))
-    if (listTab.value === 'precedence') return model.precedences.map(item => ({ id: item.id, name: `${eventName(item.leadingEvent)} → ${eventName(item.followingEvent)}`, summary: `${ui('最小间隔', 'Minimum interval')} ${item.interval} ${ui('分钟', 'min')}`, detail: ui('前序事件 → 后序事件', 'Preceding event → following event') }))
-    return model.anchors.map(item => ({ id: item.id, name: item.name, summary: trackName(item.trackID), detail: `${model.events.filter(event => event.anchorList.includes(item.id) || event.selectedAnchor === item.id).length} ${ui('个事件引用', 'event references')}` }))
+    if (listTab.value === 'activity') return model.activities.map(item => ({ id: item.id, name: item.name, summary: `${activityLabel(item.type)} · ${item.minDuration}–${item.maxDuration} ${ui('分钟', 'min')}`, detail: candidateNames(item).join('、') || ui('未设置备选进路', 'No candidate routes') }))
+    if (listTab.value === 'event') return model.events.map(item => ({ id: item.id, name: item.name, summary: eventNodeSummary(item.id), detail: `${ui('备选锚', 'Candidate anchors')}：${item.anchorList.map(anchorName).join('、') || ui('未设置', 'Not set')}` }))
+    if (listTab.value === 'precedence') return model.precedences.map(item => ({ id: item.id, name: `${eventName(item.leadingEvent)} → ${eventName(item.followingEvent)}`, summary: `${item.isExact ? ui('严格等于', 'Exactly') : ui('至少间隔', 'At least')} ${item.interval} ${ui('分钟', 'min')}`, detail: ui('前序事件 → 后序事件', 'Preceding event → following event') }))
+    return model.anchors.map(item => ({ id: item.id, name: item.name, summary: item.routeIDs.map(routeName).join('、') || ui('未选择进路', 'No route selected'), detail: `${model.events.filter(event => event.anchorList.includes(item.id) || event.selectedAnchor === item.id).length} ${ui('个事件引用', 'event references')}` }))
 })
 function eventName(id: string | null) { return current.value?.events.find(item => item.id === id)?.name || ui('未选择事件', 'No event selected') }
 function anchorName(id: string | null) { return current.value?.anchors.find(item => item.id === id)?.name || ui('未选择锚', 'No anchor selected') }
-function trackName(id: string | null) { const track = catalog.value.tracks.find(item => item.id === id); return track ? track.name.trim() || `${ui('轨道', 'Track')} ${track.id}` : (id ? ui('轨道不可用', 'Track unavailable') : ui('未选择轨道', 'No track selected')) }
 function nodeName(id: string | null) { return catalog.value.nodes.find(item => item.id === id)?.name || (id ? ui('节点不可用', 'Node unavailable') : ui('地点待定', 'Location pending')) }
 function routeName(id: string | null) { return catalog.value.routes.find(item => item.id === id)?.name || (id ? ui('进路不可用', 'Route unavailable') : ui('未选择进路', 'No route selected')) }
 function eventNodeSummary(eventID: string) { return `${ui('备选节点', 'Candidate nodes')}: ${(eventNodeLists.value.get(eventID) || []).map(nodeName).join('、') || ui('暂无', 'None')}` }
@@ -317,13 +319,12 @@ async function loadScope() {
     const cached = drafts.get(capturedKey)
     loadError.value = ''
     conflictMessage.value = ''
-    trackCleanupNotice.value = false
     if (cached) {
         templates.value = clone(cached.templates)
         saved.value = new Map(cached.saved)
         catalog.value = clone(cached.catalog)
         current.value = templates.value.find(item => item.id === cached.selectedID) || templates.value[0] || null
-    } else { templates.value = []; current.value = null; saved.value = new Map(); catalog.value = { nodes: [], tracks: [], routes: [] } }
+    } else { templates.value = []; current.value = null; saved.value = new Map(); catalog.value = { nodes: [], routes: [] } }
     selection.value = current.value ? { kind: 'template', id: current.value.id } : null
     if (!hasScope.value) { loading.value = false; return }
     if (props.preview) {
@@ -342,9 +343,6 @@ async function loadScope() {
         saved.value = new Map(loadedTemplates.map(item => [item.id, JSON.stringify(item)]))
         const draftIDs = new Set(localDrafts.map(item => item.id))
         templates.value = [...loadedTemplates.filter(item => !draftIDs.has(item.id)), ...localDrafts]
-        for (const template of templates.value) {
-            if (reconcileDwellingTracks(template, loadedCatalog)) trackCleanupNotice.value = true
-        }
         current.value = templates.value.find(item => item.id === desiredID) || templates.value[0] || null
         selection.value = current.value ? { kind: 'template', id: current.value.id } : null
     } catch (error) { if (epoch === requestEpoch) loadError.value = errorMessage(error, ui('加载作业编排模板失败，请稍后重试。', 'Could not load operation templates. Try again.')) }
@@ -360,8 +358,7 @@ function errorMessage(error: unknown, fallback: string) {
 }
 async function saveTemplate() {
     if (!current.value || editingLocked.value) return
-    const errors = validateTemplate(current.value, catalog.value)
-    if (errors.length) { await ElMessageBox.alert(errors.slice(0, 12).map(translateValidation).join('\n'), ui('请先完善模板配置', 'Complete the template configuration'), { type: 'warning', confirmButtonText: ui('继续编辑', 'Continue editing'), customClass: 'process-validation-dialog' }); return }
+    syncDwellingAnchors(current.value)
     const snapshot = clone(current.value)
     syncEventNodeLists(snapshot, catalog.value)
     const capturedKey = activeScopeKey
@@ -380,7 +377,6 @@ async function saveTemplate() {
             if (state) { const index = state.templates.findIndex(item => item.id === snapshot.id); if (index >= 0) state.templates.splice(index, 1, result); state.saved.set(result.id, JSON.stringify(result)); state.selectedID = result.id }
         }
         conflictMessage.value = ''
-        if (capturedKey === activeScopeKey && templates.value.every(item => !isUnsaved(item))) trackCleanupNotice.value = false
         ElMessage.success(props.preview ? ui('模板已保存到本次演示。', 'Template saved for this demo session.') : ui('作业过程模板已保存。', 'Operation process template saved.'))
     } catch (error) {
         if ((error as { response?: { status?: number } }).response?.status === 409 && capturedKey === activeScopeKey) conflictMessage.value = ui('此模板已被其他操作修改。本地草稿已保留，请另存副本或重新加载最新版本。', 'This template changed elsewhere. Your draft is safe; save a copy or reload the latest version.')
@@ -388,12 +384,19 @@ async function saveTemplate() {
     }
     finally { saving.value = false }
 }
-async function saveConflictCopy() {
-    if (!current.value || editingLocked.value) return
+async function copyTemplate() {
+    if (!current.value || !hasScope.value || editingLocked.value) return
     const copy = clone(current.value)
     copy.id = makeID('process')
     copy.revision = 0
-    copy.name = `${copy.name.slice(0, 190)} (${ui('副本', 'Copy')})`
+    const sourceName = copy.name.trim() || ui('未命名模板', 'Untitled template')
+    const names = new Set(templates.value.map(template => template.name))
+    let index = 1
+    do {
+        const suffix = ` (${ui('副本', 'Copy')}${index === 1 ? '' : ` ${index}`})`
+        copy.name = `${sourceName.slice(0, 200 - suffix.length)}${suffix}`
+        index++
+    } while (names.has(copy.name))
     templates.value.push(copy)
     selectTemplate(copy.id)
     await saveTemplate()
@@ -438,7 +441,7 @@ function addActivity(type: ActivityType) {
     const start = makeEvent(`${name} ${ui('开始', 'Start')}`)
     const end = makeEvent(`${name} ${ui('结束', 'End')}`)
     model.events.push(start, end)
-    const item: ProcessActivity = { id: makeID('activity'), name, type, minDuration: 5, maxDuration: 15, startEvent: start.id, endEvent: end.id, routeList: [], selectedRoute: null, trackList: [], selectedTrack: null, x: 85 + (number - 1) % 3 * 310, y: 140 + Math.floor((number - 1) / 3) * 240 }
+    const item: ProcessActivity = { id: makeID('activity'), name, type, minDuration: 5, maxDuration: 15, startEvent: start.id, endEvent: end.id, routeList: [], selectedRoute: null, x: 85 + (number - 1) % 3 * 310, y: 140 + Math.floor((number - 1) / 3) * 240 }
     model.activities.push(item)
     selectObject('activity', item.id)
 }
@@ -463,21 +466,20 @@ function activateEvent(eventID: string, activityID: string | null, side: EventSi
     const endpoint = precedenceCandidates.value.find(item => item.activityID === activityID && item.eventID === eventID)
     if (!endpoint) return
     if (!precedenceSource.value) { precedenceSource.value = endpoint; precedenceTarget.value = null; return }
-    const item = { id: makeID('precedence'), leadingEvent: precedenceSource.value.eventID, followingEvent: endpoint.eventID, interval: 0 }
+    const item = { id: makeID('precedence'), leadingEvent: precedenceSource.value.eventID, followingEvent: endpoint.eventID, interval: 0, isExact: false }
     current.value.precedences.push(item)
     cancelPrecedence()
     selectObject('precedence', item.id)
 }
 function handleConnectionEscape(event: KeyboardEvent) { if (connecting.value && event.key === 'Escape') { event.preventDefault(); cancelPrecedence() } }
-function addAnchor() { if (!current.value || busy.value) return; const item = { id: makeID('anchor'), name: `${ui('轨道锚', 'Track anchor')} ${current.value.anchors.length + 1}`, trackID: catalog.value.tracks[0]?.id || '' }; current.value.anchors.push(item); selectObject('anchor', item.id) }
+function addAnchor() { if (!current.value || busy.value) return; const item = { id: makeID('anchor'), name: `${ui('进路锚', 'Route anchor')} ${current.value.anchors.length + 1}`, routeIDs: catalog.value.routes.filter(route => route.type === 'Dwelling').slice(0, 1).map(route => route.id) }; current.value.anchors.push(item); selectObject('anchor', item.id) }
 function changeActivityType(type: ActivityType) {
     const item = selectedActivity.value
     if (!item) return
     item.type = type
-    if (type === 'Dwelling') { item.routeList = []; item.selectedRoute = null; reconcileActivityEventNodes(item) }
-    else { item.trackList = []; item.selectedTrack = null; item.routeList = item.routeList.filter(id => catalog.value.routes.some(route => route.id === id && route.type.toLowerCase() === type.toLowerCase())); syncSelectedRoute() }
+    item.routeList = item.routeList.filter(id => catalog.value.routes.some(route => route.id === id && route.type.toLowerCase() === type.toLowerCase()))
+    syncSelectedRoute()
 }
-function syncSelectedTrack() { const item = selectedActivity.value; if (item?.selectedTrack && !item.trackList.includes(item.selectedTrack)) item.selectedTrack = null }
 function syncSelectedRoute() {
     const item = selectedActivity.value
     if (!item) return
@@ -489,16 +491,16 @@ function anchorFitsEvent(anchorID: string, eventID: string) {
     const nodeIDs = eventNodeLists.value.get(eventID) || []
     if (!nodeIDs.length) return true
     const anchor = current.value?.anchors.find(item => item.id === anchorID)
-    const track = catalog.value.tracks.find(item => item.id === anchor?.trackID)
-    return !!track && nodeIDs.some(nodeID => track.fromNodeID === nodeID || track.toNodeID === nodeID)
+    return anchorConnectsNodes(anchor, nodeIDs, catalog.value)
 }
 function reconcileActivityEventNodes(activity: ProcessActivity) {
     const model = current.value
     if (!model) return
     syncEventNodeLists(model, catalog.value)
+    syncDwellingAnchors(model)
     let removed = false
     for (const event of model.events.filter(item => item.id === activity.startEvent || item.id === activity.endEvent)) {
-        const anchors = event.anchorList.filter(id => anchorFitsEvent(id, event.id))
+        const anchors = event.anchorList.filter(id => event.automaticAnchorIDs?.includes(id) || anchorFitsEvent(id, event.id))
         removed ||= anchors.length !== event.anchorList.length
         event.anchorList = anchors
         if (event.selectedAnchor && !anchors.includes(event.selectedAnchor)) event.selectedAnchor = null
@@ -508,7 +510,7 @@ function reconcileActivityEventNodes(activity: ProcessActivity) {
 function endpointAnchors(routeID: string, endpoint: 'startAnchor' | 'endAnchor') {
     const route = catalog.value.routes.find(item => item.id === routeID)
     const nodeID = endpoint === 'startAnchor' ? route?.startNodeID : route?.endNodeID
-    return current.value?.anchors.filter(anchor => { const track = catalog.value.tracks.find(item => item.id === anchor.trackID); return !nodeID || track?.fromNodeID === nodeID || track?.toNodeID === nodeID }) || []
+    return current.value?.anchors.filter(anchor => !nodeID || anchorConnectsNodes(anchor, [nodeID], catalog.value)) || []
 }
 function setRouteAnchor(routeID: string, endpoint: 'startAnchor' | 'endAnchor', value: string | undefined) {
     const model = current.value
@@ -521,6 +523,7 @@ async function deleteSelected() {
     const model = current.value
     const target = selection.value
     if (!model || !target || target.kind === 'template' || busy.value) return
+    if (target.kind === 'anchor' && selectedAnchor.value?.dwellingActivityID) return
     if (target.kind === 'event' && model.activities.some(activity => activity.startEvent === target.id || activity.endEvent === target.id)) { ElMessage.warning(ui('活动的起止事件不能单独删除，请删除对应活动。', 'Start and end events belong to an activity. Delete the activity to remove them.')); return }
     const detail = target.kind === 'activity' ? ui('删除活动后，将同时清理其专属事件及相关次序。', 'Deleting this activity also removes its events and related precedence constraints.') : target.kind === 'anchor' ? ui('删除锚后，将同步清理事件和进路端点中的引用。', 'Deleting this anchor also removes its references from events and route endpoints.') : target.kind === 'event' ? ui('删除事件后，将同步清理与其关联的次序。', 'Deleting this event also removes its precedence constraints.') : ui('删除此次序约束。', 'Delete this precedence constraint.')
     try { await ElMessageBox.confirm(detail, `${ui('删除', 'Delete')} ${inspectorTitle.value}`, { type: 'warning', confirmButtonText: ui('删除', 'Delete'), cancelButtonText: ui('取消', 'Cancel') }) } catch { return }
@@ -550,6 +553,11 @@ window.addEventListener('keydown', handleConnectionEscape)
 watch([scopeKey, () => current.value?.id], cancelPrecedence)
 watch(busy, value => { if (value) cancelPrecedence() })
 watch([() => current.value?.activities.map(activity => `${activity.id}:${activity.startEvent}:${activity.endEvent}`).join('|'), () => current.value?.events.map(event => event.id).join('|')], () => { if (connecting.value) cancelPrecedence() })
+watch(() => current.value && JSON.stringify({
+    activities: current.value.activities.map(({ id, type, startEvent, endEvent, routeList }) => ({ id, type, startEvent, endEvent, routeList })),
+    events: current.value.events.map(({ id, anchorList, selectedAnchor, automaticAnchorIDs }) => ({ id, anchorList, selectedAnchor, automaticAnchorIDs })),
+    anchors: current.value.anchors, precedences: current.value.precedences,
+}), () => { if (current.value) syncDwellingAnchors(current.value) }, { immediate: true })
 watch(scopeKey, loadScope, { immediate: true })
 function getReportSnapshot(caption = current.value?.name || '', namesOnly = false) {
     if (!current.value) return null

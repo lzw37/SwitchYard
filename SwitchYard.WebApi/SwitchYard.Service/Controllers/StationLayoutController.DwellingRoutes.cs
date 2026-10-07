@@ -152,7 +152,12 @@ namespace SwitchYard.Service.Controllers
                 $@"SELECT * FROM {QuoteIdentifier("link")}
                    WHERE InstanceID = @InstanceID AND StationSchemeID = @StationSchemeID AND ID = @linkID",
                 new { route.InstanceID, route.StationSchemeID, linkID = linkIDs[0] }) ?? new()).FirstOrDefault();
-            if (link == null || string.IsNullOrWhiteSpace(link.Name) || link.FromNodeID == link.ToNodeID)
+            // Historical anchors can reference unnamed Links. Allow editing their migrated
+            // dwelling route without requiring a physical station-layout rename.
+            var existingUnnamedRoute = link != null && string.IsNullOrWhiteSpace(link.Name) &&
+                (db.Query<StationRouteRow>($"SELECT * FROM {QuoteIdentifier("stationroute")} WHERE InstanceID=@InstanceID AND StationSchemeID=@StationSchemeID AND ID=@ID", route) ?? new())
+                .Any(existing => IsDwellingRouteType(existing.Type) && ParseStationRouteIdList(existing.LinkList).SequenceEqual(linkIDs));
+            if (link == null || (string.IsNullOrWhiteSpace(link.Name) && !existingUnnamedRoute) || link.FromNodeID == link.ToNodeID)
                 return BadRequest("A dwelling route must reference a named Link with two distinct endpoints.");
 
             var from = ToInvariantString(link.FromNodeID);

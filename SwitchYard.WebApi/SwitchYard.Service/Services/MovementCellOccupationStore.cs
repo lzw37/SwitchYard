@@ -11,19 +11,16 @@ public sealed class MovementCellOccupationStore
     private readonly Dictionary<string, StationRouteRow> _routes;
     private readonly List<StationRouteTimeRow> _times;
     private readonly Dictionary<string, string> _trainTypes;
-    private readonly Dictionary<string, string> _dwellingTracks = new(StringComparer.OrdinalIgnoreCase);
-    private readonly List<CellRow> _cells;
-    private static string Key(MovementRow movement) => movement.TrainID + "\0" + movement.MovementID;
 
     public MovementCellOccupationStore(DBConnector db, string instanceID, string stationSchemeID, string operationPlanID,
-        TrainRow? previewTrain = null, TrainProcessSnapshot? previewSnapshot = null, IReadOnlyList<MovementRow>? movements = null)
+        TrainRow? previewTrain = null, IReadOnlyList<MovementRow>? movements = null)
     {
         var scope = new ProcessScope { InstanceID = instanceID, StationSchemeID = stationSchemeID, OperationPlanID = operationPlanID };
         const string station = "InstanceID=@InstanceID AND StationSchemeID=@StationSchemeID";
         var routeIDs = movements?.Select(ResolveRouteID).Where(id => id.Length > 0).Distinct(StringComparer.Ordinal).ToArray();
         var trainIDs = movements?.Select(row => row.TrainID).Where(id => !string.IsNullOrEmpty(id)).Distinct(StringComparer.Ordinal).ToArray();
         var parameters = new { scope.InstanceID, scope.StationSchemeID, scope.OperationPlanID, routeIDs, trainIDs };
-        _routes = (routeIDs is { Length: 0 } ? [] : db.Query<StationRouteRow>($"SELECT ID,CellList,InterruptCellList FROM stationroute WHERE {station}" +
+        _routes = (routeIDs is { Length: 0 } ? [] : db.Query<StationRouteRow>($"SELECT ID,Type,LinkList,CellList,InterruptCellList FROM stationroute WHERE {station}" +
             (routeIDs is null ? "" : " AND ID IN @routeIDs"), parameters) ?? [])
             .Where(row => !string.IsNullOrWhiteSpace(row.ID)).ToDictionary(row => row.ID!, StringComparer.OrdinalIgnoreCase);
         _times = routeIDs is { Length: 0 } ? [] : db.Query<StationRouteTimeRow>($"SELECT RouteID,TrainTypeID,CellID,StartOccupationShift,EndOccupationShift FROM stationroutetime WHERE {station}" +
@@ -32,14 +29,7 @@ public sealed class MovementCellOccupationStore
             (trainIDs is null ? "" : " AND ID IN @trainIDs"), parameters) ?? [])
             .Where(row => !string.IsNullOrWhiteSpace(row.ID)).ToDictionary(row => row.ID!, row => row.TrainType ?? "", StringComparer.OrdinalIgnoreCase);
         if (previewTrain?.ID is not null) _trainTypes[previewTrain.ID] = previewTrain.TrainType ?? "";
-        var needsDwelling = movements is null || movements.Any(row => ResolveRouteID(row).Length == 0);
-        _cells = needsDwelling ? db.Query<CellRow>($"SELECT ID,LinkIDList FROM cell WHERE {station}", scope) ?? [] : [];
-        var snapshots = needsDwelling ? TrainProcessSnapshotStore.LoadAll(db, scope, trainIDs) : [];
-        if (previewSnapshot is not null) snapshots.Add(previewSnapshot);
-        foreach (var snapshot in snapshots)
-            foreach (var (activityID, trackID) in snapshot.SelectedTrackIDs)
-                if (snapshot.ActivityMovementMap.TryGetValue(activityID, out var movementID))
-                    _dwellingTracks[snapshot.TrainID + "\0" + movementID] = trackID;
+
     }
 
     public List<MovementCellOccupation> Generate(MovementRow movement, bool useLegacyAbsoluteTimes = true)
@@ -48,12 +38,6 @@ public sealed class MovementCellOccupationStore
         _routes.TryGetValue(routeID, out var route);
         var cellIDs = StationCapacityInputBuilder.ParseList(route?.CellList);
         var interruptIDs = StationCapacityInputBuilder.ParseList(route?.InterruptCellList);
-        if (route is null && string.IsNullOrEmpty(routeID) && _dwellingTracks.TryGetValue(Key(movement), out var trackID))
-        {
-            routeID = "__process_dwelling__" + Convert.ToHexString(System.Text.Encoding.UTF8.GetBytes(trackID));
-            cellIDs = _cells.Where(cell => StationCapacityInputBuilder.ParseList(cell.LinkIDList).Contains(trackID, StringComparer.OrdinalIgnoreCase))
-                .Select(cell => cell.ID).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-        }
         var type = _trainTypes.GetValueOrDefault(movement.TrainID ?? "", "");
         var times = _times.Where(row => string.Equals(row.RouteID, routeID, StringComparison.OrdinalIgnoreCase)).ToList();
         var overrides = MovementCellOccupationOverrides.Read(movement.CellOccupationOverridesJson);
@@ -86,8 +70,7 @@ public sealed class MovementCellOccupationStore
         var basisChanged = previous is null || routeChanged || offsetsChanged ||
             previous.EarliestStartTime != movement.EarliestStartTime || previous.LatestEndTime != movement.LatestEndTime;
         var rows = !basisChanged && old is not null ? MovementCellOccupations.Normalize(old)! : Generate(movement);
-        // A route-less process dwelling has a generated route ID. Restore only Cell/route pairs
-        // valid for the new route, including that synthetic ID when undoing a track change.
+        // Restore only Cell/route pairs valid for the new route.
         var generatedRoutesByCell = routeChanged
             ? rows.ToDictionary(row => row.CellID, row => row.RouteID, StringComparer.OrdinalIgnoreCase) : null;
         if (basisChanged && !routeChanged && !offsetsChanged && old is not null)
@@ -159,9 +142,4 @@ public sealed class MovementCellOccupationStore
         return result;
     }
 
-    private sealed class CellRow
-    {
-        public string ID { get; set; } = "";
-        public string? LinkIDList { get; set; }
-    }
 }

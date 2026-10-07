@@ -160,9 +160,7 @@ export function buildStationCapacityReport(input: StationCapacityReportInput): W
         if (name && !routeNames.has(item.id)) routeNames.set(item.id, name)
     }
     const routeName = (id: string, name?: string) => objectName(name, id, '') || routeNames.get(id) || '进路名称未提供'
-    const trackNames = new Map(input.catalog?.tracks.map(track => [track.id, objectName(track.name, track.id, '轨道名称未提供')]) || [])
     const nodeNames = new Map(input.catalog?.nodes.map(node => [node.id, objectName(node.name, node.id, '节点名称未提供')]) || [])
-    const trackName = (id: string) => trackNames.get(id) || '轨道名称未提供'
     const nodeName = (id: string) => nodeNames.get(id) || '节点名称未提供'
     const cellMap = new Map(input.cells.map(cell => [cell.id, objectName(cell.name, cell.id, '资源名称未提供')]))
     const cellName = (id: string, name?: string) => objectName(name, id, '') || cellMap.get(id) || '资源名称未提供'
@@ -201,9 +199,9 @@ export function buildStationCapacityReport(input: StationCapacityReportInput): W
             if (process.description.trim()) paragraph(process.description.trim())
             const names = new Map(process.events.map(event => [event.id, objectName(event.name, event.id, '未命名事件')]))
             const eventName = (id: string) => names.get(id) || '事件名称未提供'
-            const anchorNames = new Map(process.anchors.map(anchor => [anchor.id, reportAnchorName(anchor, input.catalog || { nodes: [], tracks: [], routes: [] })]))
+            const anchorNames = new Map(process.anchors.map(anchor => [anchor.id, reportAnchorName(anchor, input.catalog || { nodes: [], routes: [] })]))
             const anchorName = (id: string) => anchorNames.get(id) || '锚名称未提供'
-            paragraph(`该过程包含 ${process.activities.length} 项活动和 ${process.precedences.length} 项次序约束。活动图保留模板中的活动布局和衔接关系；资源引用展示对应的进路、轨道及锚名称。候选资源不等同于已选资源，未选定项明确标注。`)
+            paragraph(`该过程包含 ${process.activities.length} 项活动和 ${process.precedences.length} 项次序约束。活动图保留模板中的活动布局和衔接关系；资源引用展示对应的进路及锚名称。候选资源不等同于已选资源，未选定项明确标注。`)
             const processFigure = input.renderedFigures?.processes[processReportFigureKey(process)]
             if (processFigure) figures([processFigure])
             else paragraph(process.activities.length || process.events.length ? '当前未取得该作业过程的界面图形，活动与约束详见下表。' : '该过程没有活动和事件，暂无可绘制的过程图。')
@@ -211,9 +209,7 @@ export function buildStationCapacityReport(input: StationCapacityReportInput): W
                 objectName(activity.name, activity.id, '未命名活动'), activityNames[activity.type] || activity.type,
                 `${number(activity.minDuration)}—${number(activity.maxDuration)}`,
                 `${eventName(activity.startEvent)} → ${eventName(activity.endEvent)}`,
-                activity.type === 'Dwelling'
-                    ? `轨道候选：${activity.trackList.map(trackName).join('、') || '无'}；已选：${activity.selectedTrack ? trackName(activity.selectedTrack) : '未选定'}`
-                    : `进路候选：${activity.routeList.map(id => routeName(id)).join('、') || '无'}；已选：${activity.selectedRoute ? routeName(activity.selectedRoute) : '未选定'}`,
+                `进路候选：${activity.routeList.map(id => routeName(id)).join('、') || '无'}；已选：${activity.selectedRoute ? routeName(activity.selectedRoute) : '未选定'}`,
             ]), [23, 11, 13, 25, 28])
             table(`${processName}事件定义`, ['事件名称', '相对时刻（分）', '节点', '锚引用'], process.events.map(event => [
                 eventName(event.id), number(event.time),
@@ -224,7 +220,7 @@ export function buildStationCapacityReport(input: StationCapacityReportInput): W
                 eventName(item.leadingEvent), eventName(item.followingEvent), number(item.interval),
             ]))
             else paragraph('该过程未设置显式次序约束；活动起止事件关系见活动表。')
-            if (process.anchors.length) table(`${processName}锚与轨道对应`, ['锚名称', '轨道名称'], process.anchors.map(anchor => [anchorName(anchor.id), anchor.trackID ? trackName(anchor.trackID) : '未指定']))
+            if (process.anchors.length) table(`${processName}锚与停留进路对应`, ['锚名称', '停留进路名称'], process.anchors.map(anchor => [anchorName(anchor.id), anchor.routeIDs.map(id => routeName(id)).join('、') || '未指定']))
         })
     }
 

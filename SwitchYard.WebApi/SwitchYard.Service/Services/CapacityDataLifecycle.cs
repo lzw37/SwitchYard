@@ -86,6 +86,7 @@ public static class CapacityDataLifecycle
                     : JsonSerializer.Deserialize<TrainProcessSnapshot>(row.Document, TrainProcessSnapshotStore.JsonOptions)?.Process;
                 if (process is null) throw new InvalidDataException("Stored process document is incomplete.");
                 if (process.Activities.Any(a => a.RouteList.Any(id => Same(id, routeID)) || Same(a.SelectedRoute, routeID)) ||
+                    process.Anchors.Any(a => a.RouteIDs.Any(id => Same(id, routeID))) ||
                     process.RouteAnchors.Any(a => Same(a.RouteID, routeID))) return true;
             }
         }

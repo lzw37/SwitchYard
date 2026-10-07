@@ -4,13 +4,6 @@ import { getStationPlanSegmentEditContext, orderStationPlanMovements, resolveSta
 
 export interface StationPlanEditRoute extends StationPlanRoute { type: string }
 export interface StationPlanEditMovement extends StationPlanMovement { minDuration?: number | null }
-export interface StationPlanAlignmentMovement {
-    trainID: string
-    movementID: string
-    sortOrder: number | null
-    startMinutes: number | null
-    endMinutes: number | null
-}
 export class StationPlanEditingError extends Error {
     reason = 'stale'
     constructor() { super('stale') }
@@ -29,7 +22,57 @@ export class StationPlanTrackEditingError extends Error {
     }
 }
 
-/** Reassign the arrival, stay and departure routes for one continuous visit to a named track. */
+/** Resolve the dwelling's own anchors without merging other alternative anchor groups transitively. */
+function dwellingAnchorEdges(train: StationPlanTrain, edit: StationPlanTrackEdit, movements: StationPlanEditMovement[],
+    routes: StationPlanEditRoute[], sourceTrack: StationPlanTrack): Map<string, Set<'start' | 'end'>> | null {
+    const snapshot = train.processConstraints, process = snapshot?.process
+    if (!snapshot || !process?.events || !process.anchors) return null
+    if (snapshot.trainID !== train.id) throw new StationPlanEditingError()
+    const selected = process.activities.find(activity => snapshot.activityMovementMap[activity.id] === edit.segment.movementID)
+    if (!selected || selected.type?.toLowerCase() !== 'dwelling' || edit.segment.isConnector) return null
+    const events = new Map(process.events.map(event => [event.id, event]))
+    const byMovement = new Map(movements.filter(movement => movement.trainID === train.id).map(movement => [movement.movementID, movement]))
+    const byRoute = new Map(routes.map(route => [route.id, route]))
+    const bindings = new Map(process.routeAnchors?.map(binding => [binding.routeID, binding]))
+    function anchorsAt(activity: { id: string; startEvent: string; endEvent: string }, edge: 'start' | 'end') {
+        const event = events.get(edge === 'start' ? activity.startEvent : activity.endEvent)
+        const movement = byMovement.get(snapshot!.activityMovementMap[activity.id] || '')
+        const routeID = movement && resolveStationPlanMovementRouteID(movement.routeID, movement.routeIDList)
+        const binding = routeID ? bindings.get(routeID) : undefined
+        const bound = edge === 'start' ? binding?.startAnchor : binding?.endAnchor
+        return bound ? [bound] : event?.selectedAnchor ? [event.selectedAnchor] : event?.anchorList || []
+    }
+    const owned = process.anchors.filter(anchor => anchor.dwellingActivityID === selected.id).map(anchor => anchor.id)
+    const anchorIDs = new Set(owned.length ? owned : [...anchorsAt(selected, 'start'), ...anchorsAt(selected, 'end')])
+    const eventIDs = new Set([selected.startEvent, selected.endEvent])
+    const sourceNodes = new Set([sourceTrack.fromNodeID.trim(), sourceTrack.toNodeID.trim()])
+    for (const activity of process.activities) {
+        const movement = byMovement.get(snapshot.activityMovementMap[activity.id] || '')
+        const route = movement && byRoute.get(resolveStationPlanMovementRouteID(movement.routeID, movement.routeIDList))
+        for (const edge of ['start', 'end'] as const) {
+            const ids = anchorsAt(activity, edge)
+            if (!ids.some(id => anchorIDs.has(id))) continue
+            const node = (edge === 'start' ? route?.startNodeID || movement?.startNodeID : route?.endNodeID || movement?.endNodeID)?.trim()
+            // With alternative anchors, the current track identifies which group this endpoint uses.
+            if (ids.length > 1 && node && !sourceNodes.has(node)) continue
+            eventIDs.add(edge === 'start' ? activity.startEvent : activity.endEvent)
+        }
+    }
+    const affected = new Map<string, Set<'start' | 'end'>>()
+    for (const activity of process.activities) {
+        const edges = new Set<'start' | 'end'>()
+        if (eventIDs.has(activity.startEvent)) edges.add('start')
+        if (eventIDs.has(activity.endEvent)) edges.add('end')
+        if (!edges.size) continue
+        const movementID = snapshot.activityMovementMap[activity.id]
+        if (!movementID) throw new StationPlanEditingError()
+        if (activity.type?.toLowerCase() === 'dwelling') { edges.add('start'); edges.add('end') }
+        affected.set(movementID, edges)
+    }
+    return affected
+}
+
+/** Reassign every route attached to the dwelling's anchors; legacy plans use their continuous visit. */
 export function editStationPlanTrack(
     train: StationPlanTrain, edit: StationPlanTrackEdit, movements: StationPlanEditMovement[],
     routes: StationPlanEditRoute[], tracks: StationPlanTrack[],
@@ -48,8 +91,9 @@ export function editStationPlanTrack(
     if (sourceTrack.id === targetTrack.id) return []
     const sourceNodes = new Set([sourceTrack.fromNodeID.trim(), sourceTrack.toNodeID.trim()])
     const targetNodes = new Set([targetTrack.fromNodeID.trim(), targetTrack.toNodeID.trim()])
-    const affected = new Map<string, Set<'start' | 'end'>>()
-    for (const index of visitIndexes) {
+    const anchored = dwellingAnchorEdges(train, edit, movements, routes, sourceTrack)
+    const affected = anchored || new Map<string, Set<'start' | 'end'>>()
+    for (const index of anchored ? [] : visitIndexes) {
         const visit = train.visits[index]!, anchor = visit.arriveAnchors?.[0]
         if (!anchor || anchor.kind !== 'movement' || visit.movementID !== anchor.movementID || (anchor.edge !== 'start' && anchor.edge !== 'end')) fail('stale')
         const edges = affected.get(anchor.movementID) || new Set<'start' | 'end'>()
@@ -73,11 +117,12 @@ export function editStationPlanTrack(
     for (const movement of ordered) {
         const name = movement.name || movement.movementID
         const entries = visitsByMovement.get(movement.movementID) || []
-        if (scoped.filter(candidate => candidate.movementID === movement.movementID).length !== 1 || entries.length !== 2 ||
-            entries[0]!.index % 2 !== 0 || entries[1]!.index !== entries[0]!.index + 1) fail('stale', [name])
+        if (scoped.filter(candidate => candidate.movementID === movement.movementID).length !== 1 ||
+            (entries.length === 0 ? !anchored : entries.length !== 2 ||
+                entries[0]!.index % 2 !== 0 || entries[1]!.index !== entries[0]!.index + 1)) fail('stale', [name])
         const routeID = resolveStationPlanMovementRouteID(movement.routeID, movement.routeIDList)
         const sourceRoute = routesByID.get(routeID)
-        for (const [index, edge] of (['start', 'end'] as const).entries()) {
+        for (const [index, edge] of (entries.length ? ['start', 'end'] as const : []).entries()) {
             const visit = entries[index]!.visit
             const matches = (anchor: StationPlanTimeAnchor | undefined) =>
                 anchor?.kind === 'movement' && anchor.movementID === movement.movementID && anchor.edge === edge
@@ -87,7 +132,8 @@ export function editStationPlanTrack(
                 !matches(visit.departAnchors[0]) || visit.arriveMinutes !== expectedTime || visit.departMinutes !== expectedTime ||
                 !visit.rowKey.startsWith('node:') || (expectedNode && visit.rowKey !== `node:${expectedNode}`)) fail('stale', [name])
         }
-        const startNodeID = entries[0]!.visit.rowKey.slice(5), endNodeID = entries[1]!.visit.rowKey.slice(5)
+        const startNodeID = sourceRoute?.startNodeID.trim() || movement.startNodeID?.trim() || entries[0]?.visit.rowKey.slice(5) || ''
+        const endNodeID = sourceRoute?.endNodeID.trim() || movement.endNodeID?.trim() || entries[1]?.visit.rowKey.slice(5) || ''
         const edges = affected.get(movement.movementID)!
         const both = edges.has('start') && edges.has('end')
         const routeLessDwelling = !routeID && both && sourceNodes.has(startNodeID) && sourceNodes.has(endNodeID)
@@ -105,33 +151,22 @@ export function editStationPlanTrack(
             .sort((a, b) => b.sharedCells - a.sharedCells || (a.route.id < b.route.id ? -1 : a.route.id > b.route.id ? 1 : 0))
         const chosen = candidates[0]?.route
         if (!chosen) { missingNames.push(name); continue }
-        plans.push({ ...movement, routeID: chosen.id, routeIDList: chosen.id, cellOccupations: [], cellOccupationOverridesJson: '{}' })
+        plans.push({ ...movement, routeID: chosen.id, routeIDList: chosen.id,
+            startNodeID: chosen.startNodeID, endNodeID: chosen.endNodeID, cellOccupations: [], cellOccupationOverridesJson: '{}' })
     }
     if (missingNames.length) fail('missing-route', missingNames)
     return plans
 }
 
-/** Align only this endpoint to the true adjacent movement, including movements omitted from the diagram. */
-export function alignStationPlanSegmentToAdjacent(
-    train: StationPlanTrain, edit: StationPlanSegmentEdit, movements: StationPlanAlignmentMovement[],
-): StationPlanSegmentEdit | null {
-    const context = getStationPlanSegmentEditContext(train, { ...edit, shiftFollowing: false })
-    if (!context) return null
-    // Preserve the normal movement ordering, but retain missing timestamps so an invalid neighbor is never skipped.
-    const ordered = movements.map((movement, index) => ({ movement, index }))
-        .filter(({ movement }) => movement.trainID === train.id)
-        .sort((a, b) => (a.movement.sortOrder ?? a.index) - (b.movement.sortOrder ?? b.index) || a.index - b.index)
-        .map(item => item.movement)
-    const selectedIndex = ordered.findIndex(movement => movement.movementID === context.movementID)
-    const original = ordered[selectedIndex]
-    if (!original || original.startMinutes !== edit.segment.startMinutes || original.endMinutes !== edit.segment.endMinutes) return null
-    const neighbor = ordered[selectedIndex + (edit.mode === 'start' ? -1 : 1)]
-    const referenceMinutes = edit.mode === 'start' ? neighbor?.endMinutes : neighbor?.startMinutes
-    const currentMinutes = edit.mode === 'start' ? original.startMinutes : original.endMinutes
-    if (typeof referenceMinutes !== 'number' || !Number.isFinite(referenceMinutes) || referenceMinutes === currentMinutes) return null
-    return { ...edit, shiftFollowing: false, coincidentAnchors: undefined,
-        startMinutes: edit.mode === 'start' ? referenceMinutes : edit.segment.startMinutes,
-        endMinutes: edit.mode === 'end' ? referenceMinutes : edit.segment.endMinutes }
+/** Preview the same route choices that will be saved, including both ends of each anchor-linked route. */
+export function previewStationPlanTrackEdit(train: StationPlanTrain, edit: StationPlanTrackEdit,
+    movements: StationPlanEditMovement[], routes: StationPlanEditRoute[], tracks: StationPlanTrack[]): StationPlanTrain {
+    const changed = new Map(editStationPlanTrack(train, edit, movements, routes, tracks).map(movement => [movement.movementID, movement]))
+    return { ...train, visits: train.visits.map(visit => {
+        const ref = visit.arriveAnchors?.[0], movement = ref && changed.get(ref.movementID)
+        if (!movement || !ref) return visit
+        return { ...visit, rowKey: `node:${ref.edge === 'start' ? movement.startNodeID : movement.endNodeID}` }
+    }) }
 }
 
 /** Shift movement timestamps in operation order. The backend owns all Cell occupation calculations. */

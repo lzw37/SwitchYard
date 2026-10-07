@@ -10,17 +10,19 @@ export interface ProcessScope { instanceID: string; stationSchemeID: string }
 export interface ProcessActivity {
     id: string; name: string; type: ActivityType; minDuration: number; maxDuration: number
     startEvent: string; endEvent: string; routeList: string[]; selectedRoute: string | null
-    trackList: string[]; selectedTrack: string | null; x: number; y: number
+    x: number; y: number
 }
 export interface ProcessEvent {
     id: string; name: string; time: number | null; nodeID: string | null
     /** Derived route endpoint candidates; absent in templates saved before this field existed. */
     nodeList?: string[]
     anchorList: string[]; selectedAnchor: string | null
+    /** Derived references added by dwelling ownership or a direct connection to a dwelling event. */
+    automaticAnchorIDs?: string[]
 }
-export interface ProcessPrecedence { id: string; leadingEvent: string; followingEvent: string; interval: number }
+export interface ProcessPrecedence { id: string; leadingEvent: string; followingEvent: string; interval: number; isExact?: boolean }
 export interface PrecedenceEndpoint { activityID: string; eventID: string }
-export interface ProcessAnchor { id: string; name: string; trackID: string }
+export interface ProcessAnchor { id: string; name: string; routeIDs: string[]; dwellingActivityID?: string | null }
 export interface ProcessRouteAnchors { routeID: string; startAnchor: string | null; endAnchor: string | null }
 export interface ProcessTemplate extends ProcessScope {
     id: string; name: string; description: string; revision: number
@@ -29,9 +31,12 @@ export interface ProcessTemplate extends ProcessScope {
 }
 export interface ProcessCatalog {
     nodes: { id: string; name: string }[]
-    /** Existing station Link objects are the track references in this initial module. */
-    tracks: { id: string; name: string; fromNodeID: string; toNodeID: string }[]
-    routes: { id: string; name: string; type: string; startNodeID: string | null; endNodeID: string | null; trackIDs: string[] }[]
+    routes: { id: string; name: string; type: string; startNodeID: string | null; endNodeID: string | null }[]
+}
+/** An anchor can connect at either endpoint of any of its dwelling routes. */
+export function anchorConnectsNodes(anchor: ProcessAnchor | undefined, nodeIDs: string[], catalog: ProcessCatalog): boolean {
+    return !!anchor && catalog.routes.some(route => anchor.routeIDs.includes(route.id) && route.type === 'Dwelling' &&
+        nodeIDs.some(id => route.startNodeID === id || route.endNodeID === id))
 }
 /** Candidate precedence endpoints are existing activity ends; graph validation handles cycles. */
 export function getPrecedenceEndCandidates(template: ProcessTemplate, leadingActivityID?: string): PrecedenceEndpoint[] {
@@ -68,12 +73,15 @@ export function deriveEventNodeLists(template: ProcessTemplate, catalog: Process
         if (nodeID && nodes.has(nodeID)) candidates.get(eventID)?.add(nodeID)
     }
     for (const activity of template.activities) {
-        if (activity.type === 'Dwelling') continue
         for (const routeID of activity.routeList) {
             const route = routes.get(routeID)
             if (!route || route.type.toLowerCase() !== activity.type.toLowerCase()) continue
             add(activity.startEvent, route.startNodeID)
             add(activity.endEvent, route.endNodeID)
+            if (activity.type === 'Dwelling') {
+                add(activity.startEvent, route.endNodeID)
+                add(activity.endEvent, route.startNodeID)
+            }
         }
     }
     return new Map([...candidates].map(([eventID, nodeIDs]) => [eventID, [...nodeIDs]]))
@@ -91,31 +99,86 @@ export function syncEventNodeLists(template: ProcessTemplate, catalog: ProcessCa
     }
     return changed
 }
-/** Only genuine station track names qualify for dwelling candidates; display fallbacks do not. */
-export function namedTracks(catalog: ProcessCatalog) {
-    return catalog.tracks.filter(track => (track.name ?? '').trim().length > 0)
-}
-export function dwellingTrackNames(activity: ProcessActivity, catalog: ProcessCatalog): string[] {
-    const names = new Map(namedTracks(catalog).map(track => [track.id, track.name]))
-    return activity.trackList.filter(id => names.has(id)).map(id => names.get(id)!)
-}
-/** Reconcile only after a successful catalog load. The caller retains the saved snapshot. */
-export function reconcileDwellingTracks(template: ProcessTemplate, catalog: ProcessCatalog): boolean {
-    const allowed = new Set(namedTracks(catalog).map(track => track.id))
-    let changed = false
-    for (const activity of template.activities) {
-        if (activity.type !== 'Dwelling') continue
-        const candidates = activity.trackList.filter(id => allowed.has(id))
-        if (candidates.length !== activity.trackList.length) {
-            activity.trackList = candidates
-            changed = true
+
+/** Reconcile editable templates only; execution snapshots retain their original constraints. */
+export function syncDwellingAnchors(template: ProcessTemplate): void {
+    const same = (left: string[] | undefined, right: string[]) => !!left && left.length === right.length && left.every((id, i) => id === right[i])
+    const dwellings = template.activities.filter(activity => activity.type === 'Dwelling')
+    const dwellingIDs = new Set(dwellings.map(activity => activity.id))
+    for (const anchor of [...template.anchors]) {
+        if (anchor.dwellingActivityID && !dwellingIDs.has(anchor.dwellingActivityID)) removeAnchor(template, anchor.id)
+    }
+    const owned = new Map<string, string[]>()
+    for (const activity of dwellings) {
+        let anchor = template.anchors.find(item => item.dwellingActivityID === activity.id)
+        const endpoints = template.events.filter(event => event.id === activity.startEvent || event.id === activity.endEvent)
+        if (!anchor) {
+            // Reuse an exclusive legacy anchor and expand its route subset to all dwelling candidates.
+            anchor = template.anchors.find(item => !item.dwellingActivityID &&
+                item.routeIDs.length > 0 && new Set(item.routeIDs).size === item.routeIDs.length &&
+                item.routeIDs.every(id => activity.routeList.includes(id)) && endpoints.length === 2 &&
+                endpoints.every(event => event.anchorList.length === 1 && event.anchorList[0] === item.id) &&
+                !dwellings.some(other => other.id !== activity.id && template.events.some(event =>
+                    (event.id === other.startEvent || event.id === other.endEvent) && event.anchorList.includes(item.id))))
+            if (anchor) anchor.dwellingActivityID = activity.id
+            else {
+                anchor = { id: makeID('anchor'), name: `${activity.name.slice(0, 199)}锚`, routeIDs: [...activity.routeList], dwellingActivityID: activity.id }
+                template.anchors.push(anchor)
+            }
         }
-        if (activity.selectedTrack !== null && !candidates.includes(activity.selectedTrack)) {
-            activity.selectedTrack = null
-            changed = true
+        if (!same(anchor.routeIDs, activity.routeList)) anchor.routeIDs = [...activity.routeList]
+        for (const event of endpoints) {
+            const ids = owned.get(event.id) || []
+            if (!ids.includes(anchor.id)) ids.push(anchor.id)
+            owned.set(event.id, ids)
         }
     }
-    return changed
+    const inherited = new Map<string, string[]>()
+    const activityEvents = new Set(template.activities.flatMap(activity => [activity.startEvent, activity.endEvent]))
+    function connect(sourceID: string, targetID: string) {
+        if (!activityEvents.has(targetID)) return
+        const ids = inherited.get(targetID) || []
+        for (const id of owned.get(sourceID) || []) if (!ids.includes(id)) ids.push(id)
+        inherited.set(targetID, ids)
+    }
+    for (const link of template.precedences) {
+        connect(link.leadingEvent, link.followingEvent)
+        connect(link.followingEvent, link.leadingEvent)
+    }
+    for (const event of template.events) {
+        const manual = event.anchorList.filter(id => !event.automaticAnchorIDs?.includes(id))
+        const derived = owned.has(event.id)
+            ? [...new Set([...owned.get(event.id)!, ...(inherited.get(event.id) || [])])]
+            : (inherited.get(event.id) || []).filter(id => !manual.includes(id))
+        const anchors = owned.has(event.id) ? derived : [...manual, ...derived]
+        if (!same(event.anchorList, anchors)) event.anchorList = anchors
+        if (!same(event.automaticAnchorIDs, derived)) event.automaticAnchorIDs = [...derived]
+        if (owned.has(event.id) || derived.length || (event.selectedAnchor && !anchors.includes(event.selectedAnchor))) event.selectedAnchor = null
+    }
+    // Old endpoint bindings cannot override automatic events or retain a removed dwelling candidate.
+    const events = new Map(template.events.map(event => [event.id, event]))
+    const required = new Map<string, Set<string>>()
+    for (const activity of template.activities) {
+        for (const [eventID, endpoint] of [[activity.startEvent, 'startAnchor'], [activity.endEvent, 'endAnchor']] as const) {
+            const automatic = events.get(eventID)?.automaticAnchorIDs || []
+            if (!automatic.length) continue
+            for (const routeID of activity.routeList) {
+                for (const side of activity.type === 'Dwelling' ? ['startAnchor', 'endAnchor'] as const : [endpoint]) {
+                    const key = `${routeID}\u001f${side}`
+                    const prior = required.get(key)
+                    required.set(key, new Set(prior ? automatic.filter(id => prior.has(id)) : automatic))
+                }
+            }
+        }
+    }
+    const managed = new Set(template.anchors.filter(anchor => anchor.dwellingActivityID).map(anchor => anchor.id))
+    for (const binding of template.routeAnchors) {
+        for (const side of ['startAnchor', 'endAnchor'] as const) {
+            const allowed = required.get(`${binding.routeID}\u001f${side}`)
+            const bound = binding[side]
+            if (bound && (allowed ? !allowed.has(bound) : managed.has(bound))) binding[side] = null
+        }
+    }
 }
 export function makeID(prefix: string) { return `${prefix}-${crypto.randomUUID()}` }
 export type ProcessTranslate = (key: string, parameters?: Record<string, string | number>) => string
@@ -135,18 +198,12 @@ export function createDemoCatalog(translate?: ProcessTranslate): ProcessCatalog 
             { id: 'N3', name: text('nodes.trackEast', 'Ⅰ道东端') }, { id: 'N4', name: text('nodes.eastExit', '东咽喉出口') },
             { id: 'N5', name: text('nodes.depotExit', '机务段出口') }, { id: 'N6', name: text('nodes.headshuntEnd', '牵出线端') },
         ],
-        tracks: [
-            { id: 'T1', name: text('tracks.westThroat', '西咽喉'), fromNodeID: 'N1', toNodeID: 'N2' },
-            { id: 'T2', name: text('tracks.arrivalDeparture', 'Ⅰ道（到发线）'), fromNodeID: 'N2', toNodeID: 'N3' },
-            { id: 'T3', name: text('tracks.eastThroat', '东咽喉'), fromNodeID: 'N3', toNodeID: 'N4' },
-            { id: 'T4', name: text('tracks.locomotive', '机车走行线'), fromNodeID: 'N5', toNodeID: 'N6' },
-            { id: 'T5', name: text('tracks.headshunt', '牵出线'), fromNodeID: 'N6', toNodeID: 'N2' },
-        ],
         routes: [
-            { id: 'R1', name: text('routes.arrival', '西咽喉 → Ⅰ道接车'), type: 'Arrival', startNodeID: 'N1', endNodeID: 'N2', trackIDs: ['T1', 'T2'] },
-            { id: 'R2', name: text('routes.departure', 'Ⅰ道 → 东咽喉发车'), type: 'Departure', startNodeID: 'N3', endNodeID: 'N4', trackIDs: ['T2', 'T3'] },
-            { id: 'R3', name: text('routes.shunting', '牵出线 → Ⅰ道调车'), type: 'Shunting', startNodeID: 'N6', endNodeID: 'N2', trackIDs: ['T5', 'T2'] },
-            { id: 'R4', name: text('routes.locomotive', '机务段 → 牵出线'), type: 'Locomotive', startNodeID: 'N5', endNodeID: 'N6', trackIDs: ['T4'] },
+            { id: 'R1', name: text('routes.arrival', '西咽喉 → Ⅰ道接车'), type: 'Arrival', startNodeID: 'N1', endNodeID: 'N2' },
+            { id: 'R2', name: text('routes.departure', 'Ⅰ道 → 东咽喉发车'), type: 'Departure', startNodeID: 'N3', endNodeID: 'N4' },
+            { id: 'R3', name: text('routes.shunting', '牵出线 → Ⅰ道调车'), type: 'Shunting', startNodeID: 'N6', endNodeID: 'N2' },
+            { id: 'R4', name: text('routes.locomotive', '机务段 → 牵出线'), type: 'Locomotive', startNodeID: 'N5', endNodeID: 'N6' },
+            { id: 'R5', name: text('routes.dwelling', 'Ⅰ道停留进路'), type: 'Dwelling', startNodeID: 'N2', endNodeID: 'N3' },
         ],
     }
 }
@@ -158,16 +215,16 @@ export function createExampleTemplate(scope: ProcessScope, catalog: ProcessCatal
     const template = createEmptyTemplate(scope, translate)
     template.name = text('exampleName', '接车—停留—发车（含机车与调车协同）')
     template.description = text('exampleDescription', '五类活动示例。时刻从模板起点起算，单位为分钟；次序间隔为最小间隔。可编辑后另存为当前车站方案共享的过程模板。')
-    const anchorByTrack = new Map<string, string>()
-    function anchorFor(trackID: string | undefined) {
-        if (!trackID || !catalog.tracks.some(track => track.id === trackID)) return null
-        if (!anchorByTrack.has(trackID)) {
+    const anchorByRoute = new Map<string, string>()
+    function anchorFor(nodeID: string | null | undefined) {
+        const route = catalog.routes.find(route => route.type === 'Dwelling' && (route.startNodeID === nodeID || route.endNodeID === nodeID))
+        if (!route) return null
+        if (!anchorByRoute.has(route.id)) {
             const id = makeID('anchor')
-            const trackName = catalog.tracks.find(track => track.id === trackID)!.name?.trim() || text('trackName', `轨道 ${trackID}`, { id: trackID })
-            template.anchors.push({ id, name: text('anchorName', `${trackName}锚`, { name: trackName }), trackID })
-            anchorByTrack.set(trackID, id)
+            template.anchors.push({ id, name: `${route.name}锚`, routeIDs: [route.id] })
+            anchorByRoute.set(route.id, id)
         }
-        return anchorByTrack.get(trackID)!
+        return anchorByRoute.get(route.id)!
     }
     const specs: [ActivityType, string, number, number, number, number, number, number][] = [
         ['Arrival', text('activities.arrival', '列车接入'), 0, 6, 4, 8, 65, 85],
@@ -179,25 +236,19 @@ export function createExampleTemplate(scope: ProcessScope, catalog: ProcessCatal
     for (const [type, name, start, end, minDuration, maxDuration, x, y] of specs) {
         const candidates = catalog.routes.filter(route => route.type.toLowerCase() === type.toLowerCase())
         const route = candidates[0]
-        const arrival = catalog.routes.find(item => item.type.toLowerCase() === 'arrival')
-        const dwellingTracks = namedTracks(catalog)
-        const dwellTrack = dwellingTracks.find(track => track.id === arrival?.trackIDs[arrival.trackIDs.length - 1]) ?? dwellingTracks[0]
-        const isDwell = type === 'Dwelling'
-        const endpointTrack = (nodeID: string | null | undefined) => route?.trackIDs.find(id =>
-            catalog.tracks.some(track => track.id === id && (track.fromNodeID === nodeID || track.toNodeID === nodeID)))
-        const startAnchor = anchorFor(isDwell ? dwellTrack?.id : endpointTrack(route?.startNodeID))
-        const endAnchor = anchorFor(isDwell ? dwellTrack?.id : endpointTrack(route?.endNodeID))
+        const startAnchor = anchorFor(route?.startNodeID)
+        const endAnchor = anchorFor(route?.endNodeID)
         const startEvent = makeID('event'), endEvent = makeID('event')
         template.events.push(
-            { id: startEvent, name: text('startEvent', `${name}开始`, { name }), time: start, nodeID: (isDwell ? dwellTrack?.fromNodeID : route?.startNodeID) || null,
+            { id: startEvent, name: text('startEvent', `${name}开始`, { name }), time: start, nodeID: route?.startNodeID || null,
                 anchorList: startAnchor ? [startAnchor] : [], selectedAnchor: startAnchor },
-            { id: endEvent, name: text('endEvent', `${name}结束`, { name }), time: end, nodeID: (isDwell ? dwellTrack?.toNodeID : route?.endNodeID) || null,
+            { id: endEvent, name: text('endEvent', `${name}结束`, { name }), time: end, nodeID: route?.endNodeID || null,
                 anchorList: endAnchor ? [endAnchor] : [], selectedAnchor: endAnchor },
         )
         template.activities.push({ id: makeID('activity'), name, type, minDuration, maxDuration,
-            startEvent, endEvent, routeList: isDwell ? [] : candidates.map(item => item.id), selectedRoute: isDwell ? null : route?.id ?? null,
-            trackList: isDwell && dwellTrack ? [dwellTrack.id] : [], selectedTrack: isDwell ? dwellTrack?.id ?? null : null, x, y })
-        if (!isDwell && route && !template.routeAnchors.some(item => item.routeID === route.id)) {
+            startEvent, endEvent, routeList: candidates.map(item => item.id), selectedRoute: route?.id ?? null,
+            x, y })
+        if (route && !template.routeAnchors.some(item => item.routeID === route.id)) {
             template.routeAnchors.push({ routeID: route.id, startAnchor, endAnchor })
         }
     }
@@ -240,6 +291,7 @@ export function removeAnchor(template: ProcessTemplate, id: string) {
     template.anchors = template.anchors.filter(item => item.id !== id)
     for (const event of template.events) {
         event.anchorList = event.anchorList.filter(anchor => anchor !== id)
+        if (event.automaticAnchorIDs) event.automaticAnchorIDs = event.automaticAnchorIDs.filter(anchor => anchor !== id)
         if (event.selectedAnchor === id) event.selectedAnchor = null
     }
     for (const route of template.routeAnchors) {
@@ -259,13 +311,11 @@ export function validateTemplate(template: ProcessTemplate, catalog: ProcessCata
     const events = new Map(template.events.map(item => [item.id, item]))
     const anchors = new Set(template.anchors.map(item => item.id))
     const routes = new Map(catalog.routes.map(item => [item.id, item]))
-    const tracks = new Set(catalog.tracks.map(item => item.id))
     const nodes = new Set(catalog.nodes.map(item => item.id))
     const eventNodeLists = deriveEventNodeLists(template, catalog)
     function anchorAtNodes(anchorID: string, nodeIDs: string[], label: string) {
         const anchor = template.anchors.find(item => item.id === anchorID)
-        const track = catalog.tracks.find(item => item.id === anchor?.trackID)
-        if (nodeIDs.length && track && !nodeIDs.some(id => track.fromNodeID === id || track.toNodeID === id)) errors.push(`${label}：锚的轨道不连接任何候选节点。`)
+        if (nodeIDs.length && anchor && !anchorConnectsNodes(anchor, nodeIDs, catalog)) errors.push(`${label}：锚的停留进路不连接任何候选节点。`)
     }
     const nonnegative = (value: number) => Number.isFinite(value) && value >= 0
     const adjacency = new Map<string, string[]>(template.events.map(item => [item.id, []]))
@@ -287,15 +337,8 @@ export function validateTemplate(template: ProcessTemplate, catalog: ProcessCata
             if (duration < activity.minDuration - 1e-8 || duration > activity.maxDuration + 1e-8) errors.push(`${activity.name}：起止时刻与持续时间范围不一致。`)
         }
         checkList(activity.routeList, activity.selectedRoute, new Set(routes.keys()), `${activity.name}备选进路`)
-        checkList(activity.trackList, activity.selectedTrack, tracks, `${activity.name}备选轨道`)
-        if (activity.type === 'Dwelling') {
-            if (activity.routeList.length || activity.selectedRoute) errors.push(`${activity.name}：停留活动仅使用轨道。`)
-            const namedTrackIDs = new Set(namedTracks(catalog).map(track => track.id))
-            if (activity.trackList.some(id => tracks.has(id) && !namedTrackIDs.has(id))) errors.push(`${activity.name}：备选轨道必须具名，名称为空的轨道不能用于停留活动。`)
-        } else {
-            if (activity.trackList.length || activity.selectedTrack) errors.push(`${activity.name}：移动活动仅使用进路。`)
-            if (activity.routeList.some(id => routes.get(id)?.type.toLowerCase() !== activity.type.toLowerCase())) errors.push(`${activity.name}：进路类型必须与活动类型一致。`)
-        }
+        if (!activity.routeList.length) errors.push(`${activity.name}：请选择备选进路。`)
+        if (activity.routeList.some(id => routes.get(id)?.type.toLowerCase() !== activity.type.toLowerCase())) errors.push(`${activity.name}：进路类型必须与活动类型一致。`)
         edge(activity.startEvent, activity.endEvent)
     }
     for (const event of template.events) {
@@ -309,12 +352,17 @@ export function validateTemplate(template: ProcessTemplate, catalog: ProcessCata
         const leading = events.get(precedence.leadingEvent), following = events.get(precedence.followingEvent)
         if (!leading || !following || leading.id === following.id) errors.push('次序需要两个不同且有效的事件。')
         if (!nonnegative(precedence.interval)) errors.push('次序间隔必须是非负分钟数。')
-        if (leading?.time != null && following?.time != null && following.time - leading.time < precedence.interval - 1e-8) errors.push(`${leading.name} → ${following.name}：时刻不满足最小间隔。`)
+        if (leading?.time != null && following?.time != null) {
+            const elapsed = following.time - leading.time
+            if (elapsed < precedence.interval - 1e-8 || (precedence.isExact && elapsed > precedence.interval + 1e-8))
+                errors.push(`${leading.name} → ${following.name}：${precedence.isExact ? '时刻差必须严格等于规定间隔。' : '时刻不满足最小间隔。'}`)
+        }
         edge(precedence.leadingEvent, precedence.followingEvent)
     }
     for (const anchor of template.anchors) {
         if (!anchor.name.trim() || anchor.name.length > 200) errors.push('锚名称必须为 1–200 个字符。')
-        if (!tracks.has(anchor.trackID)) errors.push(`${anchor.name}：请选择当前站场方案的轨道。`)
+        checkList(anchor.routeIDs, null, new Set(routes.keys()), `${anchor.name}备选进路`)
+        if (!anchor.routeIDs.length || anchor.routeIDs.some(id => routes.get(id)?.type !== 'Dwelling')) errors.push(`${anchor.name}：请选择当前站场方案的停留进路。`)
     }
     if (new Set(template.routeAnchors.map(item => item.routeID)).size !== template.routeAnchors.length) errors.push('同一进路的起终点锚配置不能重复。')
     for (const route of template.routeAnchors) {

@@ -28,13 +28,13 @@ General guides live in `doc/`; the detailed process model and API guide is maint
 | Module / route | Implemented features |
 | --- | --- |
 | Hump `/hump` | Instance management, plan view, wagon and calculation conditions, profile design, energy-height calculations, headway checks, 2D and 3D rolling simulations |
-| Capacity `/capacity` | Station layouts, route design, 3D views, calculation parameters, operation processes, train templates, train operation plans, model solving, and simulation |
+| Capacity `/capacity` | Station layouts, route design, calculation parameters, operation processes, train templates, train operation plans, model solving, and unified 2D/3D simulation |
 | Analysis within Operation Plan | Plan chart, occupation time tables, bottleneck analysis, and capacity category summaries |
 | Courses `/courses` | Course navigation, study content, videos, PDF slides, and fill-in-the-blank exercises |
 | Accounts | Registration and sign-in, profile and password changes, administrative user and hump-instance management, and instance authorization |
 | Standalone station layout | Reusable Vue package, injected host gateway, shared document contracts, and backend services |
 
-The separate **Result Analysis** tab in the capacity workspace is still a placeholder. Implemented analysis views are inside **Operation Plan**. The traction-calculation section contains a frontend sample rather than a connected production calculation. A 3D view displays station geometry and movements; it is not the capacity solver.
+The separate **Result Analysis** tab in the capacity workspace is still a placeholder. Implemented analysis views are inside **Operation Plan**. The traction-calculation section contains a frontend sample rather than a connected production calculation. The Simulation tab offers a 2D/3D switch with shared playback controls, movement sequence, and Gantt chart. Switching views preserves playback position and Gantt settings; leaving the tab pauses playback. The 3D view displays station geometry and movements; it is not the capacity solver.
 
 The interface supports Chinese and English. Capacity analysis, courses, and other updated workspaces use small circular buttons with hover labels and dividers for resizable panels. The hump module retains its original buttons, headings, toolbars, and panel styles; arrows expand or collapse the side panels in the profile designer. The independent station layout module retains its own toolbar design. Names, descriptions, and teaching content supplied by users are not automatically translated.
 

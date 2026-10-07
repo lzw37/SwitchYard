@@ -51,12 +51,6 @@
                     </div>
                     <el-empty v-else :description="t('capacityMain.placeholders.selectInstance')" />
                 </el-tab-pane>
-                <el-tab-pane :label="t('capacityMain.tabs.layout3d')" name="layout3d" lazy>
-                    <div v-if="activeTab === 'layout3d' && hasSelectedInstance" class="station-layout-3d-pane">
-                        <StationLayout3D :selected-instance-id="selectedInstance || ''" />
-                    </div>
-                    <el-empty v-else-if="activeTab === 'layout3d'" :description="t('capacityMain.placeholders.selectInstance')" />
-                </el-tab-pane>
                 <el-tab-pane :label="t('capacityMain.tabs.calcParams')" name="calcParams" lazy>
                     <div v-if="hasSelectedInstance" class="calculation-parameters-pane">
                         <CalculationParameters :selected-instance-id="selectedInstance || ''" />
@@ -82,7 +76,7 @@
                 </el-tab-pane>
                 <el-tab-pane :label="t('capacityMain.tabs.simulation')" name="simulation">
                     <div v-if="hasSelectedInstance" class="operation-simulation-pane">
-                        <OperationSimulation :selected-instance-id="selectedInstance || ''" />
+                        <OperationSimulation :selected-instance-id="selectedInstance || ''" :active="activeTab === 'simulation'" />
                     </div>
                     <el-empty v-else :description="t('capacityMain.placeholders.selectInstance')" />
                 </el-tab-pane>
@@ -105,7 +99,7 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, onMounted, computed, defineAsyncComponent } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import axios from '@/utils/axios'
@@ -122,8 +116,6 @@ import OperationSimulation from './OperationSimulation.vue'
 import ModelSolving from './ModelSolving.vue'
 import CapacityInstanceManager from './CapacityInstanceManager.vue'
 import UserManagement from '@/views/UserManagement.vue'
-
-const StationLayout3D = defineAsyncComponent(() => import('./StationLayout3D.vue'))
 
 const router = useRouter()
 const { t, locale } = useI18n()
@@ -239,7 +231,7 @@ onMounted(() => {
 .capacity-tabs :deep(> .el-tabs__content), .capacity-tabs :deep(> .el-tabs__content > .el-tab-pane) { width:100%; min-width:0; min-height:0; overflow:hidden; }
 .capacity-tabs :deep(> .el-tabs__content) { grid-column:1 / -1; grid-row:2; }
 .capacity-tabs :deep(> .el-tabs__content > .el-tab-pane) { height:100%; }
-.station-layout-pane, .route-design-pane, .station-layout-3d-pane, .calculation-parameters-pane, .operation-plan-pane, .operation-simulation-pane, .model-solving-pane { width:100%; height:100%; min-width:0; min-height:0; overflow:hidden; }
+.station-layout-pane, .route-design-pane, .calculation-parameters-pane, .operation-plan-pane, .operation-simulation-pane, .model-solving-pane { width:100%; height:100%; min-width:0; min-height:0; overflow:hidden; }
 .tab-placeholder { display:flex; height:100%; align-items:center; justify-content:center; }
 @media (max-width:768px) { .capacity-main { padding:8px; } .capacity-tabs-wrapper { column-gap:8px; } }
 </style>

@@ -934,6 +934,11 @@ namespace SwitchYard.Service.Controllers
 
                 return Ok(generatedPlan);
             }
+            catch (ArgumentException ex)
+            {
+                dbConnector?.Rollback();
+                return BadRequest(new { message = ex.Message });
+            }
             catch (Exception ex)
             {
                 dbConnector?.Rollback();
@@ -2037,6 +2042,10 @@ namespace SwitchYard.Service.Controllers
                 templates,
                 generatedTrainCountByTemplate,
                 movementTemplatesByTrainTemplate);
+            var catalog = OperationProcessController.LoadCatalog(dbConnector, new ProcessScope
+            {
+                InstanceID = instanceID, StationSchemeID = stationSchemeID, OperationPlanID = operationPlanID
+            });
             var totalMovementCount = generatedTrainPlans.Sum(plan => plan.MovementTemplates.Count);
             var maxMinDuration = movementTemplatesByTrainTemplate.Values
                 .SelectMany(movementTemplates => movementTemplates)
@@ -2060,6 +2069,13 @@ namespace SwitchYard.Service.Controllers
                 var trainTemplateID = trainPlan.TrainTemplateID;
                 var trainSequence = trainPlan.TrainSequence;
                 var movementTemplates = trainPlan.MovementTemplates;
+                List<string> selectedRoutes;
+                try
+                {
+                    selectedRoutes = OperationRouteSequenceSelector.Select(catalog,
+                        movementTemplates.Select(movement => ParseRouteIDList(movement.RouteIDList)).ToList(), trainSequence - 1);
+                }
+                catch (ArgumentException ex) { throw new ArgumentException($"列车模板“{template.Name}”：{ex.Message}", ex); }
                 var trainID = BuildGeneratedTrainID(trainTemplateID, trainSequence, usedTrainIds);
                 usedTrainIds.Add(trainID);
                 result.Trains.Add(new TrainRow
@@ -2086,10 +2102,7 @@ namespace SwitchYard.Service.Controllers
                     // MinDuration is seconds; the displayed plan cursor has minute precision.
                     // Use a wider sum so very long templates cannot wrap into negative times.
                     var latestEndMinutes = (int)Math.Min(int.MaxValue, (long)earliestStartMinutes + minDurationMinutes);
-                    var routeAlternatives = ParseRouteIDList(movementTemplate.RouteIDList);
-                    var route = routeAlternatives.Count > 0
-                        ? routeAlternatives[(trainSequence - 1) % routeAlternatives.Count]
-                        : string.Empty;
+                    var route = selectedRoutes[movementSortOrder];
 
                     result.Movements.Add(new MovementRow
                     {

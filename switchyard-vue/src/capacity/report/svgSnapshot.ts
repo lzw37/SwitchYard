@@ -1,9 +1,13 @@
 import type { ReportFigure } from './wordReport'
+import type { StationPlanColorMode } from '../components/stationPlanColors'
 
 export interface StationPlanReportViewState {
     scaleX: number
     scaleY: number
     lineMode: 'straight' | 'orthogonal'
+    showEventTimes?: boolean
+    colorMode?: StationPlanColorMode
+    colorOverrides?: Record<string, string>
     expandedTrackKeys: string[]
     autoFit: boolean
     width: number

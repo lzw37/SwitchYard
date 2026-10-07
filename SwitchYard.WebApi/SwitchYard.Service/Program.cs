@@ -112,6 +112,13 @@ try
     Log.Information("Starting SwitchYard Service");
 
     var builder = WebApplication.CreateBuilder(args);
+    if (args.Contains("--migrate-process-routes"))
+    {
+        DBConnector.SetConfiguration(builder.Configuration);
+        var migration = OperationProcessRouteMigration.Run(DBConnector.GetDBConnector(DBConnector.CapacityDatabaseSectionName), args.Contains("--apply"));
+        Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(migration));
+        return;
+    }
     var appVersion = builder.Configuration["App:Version"]?.Trim();
     if (string.IsNullOrWhiteSpace(appVersion))
     {
@@ -516,6 +523,7 @@ try
 catch (Exception ex)
 {
     Log.Fatal(ex, "Application terminated unexpectedly");
+    Environment.ExitCode = 1;
 }
 finally
 {

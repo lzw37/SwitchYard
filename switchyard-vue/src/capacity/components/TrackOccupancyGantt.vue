@@ -13,6 +13,7 @@
                 <output>{{ scaleY.toFixed(2) }}×</output>
             </label>
             <ActionButton :icon="Refresh" :label="t('capacityGantt.refresh')" :loading="refreshLoading" :disabled="refreshDisabled || controlsDisabled" @click="emit('refresh')" />
+            <slot name="actions" />
             <div v-if="rows.length" class="track-occupancy-gantt-row-legend" :aria-label="t('capacityGantt.rowLegend')">
                 <span class="is-track"><i aria-hidden="true" />{{ t('capacityGantt.rowKinds.track') }}</span>
                 <span class="is-cell"><i aria-hidden="true" />{{ t('capacityGantt.rowKinds.cell') }}</span>
@@ -61,9 +62,12 @@
                             :key="block.key"
                             class="track-occupancy-gantt-block"
                             :data-block-key="block.key"
-                            :class="[block.className, { 'is-editable': editable && block.editable !== false }]"
+                            :class="[block.className, { 'is-editable': editable && block.editable !== false, 'is-conflicting': !!block.conflict }]"
                             :style="getBlockStyle(block)"
-                            :title="block.title"
+                            :title="block.conflict ? undefined : block.title"
+                            :tabindex="block.conflict ? 0 : undefined" :aria-label="block.title"
+                            @mouseenter="showConflictInfo($event, row.key, block.key)" @mouseleave="activeConflict = null"
+                            @focus="showConflictInfo($event, row.key, block.key)" @blur="activeConflict = null"
                             @pointerdown="startDrag($event, row.key, block, 'move')"
                         >
                             <span
@@ -89,13 +93,17 @@
                 </div>
             </div>
         </div>
+        <ElTooltip :visible="!!activeConflictBlock" :virtual-ref="activeConflict?.element" virtual-triggering placement="top"
+            :show-arrow="false" :enterable="false" :persistent="false" :hide-after="0" transition="" popper-class="resource-conflict-tooltip">
+            <template #content><div v-if="activeConflictBlock" class="resource-conflict-info">{{ activeConflictBlock.title }}</div></template>
+        </ElTooltip>
     </div>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ElSlider } from 'element-plus'
+import { ElSlider, ElTooltip } from 'element-plus'
 import { FullScreen, Refresh } from '@element-plus/icons-vue'
 import ActionButton from '@/components/ui/ActionButton.vue'
 import { snapshotGanttSvg, type GanttReportLabels, type GanttReportViewState } from '../report/ganttSvgSnapshot'
@@ -147,6 +155,15 @@ const emit = defineEmits<{
     (event: 'viewport-scroll', payload: Event): void
 }>()
 const { t } = useI18n()
+const activeConflict = shallowRef<{ element: HTMLElement; rowKey: string; blockKey: string } | null>(null)
+const activeConflictBlock = computed(() => {
+    const active = activeConflict.value
+    const block = active && props.rows.find(row => row.key === active.rowKey)?.blocks.find(block => block.key === active.blockKey)
+    return !props.controlsDisabled && block?.conflict ? block : null
+})
+function showConflictInfo(event: Event, rowKey: string, blockKey: string) {
+    activeConflict.value = event.currentTarget instanceof HTMLElement ? { element: event.currentTarget, rowKey, blockKey } : null
+}
 const scaleX = defineModel<number>('scaleX', { default: 1 })
 const scaleY = defineModel<number>('scaleY', { default: 1 })
 const autoFit = defineModel<boolean>('autoFit', { default: false })
@@ -162,6 +179,7 @@ watch([scaleX, scaleY], ([x, y]) => {
 // Parents use this same viewport for auto-fit and following the playback cursor.
 const viewport = ref<HTMLElement | null>(null)
 let resizeObserver: ResizeObserver | null = null
+let autoFitFrame: number | null = null
 let lastVisibleReportSize = { width: 0, height: 0, viewportWidth: 0, viewportHeight: 0 }
 defineExpose({ viewport, fitToViewport, hitTestRow, exportReportFigure, getReportViewState, applyReportViewState })
 
@@ -221,13 +239,18 @@ function hitTestRow(clientX: number, clientY: number, allowedRowKeys?: ReadonlyS
 }
 
 function fitToViewport() {
-    if (!viewport.value || props.rows.length === 0 || props.controlsDisabled || viewport.value.clientWidth <= 0 || viewport.value.clientHeight <= 0) return
+    const element = viewport.value
+    if (!element || props.rows.length === 0 || props.controlsDisabled) return
+    // This viewport has no border or padding. Its allocated size stays the same
+    // when scrollbars appear/disappear; clientWidth/clientHeight do not.
+    const width = element.offsetWidth, height = element.offsetHeight
+    if (width <= 0 || height <= 0) return
     rememberVisibleReportSize()
-    const scales = fitTrackOccupancyGantt(viewport.value.clientWidth, viewport.value.clientHeight, props.timelineWidth, rowsHeight.value)
+    const scales = fitTrackOccupancyGantt(width, height, props.timelineWidth, rowsHeight.value)
     scaleX.value = scales.scaleX
     scaleY.value = scales.scaleY
-    viewport.value.scrollLeft = 0
-    viewport.value.scrollTop = 0
+    element.scrollLeft = 0
+    element.scrollTop = 0
 }
 
 function enableAutoFit() {
@@ -246,14 +269,18 @@ function setScaleY(value: number | number[]) {
 }
 
 function syncAutoFit() {
-    rememberVisibleReportSize()
-    if (autoFit.value) fitToViewport()
+    if (autoFitFrame !== null) return
+    autoFitFrame = requestAnimationFrame(() => {
+        autoFitFrame = null
+        rememberVisibleReportSize()
+        if (autoFit.value) fitToViewport()
+    })
 }
 
 onMounted(() => {
     if (typeof ResizeObserver !== 'undefined') {
         resizeObserver = new ResizeObserver(syncAutoFit)
-        if (viewport.value) resizeObserver.observe(viewport.value)
+        if (viewport.value) resizeObserver.observe(viewport.value, { box: 'border-box' })
     } else {
         window.addEventListener('resize', syncAutoFit)
     }
@@ -264,6 +291,7 @@ watch([autoFit, () => props.timelineWidth, rowsHeight, () => props.controlsDisab
 }, { flush: 'post' })
 onBeforeUnmount(() => {
     resizeObserver?.disconnect()
+    if (autoFitFrame !== null) cancelAnimationFrame(autoFitFrame)
     window.removeEventListener('resize', syncAutoFit)
 })
 
@@ -274,6 +302,7 @@ function getBlockStyle(block: TrackOccupancyGanttBlock) {
         top: `${(block.top ?? metrics.barInset) * scaleY.value}px`,
         '--occupancy-gantt-block-color': block.color || '#2563eb',
         '--occupancy-gantt-block-text': block.color === '#facc15' ? '#334155' : '#ffffff',
+        '--resource-conflict-color': block.conflict?.color,
     }
 }
 
@@ -332,7 +361,8 @@ function startDrag(event: PointerEvent, rowKey: string, block: TrackOccupancyGan
 .track-occupancy-gantt-row-marker { flex: 0 0 12px; margin-right: 6px; }
 
 .track-occupancy-gantt-viewport {
-    flex: 1 1 auto;
+    flex: 1 1 0;
+    contain: size;
     min-width: 0;
     min-height: 0;
     overflow: auto;
@@ -363,6 +393,7 @@ function startDrag(event: PointerEvent, rowKey: string, block: TrackOccupancyGan
     align-items: center;
     box-sizing: border-box;
     min-width: 0;
+    min-height: 0;
     padding: 0 10px;
     border-right: 1px solid var(--occupancy-gantt-border);
     color: #40546b;
@@ -377,6 +408,7 @@ function startDrag(event: PointerEvent, rowKey: string, block: TrackOccupancyGan
 
 .track-occupancy-gantt-lane-label {
     border-bottom: 1px solid #edf2f7;
+    overflow: hidden;
     background: #ffffff;
     font-size: calc(12px * var(--occupancy-gantt-font-scale));
 }
@@ -391,6 +423,7 @@ function startDrag(event: PointerEvent, rowKey: string, block: TrackOccupancyGan
 .track-occupancy-gantt-lane-track {
     position: relative;
     box-sizing: border-box;
+    min-height: 0;
     overflow: hidden;
 }
 
@@ -490,6 +523,10 @@ function startDrag(event: PointerEvent, rowKey: string, block: TrackOccupancyGan
 
 .track-occupancy-gantt-block.is-finished { border-color: #8792a1; background: #a0a8b3; color: #ffffff; }
 .track-occupancy-gantt-block.is-active { box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.22); transform: translateY(-1px); }
+.track-occupancy-gantt-block.is-conflicting { box-shadow: 0 0 2px 1px var(--resource-conflict-color), 0 0 7px 2px var(--resource-conflict-color); }
+.track-occupancy-gantt-block.is-conflicting:focus-visible { outline: 2px solid var(--resource-conflict-color); outline-offset: 3px; }
+:global(.resource-conflict-tooltip) { max-width: min(540px, calc(100vw - 24px)); }
+.resource-conflict-info { white-space: pre-line; line-height: 1.7; overflow-wrap: anywhere; }
 .track-occupancy-gantt-block.is-track-preview { border-style: dashed; opacity: 0.75; pointer-events: none; }
 
 .track-occupancy-gantt-now-line {

@@ -24,7 +24,7 @@ internal sealed class StationCapacityModel : ICapacityModel
     {
         Id = CapacityAgentProtocol.StationCapacityModelId,
         Name = "铁路车站通过能力模型",
-        Version = "2.0.0",
+        Version = "2.3.0",
         Description = "支持原列车作业与完整作业过程事件图、资源地点、持续时间和轨道电路占用约束。"
     };
 
@@ -222,8 +222,7 @@ internal sealed class StationCapacityModel : ICapacityModel
                 {
                     Id = movement.Movement.Id,
                     Name = movement.Movement.Name,
-                    RouteId = selectedRoute.TrackId is null ? selectedRoute.Id : string.Empty,
-                    TrackId = selectedRoute.TrackId,
+                    RouteId = selectedRoute.Id,
                     StartSeconds = start,
                     EndSeconds = end,
                     StartTime = FormatTime(start),
@@ -333,7 +332,7 @@ internal sealed class StationCapacityModel : ICapacityModel
         }
 
         return routeMap.Values
-            .Where(route => route.TrackId is null && movement.RequiredRouteTags.All(requiredTag =>
+            .Where(route => movement.RequiredRouteTags.All(requiredTag =>
                 route.Tags.Contains(requiredTag, StringComparer.OrdinalIgnoreCase)))
             .ToList();
     }
@@ -384,6 +383,24 @@ internal sealed class StationCapacityModel : ICapacityModel
             if (process is null) continue;
             var events = process.Events.ToDictionary(ev => ev.Id, StringComparer.Ordinal);
             var locations = new Dictionary<(string EventId, string LocationId), Variable>();
+            var anchorRoutes = new Dictionary<(string AnchorId, string RouteId), Variable>();
+            foreach (var anchor in process.Anchors)
+            {
+                LinearExpr sum = new LinearExpr();
+                foreach (var routeId in anchor.RouteIds)
+                {
+                    var variable = solver.MakeBoolVar($"anchor_{group.Key}_{Sanitize(anchor.Id)}_{Sanitize(routeId)}");
+                    anchorRoutes[(anchor.Id, routeId)] = variable;
+                    sum += variable;
+                    if (anchor.MovementId is { } movementId)
+                    {
+                        var owner = group.Single(m => m.Movement.Id == movementId);
+                        if (routeVariables.TryGetValue((owner.Key, routeId), out var selected)) solver.Add(variable == selected);
+                        else solver.Add(variable == 0);
+                    }
+                }
+                solver.Add(sum == 1);
+            }
             foreach (var ev in process.Events)
             {
                 var variable = solver.MakeNumVar(process.OriginSeconds, horizon, $"event_{group.Key}_{Sanitize(ev.Id)}");
@@ -397,6 +414,8 @@ internal sealed class StationCapacityModel : ICapacityModel
                 LinearExpr sum = locations[(ev.Id, ev.LocationIds[0])];
                 foreach (var location in ev.LocationIds.Skip(1)) sum += locations[(ev.Id, location)];
                 solver.Add(sum == 1);
+                foreach (var (location, choice) in ev.AnchorChoicesByLocation)
+                    solver.Add(locations[(ev.Id, location)] <= anchorRoutes[(choice.AnchorId, choice.RouteId)]);
             }
             foreach (var movement in group)
             {
@@ -406,7 +425,11 @@ internal sealed class StationCapacityModel : ICapacityModel
                 BindLocations(movement, movement.Movement.EndEventId!, movement.Movement.EndLocationIdsByRoute);
             }
             foreach (var precedence in process.Precedences)
-                solver.Add(result[(group.Key, precedence.FollowingEventId)] - result[(group.Key, precedence.LeadingEventId)] >= precedence.IntervalSeconds);
+            {
+                var elapsed = result[(group.Key, precedence.FollowingEventId)] - result[(group.Key, precedence.LeadingEventId)];
+                solver.Add(elapsed >= precedence.IntervalSeconds);
+                if (precedence.IsExact) solver.Add(elapsed <= precedence.IntervalSeconds);
+            }
 
             void BindLocations(MovementContext movement, string eventId, Dictionary<string, List<string>> candidates)
             {
@@ -657,18 +680,28 @@ internal sealed class StationCapacityModel : ICapacityModel
             }
             if (train.ProcessConstraints is not { } process) continue;
             if (!double.IsFinite(process.OriginSeconds) || process.OriginSeconds < 0 || process.OriginSeconds > horizon ||
-                process.Events is null || process.Precedences is null || process.Events.Count == 0 ||
+                process.Events is null || process.Precedences is null || process.Anchors is null || process.Events.Count == 0 ||
                 process.Events.Any(ev => ev is null || string.IsNullOrWhiteSpace(ev.Id)) ||
                 process.Events.Select(ev => ev.Id).Distinct(StringComparer.Ordinal).Count() != process.Events.Count)
                 throw new InvalidOperationException($"列车 {train.Id} 的过程事件图无效。");
             var events = process.Events.ToDictionary(ev => ev.Id, StringComparer.Ordinal);
+            if (process.Anchors.Any(a => a is null || string.IsNullOrWhiteSpace(a.Id) || a.RouteIds is null || a.RouteIds.Count == 0 ||
+                    a.RouteIds.Any(string.IsNullOrWhiteSpace) || a.RouteIds.Distinct(StringComparer.Ordinal).Count() != a.RouteIds.Count ||
+                    (a.MovementId is not null && !train.Movements.Any(m => m.Id == a.MovementId))) ||
+                process.Anchors.Select(a => a.Id).Distinct(StringComparer.Ordinal).Count() != process.Anchors.Count)
+                throw new InvalidOperationException($"列车 {train.Id} 的锚地点约束无效。");
+            var anchors = process.Anchors.ToDictionary(a => a.Id, StringComparer.Ordinal);
             foreach (var ev in events.Values)
             {
                 if (!double.IsFinite(ev.OriginalTimeSeconds) || ev.OriginalTimeSeconds < process.OriginSeconds || ev.OriginalTimeSeconds > horizon ||
                     ev.FixedTimeSeconds is double fixedTime && (!double.IsFinite(fixedTime) || fixedTime < process.OriginSeconds || fixedTime > horizon) ||
-                    ev.LocationIds is null || ev.LocationIds.Any(location => location is null) ||
+                    ev.LocationIds is null || ev.LocationIds.Any(location => location is null) || ev.AnchorChoicesByLocation is null ||
                     ev.LocationIds.Distinct(StringComparer.Ordinal).Count() != ev.LocationIds.Count)
                     throw new InvalidOperationException($"列车 {train.Id} 的事件 {ev.Id} 时刻或地点无效。");
+                foreach (var (location, choice) in ev.AnchorChoicesByLocation)
+                    if (!ev.LocationIds.Contains(location) || choice is null || choice.AnchorId is null ||
+                        !anchors.TryGetValue(choice.AnchorId, out var anchor) || !anchor.RouteIds.Contains(choice.RouteId))
+                        throw new InvalidOperationException($"列车 {train.Id} 的事件 {ev.Id} 锚地点候选无效。");
             }
             foreach (var movement in train.Movements)
             {

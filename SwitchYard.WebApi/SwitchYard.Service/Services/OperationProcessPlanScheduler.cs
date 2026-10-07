@@ -8,13 +8,11 @@ public sealed class ProcessScheduledTrain
     public double OriginSeconds { get; set; }
     public Dictionary<string, double> EventTimes { get; set; } = new(StringComparer.Ordinal);
     public Dictionary<string, string> SelectedRouteIDs { get; set; } = new(StringComparer.Ordinal);
-    public Dictionary<string, string> SelectedTrackIDs { get; set; } = new(StringComparer.Ordinal);
 }
 
 public sealed class ProcessActivityResourceCandidates
 {
     public List<string> RouteIDs { get; set; } = new();
-    public List<string> TrackIDs { get; set; } = new();
 }
 
 /// <summary>Distributes train origins using legacy slots, then schedules every event as early as all constraints allow.</summary>
@@ -69,7 +67,11 @@ public static class OperationProcessPlanScheduler
                 graph.Add(start, end, Seconds(activity.MaxDuration));
             }
             foreach (var precedence in source.Precedences)
+            {
                 graph.Add(eventIndex[precedence.FollowingEvent], eventIndex[precedence.LeadingEvent], -Seconds(precedence.Interval));
+                if (precedence.IsExact)
+                    graph.Add(eventIndex[precedence.LeadingEvent], eventIndex[precedence.FollowingEvent], Seconds(precedence.Interval));
+            }
 
             var firstTarget = Target(trainIndex * ordered.Count);
             var origin = graph.PinNearest(1, firstTarget, ref remainingWork);
@@ -98,55 +100,56 @@ public static class OperationProcessPlanScheduler
         var shared = activities.SelectMany(activity => new[] { activity.StartEvent, activity.EndEvent })
             .GroupBy(id => id, StringComparer.Ordinal).Where(group => group.Count() > 1)
             .Select(group => group.Key).ToHashSet(StringComparer.Ordinal);
-        var linked = activities.Where(activity => shared.Contains(activity.StartEvent) || shared.Contains(activity.EndEvent)).ToList();
-        foreach (var activity in activities)
-        {
-            var ids = activity.Type == "Dwelling" ? candidates[activity.Id].TrackIDs : candidates[activity.Id].RouteIDs;
-            Set(activity, ids[trainIndex % ids.Count]);
-        }
-        var domains = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+        var domains = OperationProcessResourceLocations.StandaloneEvents(source, catalog);
+        var anchorDomains = source.Anchors.ToDictionary(a => a.Id, a => a.RouteIDs.ToHashSet(StringComparer.Ordinal), StringComparer.Ordinal);
         var cache = new Dictionary<(string Activity, string Resource, bool Start), HashSet<string>>();
         var tries = 0;
-        if (!Search(0)) throw new ArgumentException("共享事件的备选进路、股道、地点或锚之间存在冲突，无法生成完整列车。");
+        if (!Search(0)) throw new ArgumentException("备选进路无法满足共享事件地点或同一锚的停留进路一致性，请检查进路和锚约束。");
 
         bool Search(int index)
         {
-            if (index == linked.Count) return true;
-            var activity = linked[index];
-            var ids = activity.Type == "Dwelling" ? candidates[activity.Id].TrackIDs : candidates[activity.Id].RouteIDs;
+            if (index == activities.Count) return OperationProcessResourceLocations.Compatible(domains, anchorDomains);
+            var activity = activities[index];
+            var ids = candidates[activity.Id].RouteIDs;
             for (var option = 0; option < ids.Count; option++)
             {
-                if (++tries > 100000) throw new ArgumentException("共享事件资源组合较复杂，请缩小备选范围后重试。");
+                if (++tries > 100000) throw new ArgumentException("进路与锚的资源组合较复杂，请缩小备选范围后重试。");
                 var id = ids[(trainIndex + option) % ids.Count];
                 var previous = new Dictionary<string, HashSet<string>?>(StringComparer.Ordinal);
+                var previousAnchors = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+                foreach (var anchor in source.Anchors.Where(a => a.DwellingActivityID == activity.Id))
+                {
+                    previousAnchors[anchor.Id] = anchorDomains[anchor.Id];
+                    anchorDomains[anchor.Id] = anchor.RouteIDs.Contains(id) ? [id] : [];
+                }
                 var matches = true;
                 foreach (var (eventID, start) in new[] { (activity.StartEvent, true), (activity.EndEvent, false) })
                 {
-                    if (!shared.Contains(eventID)) continue;
                     var key = (activity.Id, id, start);
                     if (!cache.TryGetValue(key, out var locations))
-                        cache[key] = locations = OperationProcessResourceLocations.Get(source, catalog, activity, id, start).ToHashSet(StringComparer.Ordinal);
+                        cache[key] = locations = OperationProcessResourceLocations.Get(source, catalog, activity, id, start)
+                            .Where(location => !shared.Contains(eventID) || OperationProcessResourceLocations.HasNode(location)).ToHashSet(StringComparer.Ordinal);
                     domains.TryGetValue(eventID, out var old);
-                    previous[eventID] = old;
+                    previous.TryAdd(eventID, old);
                     var intersection = new HashSet<string>(locations, StringComparer.Ordinal);
                     if (old is not null) intersection.IntersectWith(old);
                     if (intersection.Count == 0) { matches = false; break; }
                     domains[eventID] = intersection;
                 }
-                if (matches)
+                if (matches && OperationProcessResourceLocations.Compatible(domains, anchorDomains))
                 {
                     Set(activity, id);
                     if (Search(index + 1)) return true;
                 }
                 foreach (var (eventID, old) in previous)
                     if (old is null) domains.Remove(eventID); else domains[eventID] = old;
+                foreach (var (anchorID, old) in previousAnchors) anchorDomains[anchorID] = old;
             }
             return false;
         }
         void Set(ProcessActivity activity, string id)
         {
-            if (activity.Type == "Dwelling") train.SelectedTrackIDs[activity.Id] = id;
-            else train.SelectedRouteIDs[activity.Id] = id;
+            train.SelectedRouteIDs[activity.Id] = id;
         }
     }
 
@@ -174,51 +177,19 @@ public static class OperationProcessPlanScheduler
     public static Dictionary<string, ProcessActivityResourceCandidates> ResolveResources(OperationProcessTemplate source, ProcessCatalog catalog)
     {
         var routes = catalog.Routes.ToDictionary(route => route.Id, StringComparer.Ordinal);
-        var tracks = catalog.Tracks.ToDictionary(track => track.Id, StringComparer.Ordinal);
-        var events = source.Events.ToDictionary(ev => ev.Id, StringComparer.Ordinal);
-        var anchors = source.Anchors.ToDictionary(anchor => anchor.Id, StringComparer.Ordinal);
-        var bindings = source.RouteAnchors.ToDictionary(binding => binding.RouteID, StringComparer.Ordinal);
         var result = new Dictionary<string, ProcessActivityResourceCandidates>(StringComparer.Ordinal);
         foreach (var activity in source.Activities)
         {
             var candidate = new ProcessActivityResourceCandidates();
-            if (activity.Type == "Dwelling")
-            {
-                candidate.TrackIDs = activity.TrackList.Where(id => tracks.TryGetValue(id, out var track) &&
-                    !string.IsNullOrWhiteSpace(track.Name) && (activity.SelectedTrack is null || activity.SelectedTrack == id) &&
-                    TrackMatchesEvent(track, events[activity.StartEvent]) && TrackMatchesEvent(track, events[activity.EndEvent])).ToList();
-                if (candidate.TrackIDs.Count == 0) throw new ArgumentException($"停留活动“{activity.Name}”没有满足地点和锚约束的备选股道，请先完善作业过程。");
-            }
-            else
-            {
-                candidate.RouteIDs = activity.RouteList.Where(id => routes.TryGetValue(id, out var route) && route.Type == activity.Type &&
-                    (activity.SelectedRoute is null || activity.SelectedRoute == id) &&
-                    RouteEndpointMatches(events[activity.StartEvent], route.StartNodeID, bindings.GetValueOrDefault(id)?.StartAnchor) &&
-                    RouteEndpointMatches(events[activity.EndEvent], route.EndNodeID, bindings.GetValueOrDefault(id)?.EndAnchor)).ToList();
-                if (candidate.RouteIDs.Count == 0) throw new ArgumentException($"活动“{activity.Name}”没有满足地点和锚约束的备选进路，请先完善作业过程。");
-            }
+            candidate.RouteIDs = activity.RouteList.Where(id => routes.TryGetValue(id, out var route) && route.Type == activity.Type &&
+                (activity.SelectedRoute is null || activity.SelectedRoute == id) &&
+                OperationProcessResourceLocations.Get(source, catalog, activity, id, true).Count > 0 &&
+                OperationProcessResourceLocations.Get(source, catalog, activity, id, false).Count > 0).ToList();
+            if (candidate.RouteIDs.Count == 0) throw new ArgumentException($"活动“{activity.Name}”没有满足地点和锚约束的备选进路，请先完善作业过程。");
             result[activity.Id] = candidate;
         }
         return result;
 
-        bool RouteEndpointMatches(ProcessEvent ev, string? node, string? boundAnchor)
-        {
-            if (ev.NodeID is not null && ev.NodeID != node) return false;
-            if (ev.NodeList.Count > 0 && (node is null || !ev.NodeList.Contains(node, StringComparer.Ordinal))) return false;
-            var allowed = ev.SelectedAnchor is not null ? new[] { ev.SelectedAnchor } : ev.AnchorList.ToArray();
-            if (boundAnchor is not null && allowed.Length > 0 && !allowed.Contains(boundAnchor, StringComparer.Ordinal)) return false;
-            if (boundAnchor is not null && !AnchorAtNode(boundAnchor, node)) return false;
-            return allowed.Length == 0 || allowed.Any(id => AnchorAtNode(id, node));
-        }
-        bool AnchorAtNode(string anchorID, string? node) => node is not null && anchors.TryGetValue(anchorID, out var anchor) &&
-            tracks.TryGetValue(anchor.TrackID, out var track) && (track.FromNodeID == node || track.ToNodeID == node);
-        bool TrackMatchesEvent(ProcessCatalogTrack track, ProcessEvent ev)
-        {
-            if (ev.NodeID is not null && ev.NodeID != track.FromNodeID && ev.NodeID != track.ToNodeID) return false;
-            if (ev.NodeList.Count > 0 && !ev.NodeList.Contains(track.FromNodeID) && !ev.NodeList.Contains(track.ToNodeID)) return false;
-            var allowed = ev.SelectedAnchor is not null ? new[] { ev.SelectedAnchor } : ev.AnchorList.ToArray();
-            return allowed.Length == 0 || allowed.Any(id => anchors.TryGetValue(id, out var anchor) && anchor.TrackID == track.Id);
-        }
     }
 
     public static void ValidateSchedule(OperationProcessTemplate source, IReadOnlyDictionary<string, double> times,
@@ -238,8 +209,12 @@ public static class OperationProcessPlanScheduler
                 throw new ArgumentException($"活动“{activity.Name}”不满足最小/最大持续时间约束。");
         }
         foreach (var precedence in source.Precedences)
-            if (times[precedence.FollowingEvent] - times[precedence.LeadingEvent] < Seconds(precedence.Interval) - Epsilon)
-                throw new ArgumentException($"次序“{precedence.Id}”不满足最小间隔约束。");
+        {
+            var elapsed = times[precedence.FollowingEvent] - times[precedence.LeadingEvent];
+            var interval = Seconds(precedence.Interval);
+            if (elapsed < interval - Epsilon || (precedence.IsExact && elapsed > interval + Epsilon))
+                throw new ArgumentException($"次序“{precedence.Id}”不满足{(precedence.IsExact ? "严格间隔" : "最小间隔")}约束。");
+        }
     }
 
     public static double Seconds(double minutes)

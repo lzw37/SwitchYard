@@ -77,6 +77,7 @@ export interface StationPlanVisit {
     departMinutes: number
     detail: string
     movementID?: string
+    eventID?: string
     arriveAnchors?: StationPlanTimeAnchor[]
     departAnchors?: StationPlanTimeAnchor[]
 }
@@ -196,8 +197,39 @@ export interface StationPlanTrain {
     id: string
     label: string
     color: string
+    trainType?: string
+    movementRouteTypes?: Record<string, string>
     visits: StationPlanVisit[]
     movementOrder?: string[]
+    /** Undefined for legacy plans; an empty list means the process has no precedence links. */
+    precedences?: StationPlanPrecedence[]
+    processConstraints?: StationPlanProcessConstraints
+}
+
+export interface StationPlanPrecedence {
+    id: string
+    leadingEvent: string
+    followingEvent: string
+    isExact?: boolean
+    minIntervalSeconds?: number
+    interval?: number
+}
+
+export interface StationPlanProcessConstraints {
+    trainID: string
+    sourceTemplateID?: string
+    sourceName?: string
+    activityMovementMap: Record<string, string>
+    process: {
+        id?: string
+        name?: string
+        activities: { id: string; startEvent: string; endEvent: string; type?: string }[]
+        precedences: StationPlanPrecedence[]
+        events?: { id: string; anchorList: string[]; selectedAnchor: string | null }[]
+        anchors?: { id: string; routeIDs: string[]; dwellingActivityID?: string | null }[]
+        routeAnchors?: { routeID: string; startAnchor: string | null; endAnchor: string | null }[]
+    }
+    precedences?: StationPlanPrecedence[]
 }
 
 export interface StationPlanMovement {
@@ -218,6 +250,7 @@ export interface StationPlanMovement {
 export interface StationPlanRoute {
     id: string
     name: string
+    type?: string
     cellIDs: string[]
     linkIDs?: string[]
     startNodeID: string
@@ -261,13 +294,18 @@ export function orderStationPlanMovements<T extends StationPlanMovement>(movemen
 
 /** Each movement contributes its own start and end node, in operation order. */
 export function buildStationPlanTrains(
-    trains: { id: string; label: string; color: string; movementOrder?: string[] }[],
+    trains: { id: string; label: string; color: string; trainType?: string; movementOrder?: string[] }[],
     movements: StationPlanMovement[],
     routes: StationPlanRoute[],
+    processConstraints: StationPlanProcessConstraints[] = [],
 ): StationPlanTrain[] {
     const routeMap = new Map(routes.map(route => [route.id, route]))
+    const processMap = new Map(processConstraints.map(snapshot => [snapshot.trainID, snapshot]))
     return trains.map(train => {
         const visits: StationPlanVisit[] = []
+        const movementRouteTypes: Record<string, string> = {}
+        const snapshot = processMap.get(train.id)
+        const activityByMovement = new Map(snapshot?.process.activities.map(activity => [snapshot.activityMovementMap[activity.id], activity]))
         const ordered = sortStationPlanMovementSequence(movements, train.id)
         for (const source of ordered) {
             if (!Number.isFinite(source.startMinutes) || !Number.isFinite(source.endMinutes)) continue
@@ -277,15 +315,21 @@ export function buildStationPlanTrains(
             const endNodeID = route?.endNodeID.trim() || movement.endNodeID?.trim()
             if (!startNodeID || !endNodeID) continue
             const detail = [movement.name, route?.name || movement.routeID].filter(Boolean).join(' · ')
+            const activity = activityByMovement.get(movement.movementID)
+            // Keep coloring metadata in the train snapshot so offscreen report rendering uses the same route types.
+            movementRouteTypes[movement.movementID] = route?.type?.trim() || activity?.type?.trim() || ''
             for (const edge of ['start', 'end'] as const) {
                 const time = edge === 'start' ? movement.startMinutes : movement.endMinutes
                 const anchors: StationPlanTimeAnchor[] = [{ movementID: movement.movementID, kind: 'movement', edge }]
                 visits.push({ rowKey: `node:${edge === 'start' ? startNodeID : endNodeID}`,
                     arriveMinutes: time, departMinutes: time, detail, movementID: movement.movementID,
+                    eventID: edge === 'start' ? activity?.startEvent : activity?.endEvent,
                     arriveAnchors: anchors, departAnchors: anchors })
             }
         }
-        return { ...train, movementOrder: [...(train.movementOrder || ordered.map(movement => movement.movementID))], visits }
+        return { ...train, movementRouteTypes, movementOrder: [...(train.movementOrder || ordered.map(movement => movement.movementID))], visits,
+            ...(snapshot ? { processConstraints: snapshot,
+                precedences: (snapshot.precedences ?? snapshot.process.precedences).map(item => ({ ...item })) } : {}) }
     }).filter(train => train.visits.length > 0)
 }
 
@@ -370,8 +414,21 @@ export function stationPlanTrainPath(train: StationPlanTrain, rows: StationPlanA
     const y = (rowKey: string) => round(padding.y + ((rowIndexes.get(rowKey) ?? 0) + 0.5) * rowPitch)
     const horizontalSegments: StationPlanHorizontalSegment[] = []
     const editableSegments: StationPlanEditableSegment[] = []
+    const movementPaths: { movementID: string; path: string }[] = []
+    const connectorPaths: { precedenceID?: string; path: string; isExact?: boolean }[] = []
+    const eventTimeLabels: { key: string; x: number; y: number; digit: number }[] = []
+    const labelledPoints = new Set<string>()
+    for (const visit of train.visits) {
+        if (!rowIndexes.has(visit.rowKey) || !Number.isFinite(visit.arriveMinutes)) continue
+        const pointX = x(visit.arriveMinutes), pointY = y(visit.rowKey)
+        // Shared events and folded track endpoints may occupy the same visible point.
+        const key = JSON.stringify([visit.arriveMinutes, pointY])
+        if (labelledPoints.has(key)) continue
+        labelledPoints.add(key)
+        const minute = Math.floor(Number((visit.arriveMinutes * 60).toFixed(9)) / 60)
+        eventTimeLabels.push({ key, x: pointX, y: pointY, digit: ((minute % 10) + 10) % 10 })
+    }
     let path = ''
-    let connectorPath = ''
     let point: StationPlanPoint | null = null
     let firstVerticalDirection = 0, lastVerticalDirection = 0
     const includeDirection = (fromY: number, toY: number) => {
@@ -392,20 +449,24 @@ export function stationPlanTrainPath(train: StationPlanTrain, rows: StationPlanA
             continue
         }
         const x1 = x(from.arriveMinutes), y1 = y(from.rowKey), x2 = x(to.arriveMinutes), y2 = y(to.rowKey)
-        if (point && (point.x !== x1 || point.y !== y1)) {
-            connectorPath += `M ${point.x} ${point.y} L ${x1} ${y1} `
+        // Legacy plans imply a sequence; process plans connect only their saved event precedences.
+        if (train.precedences === undefined && point && (point.x !== x1 || point.y !== y1)) {
+            connectorPaths.push({ path: `M ${point.x} ${point.y} L ${x1} ${y1} ` })
             includeDirection(point.y, y1)
         }
         const startIsTrack = trackNodeKeys.has(from.rowKey), endIsTrack = trackNodeKeys.has(to.rowKey)
         const orthogonal = mode === 'orthogonal' && !(startIsTrack && endIsTrack) && x1 !== x2 && y1 !== y2
+        let movementPath: string
         if (orthogonal) {
             // Put the horizontal leg on the non-track endpoint, preferring the start when both qualify.
             const horizontalY = startIsTrack ? y2 : y1
-            path += startIsTrack
+            movementPath = startIsTrack
                 ? `M ${x1} ${y1} L ${x1} ${y2} L ${x2} ${y2} `
                 : `M ${x1} ${y1} L ${x2} ${y1} L ${x2} ${y2} `
             horizontalSegments.push({ x1, x2, y: horizontalY })
-        } else path += `M ${x1} ${y1} L ${x2} ${y2} `
+        } else movementPath = `M ${x1} ${y1} L ${x2} ${y2} `
+        path += movementPath
+        movementPaths.push({ movementID: startAnchor.movementID, path: movementPath })
         includeDirection(y1, y2)
         editableSegments.push({ movementID: startAnchor.movementID, detail: from.detail,
             startRowKey: from.rowKey, endRowKey: to.rowKey, rowKey: from.rowKey, visitIndexes: [index, index + 1],
@@ -413,6 +474,18 @@ export function stationPlanTrainPath(train: StationPlanTrain, rows: StationPlanA
             x1, x2, y1, y2, y: y1 })
         if (y1 === y2) horizontalSegments.push({ x1, x2, y: y1 })
         point = { x: x2, y: y2 }
+    }
+    if (train.precedences !== undefined) {
+        const eventPoints = new Map<string, StationPlanPoint>()
+        for (const visit of train.visits) {
+            if (visit.eventID && rowIndexes.has(visit.rowKey) && !eventPoints.has(visit.eventID))
+                eventPoints.set(visit.eventID, { x: x(visit.arriveMinutes), y: y(visit.rowKey) })
+        }
+        for (const precedence of train.precedences) {
+            const from = eventPoints.get(precedence.leadingEvent), to = eventPoints.get(precedence.followingEvent)
+            if (from && to) connectorPaths.push({ precedenceID: precedence.id, isExact: precedence.isExact ?? false,
+                path: `M ${from.x} ${from.y} L ${to.x} ${to.y} ` })
+        }
     }
     const firstVisit = train.visits[0], lastVisit = train.visits[train.visits.length - 1]
     const first = firstVisit && rowIndexes.has(firstVisit.rowKey) ? { x: x(firstVisit.arriveMinutes), y: y(firstVisit.rowKey) } : null
@@ -431,7 +504,8 @@ export function stationPlanTrainPath(train: StationPlanTrain, rows: StationPlanA
     // Only the train's original first/last node receives a terminal, even when rows are hidden.
     if (first && firstVisit?.rowKey.startsWith('node:')) addTerminal('entry', first, firstVerticalDirection || 1)
     if (last && lastVisit?.rowKey.startsWith('node:')) addTerminal('exit', last, lastVerticalDirection || 1)
-    return { path, connectorPath, first, horizontalSegments, editableSegments, terminals }
+    return { path, connectorPath: connectorPaths.map(item => item.path).join(''), connectorPaths,
+        first, horizontalSegments, editableSegments, movementPaths, terminals, eventTimeLabels }
 }
 
 /** Validate the captured endpoints and share one time-shift rule between preview and persistence. */

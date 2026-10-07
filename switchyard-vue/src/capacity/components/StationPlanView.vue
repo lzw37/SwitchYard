@@ -15,11 +15,26 @@
                 <button v-for="mode in (['straight', 'orthogonal'] as const)" :key="mode" type="button" :data-line-mode="mode"
                     :aria-pressed="lineMode === mode" @click="setLineMode(mode)">{{ t(`stationPlanView.${mode}Mode`) }}</button>
             </div>
+            <label class="station-plan-color-mode"><span>{{ t('stationPlanView.colors.mode') }}</span>
+                <select v-model="colorMode" :aria-label="t('stationPlanView.colors.mode')">
+                    <option v-for="mode in (['process', 'routeType', 'trainType'] as const)" :key="mode" :value="mode">{{ t(`stationPlanView.colors.modes.${mode}`) }}</option>
+                </select>
+            </label>
+            <ElSwitch v-model="showEventTimes" class="station-plan-event-times-toggle" :active-text="t('stationPlanView.showEventTimes')"
+                :aria-label="t('stationPlanView.showEventTimes')" :title="t('stationPlanView.eventTimesHint')" />
             <ActionButton :icon="Refresh" :label="t('capacityGantt.refresh')" :loading="loading" :disabled="refreshDisabled" @click="emit('refresh')" />
             <ActionButton :icon="Back" variant="icon-text" :label="t('stationPlanView.undo')" :disabled="!canUndo" aria-keyshortcuts="Control+Z" @click="emit('undo')" />
             <ActionButton :icon="Right" variant="icon-text" :label="t('stationPlanView.redo')" :disabled="!canRedo" aria-keyshortcuts="Control+Y" @click="emit('redo')" />
             <output class="station-plan-history-count" :title="t('stationPlanView.historyHint')" :aria-label="t('stationPlanView.historyCount', { undo: undoCount, redo: redoCount })">{{ undoCount + redoCount }} / 20</output>
             <slot name="actions" />
+        </div>
+        <div v-if="colorGroups.length" class="station-plan-color-legend" role="group" :aria-label="t('stationPlanView.colors.legend')">
+            <label v-for="group in colorGroups" :key="group.key" :title="t('stationPlanView.colors.change', { name: colorGroupName(group) })">
+                <input type="color" :value="group.color" :aria-label="t('stationPlanView.colors.change', { name: colorGroupName(group) })"
+                    @input="setGroupColor(group.key, $event)" />
+                <span>{{ colorGroupName(group) }}</span>
+            </label>
+            <span v-if="colorMode === 'routeType'" class="station-plan-constraint-legend"><i />{{ t('stationPlanView.colors.constraint') }}</span>
         </div>
         <div v-if="displayRows.length === 0" class="station-plan-empty">{{ emptyText || t('stationPlanView.emptyRows') }}</div>
         <div v-else class="station-plan-grid">
@@ -65,17 +80,32 @@
                     <g v-for="line in lines" :key="line.train.id" class="station-plan-train" :class="{ 'is-selected': selectedTrainIDs.has(line.train.id) }" :data-train-id="line.train.id"
                         role="button" :tabindex="pickMode ? -1 : 0" :aria-disabled="pickMode" :aria-label="t('stationPlanView.trainLine', { train: line.train.label })" :aria-pressed="selectedTrainIDs.has(line.train.id)"
                         @click.stop="toggleTrainSelection(line.train.id)" @keydown.enter.stop.prevent="toggleTrainSelection(line.train.id)" @keydown.space.stop.prevent="toggleTrainSelection(line.train.id)">
-                        <title>{{ trainTitle(line.train) }}</title>
+                        <path v-for="conflict in line.conflicts" :key="`glow:${conflict.movementID}`" :d="conflict.path"
+                            class="station-plan-conflict-glow" :stroke="conflict.color" :style="{ '--resource-conflict-color': conflict.color }"
+                            :data-conflict-movement-id="conflict.movementID" aria-hidden="true" />
                         <path :d="line.connectorPath" class="station-plan-train-hit-area" aria-hidden="true" />
-                        <path :d="line.connectorPath" :stroke="line.train.color" class="station-plan-train-connector" aria-hidden="true" />
-                        <path :d="line.path" class="station-plan-train-hit-area" aria-hidden="true" />
-                        <path :d="line.path" :stroke="line.train.color" class="station-plan-train-line" />
-                        <text v-for="(segment, index) in line.horizontalSegments" :key="`horizontal:${index}`" :x="(segment.x1 + segment.x2) / 2" :y="segment.y - 7" :fill="line.train.color" class="station-plan-train-label station-plan-horizontal-label">{{ line.train.label }}</text>
+                        <path v-for="(connector, index) in line.connectorPaths" :key="`connector:${index}`" :d="connector.path"
+                            :data-precedence-id="connector.precedenceID" :stroke-dasharray="connector.isExact === false ? '6 4' : undefined"
+                            :stroke="line.color" class="station-plan-train-connector" aria-hidden="true" />
+                        <path v-for="movement in line.movementPaths" :key="`movement:${movement.movementID}`" :d="movement.path"
+                            :data-movement-id="movement.movementID" :stroke="movementColor(line.train, movement.movementID)" class="station-plan-train-line"
+                            :class="{ 'is-dwelling': isDwellingRoute(line.train.movementRouteTypes?.[movement.movementID]) }" />
+                        <path v-for="movement in line.movementPaths" :key="`hit:${movement.movementID}`" :d="movement.path"
+                            class="station-plan-train-hit-area station-plan-movement-hit" :data-hover-movement-id="movement.movementID"
+                            :tabindex="pickMode ? -1 : 0" role="img" :aria-label="line.train.label"
+                            :aria-describedby="movementInfo && activeMovement?.trainID === line.train.id && activeMovement.movementID === movement.movementID ? movementTooltipID : undefined"
+                            @mouseenter="showMovementInfo($event, line.train.id, movement.movementID)" @mouseleave="hideMovementInfo"
+                            @focus="showMovementInfo($event, line.train.id, movement.movementID)" @blur="hideMovementInfo" />
+                        <text v-for="(segment, index) in line.horizontalSegments" :key="`horizontal:${index}`" :x="(segment.x1 + segment.x2) / 2" :y="segment.y - 7" fill="#000" class="station-plan-train-label station-plan-horizontal-label">{{ line.train.label }}</text>
                         <g v-for="terminal in line.terminals" :key="terminal.kind" class="station-plan-terminal" :data-terminal="terminal.kind">
                             <line :x1="terminal.from.x" :y1="terminal.from.y" :x2="terminal.to.x" :y2="terminal.to.y" class="station-plan-train-hit-area" aria-hidden="true" />
-                            <line :x1="terminal.from.x" :y1="terminal.from.y" :x2="terminal.to.x" :y2="terminal.to.y" :stroke="line.train.color" class="station-plan-terminal-line" />
-                            <path :d="terminal.arrowPath" :stroke="line.train.color" class="station-plan-terminal-line" />
-                            <text :x="terminal.label.x" :y="terminal.label.y" :transform="`rotate(${terminal.label.angle} ${terminal.label.x} ${terminal.label.y})`" :fill="line.train.color" class="station-plan-train-label station-plan-terminal-label">{{ line.train.label }}</text>
+                            <line :x1="terminal.from.x" :y1="terminal.from.y" :x2="terminal.to.x" :y2="terminal.to.y" :stroke="terminalColor(line.train, terminal.kind)" class="station-plan-terminal-line" />
+                            <path :d="terminal.arrowPath" :stroke="terminalColor(line.train, terminal.kind)" class="station-plan-terminal-line" />
+                            <text :x="terminal.label.x" :y="terminal.label.y" :transform="`rotate(${terminal.label.angle} ${terminal.label.x} ${terminal.label.y})`" fill="#000" class="station-plan-train-label station-plan-terminal-label">{{ line.train.label }}</text>
+                        </g>
+                        <g v-if="showEventTimes" class="station-plan-event-times" aria-hidden="true">
+                            <text v-for="label in line.eventTimeLabels" :key="label.key" :x="label.x + 8" :y="label.y - 9"
+                                :fill="line.color" class="station-plan-event-time-label">{{ label.digit }}</text>
                         </g>
                     </g>
                     <line v-for="item in trackDragSegments" :key="`track-drag:${item.train.id}:${item.segment.movementID}:${item.segment.isConnector ? 'connector' : 'movement'}`"
@@ -83,15 +113,16 @@
                         :data-track-segment-type="item.segment.isConnector ? 'connector' : 'movement'"
                         :x1="item.segment.x1" :y1="item.segment.y1" :x2="item.segment.x2" :y2="item.segment.y2"
                         :aria-label="t('stationPlanView.trackHandleLabel', { movement: item.segment.detail || item.segment.movementID, track: item.track.name })"
-                        @click.stop @pointerdown.stop="startTrackDrag($event, item.train, item.segment, item.track)"><title>{{ t('stationPlanView.trackDragHint') }}</title></line>
+                        @mouseenter="!item.segment.isConnector && showMovementInfo($event, item.train.id, item.segment.movementID)" @mouseleave="hideMovementInfo"
+                        @click.stop @pointerdown.stop="startTrackDrag($event, item.train, item.segment, item.track)" />
                     <!-- Endpoint handles stay above every train line and track drag area. -->
                     <g v-for="line in selectedLines" :key="`handles:${line.train.id}`" class="station-plan-segment-controls" :data-control-train-id="line.train.id">
                         <g v-for="(segment, index) in line.editableSegments" :key="segment.movementID" :data-segment-index="index" :data-movement-id="segment.movementID">
                             <g v-for="edge in (['start', 'end'] as const)" :key="edge" :data-handle-edge="edge"
                                 :transform="`translate(${edge === 'start' ? segment.x1 : segment.x2} ${edge === 'start' ? segment.y1 : segment.y2})`">
                                 <rect x="-5" y="-5" width="10" height="10"
-                                    class="station-plan-time-handle" :class="{ 'is-disabled': !canEditTrain(line.train.id) }" :stroke="line.train.color" :data-edge="edge" role="button" tabindex="0"
-                                    :style="{ '--station-plan-handle-color': line.train.color }"
+                                    class="station-plan-time-handle" :class="{ 'is-disabled': !canEditTrain(line.train.id) }" :stroke="movementColor(line.train, segment.movementID)" :data-edge="edge" role="button" tabindex="0"
+                                    :style="{ '--station-plan-handle-color': movementColor(line.train, segment.movementID) }"
                                     :data-row-key="edge === 'start' ? segment.startRowKey : segment.endRowKey"
                                     :aria-label="t(`stationPlanView.${edge}Handle`, { train: line.train.label, movement: segment.detail || segment.movementID })" :aria-disabled="!canEditTrain(line.train.id)"
                                     :title="t(edge === 'start' ? 'stationPlanView.alignStartHint' : 'stationPlanView.alignEndHint')"
@@ -133,6 +164,21 @@
                 </div>
             </template>
         </ElTooltip>
+        <ElTooltip :visible="!!movementInfo" :virtual-ref="activeMovement?.element" virtual-triggering placement="top"
+            :show-arrow="false" :enterable="false" :persistent="false" :show-after="0" :hide-after="0" transition="" popper-class="station-plan-handle-tooltip station-plan-movement-tooltip">
+            <template #content>
+                <div v-if="movementInfo" :id="movementTooltipID" class="station-plan-handle-info station-plan-movement-info">
+                    <span>{{ t('stationPlanView.handleInfo.trainNumber') }}</span><strong>{{ movementInfo.trainNumber }}</strong>
+                    <span>{{ t('stationPlanView.movementInfo.route') }}</span><strong>{{ movementInfo.route }}</strong>
+                    <span>{{ t('stationPlanView.handleInfo.startTime') }}</span><strong>{{ movementInfo.startTime }}</strong>
+                    <span>{{ t('stationPlanView.handleInfo.endTime') }}</span><strong>{{ movementInfo.endTime }}</strong>
+                    <div v-if="movementInfo.conflicts" class="station-plan-movement-conflicts">
+                        <span>{{ t('stationPlanView.movementInfo.conflicts') }}</span>
+                        <div>{{ movementInfo.conflicts }}</div>
+                    </div>
+                </div>
+            </template>
+        </ElTooltip>
         <Teleport to="body">
             <div v-if="dwellingMenu" ref="dwellingMenuElement" class="station-plan-dwelling-menu" role="menu" :aria-label="t('stationPlanView.dwelling.menuLabel')"
                 :style="{ left: `${dwellingMenu.x}px`, top: `${dwellingMenu.y}px` }" @pointerdown.stop @click.stop @contextmenu.stop.prevent>
@@ -148,20 +194,25 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, useId, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ElSlider, ElTooltip } from 'element-plus'
+import { ElSlider, ElSwitch, ElTooltip } from 'element-plus'
 import { Back, FullScreen, Refresh, Right } from '@element-plus/icons-vue'
 import ActionButton from '@/components/ui/ActionButton.vue'
-import { previewStationPlanSegmentEdit, stationPlanChartPadding, stationPlanCoincidentAnchors, stationPlanDomain, stationPlanTimeGrid, stationPlanTimeLabel, stationPlanTrainPath, stationPlanTrackVisitIndexes, type StationPlanAxisRow, type StationPlanTrain, type StationPlanEditableSegment, type StationPlanSegmentEdit, type StationPlanTrack, type StationPlanTrackEdit, type StationPlanTrackSegment } from './stationPlanView'
+import { previewStationPlanSegmentEdit, resolveStationPlanMovementRouteID, stationPlanChartPadding, stationPlanCoincidentAnchors, stationPlanDomain, stationPlanTimeGrid, stationPlanTimeLabel, stationPlanTrainPath, stationPlanTrackVisitIndexes, type StationPlanAxisRow, type StationPlanTrain, type StationPlanEditableSegment, type StationPlanSegmentEdit, type StationPlanTrack, type StationPlanTrackEdit, type StationPlanTrackSegment } from './stationPlanView'
 import { stationPlanHistoryShortcut } from './stationPlanActions'
 import type { StationPlanDraftPoint } from './stationPlanCreation'
-import type { StationPlanEditMovement, StationPlanEditRoute } from './stationPlanEditing'
+import { previewStationPlanTrackEdit, type StationPlanEditMovement, type StationPlanEditRoute } from './stationPlanEditing'
 import { resolveStationPlanDwellingTarget, type StationPlanDwellingTarget } from './stationPlanDwelling'
+import { isDwellingRoute } from '../simulationDwelling'
 import { cloneSvgWithStyles, createSvgElement, hasRenderedLayout, serializeReportSvg, snapshotHtmlText, stripReportInteractionMetadata, type StationPlanReportViewState, type StationPlanReportLabels } from '../report/svgSnapshot'
 import type { ReportFigure } from '../report/wordReport'
+import { conflictMovementKey, type ResourceConflictMarker } from '../operationPlanConflicts'
+import { defaultStationPlanColor, stationPlanColorGroups, stationPlanColorKey, stationPlanConstraintColor, type StationPlanColorGroup, type StationPlanColorMode } from './stationPlanColors'
 
 const props = withDefaults(defineProps<{
     rows: StationPlanAxisRow[]
     trains: StationPlanTrain[]
+    conflictMarkers?: ReadonlyMap<string, ResourceConflictMarker>
+    movementConflicts?: ReadonlyMap<string, string>
     tracks?: StationPlanTrack[]
     movements?: StationPlanEditMovement[]
     routes?: StationPlanEditRoute[]
@@ -178,13 +229,34 @@ const props = withDefaults(defineProps<{
     readOnlyTrainIDs?: string[]
     undoCount?: number
     redoCount?: number
-}>(), { tracks: () => [], movements: () => [], routes: () => [], dwellingMovementIDs: () => ({}), pickMode: false, draftPoints: () => [], startMinutes: null, endMinutes: null, loading: false, refreshDisabled: false, emptyText: '', selectionScope: '', editable: true, readOnlyTrainIDs: () => [], undoCount: 0, redoCount: 0 })
+}>(), { conflictMarkers: () => new Map(), movementConflicts: () => new Map(), tracks: () => [], movements: () => [], routes: () => [], dwellingMovementIDs: () => ({}), pickMode: false, draftPoints: () => [], startMinutes: null, endMinutes: null, loading: false, refreshDisabled: false, emptyText: '', selectionScope: '', editable: true, readOnlyTrainIDs: () => [], undoCount: 0, redoCount: 0 })
 const emit = defineEmits<{ (event: 'refresh'): void; (event: 'edit' | 'align', edit: StationPlanSegmentEdit): void; (event: 'track-edit', edit: StationPlanTrackEdit): void; (event: 'dwelling-edit', target: StationPlanDwellingTarget): void; (event: 'point-pick', point: StationPlanDraftPoint): void; (event: 'pick-cancel'): void; (event: 'undo'): void; (event: 'redo'): void }>()
 const { t } = useI18n()
 const scaleX = defineModel<number>('scaleX', { default: 1 })
 const scaleY = defineModel<number>('scaleY', { default: 1 })
 const autoFit = ref(true)
 const lineMode = ref<'straight' | 'orthogonal'>('straight')
+const showEventTimes = ref(false)
+const colorMode = ref<StationPlanColorMode>('trainType')
+const colorOverrides = ref<Record<string, string>>({})
+const colorGroups = computed(() => stationPlanColorGroups(props.trains, colorMode.value, colorOverrides.value))
+const colorsByGroup = computed(() => new Map(colorGroups.value.map(group => [group.key, group.color])))
+function colorGroupName(group: StationPlanColorGroup) {
+    if (!group.value) return t(`stationPlanView.colors.unassigned.${colorMode.value}`)
+    if (colorMode.value === 'routeType' && ['Arrival', 'Departure', 'Shunting', 'Locomotive', 'Dwelling'].includes(group.value))
+        return t(`stationPlanView.colors.routeTypes.${group.value}`)
+    return group.name || t('stationPlanView.colors.unnamedProcess')
+}
+function setGroupColor(key: string, event: Event) {
+    const color = (event.target as HTMLInputElement).value
+    if (/^#[0-9a-f]{6}$/i.test(color)) colorOverrides.value = { ...colorOverrides.value, [key]: color }
+}
+function movementColor(train: StationPlanTrain, movementID?: string) {
+    return colorsByGroup.value.get(stationPlanColorKey(train, colorMode.value, movementID)) || defaultStationPlanColor
+}
+function terminalColor(train: StationPlanTrain, kind: 'entry' | 'exit') {
+    return movementColor(train, train.visits[kind === 'entry' ? 0 : train.visits.length - 1]?.movementID)
+}
 const selectedTrainIDs = ref(new Set<string>())
 const expandedTrackKeys = ref(new Set<string>())
 const displayRows = computed(() => props.rows.flatMap(row =>
@@ -240,7 +312,6 @@ interface TrackDragState {
     trainID: string
     segment: StationPlanTrackSegment
     source: StationPlanTrack
-    visitIndexes: number[]
     targetTrackID: string | null
     pointerID: number
     y: number
@@ -264,12 +335,16 @@ const contentWidth = computed(() => chartPadding.value.x * 2 + (domain.value.end
 const contentHeight = computed(() => chartPadding.value.y * 2 + displayRows.value.length * rowPitch.value)
 const lines = computed(() => props.trains.map(source => {
     const train = trackDrag.value?.trainID === source.id ? previewTrackDrag(source) : dragPreview.value?.trainID === source.id ? previewStationPlanSegmentEdit(source, dragPreview.value) : source
-    return { train, ...stationPlanTrainPath(train, displayRows.value, domain.value.start, pixelsPerMinute.value, rowPitch.value, chartPadding.value, lineMode.value) }
+    const geometry = stationPlanTrainPath(train, displayRows.value, domain.value.start, pixelsPerMinute.value, rowPitch.value, chartPadding.value, lineMode.value)
+    return { train, ...geometry, color: colorMode.value === 'routeType' ? stationPlanConstraintColor : movementColor(train), conflicts: geometry.movementPaths.flatMap(segment => {
+        const marker = props.conflictMarkers.get(conflictMovementKey(train.id, segment.movementID))
+        return marker ? [{ ...segment, ...marker }] : []
+    }) }
 }).filter(line => line.path))
 const selectedLines = computed(() => props.pickMode ? [] : lines.value.filter(line => selectedTrainIDs.value.has(line.train.id)))
 const trackDragSegments = computed(() => selectedLines.value.flatMap(line => {
     const segments: StationPlanTrackSegment[] = [...line.editableSegments]
-    for (let index = 1; index < line.editableSegments.length; index++) {
+    for (let index = 1; line.train.precedences === undefined && index < line.editableSegments.length; index++) {
         const previous = line.editableSegments[index - 1]!, next = line.editableSegments[index]!
         const fromIndex = previous.visitIndexes[1], toIndex = next.visitIndexes[0]
         if (fromIndex === undefined || toIndex === undefined || (previous.x2 === next.x1 && previous.y2 === next.y1)) continue
@@ -299,6 +374,33 @@ const canRedo = computed(() => !props.pickMode && props.editable && !props.loadi
 const rowLabels = computed(() => new Map(props.rows.flatMap(row => [row, ...(row.children || [])]).map(row => [row.key, row.label])))
 const timeHandleTooltipID = `station-plan-time-handle-${useId()}`
 const activeTimeHandle = shallowRef<{ element: SVGRectElement; trainID: string; segmentIndex: number; edge: 'start' | 'end' } | null>(null)
+const movementTooltipID = `station-plan-movement-${useId()}`
+const activeMovement = shallowRef<{ element: SVGElement; trainID: string; movementID: string } | null>(null)
+const movementInfo = computed(() => {
+    const active = activeMovement.value
+    if (!active || props.pickMode || drag.value || trackDrag.value || dwellingMenu.value) return null
+    const line = lines.value.find(item => item.train.id === active.trainID)
+    const segment = line?.editableSegments.find(item => item.movementID === active.movementID)
+    if (!line || !segment) return null
+    const movement = props.movements.find(item => item.trainID === active.trainID && item.movementID === active.movementID)
+    const routeID = movement && resolveStationPlanMovementRouteID(movement.routeID, movement.routeIDList)
+    const routeName = props.routes.find(route => route.id === routeID)?.name.trim()
+    return {
+        trainNumber: line.train.label,
+        route: routeName && routeName !== routeID ? routeName : t('stationPlanView.movementInfo.unnamedRoute'),
+        startTime: stationPlanTimeLabel(segment.startMinutes),
+        endTime: stationPlanTimeLabel(segment.endMinutes),
+        conflicts: props.movementConflicts.get(conflictMovementKey(active.trainID, active.movementID)),
+    }
+})
+function showMovementInfo(event: Event, trainID: string, movementID: string) {
+    activeTimeHandle.value = null
+    activeMovement.value = event.currentTarget instanceof SVGElement
+        ? { element: event.currentTarget, trainID, movementID } : null
+}
+function hideMovementInfo(event: Event) {
+    if (activeMovement.value?.element === event.currentTarget) activeMovement.value = null
+}
 interface DwellingMenu {
     target: StationPlanDwellingTarget
     segment: StationPlanEditableSegment
@@ -350,6 +452,7 @@ function pickCanvasPoint(event: MouseEvent) {
 }
 
 function showTimeHandleInfo(event: Event, trainID: string, segmentIndex: number, edge: 'start' | 'end') {
+    activeMovement.value = null
     if (event.currentTarget instanceof SVGRectElement && !drag.value && !trackDrag.value && !dwellingMenu.value) activeTimeHandle.value = { element: event.currentTarget, trainID, segmentIndex, edge }
 }
 function hideTimeHandleInfo(event: Event) {
@@ -424,9 +527,6 @@ function applyDwellingMenu() {
     if (!target || target.movementID !== menu.target.movementID || target.action !== menu.target.action) return
     menu.trigger?.focus()
     emit('dwelling-edit', menu.target)
-}
-function trainTitle(train: StationPlanTrain) {
-    return [train.label, ...train.visits.filter(visit => rowLabels.value.has(visit.rowKey)).map(visit => `${visit.detail}: ${rowLabels.value.get(visit.rowKey)} · ${stationPlanTimeLabel(visit.arriveMinutes)}`)].join('\n')
 }
 function setLineMode(mode: 'straight' | 'orthogonal') {
     if (mode === lineMode.value) return
@@ -545,7 +645,7 @@ function stopSegmentDrag() {
     window.removeEventListener('blur', cancelSegmentDrag)
     if (current.moved) { suppressClick = true; window.setTimeout(() => { suppressClick = false }, 0) }
 }
-function cancelSegmentDrag() { closeDwellingMenu(); stopSegmentDrag(); stopTrackDrag(); trackDropInvalid.value = false }
+function cancelSegmentDrag() { closeDwellingMenu(); activeMovement.value = null; stopSegmentDrag(); stopTrackDrag(); trackDropInvalid.value = false }
 function finishSegmentDrag(event: PointerEvent) {
     if (!drag.value || drag.value.pointerID !== event.pointerId) return
     moveSegmentDrag(event)
@@ -557,9 +657,10 @@ function previewTrackDrag(train: StationPlanTrain): StationPlanTrain {
     const current = trackDrag.value
     const target = props.tracks.find(track => track.id === current?.targetTrackID)
     if (!current || !target || target.id === current.source.id) return train
-    const indexes = new Set(current.visitIndexes)
-    const nodeKeys = new Map([[`node:${current.source.fromNodeID}`, `node:${target.fromNodeID}`], [`node:${current.source.toNodeID}`, `node:${target.toNodeID}`]])
-    return { ...train, visits: train.visits.map((visit, index) => indexes.has(index) ? { ...visit, rowKey: nodeKeys.get(visit.rowKey) || visit.rowKey } : visit) }
+    try {
+        return previewStationPlanTrackEdit(train, { trainID: train.id, segment: current.segment,
+            sourceTrackID: current.source.id, targetTrackID: target.id }, props.movements, props.routes, props.tracks)
+    } catch { return train }
 }
 function startTrackDrag(event: PointerEvent, train: StationPlanTrain, segment: StationPlanTrackSegment, source: StationPlanTrack) {
     if (event.button !== 0 || !canEditTrain(train.id) || !selectedTrainIDs.value.has(train.id) || drag.value || trackDrag.value || !viewport.value) return
@@ -571,7 +672,7 @@ function startTrackDrag(event: PointerEvent, train: StationPlanTrain, segment: S
     activeTimeHandle.value = null
     trackDropInvalid.value = false
     autoFit.value = false
-    trackDrag.value = { trainID: train.id, segment, source: { ...source }, visitIndexes: indexes, targetTrackID: source.id,
+    trackDrag.value = { trainID: train.id, segment, source: { ...source }, targetTrackID: source.id,
         pointerID: event.pointerId, y: event.clientY, lastClientY: event.clientY, scrollY: viewport.value.scrollTop, viewportTop: viewport.value.getBoundingClientRect().top, moved: false,
         cursor: document.body.style.cursor, userSelect: document.body.style.userSelect }
     document.body.style.cursor = 'ns-resize'
@@ -632,6 +733,7 @@ function finishTrackDrag(event: PointerEvent) {
 }
 function syncScroll() {
     closeDwellingMenu()
+    activeMovement.value = null
     if (!viewport.value) return
     const width = viewport.value.offsetWidth - viewport.value.clientWidth
     const height = viewport.value.offsetHeight - viewport.value.clientHeight
@@ -677,8 +779,8 @@ watch(() => props.trains.map(train => train.id), ids => {
     const available = new Set(ids)
     for (const id of selectedTrainIDs.value) if (!available.has(id)) selectedTrainIDs.value.delete(id)
 })
-watch(() => props.selectionScope, () => { cancelSegmentDrag(); activeTimeHandle.value = null; selectedTrainIDs.value.clear(); expandedTrackKeys.value.clear() })
-watch(() => props.pickMode, () => { cancelSegmentDrag(); activeTimeHandle.value = null })
+watch(() => props.selectionScope, () => { cancelSegmentDrag(); activeTimeHandle.value = null; activeMovement.value = null; selectedTrainIDs.value.clear(); expandedTrackKeys.value.clear() })
+watch(() => props.pickMode, () => { cancelSegmentDrag(); activeTimeHandle.value = null; activeMovement.value = null })
 watch([displayRows, () => props.trains, () => props.tracks, () => props.editable, () => props.loading, () => props.readOnlyTrainIDs, scaleX, scaleY], cancelSegmentDrag)
 watch([contentWidth, contentHeight], () => { void nextTick(syncScroll) }, { flush: 'post' })
 onBeforeUnmount(() => {
@@ -696,7 +798,8 @@ function rememberReportSize() {
 }
 function getReportViewState(): StationPlanReportViewState {
     rememberReportSize()
-    return { scaleX: scaleX.value, scaleY: scaleY.value, lineMode: lineMode.value,
+    return { scaleX: scaleX.value, scaleY: scaleY.value, lineMode: lineMode.value, showEventTimes: showEventTimes.value,
+        colorMode: colorMode.value, colorOverrides: { ...colorOverrides.value },
         expandedTrackKeys: [...expandedTrackKeys.value], autoFit: autoFit.value,
         ...lastReportSize }
 }
@@ -707,6 +810,9 @@ async function applyReportViewState(state: StationPlanReportViewState): Promise<
     autoFit.value = false
     expandedTrackKeys.value = new Set(state.expandedTrackKeys)
     lineMode.value = state.lineMode
+    showEventTimes.value = state.showEventTimes ?? false
+    colorMode.value = state.colorMode ?? 'trainType'
+    colorOverrides.value = { ...state.colorOverrides }
     scaleX.value = state.scaleX
     scaleY.value = state.scaleY
     const width = state.viewportWidth || viewport.value?.clientWidth || 0
@@ -842,7 +948,7 @@ function exportReportFigure(caption: string, labels: StationPlanReportLabels = {
         for (const train of Array.from(body.querySelectorAll<SVGGElement>('.station-plan-train[data-train-id]'))) {
             const id = train.dataset.trainId
             if (!id || !Object.prototype.hasOwnProperty.call(labels.trains, id)) continue
-            for (const text of Array.from(train.querySelectorAll('text'))) text.textContent = labels.trains[id]!
+            for (const text of Array.from(train.querySelectorAll('.station-plan-train-label'))) text.textContent = labels.trains[id]!
         }
     }
     body.setAttribute('x', String(border + left))
@@ -869,6 +975,14 @@ defineExpose({ viewport, fitToViewport, getReportViewState, applyReportViewState
 .station-plan-line-mode button { padding: 4px 8px; border: 1px solid var(--el-border-color); border-radius: 4px; color: var(--el-text-color-regular); background: #fff; font: inherit; cursor: pointer; }
 .station-plan-line-mode button[aria-pressed='true'] { color: var(--el-color-primary); border-color: var(--el-color-primary); background: var(--el-color-primary-light-9); }
 .station-plan-line-mode button:focus-visible { outline: 2px solid var(--el-color-primary); outline-offset: 2px; }
+.station-plan-color-mode { display: flex; align-items: center; gap: 6px; font-size: 12px; white-space: nowrap; }
+.station-plan-color-mode select { max-width: 170px; padding: 4px; border: 1px solid var(--el-border-color); border-radius: 4px; background: #fff; color: var(--el-text-color-regular); font: inherit; }
+.station-plan-color-legend { display: flex; flex: 0 0 auto; align-items: center; flex-wrap: wrap; gap: 6px 16px; max-height: 64px; overflow: auto; padding: 6px 12px; border-bottom: 1px solid var(--el-border-color-lighter); font-size: 12px; }
+.station-plan-color-legend label { display: flex; align-items: center; gap: 5px; cursor: pointer; }
+.station-plan-color-legend input { width: 24px; height: 20px; padding: 0; border: 0; background: transparent; cursor: pointer; }
+.station-plan-constraint-legend { display: flex; align-items: center; gap: 5px; color: #64748b; }
+.station-plan-constraint-legend i { width: 20px; border-top: 1px solid currentColor; }
+.station-plan-event-times-toggle { flex-shrink: 0; }
 .station-plan-history-count { color: var(--el-text-color-secondary); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .station-plan-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: 180px minmax(0, 1fr); grid-template-rows: 50px minmax(0, 1fr); overflow: hidden; border: 1px solid var(--el-border-color); border-radius: 8px; }
 .station-plan-corner { display: flex; align-items: center; gap: 14px; padding: 0 12px; font-size: 12px; font-weight: 600; background: #f8fafc; border-right: 1px solid var(--el-border-color); border-bottom: 1px solid var(--el-border-color); }
@@ -899,24 +1013,32 @@ defineExpose({ viewport, fitToViewport, getReportViewState, applyReportViewState
 .station-plan-canvas { display: block; user-select: none; }
 .station-plan-row-band { fill: transparent; pointer-events: none; }
 .station-plan-row-band.is-track-row { fill: #f0fdfa; }
-.station-plan-time-line, .station-plan-row-line { stroke-width: 0.75; vector-effect: non-scaling-stroke; }
+.station-plan-time-line, .station-plan-row-line { stroke-width: 0.5; vector-effect: non-scaling-stroke; }
 .station-plan-time-line { stroke: #cbd5e1; }
-.station-plan-time-line.is-hour { stroke: #94a3b8; stroke-width: 1.5; }
-.station-plan-time-line.is-half-hour { stroke-width: 1; stroke-dasharray: 4 4; }
-.station-plan-row-line[data-row-kind='track'] { stroke: #0f766e; stroke-width: 1.1; }
+.station-plan-time-line.is-hour { stroke: #94a3b8; stroke-width: 1; }
+.station-plan-time-line.is-half-hour { stroke-width: 0.75; stroke-dasharray: 4 4; }
+.station-plan-row-line[data-row-kind='track'] { stroke: #0f766e; stroke-width: 0.8; }
 .station-plan-row-line[data-row-kind='node'] { stroke: #64748b; stroke-opacity: 0.65; stroke-dasharray: 5 4; }
-.station-plan-train-line, .station-plan-terminal-line { fill: none; stroke-width: 2; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
-.station-plan-train-connector { fill: none; stroke-width: 1; stroke-dasharray: 3 3; opacity: 0.55; vector-effect: non-scaling-stroke; }
+.station-plan-train-line, .station-plan-terminal-line { fill: none; stroke-width: 1.5; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.station-plan-train-line.is-dwelling { stroke-width: 3; }
+.station-plan-train-connector { fill: none; stroke-width: 0.75; vector-effect: non-scaling-stroke; }
 .station-plan-train { cursor: pointer; outline: none; }
 .station-plan-train:focus-visible .station-plan-train-line { filter: drop-shadow(0 0 2px var(--el-color-primary)); }
 .station-plan-train-hit-area { fill: none; stroke: transparent; stroke-width: 12; pointer-events: stroke; vector-effect: non-scaling-stroke; }
+.station-plan-conflict-glow { fill: none; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; vector-effect: non-scaling-stroke; filter: drop-shadow(0 0 2px var(--resource-conflict-color)) drop-shadow(0 0 3px var(--resource-conflict-color)); }
+.station-plan-movement-hit { outline: none; }
+.station-plan-movement-hit:focus-visible { stroke: var(--el-color-primary-light-7); stroke-width: 4; }
 .station-plan-track-drag { stroke: transparent; stroke-width: 18; stroke-linecap: round; pointer-events: stroke; cursor: ns-resize; touch-action: none; vector-effect: non-scaling-stroke; }
 .station-plan-track-drag.is-disabled { pointer-events: none; cursor: default; }
 .station-plan-track-target { fill: var(--el-color-primary); opacity: 0.12; pointer-events: none; }
 .station-plan-train.is-selected .station-plan-train-line, .station-plan-train.is-selected .station-plan-terminal-line,
-.station-plan-train:hover .station-plan-train-line, .station-plan-train:hover .station-plan-terminal-line { stroke-width: 4; }
+.station-plan-train:hover .station-plan-train-line, .station-plan-train:hover .station-plan-terminal-line { stroke-width: 3; }
+.station-plan-train.is-selected .station-plan-train-line.is-dwelling,
+.station-plan-train:hover .station-plan-train-line.is-dwelling { stroke-width: 4.5; }
 .station-plan-train-label { font-size: 11px; font-weight: 600; text-anchor: middle; paint-order: stroke; stroke: #fff; stroke-width: 3px; stroke-linejoin: round; pointer-events: none; }
-.station-plan-time-handle { fill: white; stroke-width: 2; cursor: ew-resize; touch-action: none; }
+.station-plan-event-times { pointer-events: none; }
+.station-plan-event-time-label { font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; text-anchor: start; paint-order: stroke; stroke: #fff; stroke-width: 3px; stroke-linejoin: round; }
+.station-plan-time-handle { fill: white; stroke-width: 1.5; cursor: ew-resize; touch-action: none; }
 .station-plan-time-handle:hover, .station-plan-time-handle:focus-visible { fill: var(--station-plan-handle-color, #409eff); }
 .station-plan-time-handle.is-disabled { cursor: default; opacity: 0.5; }
 .station-plan-time-handle:focus-visible { outline: 2px solid var(--el-color-primary); }
@@ -927,13 +1049,16 @@ defineExpose({ viewport, fitToViewport, getReportViewState, applyReportViewState
 .station-plan-handle-info { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px; line-height: 1.6; font-size: 12px; }
 .station-plan-handle-info span { color: rgba(255, 255, 255, 0.75); }
 .station-plan-handle-info strong { font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+:global(.el-popper.station-plan-movement-tooltip) { max-width: min(540px, calc(100vw - 24px)); }
+.station-plan-movement-conflicts { grid-column: 1 / -1; margin-top: 4px; padding-top: 8px; border-top: 1px solid rgba(255, 255, 255, 0.25); overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.station-plan-movement-conflicts > span { display: block; margin-bottom: 4px; }
 .station-plan-drag-feedback { position: absolute; right: 16px; top: 58px; z-index: 2; padding: 5px 10px; font-size: 12px; background: #fff; border: 1px solid var(--el-color-primary); border-radius: 4px; pointer-events: none; }
 .station-plan-drag-feedback.is-invalid { color: var(--el-color-danger); border-color: var(--el-color-danger); }
 .station-plan-pick-surface { fill: transparent; pointer-events: all; cursor: crosshair; }
 .station-plan-draft-points { pointer-events: none; }
 .station-plan-draft-marker { pointer-events: all; cursor: crosshair; }
-.station-plan-draft-line { stroke: var(--el-color-primary); stroke-width: 2; stroke-dasharray: 6 4; fill: none; }
-.station-plan-draft-point { fill: #fff; stroke: var(--el-color-primary); stroke-width: 2; }
+.station-plan-draft-line { stroke: var(--el-color-primary); stroke-width: 1.5; stroke-dasharray: 6 4; fill: none; }
+.station-plan-draft-point { fill: #fff; stroke: var(--el-color-primary); stroke-width: 1.5; }
 .station-plan-draft-point-label { fill: var(--el-color-primary); font-size: 12px; font-weight: 600; text-anchor: middle; paint-order: stroke; stroke: #fff; stroke-width: 3px; }
 .station-plan-empty { flex: 1; display: grid; place-items: center; color: var(--el-text-color-secondary); font-size: 13px; }
 .station-plan-empty-label { fill: #909399; font-size: 12px; }

@@ -1,3 +1,5 @@
+import type { ResourceConflictMarker } from '../operationPlanConflicts'
+
 // Shared geometry keeps bars and overlapping lanes consistent in every Capacity view.
 export const trackOccupancyGanttMetrics = {
     sidebarWidth: 168,
@@ -10,11 +12,15 @@ export const trackOccupancyGanttMetrics = {
 } as const
 
 export function fitTrackOccupancyGantt(width: number, height: number, timelineWidth: number, rowsHeight: number) {
+    // Leave one CSS pixel for layout rounding; fitting exactly to a fractional edge
+    // can create a scrollbar, which used to feed a different size back into fitting.
+    const timelineSpace = Math.max(1, Math.floor(width) - trackOccupancyGanttMetrics.sidebarWidth - 1)
+    const rowsSpace = Math.max(1, Math.floor(height) - trackOccupancyGanttMetrics.axisHeight - 1)
     return {
         scaleX: width > trackOccupancyGanttMetrics.sidebarWidth && timelineWidth > 0
-            ? (width - trackOccupancyGanttMetrics.sidebarWidth) / timelineWidth : 1,
+            ? timelineSpace / timelineWidth : 1,
         scaleY: height > trackOccupancyGanttMetrics.axisHeight && rowsHeight > 0
-            ? (height - trackOccupancyGanttMetrics.axisHeight) / rowsHeight : 1,
+            ? rowsSpace / rowsHeight : 1,
     }
 }
 
@@ -41,6 +47,7 @@ export interface TrackOccupancyGanttBlock {
     color?: string
     className?: string
     editable?: boolean
+    conflict?: ResourceConflictMarker
 }
 
 export interface TrackOccupancyGanttRow {

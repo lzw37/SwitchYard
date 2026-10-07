@@ -5,6 +5,12 @@
         "success": "The station capacity report is ready and downloading.",
         "failed": "Report export failed. Check your connection, refresh the plan and charts, then retry."
     },
+    "resourceConflicts": {
+        "show": "Show resource conflicts",
+        "hint": "Show matching glows on plan lines and occupancy blocks whose operations overlap on the same track circuit.",
+        "with": "Conflicting train operations:",
+        "detail": "{train} · {movement} | {cell} | Overlap {start} – {end}"
+    },
     "capacityGantt": {
         "toolbar": "Occupancy chart controls",
         "rowLegend": "Row type legend",
@@ -23,6 +29,30 @@
         "saveFailed": "Failed to save cell occupancy times; the original times were restored"
     },
     "stationPlanView": {
+        "colors": {
+            "mode": "Line colors",
+            "modes": {
+                "process": "By operation process",
+                "routeType": "By route type",
+                "trainType": "By train type"
+            },
+            "legend": "Line color legend",
+            "change": "Change line color for “{name}”",
+            "constraint": "Precedence constraints",
+            "unnamedProcess": "Unnamed operation process",
+            "unassigned": {
+                "process": "No operation process",
+                "routeType": "Unspecified route type",
+                "trainType": "Unspecified train type"
+            },
+            "routeTypes": {
+                "Arrival": "Arrival",
+                "Departure": "Departure",
+                "Shunting": "Shunting",
+                "Locomotive": "Locomotive",
+                "Dwelling": "Dwelling"
+            }
+        },
         "dwelling": {
             "menuLabel": "Dwelling activity actions",
             "passToStop": "Convert passing to stop",
@@ -36,7 +66,7 @@
         "fromProcess": {
             "open": "Add train from process",
             "title": "Add train from an operation process",
-            "description": "Choose a saved process, select each activity's allowed route or track, then preview and create one train. All activities, durations, fixed events, and precedence constraints are retained.",
+            "description": "Choose a saved process, select each activity's allowed route, then preview and create one train. All activities, durations, fixed events, and precedence constraints are retained.",
             "source": "Operation process",
             "selectSource": "Select a saved operation process",
             "reload": "Reload processes and candidates",
@@ -48,12 +78,8 @@
             "activities": "Process activities",
             "duration": "Duration range (minutes)",
             "route": "Activity route",
-            "track": "Dwelling track",
-            "dwellingRoute": "Dwelling route (optional)",
-            "noDwellingRoute": "Without a dwelling route, the backend generates occupation from the selected track.",
             "fixedSelection": "Fixed by the operation process",
             "selectRoute": "Select one of this activity's candidate routes",
-            "selectTrack": "Select one of this activity's candidate tracks",
             "missingChoices": "No valid candidates. Check the process and station resources.",
             "preview": "Check constraints and preview",
             "previewStale": "Inputs changed or have not been previewed. Check constraints again before creating the train.",
@@ -61,8 +87,7 @@
             "previewStart": "Start time",
             "previewEnd": "End time",
             "previewRoute": "Preview route",
-            "previewTrack": "Preview track",
-            "validation": "Select a process, enter a train number and valid time window, and choose a valid route or track for each activity.",
+            "validation": "Select a process, enter a train number and valid time window, and choose a valid route for each activity.",
             "constraintErrors": "Process validation or creation failed",
             "warnings": "Generation notes",
             "unpreviewed": "Preview pending",
@@ -117,14 +142,16 @@
             "saved": "Train and all movements created"
         },
         "toolbar": "Station operation plan chart controls",
-        "chartLabel": "Station operation plan chart, one line per train",
+        "chartLabel": "Station operation plan chart, thick lines for activities and thin lines for precedence constraints",
         "lineMode": "Movement lines",
         "straightMode": "Straight",
         "orthogonalMode": "Orthogonal",
         "lineModeHint": "Orthogonal lines place the horizontal leg on the non-track node row. Movements between two track nodes keep a straight line.",
+        "showEventTimes": "Show event times",
+        "eventTimesHint": "Show the last digit of each event's current minute beside it: 08:37 displays 7 and 08:40 displays 0.",
         "shiftFollowing": "Move overlapping handles and following times",
         "singleEndpoint": "Current time only (Ctrl)",
-        "trackDragHint": "Select a train, then drag a track movement up or down to change tracks. Add destination tracks in display settings.",
+        "trackDragHint": "Select a train, then drag a dwelling movement up or down to change tracks and all routes sharing its anchors. Add destination tracks in display settings.",
         "trackDragPreview": "Move to {track}; release to reset the related movement routes",
         "trackDropInvalid": "Drop on a track row. This change was not saved.",
         "trackHandleLabel": "Drag {movement} up or down to change its current track {track}",
@@ -153,8 +180,14 @@
         "trainLine": "Train operation line {train}",
         "startHandle": "Adjust {movement} start time for {train}",
         "endHandle": "Adjust {movement} end time for {train}",
-        "alignStartHint": "Double-click to align only this start time with the previous Movement's end",
-        "alignEndHint": "Double-click to align only this end time with the next Movement's start",
+        "alignStartHint": "Double-click to keep this start event fixed, align exact-linked events at their required intervals, and shift their successors",
+        "alignEndHint": "Double-click to keep this end event fixed, align exact-linked events at their required intervals, and shift their successors",
+        "movementInfo": {
+            "route": "Operation route",
+            "unnamedRoute": "Unnamed route",
+            "conflicts": "Conflicts",
+            "conflictDetail": "{train}-{route}-{cell} ({start} – {end})"
+        },
         "handleInfo": {
             "trainNumber": "Train number",
             "movement": "Movement",
@@ -172,13 +205,14 @@
         "redoSaved": "Change redone and saved to the operation plan",
         "historySaveFailed": "Could not save undo or redo. The current plan and history are unchanged.",
         "editErrors": {
+            "alignmentConflict": "Cannot preserve all exact intervals and branch shifts. Check the related events and precedences. The plan was not changed.",
             "missingTrackRoute": "Cannot move to {track}: no matching route for {movements}. The plan was not changed. Dwelling movements require a dwelling route on the destination track.",
             "stale": "The operation plan changed. Refresh and retry."
         },
         "emptyRows": "No movement nodes to display. Choose tracks or nodes in Configure display and order.",
         "emptyTrains": "No train paths for these nodes",
         "emptyNodes": "No station nodes available",
-        "note": "Each track's endpoints share one horizontal line by default. Double-click its name to expand or collapse them. Line endpoints use operation times in Movement order. Drag a handle or use the left/right arrow keys to move that time, exactly overlapping handles of the same train, and following times together. Hold Ctrl to change only the selected endpoint. The overlapping group is fixed when dragging starts; passing other handles does not add them. Moving a start handle also shifts that Movement's end. Double-click a start handle to align with the previous Movement's end, or an end handle to align with the next Movement's start. Alignment changes only that endpoint and does nothing without a valid adjacent time. Changes save automatically and support undo. Use Tab to focus overlapping handles. Diagonal entry and exit lines display the train number."
+        "note": "Each track's endpoints share one horizontal line by default. Double-click its name to expand or collapse them. Line endpoints use operation times in Movement order. Drag a handle or use the left/right arrow keys to move that time, exactly overlapping handles of the same train, and following times together. Hold Ctrl to change only the selected endpoint. The overlapping group is fixed when dragging starts; passing other handles does not add them. Moving a start handle also shifts that Movement's end. Double-click to keep the selected event fixed, align events linked by exact precedences at their required intervals, and shift their successors along activity start/end and precedence links. Without an exact precedence, nothing changes. Changes save automatically and support undo. Use Tab to focus overlapping handles. Diagonal entry and exit lines display the train number."
     },
     "login": {
         "title": "User Login",
@@ -1744,7 +1778,7 @@
                 "appendHint": "Enter a train count for each saved process in the table; 0 skips that process. All processes use the time range below, with 1–1000 trains in total. Append them to the current plan and keep existing trains.",
                 "trainCount": "Train count (0–1000)",
                 "batchSummary": "{processes} processes, {trains} trains to generate",
-                "distributionHint": "Position train starts using evenly spaced time slots separately for each process. Within each train, schedule all events as early as the full set of constraints allows. Zero-interval precedences connect directly unless another constraint requires a gap. Fixed event times, minimum intervals and duration bounds still apply. If any process is infeasible or exceeds the time range, reject the whole batch across all processes. Times support 24:00 and multiple days.",
+                "distributionHint": "Position train starts using evenly spaced time slots separately for each process. Within each train, schedule all events as early as the full set of constraints allows. Exact precedences require the event time difference to equal the interval; other precedences require at least that interval. Fixed event times and duration bounds still apply. If any process is infeasible or exceeds the time range, reject the whole batch across all processes. Times support 24:00 and multiple days.",
                 "generate": "Generate and append",
                 "generateFailed": "Could not generate the train operation plan. Check the error and retry.",
                 "invalidResponse": "The server did not return a complete result. Refresh the plan to check before generating again.",
@@ -1757,10 +1791,11 @@
                 "activities": "Activities",
                 "events": "Events",
                 "precedences": "Precedences",
+                "savedPrecedencesHint": "These precedences are saved with the train plan, retaining the leading event, following event, constraint type and interval for capacity solving. Exact precedences require equality; other precedences require at least the interval. Changes to the source process do not alter these records.",
                 "anchors": "Anchors",
                 "duration": "Min / max duration (min)",
-                "candidates": "Candidate routes / tracks",
-                "selected": "Selected route / track",
+                "candidates": "Candidate routes",
+                "selected": "Selected route",
                 "endpoints": "Start → end event",
                 "relativeTime": "Source time (min)",
                 "actualTime": "Scheduled time",
@@ -1770,8 +1805,11 @@
                 "selectedAnchor": "Selected anchor",
                 "leading": "Leading event",
                 "following": "Following event",
-                "interval": "Minimum interval (min)",
-                "track": "Track",
+                "interval": "Event interval (min)",
+                "precedenceType": "Precedence type",
+                "exactInterval": "Exactly (=)",
+                "minimumInterval": "At least (≥)",
+                "route": "Dwelling routes",
                 "routeAnchors": "Route endpoint anchors",
                 "startAnchor": "Start anchor",
                 "endAnchor": "End anchor",
@@ -2852,6 +2890,12 @@
         }
     },
     "operationSimulation": {
+        "views": {
+            "label": "View mode",
+            "planar": "2D",
+            "threeDimensional": "3D",
+            "renderError": "Unable to initialize the 3D scene. Switch to the 2D view."
+        },
         "playbackTitle": "Playback",
         "movementSequence": "Movement Sequence",
         "currentRoute": "Current Route",
@@ -2966,7 +3010,8 @@
                 "arrival": "West throat → Track I arrival",
                 "departure": "Track I → East throat departure",
                 "shunting": "Headshunt → Track I shunting",
-                "locomotive": "Locomotive depot → Headshunt"
+                "locomotive": "Locomotive depot → Headshunt",
+                "dwelling": "Track I dwelling route"
             },
             "activities": {
                 "arrival": "Train arrival",

@@ -98,7 +98,7 @@ public partial class OperationPlanController
                         OriginSeconds = schedule.OriginSeconds,
                         Process = JsonSerializer.Deserialize<OperationProcessTemplate>(sourceJson, TrainProcessSnapshotStore.JsonOptions)!,
                         EventTimes = new Dictionary<string, double>(schedule.EventTimes, StringComparer.Ordinal),
-                        SelectedTrackIDs = new Dictionary<string, string>(schedule.SelectedTrackIDs, StringComparer.Ordinal)
+                        SelectedRouteIDs = new Dictionary<string, string>(schedule.SelectedRouteIDs, StringComparer.Ordinal)
                     };
                     var sortOrder = 0;
                     foreach (var activity in ordered)

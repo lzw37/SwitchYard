@@ -189,6 +189,7 @@ static string CreateAgentId(string machineName, string username)
 
 static async Task RunSelfTestAsync(CapacityAgentOptions options)
 {
+    await RouteContinuitySelfTests.RunAsync();
     var input = new StationCapacitySolveInput
     {
         Settings = new StationCapacitySolveSettings

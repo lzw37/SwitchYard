@@ -155,7 +155,11 @@ const emit = defineEmits<{ save: [] }>()
 | `/dev/operation-process-links.html` | 活动/事件次序交互示例 |
 | `/tests/fixtures/route-design-preview.html` | 长名称、多选标签和进路侧栏布局 |
 | `/tests/fixtures/station-component-preview.html` | 真实三维组件和本地列车数据 |
-| `/tests/fixtures/operation-simulation-preview.html` | 二维运行仿真预览 |
+| `/dev/operation-simulation.html` | 统一平面／3D 仿真预览，支持 `?lang=en`、`?empty` 和 `?process-dwelling` |
+
+使用 `?process-dwelling` 可检查由作业流程生成的真实停留进路。作业流程回归命令为 `node --test src/capacity/operationProcessRoutes.test.mjs`。
+
+仿真预览可验证播放中或暂停时切换平面／3D、甘特图子表与缩放保留、单列车／全列车切换，以及离开页面后的暂停与资源释放；顶部请求计数应在切换显示控件时保持不变。
 
 这些入口使用本地示例或内存适配器；刷新会重置示例，不能据此认定真实后端保存成功。入口不是正式构建页面。具体参数和覆盖范围见[验证说明](tests/README.md)与[作业过程文档](../docs/operation-process.md)。
 

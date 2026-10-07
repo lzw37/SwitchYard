@@ -65,7 +65,7 @@ public partial class OperationPlanController
             execution.InstanceID = scope.InstanceID;
             execution.StationSchemeID = scope.StationSchemeID;
             execution.OperationPlanID = scope.OperationPlanID;
-            var chosenDwellingRoutes = ApplyProcessTrainSelections(execution, catalog, request.Selections);
+            ApplyProcessTrainSelections(execution, request.Selections);
             var executionErrors = OperationProcessValidator.Validate(execution, catalog);
             if (executionErrors.Count > 0)
                 return Abort(BadRequest(new { message = "所选资源无法形成有效的完整作业过程。", errors = executionErrors }));
@@ -84,7 +84,7 @@ public partial class OperationPlanController
                 InstanceID = scope.InstanceID, StationSchemeID = scope.StationSchemeID, OperationPlanID = scope.OperationPlanID,
                 TrainID = trainID, SourceTemplateID = source.Id, SourceRevision = source.Revision, SourceName = source.Name,
                 OriginSeconds = schedule.OriginSeconds, Process = execution, EventTimes = schedule.EventTimes,
-                SelectedTrackIDs = schedule.SelectedTrackIDs
+                SelectedRouteIDs = schedule.SelectedRouteIDs
             };
             var movements = new List<MovementRow>();
             var events = execution.Events.ToDictionary(ev => ev.Id, StringComparer.Ordinal);
@@ -92,7 +92,7 @@ public partial class OperationPlanController
             {
                 var movementID = (movements.Count + 1).ToString(CultureInfo.InvariantCulture);
                 snapshot.ActivityMovementMap.Add(activity.Id, movementID);
-                var routeID = activity.Type == "Dwelling" ? chosenDwellingRoutes.GetValueOrDefault(activity.Id, "") : schedule.SelectedRouteIDs[activity.Id];
+                var routeID = schedule.SelectedRouteIDs[activity.Id];
                 movements.Add(new MovementRow {
                     InstanceID = scope.InstanceID, StationSchemeID = scope.StationSchemeID, OperationPlanID = scope.OperationPlanID,
                     TrainID = trainID, TrainTemplateID = "", MovementID = movementID,
@@ -103,8 +103,9 @@ public partial class OperationPlanController
                     StartNodeID = events[activity.StartEvent].NodeID, EndNodeID = events[activity.EndEvent].NodeID
                 });
             }
-            var occupations = new MovementCellOccupationStore(db, scope.InstanceID, scope.StationSchemeID, scope.OperationPlanID, train, snapshot);
+            var occupations = new MovementCellOccupationStore(db, scope.InstanceID, scope.StationSchemeID, scope.OperationPlanID, train);
             foreach (var movement in movements) occupations.Prepare(movement);
+            TrainProcessSnapshotStore.EnsurePrecedences(snapshot);
             if (save)
             {
                 InsertProcessPlanTrain(db, train);
@@ -133,64 +134,24 @@ public partial class OperationPlanController
         }
     }
 
-    private static Dictionary<string, string> ApplyProcessTrainSelections(OperationProcessTemplate execution, ProcessCatalog catalog,
+    private static void ApplyProcessTrainSelections(OperationProcessTemplate execution,
         List<ProcessTrainActivitySelection>? selections)
     {
         if (selections is null || selections.Count != execution.Activities.Count || selections.Any(selection => selection is null) ||
             selections.Select(selection => selection.ActivityID?.Trim() ?? "").Distinct(StringComparer.Ordinal).Count() != selections.Count)
             throw new ArgumentException("必须为每个活动提供且只提供一组选项。");
         var selectionMap = selections.ToDictionary(selection => selection.ActivityID?.Trim() ?? "", StringComparer.Ordinal);
-        var routes = catalog.Routes.ToDictionary(route => route.Id, StringComparer.Ordinal);
-        var tracks = catalog.Tracks.ToDictionary(track => track.Id, StringComparer.Ordinal);
-        var dwellingRoutes = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var activity in execution.Activities)
         {
             if (!selectionMap.TryGetValue(activity.Id, out var selection)) throw new ArgumentException($"缺少活动“{activity.Name}”的选项。");
             var routeID = selection.RouteID?.Trim() ?? "";
-            var trackID = selection.TrackID?.Trim() ?? "";
-            if (activity.Type == "Dwelling")
-            {
-                if (!activity.TrackList.Contains(trackID, StringComparer.Ordinal) || !tracks.TryGetValue(trackID, out var track) || string.IsNullOrWhiteSpace(track.Name))
-                    throw new ArgumentException($"停留活动“{activity.Name}”必须选择原过程备选列表中的具名股道。");
-                if (activity.SelectedTrack is not null && activity.SelectedTrack != trackID)
-                    throw new ArgumentException($"停留活动“{activity.Name}”已固定股道，不能改选其他候选。");
-                activity.SelectedTrack = trackID;
-                if (routeID.Length > 0)
-                {
-                    if (!routes.TryGetValue(routeID, out var route) || route.Type != "Dwelling" || route.TrackIDs.Count != 1 || route.TrackIDs[0] != trackID ||
-                        route.StartNodeID == route.EndNodeID || !new[] { track.FromNodeID, track.ToNodeID }.Contains(route.StartNodeID) ||
-                        !new[] { track.FromNodeID, track.ToNodeID }.Contains(route.EndNodeID))
-                        throw new ArgumentException($"停留活动“{activity.Name}”的进路必须是所选股道对应的单 Link 停留进路。");
-                    dwellingRoutes.Add(activity.Id, routeID);
-                }
-            }
-            else
-            {
-                if (trackID.Length > 0 || !activity.RouteList.Contains(routeID, StringComparer.Ordinal))
-                    throw new ArgumentException($"活动“{activity.Name}”必须选择原过程备选列表中的进路。");
-                if (activity.SelectedRoute is not null && activity.SelectedRoute != routeID)
-                    throw new ArgumentException($"活动“{activity.Name}”已固定进路，不能改选其他候选。");
-                activity.SelectedRoute = routeID;
-            }
+            if (!activity.RouteList.Contains(routeID, StringComparer.Ordinal))
+                throw new ArgumentException($"活动“{activity.Name}”必须选择原过程备选列表中的进路。");
+            if (activity.SelectedRoute is not null && activity.SelectedRoute != routeID)
+                throw new ArgumentException($"活动“{activity.Name}”已固定进路，不能改选其他候选。");
+            activity.SelectedRoute = routeID;
         }
-        // Resolve each shared event to one physical node allowed by all its chosen resources.
-        // A real dwelling route also fixes direction and must satisfy the original anchor rules.
-        var domains = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
-        foreach (var activity in execution.Activities)
-            foreach (var start in new[] { true, false })
-            {
-                var eventID = start ? activity.StartEvent : activity.EndEvent;
-                var resourceID = activity.Type == "Dwelling" ? activity.SelectedTrack! : activity.SelectedRoute!;
-                var locations = OperationProcessResourceLocations.Get(execution, catalog, activity, resourceID, start).ToHashSet(StringComparer.Ordinal);
-                if (dwellingRoutes.TryGetValue(activity.Id, out var dwellingRoute))
-                    locations.IntersectWith(OperationProcessResourceLocations.Get(execution, catalog, activity, dwellingRoute, start, useRouteEndpoints: true));
-                if (domains.TryGetValue(eventID, out var existing)) locations.IntersectWith(existing);
-                if (locations.Count == 0 || locations.All(location => location.StartsWith('\u001f')))
-                    throw new ArgumentException($"活动“{activity.Name}”的所选进路、股道、事件地点或锚不能相互衔接。");
-                domains[eventID] = locations;
-            }
-        foreach (var ev in execution.Events)
-            if (domains.TryGetValue(ev.Id, out var locations)) ev.NodeID = locations.OrderBy(value => value, StringComparer.Ordinal).First().Split('\u001f')[0];
-        return dwellingRoutes;
+        // The scheduler resolves shared events and anchor locations after all choices
+        // are applied. Precedence contributes only its minimum time interval.
     }
 }

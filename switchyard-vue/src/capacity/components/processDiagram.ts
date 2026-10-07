@@ -1,5 +1,4 @@
 import type { ActivityType, PrecedenceEndpoint, ProcessActivity, ProcessCatalog, ProcessEvent, ProcessTemplate } from '../operationProcess.ts'
-import { dwellingTrackNames } from '../operationProcess.ts'
 
 export type ProcessObjectKind = 'activity' | 'event' | 'precedence' | 'anchor'
 export type ProcessSelection = { kind: ProcessObjectKind | 'template'; id: string }
@@ -21,10 +20,10 @@ export const processTypeColors: Record<ActivityType, { fill: string; border: str
 export function createProcessDiagram(model: ProcessTemplate, catalog: ProcessCatalog, english = false) {
     const ui = (zh: string, en: string) => english ? en : zh
     const routeName = (id: string) => catalog.routes.find(item => item.id === id)?.name || (id ? ui('进路不可用', 'Route unavailable') : ui('未选择进路', 'No route selected'))
-    const candidateNames = (activity: ProcessActivity) => activity.type === 'Dwelling' ? dwellingTrackNames(activity, catalog) : activity.routeList.map(routeName)
+    const candidateNames = (activity: ProcessActivity) => activity.routeList.map(routeName)
     const activityCardLabels = new Map((model.activities || [])
         .map(activity => {
-            const text = `${activity.type === 'Dwelling' ? ui('备选股道', 'Tracks') : ui('备选进路', 'Routes')}：${candidateNames(activity).join('、') || ui('未设置', 'Not set')}`
+            const text = `${ui('备选进路', 'Routes')}：${candidateNames(activity).join('、') || ui('未设置', 'Not set')}`
             // Thirteen full-width characters fit within the 144px card content area.
             const characters = Array.from(text)
             const lines: string[] = []

@@ -14,8 +14,6 @@ export interface OperationPlanTrackSource {
     sourceCellID: string
     sourceTrackID: string
     routeID: string
-    /** Explicit process Dwelling identity, needed when the Movement has no real route. */
-    dwellingTrackID?: string
     segment: StationPlanEditableSegment
 }
 
@@ -54,14 +52,14 @@ export function operationPlanCellTracks(
 /** Capture a real Dwelling Movement's original endpoints before dragging its Gantt block. */
 export function resolveOperationPlanTrackSource(
     train: StationPlanTrain, movementID: string, cellID: string, movements: StationPlanEditMovement[],
-    routes: StationPlanEditRoute[], tracks: StationPlanTrack[], cells: OperationPlanTrackCell[], dwellingTrackID?: string,
+    routes: StationPlanEditRoute[], tracks: StationPlanTrack[], cells: OperationPlanTrackCell[],
 ): OperationPlanTrackSource | null {
     const matching = movements.filter(movement => movement.trainID === train.id && movement.movementID === movementID)
     if (matching.length !== 1) return null
     const movement = matching[0]!
     const routeID = resolveStationPlanMovementRouteID(movement.routeID, movement.routeIDList)
     const route = routes.find(route => route.id === routeID)
-    if (routeID ? !route || route.type.trim().toLowerCase().replace(/\s+/g, '') !== 'dwelling' : !dwellingTrackID) return null
+    if (!route || route.type.trim().toLowerCase().replace(/\s+/g, '') !== 'dwelling') return null
     if (route?.linkIDs !== undefined && route.linkIDs.length !== 1) return null
     if (route && route.startNodeID.trim() === route.endNodeID.trim()) return null
 
@@ -78,12 +76,11 @@ export function resolveOperationPlanTrackSource(
 
     const candidates = operationPlanCellTracks(cellID, cells, tracks).filter(track => {
         if (route?.linkIDs && route.linkIDs[0]?.trim() !== track.id) return false
-        if (!route && dwellingTrackID !== track.id) return false
         return stationPlanTrackVisitIndexes(train, segment, track).length > 0
     })
     if (candidates.length !== 1) return null
     return { trainID: train.id, movementID, sourceCellID: cellID, sourceTrackID: candidates[0]!.id, routeID,
-        ...(route ? {} : { dwellingTrackID }), segment }
+        segment }
 }
 
 /** Plan the entire related arrival/stay/departure change; the caller persists this as one atomic action. */
@@ -92,7 +89,7 @@ export function planOperationPlanTrackEdit(
     routes: StationPlanEditRoute[], tracks: StationPlanTrack[], cells: OperationPlanTrackCell[],
 ): OperationPlanTrackEditPlan {
     const current = train.id === source.trainID ? resolveOperationPlanTrackSource(train, source.movementID, source.sourceCellID,
-        movements, routes, tracks, cells, source.dwellingTrackID) : null
+        movements, routes, tracks, cells) : null
     if (!current || current.sourceTrackID !== source.sourceTrackID || current.routeID !== source.routeID)
         throw new OperationPlanTrackEditingError('stale', source.sourceCellID)
     const targets = operationPlanCellTracks(targetCellID, cells, tracks)

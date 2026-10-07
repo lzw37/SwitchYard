@@ -100,16 +100,25 @@ public sealed class CapacitySolveJobService
             request.Input.ValueKind != JsonValueKind.Object) return null;
         string? requestedMinimum = null;
         var containsProcess = false;
+        var containsExactPrecedence = false;
         foreach (var property in request.Input.EnumerateObject())
         {
             if (string.Equals(property.Name, "minimumModelVersion", StringComparison.OrdinalIgnoreCase) && property.Value.ValueKind == JsonValueKind.String)
                 requestedMinimum = property.Value.GetString();
             if (string.Equals(property.Name, "trains", StringComparison.OrdinalIgnoreCase) && property.Value.ValueKind == JsonValueKind.Array)
-                containsProcess |= property.Value.EnumerateArray().Any(train => train.ValueKind == JsonValueKind.Object &&
-                    train.EnumerateObject().Any(field => string.Equals(field.Name, "processConstraints", StringComparison.OrdinalIgnoreCase) &&
-                        field.Value.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined)));
+                foreach (var train in property.Value.EnumerateArray().Where(train => train.ValueKind == JsonValueKind.Object))
+                    foreach (var field in train.EnumerateObject().Where(field => string.Equals(field.Name, "processConstraints", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        containsProcess |= field.Value.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined);
+                        if (field.Value.ValueKind != JsonValueKind.Object) continue;
+                        containsExactPrecedence |= field.Value.EnumerateObject().Any(value =>
+                            string.Equals(value.Name, "precedences", StringComparison.OrdinalIgnoreCase) && value.Value.ValueKind == JsonValueKind.Array &&
+                            value.Value.EnumerateArray().Any(precedence => precedence.ValueKind == JsonValueKind.Object &&
+                                precedence.EnumerateObject().Any(flag => string.Equals(flag.Name, "isExact", StringComparison.OrdinalIgnoreCase) && flag.Value.ValueKind == JsonValueKind.True)));
+                    }
         }
-        if (containsProcess && (!Version.TryParse(requestedMinimum, out var version) || version < new Version(2, 0, 0))) return "2.0.0";
+        var required = containsExactPrecedence ? new Version(2, 3, 0) : new Version(2, 2, 0);
+        if (containsProcess && (!Version.TryParse(requestedMinimum, out var version) || version < required)) return required.ToString();
         return requestedMinimum;
     }
 

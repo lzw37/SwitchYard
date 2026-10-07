@@ -1,4 +1,3 @@
-using System.Text;
 using SwitchYard.Capacity;
 using SwitchYard.Service.Controllers;
 using SwitchYard.Service.Models;
@@ -14,11 +13,8 @@ internal static class StationCapacityProcessInputBuilder
     {
         var snapshots = TrainProcessSnapshotStore.LoadAll(db, scope);
         if (snapshots.Count == 0) return;
-        input.MinimumModelVersion = "2.0.0";
+        input.MinimumModelVersion = snapshots.Any(snapshot => snapshot.Process.Precedences.Any(p => p.IsExact)) ? "2.3.0" : "2.2.0";
         var catalog = OperationProcessController.LoadCatalog(db, scope);
-        var cells = db.Query<StationCellRow>(
-            "SELECT ID, LinkIDList FROM cell WHERE InstanceID = @InstanceID AND StationSchemeID = @StationSchemeID",
-            scope) ?? new List<StationCellRow>();
         var trains = input.Trains.ToDictionary(train => train.Id, StringComparer.Ordinal);
         var routes = input.Routes.ToDictionary(route => route.Id, StringComparer.Ordinal);
         var seenTrains = new HashSet<string>(StringComparer.Ordinal);
@@ -46,17 +42,22 @@ internal static class StationCapacityProcessInputBuilder
             train.ProcessConstraints = new StationCapacityProcessInput
             {
                 OriginSeconds = snapshot.OriginSeconds,
+                Anchors = snapshot.Process.Anchors.Select(anchor => new StationCapacityAnchorInput {
+                    Id = anchor.Id, RouteIds = anchor.RouteIDs.ToList(),
+                    MovementId = anchor.DwellingActivityID is { } activityID
+                        ? snapshot.ActivityMovementMap.GetValueOrDefault(activityID) : null
+                }).ToList(),
                 Events = events.Select(ev => new StationCapacityEventInput
                 {
                     Id = ev.Id,
                     OriginalTimeSeconds = snapshot.EventTimes[ev.Id],
                     FixedTimeSeconds = ev.Time.HasValue ? snapshot.OriginSeconds + Seconds(ev.Time.Value) : null
                 }).ToList(),
-                Precedences = snapshot.Process.Precedences.Select(precedence => new StationCapacityPrecedenceInput
+                Precedences = TrainProcessSnapshotStore.EnsurePrecedences(snapshot).Select(precedence => new StationCapacityPrecedenceInput
                 {
                     LeadingEventId = precedence.LeadingEvent,
                     FollowingEventId = precedence.FollowingEvent,
-                    IntervalSeconds = Seconds(precedence.Interval)
+                    IntervalSeconds = precedence.MinIntervalSeconds, IsExact = precedence.IsExact
                 }).ToList()
             };
             foreach (var ev in train.ProcessConstraints.Events)
@@ -79,23 +80,10 @@ internal static class StationCapacityProcessInputBuilder
                     throw Invalid(snapshot, $"活动 {activity.Id} 的实际时长不符合原约束。");
                 if (!resources.TryGetValue(activity.Id, out var candidates))
                     throw Invalid(snapshot, $"活动 {activity.Id} 缺少资源候选。");
-                if (activity.Type == "Dwelling")
-                {
-                    if (!snapshot.SelectedTrackIDs.TryGetValue(activity.Id, out var selectedTrack) ||
-                        !candidates.TrackIDs.Contains(selectedTrack, StringComparer.Ordinal))
-                        throw Invalid(snapshot, $"停留活动 {activity.Id} 的实际轨道不符合原约束。");
-                    movement.CandidateRouteIds = candidates.TrackIDs.Select(trackId =>
-                        AddDwellingRoute(snapshot, trackId, cells, routes, input)).ToList();
-                    for (var index = 0; index < candidates.TrackIDs.Count; index++)
-                        AddLocations(candidates.TrackIDs[index], movement.CandidateRouteIds[index]);
-                }
-                else
-                {
-                    movement.CandidateRouteIds = candidates.RouteIDs.ToList();
-                    if (movement.CandidateRouteIds.Any(id => !routes.ContainsKey(id)))
-                        throw Invalid(snapshot, $"活动 {activity.Id} 的备选进路不存在或没有轨道电路。");
-                    foreach (var routeId in movement.CandidateRouteIds) AddLocations(routeId, routeId);
-                }
+                movement.CandidateRouteIds = candidates.RouteIDs.ToList();
+                if (movement.CandidateRouteIds.Any(id => !routes.ContainsKey(id)))
+                    throw Invalid(snapshot, $"活动 {activity.Id} 的备选进路不存在或没有轨道电路。");
+                foreach (var routeId in movement.CandidateRouteIds) AddLocations(routeId, routeId);
                 if (movement.CandidateRouteIds.Count == 0)
                     throw Invalid(snapshot, $"活动 {activity.Id} 没有满足全部约束的候选资源。");
 
@@ -109,9 +97,11 @@ internal static class StationCapacityProcessInputBuilder
                         throw Invalid(snapshot, $"活动 {activity.Id} 的候选资源没有合法事件地点。");
                 }
             }
+            var standalone = OperationProcessResourceLocations.StandaloneEvents(snapshot.Process, catalog);
             foreach (var ev in train.ProcessConstraints.Events)
             {
-                HashSet<string>? possible = null;
+                HashSet<string>? possible = standalone.GetValueOrDefault(ev.Id);
+                var endpointCount = train.Movements.Sum(m => (m.StartEventId == ev.Id ? 1 : 0) + (m.EndEventId == ev.Id ? 1 : 0));
                 foreach (var movement in train.Movements)
                 {
                     if (movement.StartEventId == ev.Id) Intersect(movement.StartLocationIdsByRoute);
@@ -119,48 +109,29 @@ internal static class StationCapacityProcessInputBuilder
                 }
                 if (possible is { Count: 0 }) throw Invalid(snapshot, $"共享事件 {ev.Id} 的候选资源没有共同地点或锚。");
                 ev.LocationIds = possible?.ToList() ?? new();
+                foreach (var location in ev.LocationIds)
+                    if (OperationProcessResourceLocations.AnchorChoice(location) is { } choice)
+                        ev.AnchorChoicesByLocation[location] = choice;
 
                 void Intersect(Dictionary<string, List<string>> choices)
                 {
-                    var locations = choices.Values.SelectMany(value => value).ToHashSet(StringComparer.Ordinal);
+                    var locations = choices.Values.SelectMany(value => value)
+                        .Where(location => endpointCount <= 1 || OperationProcessResourceLocations.HasNode(location)).ToHashSet(StringComparer.Ordinal);
                     if (possible is null) possible = locations;
                     else possible.IntersectWith(locations);
                 }
             }
             foreach (var precedence in train.ProcessConstraints.Precedences)
-                if (snapshot.EventTimes[precedence.FollowingEventId] - snapshot.EventTimes[precedence.LeadingEventId]
-                    < precedence.IntervalSeconds - 0.000001)
+            {
+                var elapsed = snapshot.EventTimes[precedence.FollowingEventId] - snapshot.EventTimes[precedence.LeadingEventId];
+                if (elapsed < precedence.IntervalSeconds - 0.000001 || (precedence.IsExact && elapsed > precedence.IntervalSeconds + 0.000001))
                     throw Invalid(snapshot, "实际事件时刻不符合原次序间隔。");
+            }
 
             var lastTime = snapshot.EventTimes.Values.Max();
             input.HorizonSeconds = Math.Max(input.HorizonSeconds,
                 Math.Min(MaximumHorizonSeconds, lastTime + Math.Max(0, input.Settings.RightShiftToleranceSeconds)));
         }
-    }
-
-    private static string AddDwellingRoute(TrainProcessSnapshot snapshot, string trackId,
-        IReadOnlyList<StationCellRow> cells, IDictionary<string, StationCapacityRouteInput> routes,
-        StationCapacitySolveInput input)
-    {
-        var routeId = "__process_dwelling__" + Convert.ToHexString(Encoding.UTF8.GetBytes(trackId));
-        if (routes.TryGetValue(routeId, out var existing))
-        {
-            if (existing.TrackId != trackId) throw Invalid(snapshot, "停留资源 ID 与已有进路冲突。");
-            return routeId;
-        }
-        if (routes.Keys.Any(id => string.Equals(id, routeId, StringComparison.OrdinalIgnoreCase)))
-            throw Invalid(snapshot, "停留资源 ID 与已有进路大小写冲突。");
-        var cellIds = cells.Where(cell => StationCapacityInputBuilder.ParseList(cell.LinkIDList)
-                .Contains(trackId, StringComparer.Ordinal))
-            .Select(cell => cell.ID).Where(id => !string.IsNullOrWhiteSpace(id)).Select(id => id!)
-            .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-        if (cellIds.Count == 0) throw Invalid(snapshot, $"停留轨道 {trackId} 没有关联轨道电路，无法建立占用约束。");
-        var route = new StationCapacityRouteInput { Id = routeId, TrackId = trackId, CellIds = cellIds };
-        routes.Add(routeId, route);
-        input.Routes.Add(route);
-        foreach (var cellId in cellIds)
-            input.RouteOccupations.Add(new StationCapacityRouteOccupationInput { RouteId = routeId, CellId = cellId });
-        return routeId;
     }
 
     private static double Seconds(double minutes)

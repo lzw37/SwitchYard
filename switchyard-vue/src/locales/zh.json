@@ -5,6 +5,12 @@
         "success": "车站通过能力分析报告已生成，正在下载。",
         "failed": "报告导出失败。请检查网络并刷新作业计划和图表后重试。"
     },
+    "resourceConflicts": {
+        "show": "显示资源冲突",
+        "hint": "同时显示大表折线和资源占用块的冲突。同一轨道电路占用时间重叠的作业以同色外发光标记。",
+        "with": "与以下列车作业冲突：",
+        "detail": "{train} · {movement}｜{cell}｜重叠 {start} – {end}"
+    },
     "capacityGantt": {
         "toolbar": "占用图功能区",
         "rowLegend": "行类型图例",
@@ -23,6 +29,30 @@
         "saveFailed": "保存区段占用时刻失败，已恢复原时刻"
     },
     "stationPlanView": {
+        "colors": {
+            "mode": "线条配色",
+            "modes": {
+                "process": "按作业过程编排",
+                "routeType": "按进路类型",
+                "trainType": "按列车种类"
+            },
+            "legend": "线条配色图例",
+            "change": "修改“{name}”的线条颜色",
+            "constraint": "次序约束",
+            "unnamedProcess": "未命名作业过程",
+            "unassigned": {
+                "process": "未关联作业过程",
+                "routeType": "未指定进路类型",
+                "trainType": "未指定列车种类"
+            },
+            "routeTypes": {
+                "Arrival": "接车",
+                "Departure": "发车",
+                "Shunting": "调车",
+                "Locomotive": "机车出入段",
+                "Dwelling": "停留"
+            }
+        },
         "dwelling": {
             "menuLabel": "停留活动操作",
             "passToStop": "通过变到开",
@@ -36,7 +66,7 @@
         "fromProcess": {
             "open": "从作业过程新增列车",
             "title": "从作业过程新增列车",
-            "description": "选择已保存的作业过程，为各活动确认备选进路或股道，再预览并生成一列车。过程中的活动、时长、固定事件和次序约束全部保留。",
+            "description": "选择已保存的作业过程，为各活动确认备选进路，再预览并生成一列车。过程中的活动、时长、固定事件和次序约束全部保留。",
             "source": "作业过程",
             "selectSource": "选择一个已保存的作业过程",
             "reload": "重新加载过程与备选项",
@@ -48,12 +78,8 @@
             "activities": "过程活动",
             "duration": "时长范围（分钟）",
             "route": "活动进路",
-            "track": "停留股道",
-            "dwellingRoute": "停留进路（可选）",
-            "noDwellingRoute": "不选停留进路时，后端按所选股道生成占用。",
             "fixedSelection": "作业过程中已固定",
             "selectRoute": "从此活动的备选进路中选择",
-            "selectTrack": "从此活动的备选股道中选择",
             "missingChoices": "缺少有效备选项，请检查作业过程和站场资源。",
             "preview": "检查约束并预览",
             "previewStale": "输入已变化或尚未预览，请重新检查约束后生成。",
@@ -61,8 +87,7 @@
             "previewStart": "开始时刻",
             "previewEnd": "结束时刻",
             "previewRoute": "预览进路",
-            "previewTrack": "预览股道",
-            "validation": "请选择过程，填写车次与有效时间范围，并为各活动选择有效的进路或股道。",
+            "validation": "请选择过程，填写车次与有效时间范围，并为各活动选择有效的进路。",
             "constraintErrors": "过程约束检查或生成未通过",
             "warnings": "生成说明",
             "unpreviewed": "待预览",
@@ -117,14 +142,16 @@
             "saved": "列车及全部作业已生成"
         },
         "toolbar": "作业计划大表功能区",
-        "chartLabel": "作业计划大表，每条折线代表一列车",
+        "chartLabel": "作业计划大表，粗线表示活动，细线表示次序约束",
         "lineMode": "连线模式",
         "straightMode": "直线",
         "orthogonalMode": "折线",
         "lineModeHint": "折线的水平段位于非股道节点行；两端均为股道节点时保留直线。",
+        "showEventTimes": "显示作业时刻",
+        "eventTimesHint": "在事件附近显示当前作业时刻的分钟个位数字，例如 08:37 显示 7、08:40 显示 0。",
         "shiftFollowing": "联动重合抓手及后续时刻",
         "singleEndpoint": "仅当前时刻（Ctrl）",
-        "trackDragHint": "选中列车后，上下拖动股道上的作业线段可换股道；可在配置中添加目标股道。",
+        "trackDragHint": "选中列车后，上下拖动停留作业可换股道，共用锚的进路一起调整；可在配置中添加目标股道。",
         "trackDragPreview": "移至 {track}，松开后重设关联作业进路",
         "trackDropInvalid": "只能移到股道行，当前调整未保存",
         "trackHandleLabel": "上下拖动 {movement}，调整当前股道 {track}",
@@ -153,8 +180,14 @@
         "trainLine": "列车作业线 {train}",
         "startHandle": "调整 {train} 的 {movement} 开始时刻",
         "endHandle": "调整 {train} 的 {movement} 结束时刻",
-        "alignStartHint": "双击只将当前开始时刻对齐上一 Movement 的结束时刻",
-        "alignEndHint": "双击只将当前结束时刻对齐下一 Movement 的开始时刻",
+        "alignStartHint": "双击以当前开始事件为基准，按固定间隔对齐关联事件，并平移其后续事件",
+        "alignEndHint": "双击以当前结束事件为基准，按固定间隔对齐关联事件，并平移其后续事件",
+        "movementInfo": {
+            "route": "作业进路",
+            "unnamedRoute": "未命名进路",
+            "conflicts": "冲突信息",
+            "conflictDetail": "{train}-{route}-{cell}（{start} – {end}）"
+        },
         "handleInfo": {
             "trainNumber": "车次号",
             "movement": "作业 Movement",
@@ -173,12 +206,13 @@
         "historySaveFailed": "撤销或重做保存失败，当前计划和动作栈保持原状",
         "editErrors": {
             "missingTrackRoute": "无法移至 {track}：{movements} 找不到对应进路，未修改作业计划。停留作业需要该股道的停留进路。",
-            "stale": "作业计划已变化，请刷新后重试"
+            "stale": "作业计划已变化，请刷新后重试",
+            "alignmentConflict": "无法同时保持固定间隔和各分支的平移；请检查相关事件与次序。本次未修改作业计划。"
         },
         "emptyRows": "暂无可显示的作业节点，可在“配置显示内容与顺序”中选择股道或节点",
         "emptyTrains": "当前节点没有列车轨迹",
         "emptyNodes": "暂无可选车站节点",
-        "note": "同一股道两端默认合并在一条横线上，双击左侧股道名称展开，再次双击收起。每列车按 Movement 顺序连接起终节点，线段两端对应作业开始、结束时刻。拖动抓手或按左右方向键，默认将当前时刻、同列车完全重合的抓手及后续时刻一起平移；按住 Ctrl 只改当前时刻。重合关系在拖动开始时确定，途中经过其他抓手不会加入联动。移动开始抓手时，该作业的结束时刻也一起移动。双击开始抓手对齐上一 Movement 的结束时刻，双击结束抓手对齐下一 Movement 的开始时刻；双击仅修改当前端点，没有有效相邻时刻时不作修改。修改自动保存，支持撤销；抓手重合时可用 Tab 切换。开头、结尾的斜线标注车次号。"
+        "note": "同一股道两端默认合并在一条横线上，双击左侧股道名称展开，再次双击收起。每列车按 Movement 顺序连接起终节点，线段两端对应作业开始、结束时刻。拖动抓手或按左右方向键，默认将当前时刻、同列车完全重合的抓手及后续时刻一起平移；按住 Ctrl 只改当前时刻。重合关系在拖动开始时确定，途中经过其他抓手不会加入联动。移动开始抓手时，该作业的结束时刻也一起移动。双击抓手保留当前事件时刻，按严格次序的规定间隔对齐关联事件，再沿活动起终点和次序关系平移其后续事件；无严格次序时不作修改。修改自动保存，支持撤销；抓手重合时可用 Tab 切换。开头、结尾的斜线标注车次号。"
     },
     "login": {
         "title": "用户登录",
@@ -1744,7 +1778,7 @@
                 "appendHint": "在表格中填写每个已保存作业过程的列车数量，0 表示跳过。所有过程使用下方统一时间范围，一次生成的列车总数为 1–1000，追加到当前计划并保留已有列车。",
                 "trainCount": "列车数量（0–1000）",
                 "batchSummary": "共 {processes} 个作业过程，本次生成 {trains} 列车",
-                "distributionHint": "各作业过程的列车起点分别按平均时间槽定位，同一列车内的事件在满足全部约束下尽早发生。次序间隔为 0 且无其他约束阻碍时直接衔接；固定时刻、最小间隔和时长范围仍须满足。任一过程不可行或超出总时间范围时，本次所有过程整批拒绝生成。时间支持 24:00 及跨日表示。",
+                "distributionHint": "各作业过程的列车起点分别按平均时间槽定位，同一列车内的事件在满足全部约束下尽早发生。严格次序的事件时差等于规定间隔，其他次序的时差大于等于规定间隔；固定时刻和时长范围仍须满足。任一过程不可行或超出总时间范围时，本次所有过程整批拒绝生成。时间支持 24:00 及跨日表示。",
                 "generate": "生成并追加",
                 "generateFailed": "生成列车作业计划失败，请检查提示后重试。",
                 "invalidResponse": "服务端未返回完整生成结果，请刷新列车作业计划确认，避免重复生成。",
@@ -1757,10 +1791,11 @@
                 "activities": "活动",
                 "events": "事件",
                 "precedences": "次序",
+                "savedPrecedencesHint": "这些次序已随列车作业计划保存，保留前后事件、次序类型及规定间隔，用于后续能力求解。严格次序要求时差等于间隔，其他次序要求时差大于等于间隔。修改源作业过程不会改变本计划中的记录。",
                 "anchors": "锚",
                 "duration": "最小 / 最长时长（分）",
-                "candidates": "备选进路 / 股道",
-                "selected": "选定进路 / 股道",
+                "candidates": "备选进路",
+                "selected": "选定进路",
                 "endpoints": "开始 → 结束事件",
                 "relativeTime": "原相对时刻（分）",
                 "actualTime": "排定时刻",
@@ -1770,8 +1805,11 @@
                 "selectedAnchor": "选定锚",
                 "leading": "前序事件",
                 "following": "后序事件",
-                "interval": "最小间隔（分）",
-                "track": "对应股道",
+                "interval": "事件间隔（分）",
+                "precedenceType": "次序类型",
+                "exactInterval": "严格等于（=）",
+                "minimumInterval": "至少间隔（≥）",
+                "route": "对应停留进路",
                 "routeAnchors": "进路端点锚",
                 "startAnchor": "起点锚",
                 "endAnchor": "终点锚",
@@ -2852,6 +2890,12 @@
         }
     },
     "operationSimulation": {
+        "views": {
+            "label": "显示模式",
+            "planar": "平面",
+            "threeDimensional": "3D",
+            "renderError": "无法初始化 3D 场景，请切换至平面视图。"
+        },
         "playbackTitle": "仿真播放",
         "movementSequence": "作业序列",
         "currentRoute": "当前进路",
@@ -2966,7 +3010,8 @@
                 "arrival": "西咽喉 → Ⅰ道接车",
                 "departure": "Ⅰ道 → 东咽喉发车",
                 "shunting": "牵出线 → Ⅰ道调车",
-                "locomotive": "机务段 → 牵出线"
+                "locomotive": "机务段 → 牵出线",
+                "dwelling": "Ⅰ道停留进路"
             },
             "activities": {
                 "arrival": "列车接入",

@@ -29,9 +29,7 @@ internal static class OperationProcessTrainTemplateGenerator
         var movements = new List<MovementTemplateRow>();
         foreach (var activity in ordered)
         {
-            var routeIDs = activity.Type == "Dwelling"
-                ? DwellingRoutes(activity, catalog, warnings)
-                : activity.RouteList.ToList();
+            var routeIDs = activity.RouteList.ToList();
             if (routeIDs.Count == 0)
                 warnings.Add($"活动“{activity.Name}”未找到可用备选进路，已保留作业行且进路列表为空。请先补充进路；现有求解器可能将空列表视为全站进路候选，不能据此直接求解。");
             // Legacy consumers split these delimiters rather than decoding JSON; reject an
@@ -47,24 +45,6 @@ internal static class OperationProcessTrainTemplateGenerator
             });
         }
         return new Projection(train, movements, warnings);
-    }
-
-    private static List<string> DwellingRoutes(ProcessActivity activity, ProcessCatalog catalog, List<string> warnings)
-    {
-        var routes = new List<string>();
-        var missingTracks = new List<string>();
-        foreach (var trackID in activity.TrackList)
-        {
-            var matches = catalog.Routes.Where(route =>
-                (string.Equals(route.Type, "Dwelling", StringComparison.OrdinalIgnoreCase) || route.Type is "停留" or "停留进路") &&
-                route.TrackIDs.Count == 1 && route.TrackIDs[0] == trackID).Select(route => route.Id).ToList();
-            if (matches.Count == 0)
-                missingTracks.Add(catalog.Tracks.First(track => track.Id == trackID).Name);
-            routes.AddRange(matches);
-        }
-        if (missingTracks.Count > 0)
-            warnings.Add($"停留活动“{activity.Name}”的备选轨道（{string.Join("、", missingTracks)}）没有仅占用该轨道的停留进路，无法映射为备选进路；这些轨道仍保留在原作业过程中。");
-        return routes.Distinct(StringComparer.Ordinal).ToList();
     }
 
     private static int DurationSeconds(ProcessActivity activity)

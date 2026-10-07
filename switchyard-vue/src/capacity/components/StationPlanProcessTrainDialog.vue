@@ -54,11 +54,6 @@ function previewMovement(activityID: string) {
     return movementID ? previewMovements.value.get(movementID) : undefined
 }
 function routeName(id: string) { return props.catalog.routes.find(route => route.id === id)?.name || id }
-function trackName(id: string) { return props.catalog.tracks.find(track => track.id === id)?.name || id }
-function previewTrack(activityID: string) {
-    const trackID = props.preview?.processConstraint.selectedTrackIDs[activityID]
-    return trackID ? trackName(trackID) : ''
-}
 function selectSource(value: string) {
     if (busy.value || props.loading) return
     const id = String(value ?? '')
@@ -67,7 +62,7 @@ function selectSource(value: string) {
 function updateForm(field: Exclude<keyof ProcessTrainCreationForm, 'id'>, value: string) {
     if (!busy.value && !props.loading) emit('update:form', { ...props.form, [field]: String(value ?? '') })
 }
-function updateSelection(activityID: string, field: 'routeID' | 'trackID', value: string) {
+function updateSelection(activityID: string, field: 'routeID', value: string) {
     if (busy.value || props.loading || !source.value) return
     const selections = updateProcessTrainSelection(source.value, props.catalog, props.selections, activityID, field, String(value ?? ''))
     if (JSON.stringify(selections) !== JSON.stringify(props.selections)) emit('update:selections', selections)
@@ -146,37 +141,17 @@ function handleDialogClose(done: () => void) {
                     <el-table-column :label="t('stationPlanView.fromProcess.route')" min-width="300">
                         <template #default="{ row }">
                             <div class="process-train-choices" :class="{ 'is-invalid': invalidActivityIDs.has(row.activity.id) }">
-                                <template v-if="row.activity.type === 'Dwelling'">
-                                    <div class="process-train-choice-label">{{ t('stationPlanView.fromProcess.track') }}
-                                        <span v-if="row.trackLocked" class="process-train-fixed">{{ t('stationPlanView.fromProcess.fixedSelection') }}</span>
-                                    </div>
-                                    <el-select :model-value="row.selection.trackID" filterable clearable :disabled="busy || loading || row.trackLocked"
-                                        :data-activity-id="row.activity.id" data-choice="trackID" :aria-invalid="invalidActivityIDs.has(row.activity.id)"
-                                        :aria-label="`${row.activity.name} ${t('stationPlanView.fromProcess.track')}`" :placeholder="t('stationPlanView.fromProcess.selectTrack')"
-                                        @update:model-value="updateSelection(row.activity.id, 'trackID', $event)">
-                                        <el-option v-for="track in row.trackOptions" :key="track.id" :value="track.id" :label="track.name || track.id" />
-                                    </el-select>
-                                    <div class="process-train-choice-label">{{ t('stationPlanView.fromProcess.dwellingRoute') }}</div>
-                                    <el-select :model-value="row.selection.routeID" filterable clearable :disabled="busy || loading || !row.selection.trackID"
-                                        :data-activity-id="row.activity.id" data-choice="routeID" :aria-label="`${row.activity.name} ${t('stationPlanView.fromProcess.dwellingRoute')}`"
-                                        :placeholder="t('stationPlanView.fromProcess.noDwellingRoute')" @update:model-value="updateSelection(row.activity.id, 'routeID', $event)">
-                                        <el-option v-for="route in row.routeOptions" :key="route.id" :value="route.id" :label="route.name || route.id" />
-                                    </el-select>
-                                </template>
-                                <template v-else>
-                                    <span v-if="row.routeLocked" class="process-train-fixed">{{ t('stationPlanView.fromProcess.fixedSelection') }}</span>
-                                    <el-select :model-value="row.selection.routeID" filterable clearable :disabled="busy || loading || row.routeLocked"
-                                        :data-activity-id="row.activity.id" data-choice="routeID" :aria-invalid="invalidActivityIDs.has(row.activity.id)"
-                                        :aria-label="`${row.activity.name} ${t('stationPlanView.fromProcess.route')}`" :placeholder="t('stationPlanView.fromProcess.selectRoute')"
-                                        @update:model-value="updateSelection(row.activity.id, 'routeID', $event)">
-                                        <el-option v-for="route in row.routeOptions" :key="route.id" :value="route.id" :label="route.name || route.id" />
-                                    </el-select>
-                                </template>
+                                <span v-if="row.routeLocked" class="process-train-fixed">{{ t('stationPlanView.fromProcess.fixedSelection') }}</span>
+                                <el-select :model-value="row.selection.routeID" filterable clearable :disabled="busy || loading || row.routeLocked"
+                                    :data-activity-id="row.activity.id" data-choice="routeID" :aria-invalid="invalidActivityIDs.has(row.activity.id)"
+                                    :aria-label="`${row.activity.name} ${t('stationPlanView.fromProcess.route')}`" :placeholder="t('stationPlanView.fromProcess.selectRoute')"
+                                    @update:model-value="updateSelection(row.activity.id, 'routeID', $event)">
+                                    <el-option v-for="route in row.routeOptions" :key="route.id" :value="route.id" :label="route.name || route.id" />
+                                </el-select>
                                 <span v-if="invalidActivityIDs.has(row.activity.id)" class="process-train-invalid">{{ t('stationPlanView.fromProcess.missingChoices') }}</span>
                                 <template v-if="previewMovement(row.activity.id)">
                                     <span class="process-train-help">{{ t('stationPlanView.fromProcess.previewRoute') }}:
-                                        {{ routeName(previewMovement(row.activity.id)?.route || '') || t('stationPlanView.fromProcess.noDwellingRoute') }}</span>
-                                    <span v-if="previewTrack(row.activity.id)" class="process-train-help">{{ t('stationPlanView.fromProcess.previewTrack') }}: {{ previewTrack(row.activity.id) }}</span>
+                                        {{ routeName(previewMovement(row.activity.id)?.route || '') || '—' }}</span>
                                 </template>
                             </div>
                         </template>

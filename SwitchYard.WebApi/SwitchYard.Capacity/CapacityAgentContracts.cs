@@ -204,8 +204,6 @@ public sealed class StationCapacityRouteInput
     public string Id { get; set; } = string.Empty;
     public List<string> CellIds { get; set; } = new();
     public List<string> Tags { get; set; } = new();
-    /// <summary>Only set for an input-only dwelling resource; never a persisted station route.</summary>
-    public string? TrackId { get; set; }
 }
 
 public sealed class StationCapacityRouteOccupationInput
@@ -230,6 +228,20 @@ public sealed class StationCapacityProcessInput
     public double OriginSeconds { get; set; }
     public List<StationCapacityEventInput> Events { get; set; } = new();
     public List<StationCapacityPrecedenceInput> Precedences { get; set; } = new();
+    public List<StationCapacityAnchorInput> Anchors { get; set; } = new();
+}
+
+public sealed class StationCapacityAnchorInput
+{
+    public string Id { get; set; } = string.Empty;
+    public List<string> RouteIds { get; set; } = new();
+    public string? MovementId { get; set; }
+}
+
+public sealed class StationCapacityAnchorChoiceInput
+{
+    public string AnchorId { get; set; } = string.Empty;
+    public string RouteId { get; set; } = string.Empty;
 }
 
 public sealed class StationCapacityEventInput
@@ -238,6 +250,7 @@ public sealed class StationCapacityEventInput
     public double? FixedTimeSeconds { get; set; }
     public double OriginalTimeSeconds { get; set; }
     public List<string> LocationIds { get; set; } = new();
+    public Dictionary<string, StationCapacityAnchorChoiceInput> AnchorChoicesByLocation { get; set; } = new(StringComparer.Ordinal);
 }
 
 public sealed class StationCapacityPrecedenceInput
@@ -245,6 +258,7 @@ public sealed class StationCapacityPrecedenceInput
     public string LeadingEventId { get; set; } = string.Empty;
     public string FollowingEventId { get; set; } = string.Empty;
     public double IntervalSeconds { get; set; }
+    public bool IsExact { get; set; }
 }
 
 public sealed class StationCapacityMovementInput
@@ -295,7 +309,6 @@ public sealed class StationCapacityMovementResult
     public string Id { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public string RouteId { get; set; } = string.Empty;
-    public string? TrackId { get; set; }
     public double StartSeconds { get; set; }
     public double EndSeconds { get; set; }
     public string StartTime { get; set; } = string.Empty;

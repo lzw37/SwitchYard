@@ -31,7 +31,7 @@ public static class TrainProcessSnapshotStore
             .Select(row => {
                 var snapshot = JsonSerializer.Deserialize<TrainProcessSnapshot>(row.Document, JsonOptions)
                     ?? throw new InvalidOperationException("Stored train process snapshot is null.");
-                if (snapshot.Process is null || snapshot.ActivityMovementMap is null || snapshot.EventTimes is null || snapshot.SelectedTrackIDs is null)
+                if (snapshot.Process is null || snapshot.ActivityMovementMap is null || snapshot.EventTimes is null || snapshot.SelectedRouteIDs is null)
                     throw new InvalidOperationException("Stored train process snapshot is incomplete.");
                 // Scoped plan copy/rename updates SQL columns, not the immutable source JSON.
                 // Treat row keys as authoritative execution ownership after materialization.
@@ -42,18 +42,42 @@ public static class TrainProcessSnapshotStore
                 snapshot.Process.InstanceID = scope.InstanceID;
                 snapshot.Process.StationSchemeID = scope.StationSchemeID;
                 snapshot.Process.OperationPlanID = scope.OperationPlanID;
+                EnsurePrecedences(snapshot);
                 return snapshot;
             }).ToList();
     }
 
     public static void Insert(DBConnector db, ProcessScope scope, TrainProcessSnapshot snapshot)
     {
+        EnsurePrecedences(snapshot);
         var inserted = db.ExecuteNonQuery($@"INSERT INTO trainprocesssnapshot
             (InstanceID, StationSchemeID, OperationPlanID, TrainID, Document)
             VALUES (@InstanceID, @StationSchemeID, @OperationPlanID, @TrainID, @Document)",
             new { scope.InstanceID, scope.StationSchemeID, scope.OperationPlanID, snapshot.TrainID,
                 Document = JsonSerializer.Serialize(snapshot, JsonOptions) });
         if (inserted != 1) throw new InvalidOperationException("Expected exactly one train process snapshot to be inserted.");
+    }
+
+    public static List<TrainProcessPrecedence> EnsurePrecedences(TrainProcessSnapshot snapshot)
+    {
+        // Backfill only from this train's saved process, never from the editable source template.
+        var expected = snapshot.Process.Precedences.Select(precedence => new TrainProcessPrecedence {
+            Id = precedence.Id, LeadingEvent = precedence.LeadingEvent, FollowingEvent = precedence.FollowingEvent,
+            MinIntervalSeconds = OperationProcessPlanScheduler.Seconds(precedence.Interval), IsExact = precedence.IsExact
+        }).ToList();
+        if (snapshot.Precedences is null) snapshot.Precedences = expected;
+        else
+        {
+            if (snapshot.Precedences.Count != expected.Count || snapshot.Precedences.Any(p => p is null || p.Id is null) ||
+                snapshot.Precedences.Select(p => p.Id).Distinct(StringComparer.Ordinal).Count() != expected.Count)
+                throw Invalid();
+            var saved = snapshot.Precedences.ToDictionary(p => p.Id, StringComparer.Ordinal);
+            if (expected.Any(p => !saved.TryGetValue(p.Id, out var value) || value.LeadingEvent != p.LeadingEvent ||
+                value.FollowingEvent != p.FollowingEvent || value.MinIntervalSeconds != p.MinIntervalSeconds || value.IsExact != p.IsExact)) throw Invalid();
+        }
+        return snapshot.Precedences;
+
+        InvalidOperationException Invalid() => new($"列车 {snapshot.TrainID} 的计划次序记录与保存的作业过程不一致。");
     }
 
     public static bool HasTrain(DBConnector db, ProcessScope scope, string trainID) => Exists(db) &&

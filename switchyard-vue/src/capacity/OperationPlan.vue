@@ -294,17 +294,19 @@
                             <el-table-column :label="t('operationPlan.trainOperationPlan.fromProcess.selectedAnchor')" min-width="140"><template #default="{ row }">{{ processAnchorName(row.selectedAnchor) }}</template></el-table-column>
                         </el-table>
                     </el-tab-pane>
-                    <el-tab-pane :label="t('operationPlan.trainOperationPlan.fromProcess.precedences')">
-                        <el-table :data="selectedTrainProcessConstraints.process.precedences" size="small" border max-height="560">
+                    <el-tab-pane :label="`${t('operationPlan.trainOperationPlan.fromProcess.precedences')} (${selectedTrainProcessPrecedences.length})`">
+                        <p class="operation-process-generation-help">{{ t('operationPlan.trainOperationPlan.fromProcess.savedPrecedencesHint') }}</p>
+                        <el-table :data="selectedTrainProcessPrecedences" size="small" border max-height="560">
                             <el-table-column :label="t('operationPlan.trainOperationPlan.fromProcess.leading')" min-width="200"><template #default="{ row }">{{ processEventName(row.leadingEvent) }}</template></el-table-column>
                             <el-table-column :label="t('operationPlan.trainOperationPlan.fromProcess.following')" min-width="200"><template #default="{ row }">{{ processEventName(row.followingEvent) }}</template></el-table-column>
-                            <el-table-column prop="interval" :label="t('operationPlan.trainOperationPlan.fromProcess.interval')" width="175" />
+                            <el-table-column :label="t('operationPlan.trainOperationPlan.fromProcess.precedenceType')" width="160"><template #default="{ row }">{{ t(`operationPlan.trainOperationPlan.fromProcess.${row.isExact ? 'exactInterval' : 'minimumInterval'}`) }}</template></el-table-column>
+                            <el-table-column :label="t('operationPlan.trainOperationPlan.fromProcess.interval')" width="175"><template #default="{ row }">{{ row.minIntervalSeconds / 60 }}</template></el-table-column>
                         </el-table>
                     </el-tab-pane>
                     <el-tab-pane :label="t('operationPlan.trainOperationPlan.fromProcess.anchors')">
                         <el-table :data="selectedTrainProcessConstraints.process.anchors" size="small" border max-height="270">
                             <el-table-column prop="name" :label="t('operationPlan.train.fields.name')" min-width="200" />
-                            <el-table-column :label="t('operationPlan.trainOperationPlan.fromProcess.track')" min-width="250"><template #default="{ row }">{{ processReferenceNames([row.trackID], 'tracks') }}</template></el-table-column>
+                            <el-table-column :label="t('operationPlan.trainOperationPlan.fromProcess.route')" min-width="250"><template #default="{ row }">{{ processReferenceNames(row.routeIDs, 'routes') }}</template></el-table-column>
                         </el-table>
                         <p class="operation-process-section-label">{{ t('operationPlan.trainOperationPlan.fromProcess.routeAnchors') }}</p>
                         <el-table :data="selectedTrainProcessConstraints.process.routeAnchors" size="small" border max-height="270">
@@ -1193,7 +1195,9 @@
                         @drag-start="startOperationPlanChartDrag"
                         @viewport-scroll="scrollOperationPlanChartDrag"
                         @refresh="loadTrainOperationPlan"
-                    />
+                    >
+                        <template #actions><ResourceConflictToggle v-model="showResourceConflicts" /></template>
+                    </TrackOccupancyGantt>
                 </section>
             </el-tab-pane>
 
@@ -1241,6 +1245,8 @@
                         :rows="stationPlanPickMode ? stationPlanAxisOptions : stationPlanRows"
                         :tracks="stationPlanTracks"
                         :trains="stationPlanTrains"
+                        :conflict-markers="operationPlanConflictMarkers.movements"
+                        :movement-conflicts="stationPlanMovementConflicts"
                         :movements="stationPlanMovements"
                         :routes="stationPlanEditRoutes"
                         :dwellingMovementIDs="stationPlanDwellingMovementIDs"
@@ -1267,6 +1273,7 @@
                         @pick-cancel="cancelStationPlanPicking"
                     >
                         <template #actions>
+                            <ResourceConflictToggle v-model="showResourceConflicts" />
                             <template v-if="stationPlanPickMode">
                                 <span class="station-plan-pick-status" role="status">{{ stationPlanPickPrompt }}</span>
                                 <ActionButton v-if="!stationPlanRepick" :label="t('stationPlanView.creation.undoPoint')" :disabled="!stationPlanPickedPoints.length" @click="undoStationPlanPickedPoint" />
@@ -2080,16 +2087,20 @@ import ActionButton from '@/components/ui/ActionButton.vue'
 import PaneDivider from '@/components/ui/PaneDivider.vue'
 import TrackOccupancyGantt from './components/TrackOccupancyGantt.vue'
 import StationPlanView from './components/StationPlanView.vue'
+import ResourceConflictToggle from './components/ResourceConflictToggle.vue'
+import { conflictMovementKey, conflictOccupationKey, findOccupationConflicts, type OccupationConflict, type ResourceConflictMarker } from './operationPlanConflicts'
 import StationPlanCreationDialog from './components/StationPlanCreationDialog.vue'
 import StationPlanProcessTrainDialog from './components/StationPlanProcessTrainDialog.vue'
 import { createProcessTrainSelections, validateProcessTrainSelections, type ProcessTrainActivitySelection, type ProcessTrainCreationForm } from './components/processTrainCreation'
 import { createStationPlanDraftMovements, rematchStationPlanDraftMovement, canConfirmStationPlanDraft, parseStationPlanDraftTime,
     type StationPlanDraftMovement, type StationPlanDraftPoint } from './components/stationPlanCreation'
 import { buildStationPlanAxisGroups, buildStationPlanTrains, resolveStationPlanMovementRouteID, stationPlanDomain, stationPlanTimeLabel, type StationPlanAxisRow, type StationPlanMovement, type StationPlanSegmentEdit, type StationPlanTrack, type StationPlanTrackEdit } from './components/stationPlanView'
-import { alignStationPlanSegmentToAdjacent, editStationPlanSegment, editStationPlanTrack, StationPlanEditingError, StationPlanTrackEditingError } from './components/stationPlanEditing'
+import { editStationPlanSegment, editStationPlanTrack, StationPlanEditingError, StationPlanTrackEditingError } from './components/stationPlanEditing'
+import { alignStationPlanEvents, StationPlanAlignmentError } from './components/stationPlanAlignment'
 import { operationPlanCellTracks, resolveOperationPlanTrackSource, planOperationPlanTrackEdit, OperationPlanTrackEditingError, type OperationPlanTrackSource } from './components/operationPlanTrackEditing'
 import { namedTrackCellNames } from './components/chartRowKinds'
 import { editStationPlanDwelling, type StationPlanDwellingTarget } from './components/stationPlanDwelling'
+import { isDwellingRoute } from './simulationDwelling'
 import { ActionStack } from '@/utils/actionStack'
 import { StationPlanMovementAction } from './components/stationPlanActions'
 import { AnalysisSaveQueue } from './analysisSaveQueue'
@@ -2204,7 +2215,8 @@ interface TrainProcessConstraints {
     process: ProcessTemplate
     activityMovementMap: Record<string, string>
     eventTimes: Record<string, number>
-    selectedTrackIDs: Record<string, string>
+    selectedRouteIDs: Record<string, string>
+    precedences?: { id: string; leadingEvent: string; followingEvent: string; minIntervalSeconds: number; isExact?: boolean }[]
 }
 
 interface StationProcessTrainResult {
@@ -2572,7 +2584,7 @@ const canStartStationPlanCreation = computed(() => canEditOperationPlanChart.val
 const stationProcessTrainVisible = ref(false)
 const stationProcessTrainSources = ref<ProcessTemplate[]>([])
 const stationProcessTrainSourceID = ref('')
-const stationProcessTrainCatalog = ref<ProcessCatalog>({ nodes: [], tracks: [], routes: [] })
+const stationProcessTrainCatalog = ref<ProcessCatalog>({ nodes: [], routes: [] })
 const stationProcessTrainSelections = ref<ProcessTrainActivitySelection[]>([])
 const stationProcessTrainForm = ref<ProcessTrainCreationForm>({ id: '', trainNumber: '', name: '', trainType: '', originTime: '00:00', endTime: '24:00' })
 const stationProcessTrainLoading = ref(false)
@@ -2688,6 +2700,7 @@ const loadingOperationPlanChart = ref(false)
 const operationPlanChartGanttRef = ref<InstanceType<typeof TrackOccupancyGantt> | null>(null)
 const operationPlanChartScaleX = ref(1)
 const operationPlanChartAutoFit = ref(false)
+const showResourceConflicts = ref(true)
 const resourceOccupancyChartCellIDs = ref<string[] | null>(null)
 const operationPlanChartGeometry = ref<{ domain: { start: number; end: number }; pixelsPerMinute: number } | null>(null)
 const operationPlanChartDrag = shallowRef<OperationPlanChartDragState | null>(null)
@@ -2729,7 +2742,7 @@ const processPlanGenerateError = ref('')
 const processPlanResult = ref<{ trainCount: number; movementCount: number; warnings: string[] } | null>(null)
 const trainProcessConstraints = ref<TrainProcessConstraints[]>([])
 const processConstraintDrawerVisible = ref(false)
-const processConstraintCatalog = ref<ProcessCatalog>({ nodes: [], tracks: [], routes: [] })
+const processConstraintCatalog = ref<ProcessCatalog>({ nodes: [], routes: [] })
 const loadingProcessConstraintCatalog = ref(false)
 const processConstraintCatalogError = ref('')
 const processConstraintCatalogScopeKey = ref('')
@@ -2859,6 +2872,14 @@ const stationPlanChartSelectionScope = computed(() => JSON.stringify([
 const selectedProcessTrainSource = computed(() => processTrainSources.value.find(source => source.id === processTrainSourceID.value) || null)
 const processConstraintsByTrain = computed(() => new Map(trainProcessConstraints.value.map(snapshot => [snapshot.trainID, snapshot])))
 const selectedTrainProcessConstraints = computed(() => processConstraintsByTrain.value.get(selectedTrainOperationPlanTrainId.value) || null)
+const selectedTrainProcessPrecedences = computed(() => {
+    const snapshot = selectedTrainProcessConstraints.value
+    return snapshot?.precedences ?? snapshot?.process.precedences.map(precedence => ({
+        id: precedence.id, leadingEvent: precedence.leadingEvent, followingEvent: precedence.followingEvent,
+        minIntervalSeconds: precedence.interval * 60,
+        isExact: precedence.isExact ?? false,
+    })) ?? []
+})
 const canGeneratePlanFromProcess = computed(() => (
     !stationProcessTrainSaving.value &&
     !recalculatingCellOccupations.value &&
@@ -3262,7 +3283,7 @@ const operationPlanChartBars = computed<OperationPlanChartBar[]>(() => {
             const startMinutes = occupation.startSeconds / 60
             const endMinutes = occupation.endSeconds / 60
             bars.push({
-                key: `${movement.trainID}-${movement.movementID}-${routeID}-${cellID}`,
+                key: conflictOccupationKey(movement.trainID, movement.movementID, cellID),
                 cellID,
                 trainID: movement.trainID,
                 trainNumber: train?.trainNumber || '',
@@ -3282,6 +3303,48 @@ const operationPlanChartBars = computed<OperationPlanChartBar[]>(() => {
         })
     })
     return bars
+})
+const operationPlanConflicts = computed(() => findOccupationConflicts(trainOperationPlanMovements.value.flatMap(movement =>
+    (movement.cellOccupations || []).map(occupation => ({
+        key: conflictOccupationKey(movement.trainID, movement.movementID, occupation.cellID),
+        trainID: movement.trainID, movementID: movement.movementID,
+        cellID: occupation.cellID, startSeconds: occupation.startSeconds, endSeconds: occupation.endSeconds,
+    })),
+)))
+const stationPlanMovementConflicts = computed(() => {
+    const routes = new Map(trainOperationPlanMovements.value.map(movement => {
+        const routeID = resolveStationPlanMovementRouteID(movement.route, movement.routeIDList)
+        const name = reportObjectName(stationRouteOptionMap.value.get(routeID)?.name, routeID, t('stationPlanView.movementInfo.unnamedRoute'))
+        return [conflictMovementKey(movement.trainID, movement.movementID), name]
+    }))
+    const cells = new Map(operationPlanChartCells.value.map(cell => [cell.id, cell.name || cell.id]))
+    return new Map([...operationPlanConflicts.value.movements].map(([key, conflict]) => [key,
+        conflict.details.map(detail => t('stationPlanView.movementInfo.conflictDetail', {
+            train: trainOperationPlanTrainMap.value.get(detail.trainID)?.trainNumber || detail.trainID,
+            route: routes.get(conflictMovementKey(detail.trainID, detail.movementID)) || t('stationPlanView.movementInfo.unnamedRoute'),
+            cell: cells.get(detail.cellID) || detail.cellID,
+            start: stationPlanTimeLabel(detail.startSeconds / 60), end: stationPlanTimeLabel(detail.endSeconds / 60),
+        })).join(' / '),
+    ]))
+})
+const operationPlanConflictMarkers = computed(() => {
+    const movements = new Map<string, ResourceConflictMarker>(), occupations = new Map<string, ResourceConflictMarker>()
+    if (!showResourceConflicts.value) return { movements, occupations }
+    const names = new Map(trainOperationPlanMovements.value.map(movement => [
+        conflictMovementKey(movement.trainID, movement.movementID), movement.name || movement.movementID,
+    ]))
+    const cells = new Map(operationPlanChartCells.value.map(cell => [cell.id, cell.name || cell.id]))
+    const marker = (conflict: OccupationConflict): ResourceConflictMarker => ({ color: conflict.color,
+        title: [t('resourceConflicts.with'), ...conflict.details.map(detail => t('resourceConflicts.detail', {
+            train: trainOperationPlanTrainMap.value.get(detail.trainID)?.trainNumber || detail.trainID,
+            movement: names.get(conflictMovementKey(detail.trainID, detail.movementID)) || detail.movementID,
+            cell: cells.get(detail.cellID) || detail.cellID,
+            start: stationPlanTimeLabel(detail.startSeconds / 60), end: stationPlanTimeLabel(detail.endSeconds / 60),
+        }))].join('\n'),
+    })
+    operationPlanConflicts.value.movements.forEach((conflict, key) => movements.set(key, marker(conflict)))
+    operationPlanConflicts.value.occupations.forEach((conflict, key) => occupations.set(key, marker(conflict)))
+    return { movements, occupations }
 })
 const operationPlanChartRows = computed<OperationPlanChartRow[]>(() => {
     const barsByCellID = new Map<string, OperationPlanChartBar[]>()
@@ -3386,7 +3449,6 @@ const stationPlanReadOnlyTrainIDs = computed(() => [...new Set(trainOperationPla
 const stationPlanProcessMovementNodes = computed(() => {
     const nodes = new Map<string, { startNodeID: string; endNodeID: string }>()
     const movements = new Map(trainOperationPlanMovements.value.map(movement => [`${movement.trainID}\0${movement.movementID}`, movement]))
-    const tracks = new Map((processConstraintCatalog.value.tracks || []).map(track => [track.id, track]))
     for (const snapshot of trainProcessConstraints.value) {
         const activities = snapshot.process?.activities || []
         const events = new Map((snapshot.process?.events || []).map(event => [event.id, event]))
@@ -3413,10 +3475,10 @@ const stationPlanProcessMovementNodes = computed(() => {
         for (const activity of activities) {
             const movementID = snapshot.activityMovementMap[activity.id]
             if (!movementID) continue
-            const track = tracks.get(snapshot.selectedTrackIDs[activity.id] || activity.selectedTrack || '')
+            const route = stationRouteOptionMap.value.get(snapshot.selectedRouteIDs[activity.id] || activity.selectedRoute || '')
             nodes.set(`${snapshot.trainID}\0${movementID}`, {
-                startNodeID: resolveNode(activity.startEvent, track?.fromNodeID),
-                endNodeID: resolveNode(activity.endEvent, track?.toNodeID),
+                startNodeID: resolveNode(activity.startEvent, route?.startNodeID),
+                endNodeID: resolveNode(activity.endEvent, route?.endNodeID),
             })
         }
     }
@@ -3462,8 +3524,9 @@ const stationPlanTrains = computed(() => {
             movementOrder.set(movement.trainID, order)
         })
     return buildStationPlanTrains(ids.map(id => ({ id, label: trainOperationPlanTrainMap.value.get(id)?.trainNumber || id,
+        trainType: trainOperationPlanTrainMap.value.get(id)?.trainType || '',
         color: getOperationPlanChartTrainColor(id), movementOrder: movementOrder.get(id) || [] })),
-        movements, stationPlanEditRoutes.value)
+        movements, stationPlanEditRoutes.value, trainProcessConstraints.value)
 })
 const stationPlanUsedNodeIDs = computed(() => new Set(stationPlanTrains.value.flatMap(train => train.visits.map(visit => visit.rowKey.slice(5)))))
 const stationPlanUnresolvedMovements = computed(() => {
@@ -3862,7 +3925,8 @@ function buildOperationPlanChartDisplayRows(sourceRows: OperationPlanChartRow[])
             width: operationPlanChartTimeToX(getOperationPlanChartDisplayWindow(bar).endMinutes) - operationPlanChartTimeToX(getOperationPlanChartDisplayWindow(bar).startMinutes),
             top: trackOccupancyGanttMetrics.barInset + bar.lane * trackOccupancyGanttMetrics.lanePitch,
             label: bar.label,
-            title: getOperationPlanChartDisplayTitle(bar),
+            title: [getOperationPlanChartDisplayTitle(bar), operationPlanConflictMarkers.value.occupations.get(bar.key)?.title].filter(Boolean).join('\n'),
+            conflict: operationPlanConflictMarkers.value.occupations.get(bar.key),
             color: bar.color,
             editable: true,
             className: operationPlanChartDrag.value?.blockKey === bar.key ? 'is-active' : '',
@@ -5505,12 +5569,9 @@ function getOperationPlanChartTrackSource(bar: OperationPlanChartBar) {
     if (bar.isInterruptCell || stationPlanReadOnlyTrainIDs.value.includes(bar.trainID)) return null
     const train = stationPlanTrains.value.find(item => item.id === bar.trainID)
     if (!train) return null
-    const snapshot = processConstraintsByTrain.value.get(bar.trainID)
-    const activity = snapshot?.process?.activities.find(item => snapshot.activityMovementMap[item.id] === bar.movementID)
-    const dwellingTrackID = activity?.type === 'Dwelling'
-        ? snapshot?.selectedTrackIDs[activity.id] || activity.selectedTrack || '' : ''
+
     return resolveOperationPlanTrackSource(train, bar.movementID, bar.cellID, stationPlanMovements.value,
-        stationPlanEditRoutes.value, stationPlanTracks.value, operationPlanTrackCells.value, dwellingTrackID)
+        stationPlanEditRoutes.value, stationPlanTracks.value, operationPlanTrackCells.value)
 }
 
 function startOperationPlanChartDrag({ event, blockKey, mode }: TrackOccupancyGanttDragStart) {
@@ -6492,40 +6553,28 @@ async function loadOperationPlans() {
 function isTrainProcessConstraints(value: any): value is TrainProcessConstraints {
     return typeof value?.trainID === 'string' && typeof value?.sourceTemplateID === 'string' &&
         value.process && ['activities', 'events', 'precedences', 'anchors', 'routeAnchors'].every(key => Array.isArray(value.process[key])) &&
-        value.activityMovementMap && value.eventTimes && value.selectedTrackIDs
+        value.activityMovementMap && value.eventTimes && value.selectedRouteIDs
 }
 
 function processActivityTypeName(type: string) {
     return t(`operationPlan.trainOperationPlan.fromProcess.types.${type}`)
 }
 
-function processReferenceNames(ids: string[], kind: 'nodes' | 'tracks' | 'routes') {
+function processReferenceNames(ids: string[], kind: 'nodes' | 'routes') {
     return ids.map(id => processConstraintCatalog.value[kind].find(item => item.id === id)?.name ||
-        (kind === 'tracks' ? stationPlanTracks.value.find(track => track.id === id)?.name : '') ||
         (kind === 'routes' ? stationRouteOptions.value.find(route => route.id === id)?.name : '') || id).join('、') || '—'
 }
 
 function processCandidateNames(activity: ProcessActivity) {
-    return activity.type === 'Dwelling' ? processReferenceNames(activity.trackList, 'tracks') : processReferenceNames(activity.routeList, 'routes')
-}
-
-function currentDwellingTrackID(movement: TrainOperationPlanMovement | undefined) {
-    if (!movement) return ''
-    const route = stationRouteOptionMap.value.get(resolveStationPlanMovementRouteID(movement.route, movement.routeIDList))
-    if (!route || route.type.trim().toLowerCase() !== 'dwelling') return ''
-    const links = parseRouteReferenceList(route.linkList)
-    const tracks = [...stationPlanTracks.value, ...(processConstraintCatalog.value.tracks || [])]
-    return tracks.find(track => (links.length ? links.length === 1 && links[0] === track.id :
-        (route.startNodeID === track.fromNodeID && route.endNodeID === track.toNodeID) ||
-        (route.startNodeID === track.toNodeID && route.endNodeID === track.fromNodeID)))?.id || ''
+    return processReferenceNames(activity.routeList, 'routes')
 }
 
 function processActivitySelection(activity: ProcessActivity, snapshot: TrainProcessConstraints | null) {
     if (!snapshot) return '—'
     const movementID = snapshot.activityMovementMap[activity.id]
     const movement = trainOperationPlanMovements.value.find(row => row.trainID === snapshot.trainID && row.movementID === movementID)
-    const id = activity.type === 'Dwelling' ? currentDwellingTrackID(movement) || snapshot.selectedTrackIDs[activity.id] || activity.selectedTrack : movement?.route || activity.selectedRoute
-    return processReferenceNames(id ? [id] : [], activity.type === 'Dwelling' ? 'tracks' : 'routes')
+    const id = movement?.route || snapshot.selectedRouteIDs[activity.id] || activity.selectedRoute
+    return processReferenceNames(id ? [id] : [], 'routes')
 }
 
 function processEventName(id: string) {
@@ -6544,14 +6593,12 @@ function formatProcessSeconds(seconds: number | undefined) {
     return `${sign}${String(Math.floor(value / 3600)).padStart(2, '0')}:${String(Math.floor(value / 60) % 60).padStart(2, '0')}:${String(value % 60).padStart(2, '0')}`
 }
 
+function resolveTrainOperationPlanMovementRouteID(row: TrainOperationPlanMovement) {
+    return resolveStationPlanMovementRouteID(row.route, row.routeIDList)
+}
+
 function processMovementLocation(row: TrainOperationPlanMovement) {
-    const snapshot = processConstraintsByTrain.value.get(row.trainID)
-    const activity = snapshot?.process.activities.find(item => snapshot.activityMovementMap[item.id] === row.movementID)
-    if (snapshot && activity?.type === 'Dwelling') {
-        const selectedTrackID = currentDwellingTrackID(row) || snapshot.selectedTrackIDs[activity.id] || activity.selectedTrack
-        return `${processActivityTypeName('Dwelling')} · ${processReferenceNames(selectedTrackID ? [selectedTrackID] : activity.trackList, 'tracks')}`
-    }
-    return getRouteDisplayName(row.route)
+    return getRouteDisplayName(resolveTrainOperationPlanMovementRouteID(row))
 }
 
 function openProcessConstraintDrawer() {
@@ -7690,7 +7737,7 @@ async function loadStationProcessTrainSources() {
     try {
         const [sources, catalog] = await Promise.all([processTemplateAPI.list(scope), processTemplateAPI.catalog(scope)])
         if (!isCurrent()) return
-        if (!Array.isArray(sources) || !catalog || ![catalog.nodes, catalog.tracks, catalog.routes].every(Array.isArray))
+        if (!Array.isArray(sources) || !catalog || ![catalog.nodes, catalog.routes].every(Array.isArray))
             throw new Error(t('stationPlanView.fromProcess.loadFailed'))
         stationProcessTrainSources.value = sources.filter(source => source.instanceID === scope.instanceID && source.stationSchemeID === scope.stationSchemeID)
         stationProcessTrainCatalog.value = catalog
@@ -7933,22 +7980,10 @@ async function confirmStationPlanCreation() {
 }
 
 async function alignStationPlanSegment(edit: StationPlanSegmentEdit) {
-    if (!canEditOperationPlanChart.value || stationPlanActions.busy || stationPlanReadOnlyTrainIDs.value.includes(edit.trainID)) return
-    const train = stationPlanTrains.value.find(train => train.id === edit.trainID)
-    if (!train) return
-    try {
-        const aligned = alignStationPlanSegmentToAdjacent(train, edit, trainOperationPlanMovements.value.map(movement => ({
-            trainID: movement.trainID, movementID: movement.movementID, sortOrder: movement.sortOrder,
-            startMinutes: parseOperationPlanTime(movement.earliestStartTime),
-            endMinutes: parseOperationPlanTime(movement.latestEndTime),
-        })))
-        if (aligned) await saveStationPlanSegmentEdit(aligned)
-    } catch {
-        ElMessage.warning(t('stationPlanView.editErrors.stale'))
-    }
+    await saveStationPlanSegmentEdit(edit, true)
 }
 
-async function saveStationPlanSegmentEdit(edit: StationPlanSegmentEdit) {
+async function saveStationPlanSegmentEdit(edit: StationPlanSegmentEdit, align = false) {
     if (!canEditOperationPlanChart.value || stationPlanActions.busy || stationPlanReadOnlyTrainIDs.value.includes(edit.trainID)) return
     const train = stationPlanTrains.value.find(train => train.id === edit.trainID)
     if (!train) return
@@ -7956,7 +7991,12 @@ async function saveStationPlanSegmentEdit(edit: StationPlanSegmentEdit) {
     const isCurrent = () => scopeKey === operationPlanScopeKey.value && saveVersion === operationPlanChartSaveVersion
     savingTrainOperationPlanMovement.value = true
     try {
-        const changed = editStationPlanSegment(train, edit, stationPlanMovements.value, stationPlanEditRoutes.value)
+        const changed = align ? alignStationPlanEvents(train, edit, trainOperationPlanMovements.value.map(movement => ({
+            trainID: movement.trainID, movementID: movement.movementID,
+            startMinutes: parseOperationPlanTime(movement.earliestStartTime),
+            endMinutes: parseOperationPlanTime(movement.latestEndTime),
+        })), processConstraintsByTrain.value.get(edit.trainID))
+            : editStationPlanSegment(train, edit, stationPlanMovements.value, stationPlanEditRoutes.value)
         const items = changed.map(movement => {
             const original = trainOperationPlanMovements.value.find(item => item.trainID === edit.trainID && item.movementID === movement.movementID)
             if (!original || original.isDraft) throw new StationPlanEditingError()
@@ -7968,12 +8008,13 @@ async function saveStationPlanSegmentEdit(edit: StationPlanSegmentEdit) {
             } }
         })
         if (!items.length || !isCurrent()) return
-        const action = new StationPlanMovementAction(edit.mode, items.map(item => item.original), items.map(item => item.updated),
+        const action = new StationPlanMovementAction(align ? 'align' : edit.mode, items.map(item => item.original), items.map(item => item.updated),
             (expected, desired) => persistStationPlanAction(expected, desired, scopeKey))
         if (await stationPlanActions.execute(action)) ElMessage.success(t('stationPlanView.editSaved'))
     } catch (error) {
         if (scopeKey !== operationPlanScopeKey.value) return
-        if (error instanceof StationPlanEditingError) ElMessage.warning(t('stationPlanView.editErrors.stale'))
+        if (error instanceof StationPlanAlignmentError) ElMessage.warning(t('stationPlanView.editErrors.alignmentConflict'))
+        else if (error instanceof StationPlanEditingError) ElMessage.warning(t('stationPlanView.editErrors.stale'))
         else ElMessage.error(`${t('stationPlanView.editSaveFailed')} ${getApiErrorMessage(error, '')}`.trim())
     } finally {
         if (scopeKey === operationPlanScopeKey.value) savingTrainOperationPlanMovement.value = false
@@ -7989,15 +8030,18 @@ async function saveStationPlanDwellingEdit(target: StationPlanDwellingTarget) {
     try {
         const changed = editStationPlanDwelling(train, target, stationPlanMovements.value, stationPlanEditRoutes.value,
             stationPlanTracks.value, stationPlanDwellingMovementIDs.value[target.trainID] || [])
-        const original = trainOperationPlanMovements.value.find(row => row.trainID === target.trainID && row.movementID === changed.movementID)
-        if (!original || original.isDraft) throw new StationPlanEditingError()
-        const updated = { ...original,
-            ...(changed.startMinutes !== parseOperationPlanTime(original.earliestStartTime)
-                ? { earliestStartTime: stationPlanTimeLabel(changed.startMinutes) } : {}),
-            ...(changed.endMinutes !== parseOperationPlanTime(original.latestEndTime)
-                ? { latestEndTime: stationPlanTimeLabel(changed.endMinutes) } : {}),
-        }
-        const action = new StationPlanMovementAction('dwelling', [{ ...original }], [updated],
+        const items = changed.map(movement => {
+            const original = trainOperationPlanMovements.value.find(row => row.trainID === target.trainID && row.movementID === movement.movementID)
+            if (!original || original.isDraft) throw new StationPlanEditingError()
+            return { original: { ...original }, updated: { ...original,
+                ...(movement.startMinutes !== parseOperationPlanTime(original.earliestStartTime)
+                    ? { earliestStartTime: stationPlanTimeLabel(movement.startMinutes) } : {}),
+                ...(movement.endMinutes !== parseOperationPlanTime(original.latestEndTime)
+                    ? { latestEndTime: stationPlanTimeLabel(movement.endMinutes) } : {}),
+            } }
+        })
+        if (!items.length) return
+        const action = new StationPlanMovementAction('dwelling', items.map(item => item.original), items.map(item => item.updated),
             (expected, desired) => persistStationPlanAction(expected, desired, scopeKey))
         if (await stationPlanActions.execute(action)) ElMessage.success(t('stationPlanView.dwelling.saved'))
     } catch (error) {
@@ -8019,6 +8063,7 @@ async function saveStationPlanTrackEdit(edit: StationPlanTrackEdit) {
             if (!original || original.isDraft) throw new StationPlanEditingError()
             return { original: { ...original }, updated: { ...original,
                 route: movement.routeID, routeIDList: movement.routeIDList || movement.routeID,
+                startNodeID: movement.startNodeID ?? original.startNodeID, endNodeID: movement.endNodeID ?? original.endNodeID,
                 cellOccupations: movement.cellOccupations, cellOccupationOverridesJson: movement.cellOccupationOverridesJson,
             } }
         })
@@ -8589,8 +8634,12 @@ function startEditTrainOperationPlanMovementInline(row: TrainOperationPlanMoveme
 
     trainOperationPlanMovementMode.value = 'edit'
     trainOperationPlanMovementEditingKey.value = getTrainOperationPlanMovementIdentityKey(row)
-    trainOperationPlanMovementForm.value = { ...row }
+    const route = resolveTrainOperationPlanMovementRouteID(row)
+    trainOperationPlanMovementForm.value = { ...row, route }
     trainOperationPlanMovementRouteIds.value = parseRouteIDList(row.routeIDList)
+    if (!trainOperationPlanMovementRouteIds.value.length && !row.route.trim() && route) {
+        trainOperationPlanMovementRouteIds.value = [route]
+    }
     syncTrainOperationPlanScope()
 }
 
@@ -9167,7 +9216,7 @@ watch(() => JSON.stringify(trainOperationPlanMovements.value), () => {
 
 watch(processTrainScopeKey, () => {
     processConstraintCatalogVersion++
-    processConstraintCatalog.value = { nodes: [], tracks: [], routes: [] }
+    processConstraintCatalog.value = { nodes: [], routes: [] }
     loadingProcessConstraintCatalog.value = false
     processConstraintCatalogError.value = ''
     processConstraintCatalogScopeKey.value = ''

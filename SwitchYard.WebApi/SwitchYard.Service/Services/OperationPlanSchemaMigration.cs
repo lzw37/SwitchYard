@@ -49,6 +49,7 @@ public static class OperationPlanSchemaMigration
             try { OperationPlanController.BackfillForMigration(db); MarkCompleted(db, "plan-chart-backfill-v1"); db.Commit(); }
             catch { db.Rollback(); throw; }
         }
+        OperationProcessRouteMigration.Run(db, apply: true);
         if (Completed(db, "plan-chart-occupations-v1")) return;
         var plans = db.Query<ProcessScope>("SELECT DISTINCT InstanceID, StationSchemeID, OperationPlanID FROM movement WHERE CellOccupationsJson IS NULL") ?? [];
         foreach (var plan in plans)

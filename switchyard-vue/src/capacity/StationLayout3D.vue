@@ -1,358 +1,83 @@
 <template>
-    <section class="station-layout-3d-page" v-loading="loadingAnyData">
-        <StationLayoutViewToolbar v-model:density="viewToolbarDensity" :show-display-controls="false">
-            <template #context>
-                <div class="layout3d-scheme-control">
-                    <span class="layout3d-control-label">{{ t('stationLayout.menu.stationScheme') }}</span>
-                    <el-select
-                        v-model="currentStationSchemeId"
-                        size="small"
-                        filterable
-                        class="layout3d-scheme-select"
-                        :loading="loadingStationSchemes"
-                        :disabled="!selectedInstanceId || loadingStationSchemes || loadingData"
-                        :placeholder="t('stationLayout.placeholders.selectStationScheme')"
-                    >
-                        <el-option
-                            v-for="option in stationSchemeOptions"
-                            :key="option.id"
-                            :label="formatStationSchemeLabel(option)"
-                            :value="option.id"
-                        />
-                    </el-select>
-                </div>
-            </template>
-            <template #primary>
-                <div class="layout3d-scheme-control">
-                    <span class="layout3d-control-label">{{ t('stationLayout3d.labels.operationPlan') }}</span>
-                    <el-select
-                        v-model="currentOperationPlanId"
-                        size="small"
-                        filterable
-                        class="layout3d-plan-select"
-                        :loading="loadingOperationPlans"
-                        :disabled="!currentStationSchemeId || loadingOperationPlans"
-                        :placeholder="t('stationLayout3d.placeholders.selectOperationPlan')"
-                        @change="handleOperationPlanChange"
-                    >
-                        <el-option
-                            v-for="option in operationPlanOptions"
-                            :key="option.operationPlanID"
-                            :label="formatOperationPlanLabel(option)"
-                            :value="option.operationPlanID"
-                        />
-                    </el-select>
-                </div>
-
-                <div class="layout3d-scheme-control">
-                    <span class="layout3d-control-label">{{ t('stationLayout3d.labels.playbackScope') }}</span>
-                    <el-radio-group
-                        v-model="playbackMode"
-                        size="small"
-                        class="layout3d-playback-mode"
-                        @change="handlePlaybackModeChange"
-                    >
-                        <el-radio-button value="single">{{ t('stationLayout3d.playbackModes.single') }}</el-radio-button>
-                        <el-radio-button value="all">{{ t('stationLayout3d.playbackModes.all') }}</el-radio-button>
-                    </el-radio-group>
-                </div>
-                <div class="layout3d-scheme-control">
-                    <el-tooltip :content="t('stationLayout3d.trainModels.help')">
-                        <span class="layout3d-control-label">{{ t('stationLayout3d.labels.trainModel') }}</span>
-                    </el-tooltip>
-                    <el-select
-                        v-model="selectedTrainModel"
-                        size="small"
-                        filterable
-                        class="layout3d-model-select"
-                        :aria-label="t('stationLayout3d.labels.trainModel')"
-                    >
-                        <el-option value="auto" :label="t('stationLayout3d.trainModels.auto')" />
-                        <el-option
-                            v-for="option in ROLLING_STOCK_OPTIONS"
-                            :key="option.value"
-                            :label="option.label"
-                            :value="option.value"
-                        />
-                    </el-select>
-                </div>
-                <div class="layout3d-ratio-control">
-                    <span class="layout3d-control-label">{{ t('stationLayout3d.labels.displayRatio') }}</span>
-                    <el-slider
-                        v-model="displayRatio"
-                        class="layout3d-ratio-slider"
-                        size="small"
-                        :min="0.25"
-                        :max="20"
-                        :step="0.05"
-                        :disabled="!canRender"
-                        :format-tooltip="formatDisplayRatio"
-                        :aria-label="t('stationLayout3d.labels.displayRatio')"
-                        @change="handleDisplayRatioChange"
-                    />
-                    <output class="layout3d-ratio-value">{{ formatDisplayRatio(displayRatio) }}</output>
-                    <ActionButton
-                        :label="t('stationLayout3d.buttons.resetDisplayRatio')"
-                        :disabled="!canRender"
-                        @click="resetDisplayRatio"
-                        :icon="RefreshLeft"
-                    />
-                </div>
-            </template>
-            <template #details>
-                <div class="layout3d-scheme-control">
-                    <span class="layout3d-control-label">{{ t('stationLayout3d.labels.train') }}</span>
-                    <el-select
-                        v-model="selectedTrainId"
-                        size="small"
-                        filterable
-                        class="layout3d-train-select"
-                        :loading="loadingTrainOperationPlan"
-                        :disabled="isAllTrainPlayback || trainOptions.length === 0 || loadingTrainOperationPlan"
-                        :placeholder="isAllTrainPlayback ? t('stationLayout3d.placeholders.allTrains') : t('stationLayout3d.placeholders.selectTrain')"
-                        @change="handleTrainChange"
-                    >
-                        <el-option
-                            v-for="option in trainOptions"
-                            :key="option.id"
-                            :label="formatTrainLabel(option)"
-                            :value="option.id"
-                        />
-                    </el-select>
-                </div>
-
-                <div class="layout3d-metrics" aria-live="polite">
-                    <span class="metric-item">
-                        <span class="metric-label">{{ t('stationLayout3d.metrics.tracks') }}</span>
-                        <strong>{{ layoutStats.tracks }}</strong>
-                    </span>
-                    <span class="metric-item">
-                        <span class="metric-label">{{ t('stationLayout3d.metrics.signals') }}</span>
-                        <strong>{{ layoutStats.signals }}</strong>
-                    </span>
-                    <span class="metric-item">
-                        <span class="metric-label">{{ t('stationLayout3d.metrics.platforms') }}</span>
-                        <strong>{{ layoutStats.platforms }}</strong>
-                    </span>
-                </div>
-            </template>
-            <template #actions>
-                <ActionButton
-                    :label="t('stationLayout3d.buttons.refresh')"
-                    :icon="RefreshRight"
-                    :loading="loadingAnyData"
-                    :disabled="!selectedInstanceId"
-                    @click="refresh3DData"
-                />
-                <ActionButton
-                    :label="t('stationLayout3d.buttons.resetView')"
-                    :icon="Aim"
-                    :disabled="!canRender"
-                    @click="resetCamera"
-                />
-                <ActionButton
-                    :label="t('stationLayout3d.buttons.resetPlayback')"
-                    :icon="RefreshLeft"
-                    :disabled="!canPlayback"
-                    @click="resetPlayback"
-                />
-                <ActionButton
-                    :label="isPlaying ? t('stationLayout3d.buttons.pause') : t('stationLayout3d.buttons.play')"
-                    type="primary"
-                    :icon="isPlaying ? VideoPause : VideoPlay"
-                    :disabled="!canPlayback"
-                    @click="togglePlayback"
-                />
-                <span class="layout3d-playback-clock">{{ playbackClockText }}</span>
+    <section class="station-layout-3d-page" v-loading="preparingTrainModels">
+        <div class="layout3d-toolbar">
+            <div class="layout3d-scheme-control">
+                <el-tooltip :content="t('stationLayout3d.trainModels.help')">
+                    <span class="layout3d-control-label">{{ t('stationLayout3d.labels.trainModel') }}</span>
+                </el-tooltip>
                 <el-select
-                    v-model="playbackSpeed"
+                    v-model="selectedTrainModel"
                     size="small"
-                    class="layout3d-speed-select"
-                    :disabled="!canPlayback"
-                    :aria-label="t('stationLayout3d.labels.speed')"
+                    filterable
+                    class="layout3d-model-select"
+                    :aria-label="t('stationLayout3d.labels.trainModel')"
                 >
-                    <el-option :value="1" label="1x" />
-                    <el-option :value="10" label="10x" />
-                    <el-option :value="60" label="60x" />
-                    <el-option :value="180" label="180x" />
-                    <el-option :value="300" label="300x" />
+                    <el-option value="auto" :label="t('stationLayout3d.trainModels.auto')" />
+                    <el-option
+                        v-for="option in ROLLING_STOCK_OPTIONS"
+                        :key="option.value"
+                        :label="option.label"
+                        :value="option.value"
+                    />
                 </el-select>
-                <div class="station-toolbar-switch-control">
-                    <span class="station-toolbar-switch-control__label">{{ t('stationLayout3d.labels.showLabels') }}</span>
-                    <el-switch v-model="showLabels" size="small" />
-                </div>
-                <div class="station-toolbar-switch-control">
-                    <span class="station-toolbar-switch-control__label">{{ t('stationLayout3d.labels.showOccupancy') }}</span>
-                    <el-switch
-                        v-model="showTrackOccupancy"
-                        size="small"
-                        :disabled="!canRender"
-                        :aria-label="t('stationLayout3d.labels.showOccupancy')"
-                    />
-                </div>
-            </template>
-        </StationLayoutViewToolbar>
-
-        <div class="layout3d-playback-bar">
-            <div class="layout3d-playback-summary">
-                <el-tag size="small" :type="playbackStatusTagType">
-                    {{ playbackStatusText }}
-                </el-tag>
-                <span>{{ playbackSummaryText }}</span>
-                <span>{{ activePhaseText }}</span>
             </div>
-            <el-slider
-                class="layout3d-playhead-slider"
-                :model-value="playheadSeconds"
-                :min="0"
-                :max="playbackSliderMax"
-                :step="0.1"
-                :disabled="!canPlayback"
-                :format-tooltip="formatPlayheadTooltip"
-                @input="handlePlayheadInput"
-            />
-        </div>
-
-        <div ref="layoutContentRef" class="layout3d-content">
-            <div
-                ref="canvasWrapperRef"
-                class="layout3d-body"
-                :class="{ 'hide-layout-labels': !showLabels, 'is-empty': !canRender }"
-            >
-                <canvas ref="canvasRef" class="layout3d-canvas" data-testid="station-layout-3d-canvas" />
-                <div v-if="!canRender && !loadingData" class="layout3d-empty">
-                    {{ emptyStateText }}
-                </div>
+            <div class="layout3d-ratio-control">
+                <span class="layout3d-control-label">{{ t('stationLayout3d.labels.displayRatio') }}</span>
+                <el-slider
+                    v-model="displayRatio"
+                    class="layout3d-ratio-slider"
+                    size="small"
+                    :min="0.25"
+                    :max="20"
+                    :step="0.05"
+                    :disabled="!canRender"
+                    :format-tooltip="formatDisplayRatio"
+                    :aria-label="t('stationLayout3d.labels.displayRatio')"
+                    @change="handleDisplayRatioChange"
+                />
+                <output class="layout3d-ratio-value">{{ formatDisplayRatio(displayRatio) }}</output>
+                <ActionButton
+                    :label="t('stationLayout3d.buttons.resetDisplayRatio')"
+                    :disabled="!canRender"
+                    @click="resetDisplayRatio"
+                    :icon="RefreshLeft"
+                />
             </div>
-
-            <PaneDivider
-                v-model="ganttPanelHeight"
-                direction="vertical"
-                reverse
-                :min="160"
-                :max="maxGanttPanelHeight"
-                :reset-value="260"
-                :label="t('common.resize.vertical')"
+            <ActionButton
+                :label="t('stationLayout3d.buttons.resetView')"
+                :icon="Aim"
+                :disabled="!canRender"
+                @click="resetCamera"
             />
-            <section class="layout3d-gantt-panel" :style="{ flexBasis: `${ganttPanelHeight}px` }">
-                <div class="layout3d-gantt-header">
-                    <div class="layout3d-gantt-title">
-                        <h3 :title="ganttSummaryText">{{ t('stationLayout3d.gantt.title') }}</h3>
-                    </div>
-                    <div class="layout3d-gantt-subtable-toolbar">
-                        <el-tabs
-                            v-model="activeGanttSubTableId"
-                            class="layout3d-gantt-sub-tabs"
-                            @tab-remove="removeGanttSubTable"
-                        >
-                            <el-tab-pane
-                                v-for="(subTable, index) in ganttSubTables"
-                                :key="subTable.id"
-                                :name="subTable.id"
-                                :label="formatGanttSubTableLabel(subTable, index)"
-                                :closable="ganttSubTables.length > 1"
-                            />
-                        </el-tabs>
-                        <div class="layout3d-gantt-subtable-actions">
-                            <span class="layout3d-gantt-subtable-summary">
-                                {{ activeGanttSubTableSummaryText }}
-                            </span>
-                            <ActionButton
-                                :label="t('stationLayout3d.buttons.editSubTable')"
-                                :icon="Edit"
-                                :disabled="!activeGanttSubTable"
-                                @click="openEditGanttSubTableDialog"
-                            />
-                            <ActionButton
-                                :label="t('stationLayout3d.buttons.createSubTable')"
-                                :icon="Plus"
-                                @click="openCreateGanttSubTableDialog"
-                            />
-                        </div>
-                    </div>
-                </div>
-                <TrackOccupancyGantt
-                    ref="ganttRef"
-                    v-model:scale-x="ganttScaleX"
-                    :rows="ganttDisplayRows"
-                    :ticks="ganttTicks"
-                    :timeline-width="ganttTimelineWidth"
-                    :playhead-left="ganttPlayheadLeft"
-                    :empty-text="ganttEmptyText"
-                    :cell-axis-label="t('stationLayout3d.gantt.cellAxis')"
-                    :time-axis-label="t('operationPlan.trainOperationChart.timeAxis')"
-                    :refresh-disabled="!hasScope || loadingAnyData"
-                    :refresh-loading="loadingAnyData"
-                    @refresh="refresh3DData"
+            <div class="station-toolbar-switch-control">
+                <span class="station-toolbar-switch-control__label">{{ t('stationLayout3d.labels.showLabels') }}</span>
+                <el-switch v-model="showLabels" size="small" :aria-label="t('stationLayout3d.labels.showLabels')" />
+            </div>
+            <div class="station-toolbar-switch-control">
+                <span class="station-toolbar-switch-control__label">{{ t('stationLayout3d.labels.showOccupancy') }}</span>
+                <el-switch
+                    v-model="showTrackOccupancy"
+                    size="small"
+                    :disabled="!canRender"
+                    :aria-label="t('stationLayout3d.labels.showOccupancy')"
                 />
-            </section>
+            </div>
         </div>
-
-        <el-dialog
-            v-model="ganttSubTableDialogVisible"
-            :title="ganttSubTableDialogTitle"
-            width="560px"
-            class="layout3d-gantt-subtable-dialog"
-        >
-            <el-form label-position="top">
-                <el-form-item :label="t('stationLayout3d.labels.subTableName')">
-                    <el-input
-                        v-model="ganttSubTableDialogForm.name"
-                        maxlength="100"
-                        show-word-limit
-                        :placeholder="t('stationLayout3d.placeholders.subTableName')"
-                    />
-                </el-form-item>
-                <el-form-item :label="t('stationLayout3d.labels.subTableCells')">
-                    <el-select
-                        v-model="ganttSubTableDialogForm.cellIds"
-                        class="layout3d-gantt-subtable-cell-select"
-                        multiple
-                        filterable
-                        clearable
-                        collapse-tags
-                        collapse-tags-tooltip
-                        :placeholder="t('stationLayout3d.placeholders.selectSubTableCells')"
-                    >
-                        <el-option
-                            v-for="cell in ganttAvailableCells"
-                            :key="cell.id"
-                            :label="cell.name || cell.id"
-                            :value="cell.id"
-                        />
-                    </el-select>
-                </el-form-item>
-            </el-form>
-            <template #footer>
-                <ActionButton
-                    variant="text"
-                    :label="t('stationLayout3d.dialogs.cancel')"
-                    @click="ganttSubTableDialogVisible = false"
-                    :icon="Close"
-                />
-                <ActionButton
-                    variant="text"
-                    :label="t('stationLayout3d.dialogs.confirm')"
-                    type="primary"
-                    @click="confirmGanttSubTableDialog"
-                    :icon="Check"
-                />
-            </template>
-        </el-dialog>
+        <div ref="canvasWrapperRef" class="layout3d-body" :class="{ 'hide-layout-labels': !showLabels }">
+            <canvas ref="canvasRef" class="layout3d-canvas" data-testid="station-layout-3d-canvas" />
+            <div v-if="renderError || !canRender" class="layout3d-empty">
+                {{ renderError ? t('operationSimulation.views.renderError') : t('stationLayout3d.messages.empty') }}
+            </div>
+        </div>
     </section>
 </template>
 
 <script setup lang="ts">
 import ActionButton from '@/components/ui/ActionButton.vue'
-import TrackOccupancyGantt from './components/TrackOccupancyGantt.vue'
-import { trackOccupancyGanttMetrics, type TrackOccupancyGanttRow } from './components/trackOccupancyGantt'
-import { namedTrackCellNames } from './components/chartRowKinds'
-import { normalizeMovementCellOccupations, type MovementCellOccupation } from './movementCellOccupation'
-import PaneDivider from '@/components/ui/PaneDivider.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
-import { Aim, Check, Close, Edit, Plus, RefreshLeft, RefreshRight, VideoPause, VideoPlay } from '@element-plus/icons-vue'
+import { Aim, RefreshLeft } from '@element-plus/icons-vue'
 import * as THREE from 'three'
 import {
     getRollingStockBogieOffsets, getRollingStockDimensions, ROLLING_STOCK_OPTIONS,
@@ -366,23 +91,13 @@ import { createStationGround, createStationPlatform, fitStationLighting, lightSt
 import { sampleCurveCoordinates, transformLayoutCoordinates } from './three/layoutCoordinates'
 import { insertRouteCurves, followRenderedPaths } from './three/trainPath'
 import { buildTrainMotionProfiles, sampleTrainMotion, selectTrainMotionRuns } from './three/trainMotion'
-import { isDwellingRoute } from './simulationDwelling'
-import { getStationRouteHighlightColor } from './routeColors'
-import { createTrackOccupancyTimeline } from './trackOccupancy'
 import { createTrackOccupancyOverlay } from './three/trackOccupancyOverlay'
 import { mapTrackOccupancyPaths } from './three/trackOccupancyPaths'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { CSS2DObject, CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js'
-import axios from '@/utils/axios'
-import { useCapacityStore } from '@/stores/capacity'
-import { useStationSchemeSelection } from './useStationSchemeSelection'
 import { getSignalStyleAsset } from '@switchyard/station-layout'
-import StationLayoutViewToolbar from './components/StationLayoutViewToolbar.vue'
-
-interface Props {
-    selectedInstanceId?: string | null
-    activationKey?: number
-}
+import type { TrackOccupancyTimeline } from './trackOccupancy'
+import type { StationRouteOption, Point as RoutePoint, PolylinePath, RouteGeometry, RouteRun, PathSegment } from './simulationTypes'
 
 interface Position2D {
     x: number
@@ -511,113 +226,6 @@ interface StationLayoutData {
     switches: SwitchDevice[]
 }
 
-interface StationSchemeOption {
-    id: string
-    name: string
-}
-
-interface OperationPlanOption {
-    instanceID: string
-    stationSchemeID: string
-    operationPlanID: string
-    name: string
-    description: string
-    sortOrder: number | null
-}
-
-interface StationRouteOption {
-    id: string
-    name: string
-    type: string
-    nodeList: string
-    linkList: string
-    startNodeID: string
-    endNodeID: string
-}
-
-interface StationRouteTimeOption {
-    routeID: string
-    trainTypeID: string
-    cellID: string
-    startOccupationShift: number | null
-    endOccupationShift: number | null
-    isInterruptCell: boolean
-}
-
-interface TrainOperationPlanTrain {
-    id: string
-    trainTemplateID: string
-    trainNumber: string
-    name: string
-    trainType: string
-    isFixedOperation: boolean
-}
-
-interface TrainOperationPlanMovement {
-    trainID: string
-    trainTemplateID: string
-    movementID: string
-    name: string
-    routeIDList: string
-    minDuration: number | null
-    earliestStartTime: string
-    latestEndTime: string
-    cellOccupationOverridesJson?: string | null
-    cellOccupations?: MovementCellOccupation[]
-    route: string
-    tag: string
-    sortOrder: number | null
-}
-
-interface LayoutCell {
-    id: string
-    name: string
-    linkIDList: string
-}
-
-interface RoutePoint {
-    x: number
-    y: number
-    nodeId?: string
-}
-
-interface PathSegment {
-    from: RoutePoint
-    to: RoutePoint
-    length: number
-    startDistance: number
-    angle: number
-}
-
-interface PolylinePath {
-    points: RoutePoint[]
-    segments: PathSegment[]
-    totalLength: number
-}
-
-interface RouteGeometry {
-    path: PolylinePath
-    nodeIds: string[]
-    linkIds: string[]
-}
-
-interface RouteRun {
-    key: string
-    train: TrainOperationPlanTrain
-    movement: TrainOperationPlanMovement
-    route: StationRouteOption
-    path: PolylinePath
-    nodeIds: string[]
-    linkIds: string[]
-    startSeconds: number
-    endSeconds: number
-    lockSeconds: number
-    usesPlanTime: boolean
-    absoluteStartSeconds: number
-    absoluteEndSeconds: number
-    color: string
-}
-
 interface SimulationTrainCar {
     key: string
     runKey: string
@@ -635,57 +243,6 @@ interface SimulationTrainCar {
     fill: string
     stroke: string
     label?: string
-}
-
-interface RouteRunSource {
-    train: TrainOperationPlanTrain
-    movement: TrainOperationPlanMovement
-    sourceIndex: number
-}
-
-interface GanttTick {
-    key: string
-    seconds: number
-    left: number
-    label: string
-    major: boolean
-}
-
-interface GanttBlock {
-    key: string
-    label: string
-    title: string
-    startSeconds: number
-    endSeconds: number
-    left: number
-    width: number
-    color: string
-}
-
-interface GanttLane {
-    key: string
-    label: string
-    sortIndex: number
-    blocks: GanttBlock[]
-}
-
-interface GanttSubTable {
-    id: string
-    name: string
-    cellIds: string[]
-    hasCustomSelection: boolean
-}
-
-interface GanttSubTableSettingPayload {
-    subTableID: string
-    subTableName: string
-    cellIDs: string[]
-    sortOrder: number
-}
-
-interface GanttSubTableDialogForm {
-    name: string
-    cellIds: string[]
 }
 
 interface LayoutBounds {
@@ -719,14 +276,21 @@ interface TrainCarObjectEntry {
     labelElement: HTMLElement
 }
 
-type RunPhase = 'waiting' | 'locking' | 'moving' | 'dwelling' | 'finished'
-type PlaybackMode = 'single' | 'all'
-
-const props = withDefaults(defineProps<Props>(), {
-    selectedInstanceId: null,
-    activationKey: 0,
-})
-
+const props = defineProps<{
+    layout: Record<string, unknown> | null
+    gridSpacing: number
+    runs: RouteRun[]
+    playheadSeconds: number
+    getPlaybackSeconds: () => number
+    isPlaying: boolean
+    isAllTrainPlayback: boolean
+    trackOccupancyTimeline: TrackOccupancyTimeline
+}>()
+const emit = defineEmits<{ renderError: [] }>()
+const selectedTrainModel = defineModel<RollingStockModelSelection>('trainModel', { default: 'auto' })
+const displayRatio = defineModel<number>('displayRatio', { default: 1 })
+const showLabels = defineModel<boolean>('showLabels', { default: true })
+const showTrackOccupancy = defineModel<boolean>('showTrackOccupancy', { default: false })
 const { t } = useI18n()
 
 const TARGET_WORLD_SPAN = 170
@@ -742,86 +306,19 @@ const SIGNAL_LIGHT_RADIUS = 0.07
 const SIGNAL_LIGHT_ROW_SPACING = 0.17
 const SIGNAL_LIGHT_COLUMN_SPACING = 0.18
 const SIGNAL_LIGHT_PADDING = 0.16
-const defaultOperationPlanID = 'default'
-const syntheticRouteGapSeconds = 1.2
-const routeLockMinSeconds = 1.2
-const routeLockMaxSeconds = 8
-const playbackRenderIntervalMs = 33
-const ganttSidebarWidth = trackOccupancyGanttMetrics.sidebarWidth
-const ganttMinTimelineWidth = 860
-const ganttMaxTimelineWidth = 6400
-const ganttTargetPixelsPerSecond = 0.08
-const ganttDefaultSubTableCount = 3
-
 const canvasWrapperRef = ref<HTMLElement | null>(null)
-const layoutContentRef = ref<HTMLElement | null>(null)
-const ganttPanelHeight = ref(260)
-const maxGanttPanelHeight = ref(520)
-let panelResizeObserver: ResizeObserver | null = null
 const canvasRef = ref<HTMLCanvasElement | null>(null)
-const layoutData = ref<StationLayoutData>(createEmptyLayout())
-const layoutCells = ref<LayoutCell[]>([])
-const layoutGridSpacing = ref(20)
-const loadingData = ref(false)
-const loadErrorMessage = ref('')
-const showLabels = ref(true)
-const showTrackOccupancy = ref(false)
-const displayRatio = ref(1)
-const appliedDisplayRatio = ref(1)
-// Keep loaded coordinates intact. Rebuild geometry from transformed coordinates
-// when the slider is released, without distorting meshes or the physical gauge.
+const layoutData = computed(() => normalizeLayout(props.layout))
+const layoutGridSpacing = computed(() => props.gridSpacing)
+const playheadSeconds = computed(() => props.playheadSeconds)
+const isPlaying = computed(() => props.isPlaying)
+const isAllTrainPlayback = computed(() => props.isAllTrainPlayback)
+const trackOccupancyTimeline = computed(() => props.trackOccupancyTimeline)
+const appliedDisplayRatio = ref(displayRatio.value)
 const displayLayoutData = computed(() => transformLayoutCoordinates(layoutData.value, appliedDisplayRatio.value))
-const viewToolbarDensity = ref('compact')
-const capacityStore = useCapacityStore()
-const currentStationSchemeId = useStationSchemeSelection(() => props.selectedInstanceId)
-const stationSchemesInstanceId = ref('')
-const currentOperationPlanId = ref('')
-const selectedTrainId = ref('')
-const loadingStationSchemes = ref(false)
-const loadingOperationPlans = ref(false)
-const loadingStationRoutes = ref(false)
-const loadingStationRouteTimes = ref(false)
-const loadingTrainOperationPlan = ref(false)
-const loadingGanttSubTableSettings = ref(false)
-const savingGanttSubTableSettings = ref(false)
-const stationSchemeOptions = ref<StationSchemeOption[]>([])
-const operationPlanOptions = ref<OperationPlanOption[]>([])
-const stationRouteOptions = ref<StationRouteOption[]>([])
-const stationRouteTimesByKey = ref<Record<string, StationRouteTimeOption[]>>({})
-const trainOperationPlanTrains = ref<TrainOperationPlanTrain[]>([])
-const trainOperationPlanMovements = ref<TrainOperationPlanMovement[]>([])
-const playheadSeconds = ref(0)
-const playbackSpeed = ref(10)
-const playbackMode = ref<PlaybackMode>('single')
-const selectedTrainModel = ref<RollingStockModelSelection>('auto')
-const isPlaying = ref(false)
-const activeRunIndex = ref(-1)
-const activeRunIndices = ref<number[]>([])
-const activeRunPhase = ref<RunPhase>('waiting')
-const activeLockingRunCount = ref(0)
-const activeMovingRunCount = ref(0)
-const activeDwellingRunCount = ref(0)
-const runPhaseByKey = ref<Record<string, RunPhase>>({})
-const ganttRef = ref<InstanceType<typeof TrackOccupancyGantt> | null>(null)
-const ganttScaleX = ref(1)
-const ganttViewportRef = computed(() => ganttRef.value?.viewport || null)
-const ganttSubTableSequence = ref(ganttDefaultSubTableCount)
-const ganttSubTables = ref<GanttSubTable[]>(
-    Array.from({ length: ganttDefaultSubTableCount }, (_, index) => createGanttSubTable(index + 1)),
-)
-const activeGanttSubTableId = ref(ganttSubTables.value[0]?.id || '')
-const ganttSubTableDialogVisible = ref(false)
-const ganttSubTableDialogMode = ref<'create' | 'edit'>('create')
-const ganttSubTableDialogTargetId = ref('')
-const ganttSubTableDialogTargetSequence = ref(0)
-const ganttSubTableDialogForm = ref<GanttSubTableDialogForm>({
-    name: '',
-    cellIds: [],
-})
-
+const renderError = ref(false)
 let renderer: THREE.WebGLRenderer | null = null
 let isDisposed = false
-const dataRequests = new AbortController()
 let labelRenderer: CSS2DRenderer | null = null
 let labelRendererRoot: HTMLElement | null = null
 let scene: THREE.Scene | null = null
@@ -834,50 +331,15 @@ let trackOccupancyOverlay: ReturnType<typeof createTrackOccupancyOverlay> | null
 let lastTrackOccupancyState: ReadonlyMap<string, readonly string[]> | null = null
 let resizeObserver: ResizeObserver | null = null
 let rafId: number | null = null
-let playbackFrameId: number | null = null
-let ganttScrollFrameId: number | null = null
-let ganttSubTableSaveTimer: ReturnType<typeof window.setTimeout> | null = null
-let suppressGanttSubTableSave = false
-let ganttSubTableSaveRevision = 0
-let ganttSubTableSavingRevision = 0
-let ganttSubTableSaveRequest: Promise<unknown> | null = null
 let lastMapper: LayoutMapper | null = null
-let layoutLoadVersion = 0
-let stationSchemeLoadVersion = 0
-let schemeDataLoadVersion = 0
-let loadedSchemeInstanceId = ''
-let loadedStationSchemeId = ''
-let operationPlanLoadVersion = 0
-let stationRouteLoadVersion = 0
-let stationRouteTimeLoadVersion = 0
-let trainPlanLoadVersion = 0
-let ganttSubTableLoadVersion = 0
 let lastWrapperWidth = 0
 let lastWrapperHeight = 0
-let lastPlaybackTimestamp = 0
-let lastPlaybackRenderTimestamp = 0
-let playbackRuntimeSeconds = 0
 const trainCarAngleMemory = new Map<string, number>()
 const trainCarObjectMap = new Map<string, TrainCarObjectEntry>()
 const trainModelTemplates = new RollingStockTemplates()
 const preparingTrainModels = ref(false)
 let trainModelPreparationVersion = 0
 
-const selectedInstanceId = computed(() => props.selectedInstanceId || '')
-const hasScheme = computed(() => Boolean(selectedInstanceId.value && currentStationSchemeId.value.trim()))
-const hasScope = computed(() => Boolean(hasScheme.value && currentOperationPlanId.value.trim()))
-const loadingAnyData = computed(() => (
-    preparingTrainModels.value ||
-    loadingData.value ||
-    loadingStationSchemes.value ||
-    loadingOperationPlans.value ||
-    loadingStationRoutes.value ||
-    loadingStationRouteTimes.value ||
-    loadingTrainOperationPlan.value ||
-    loadingGanttSubTableSettings.value ||
-    savingGanttSubTableSettings.value
-))
-// Share the exact prepared centreline with the playback path. Compute once per layout.
 function buildRailwaySourcePaths(layout: StationLayoutData) {
     const paths = buildVisibleTrackSegments(layout).map(segment => ({
         id: segment.id,
@@ -915,34 +377,8 @@ const canRender = computed(() =>
     layoutStats.value.platforms > 0 ||
     layoutData.value.switches.length > 0
 )
-const emptyStateText = computed(() => {
-    if (!selectedInstanceId.value) return t('capacityMain.placeholders.selectInstance')
-    if (loadErrorMessage.value) return loadErrorMessage.value
-    return t('stationLayout3d.messages.empty')
-})
-const trainOptions = computed(() => trainOperationPlanTrains.value)
-const isAllTrainPlayback = computed(() => playbackMode.value === 'all')
-const trainMap = computed(() => {
-    const map = new Map<string, TrainOperationPlanTrain>()
-    trainOperationPlanTrains.value.forEach((train) => map.set(train.id, train))
-    return map
-})
-const selectedTrain = computed(() => trainOptions.value.find((train) => train.id === selectedTrainId.value) || null)
-const stationRouteMap = computed(() => {
-    const map = new Map<string, StationRouteOption>()
-    stationRouteOptions.value.forEach((route) => map.set(route.id, route))
-    return map
-})
-const selectedTrainMovements = computed(() => {
-    const trainID = selectedTrainId.value
-    if (!trainID) return []
-    return trainOperationPlanMovements.value
-        .filter((movement) => movement.trainID === trainID)
-        .sort(compareMovements)
-})
-const sourceRouteRuns = computed<RouteRun[]>(() => buildRouteRuns())
-// The timetable uses source distances; only the path shown in 3D changes.
-const routeRuns = computed<RouteRun[]>(() => sourceRouteRuns.value.map(run => ({
+// The parent owns schedule times; only the displayed path is transformed here.
+const routeRuns = computed<RouteRun[]>(() => props.runs.map(run => ({
     ...run,
     path: buildRouteGeometry(run.route, displayLayoutData.value, displayTurnoutPaths.value).path,
 })))
@@ -968,164 +404,8 @@ const trainConsistByRun = computed(() => {
     }]))
 })
 const trainMotionByRun = computed(() => buildTrainMotionProfiles(routeRuns.value))
-const canPlayback = computed(() => routeRuns.value.length > 0 && simulationDurationSeconds.value > 0)
-const simulationDurationSeconds = computed(() => (
-    routeRuns.value.reduce((maxSeconds, run) => Math.max(maxSeconds, run.endSeconds), 0)
-))
-const playbackSliderMax = computed(() => Math.max(1, Number(simulationDurationSeconds.value.toFixed(1))))
-const usesPlanTime = computed(() => routeRuns.value.some((run) => run.usesPlanTime))
-const timelineOriginSeconds = computed(() => {
-    const timedRuns = routeRuns.value.filter((run) => run.usesPlanTime)
-    if (timedRuns.length === 0) return 0
-    return Math.min(...timedRuns.map((run) => run.absoluteStartSeconds))
-})
-const ganttTimelineWidth = computed(() => {
-    const duration = Math.max(1, simulationDurationSeconds.value)
-    return Math.round(Math.max(
-        ganttMinTimelineWidth,
-        Math.min(ganttMaxTimelineWidth, duration * ganttTargetPixelsPerSecond),
-    ))
-})
-const ganttTimeScale = computed(() => ganttTimelineWidth.value / Math.max(1, simulationDurationSeconds.value))
-const ganttPlayheadLeft = computed(() => secondsToGanttLeft(playheadSeconds.value))
-const ganttTicks = computed<GanttTick[]>(() => buildGanttTicks())
-const ganttAvailableCells = computed<LayoutCell[]>(() => getGanttAvailableCells())
-const activeGanttSubTable = computed(() => (
-    ganttSubTables.value.find((subTable) => subTable.id === activeGanttSubTableId.value) ||
-    ganttSubTables.value[0] ||
-    null
-))
-const activeGanttSubTableCellIds = computed(() => normalizeGanttSubTableCellIds(activeGanttSubTable.value?.cellIds || []))
-const activeGanttSubTableCells = computed<LayoutCell[]>(() => {
-    const selectedCellIds = new Set(activeGanttSubTableCellIds.value)
-    return ganttAvailableCells.value.filter((cell) => selectedCellIds.has(cell.id))
-})
-const ganttLanes = computed<GanttLane[]>(() => buildGanttLanes())
-const ganttTrackNamesByCell = computed(() => namedTrackCellNames(layoutCells.value, layoutData.value.tracks))
-const ganttDisplayRows = computed<TrackOccupancyGanttRow[]>(() => ganttLanes.value.map((lane) => ({
-    key: lane.key,
-    label: lane.label,
-    kind: ganttTrackNamesByCell.value.has(lane.key) ? 'track' : 'cell',
-    trackNames: ganttTrackNamesByCell.value.get(lane.key) || [],
-    blocks: lane.blocks.map((block) => ({
-        ...block,
-        className: getGanttBlockClassName(block),
-    })),
-})))
-// Use every cell's actual occupation window, independently of the visible
-// Gantt sub-table. The timeline caches states between occupation boundaries.
-const trackOccupancyTimeline = computed(() => createTrackOccupancyTimeline(
-    routeRuns.value.flatMap(run => buildGanttBlocksForRun(run).map(({ cellID, block }) => ({
-        cellID, startSeconds: block.startSeconds, endSeconds: block.endSeconds, color: block.color,
-    }))),
-    layoutCells.value,
-))
-const ganttSummaryText = computed(() => {
-    if (routeRuns.value.length === 0) return String(t('stationLayout3d.gantt.noPlayableWork'))
-    const blockCount = ganttLanes.value.reduce((count, lane) => count + lane.blocks.length, 0)
-    return String(t('stationLayout3d.gantt.summary', {
-        laneCount: ganttLanes.value.length,
-        blockCount,
-    }))
-})
-const activeGanttSubTableSummaryText = computed(() => String(t('stationLayout3d.gantt.subTableSummary', {
-    selected: activeGanttSubTableCells.value.length,
-    total: ganttAvailableCells.value.length,
-})))
-const ganttSubTableDialogTitle = computed(() => (
-    ganttSubTableDialogMode.value === 'create'
-        ? t('stationLayout3d.dialogs.createGanttSubTable')
-        : t('stationLayout3d.dialogs.editGanttSubTable')
-))
-const ganttEmptyText = computed(() => {
-    if (routeRuns.value.length === 0) return movementEmptyText.value
-    if (ganttAvailableCells.value.length > 0 && activeGanttSubTableCells.value.length === 0) {
-        return t('stationLayout3d.gantt.emptySubTable')
-    }
-    return t('stationLayout3d.gantt.emptyOccupation')
-})
-const activeRun = computed(() => {
-    const runs = routeRuns.value
-    if (runs.length === 0) return null
-    return runs[activeRunIndex.value] || runs[0] || null
-})
-const activePhase = computed(() => activeRunPhase.value)
-const activeRouteProgress = computed(() => getActiveRouteProgress(activeRun.value, playheadSeconds.value))
+
 const simulationTrainCars = computed<SimulationTrainCar[]>(() => buildSimulationTrainCars())
-const finishedRunCount = computed(() => routeRuns.value.filter((run) => runPhaseByKey.value[run.key] === 'finished').length)
-const playbackStatusText = computed(() => {
-    if (!canPlayback.value) return t('stationLayout3d.status.notReady')
-    if (isPlaying.value) return t('stationLayout3d.status.playing')
-    if (playheadSeconds.value >= simulationDurationSeconds.value) return t('stationLayout3d.status.finished')
-    return t('stationLayout3d.status.paused')
-})
-const playbackStatusTagType = computed<'success' | 'warning' | 'info'>(() => {
-    if (isPlaying.value) return 'success'
-    if (!canPlayback.value) return 'info'
-    return 'warning'
-})
-const playbackClockText = computed(() => (
-    usesPlanTime.value
-        ? formatClockSeconds(timelineOriginSeconds.value + playheadSeconds.value)
-        : formatDurationSeconds(playheadSeconds.value)
-))
-const playbackSummaryText = computed(() => {
-    if (isAllTrainPlayback.value) {
-        return String(t('stationLayout3d.playback.allSummary', {
-            trainCount: trainOptions.value.length,
-            routeCount: routeRuns.value.length,
-        }))
-    }
-    const train = selectedTrain.value
-    if (!train) return t('stationLayout3d.playback.selectTrain')
-    return String(t('stationLayout3d.playback.singleSummary', {
-        train: formatTrainLabel(train),
-        movementCount: selectedTrainMovements.value.length,
-    }))
-})
-const activePhaseText = computed(() => {
-    if (isAllTrainPlayback.value) {
-        const locking = activeLockingRunCount.value
-        const moving = activeMovingRunCount.value
-        const dwelling = activeDwellingRunCount.value
-        if (locking + moving + dwelling <= 0) return t('stationLayout3d.phase.waiting')
-        if (dwelling > 0) return String(t('stationLayout3d.phase.allActiveWithDwelling', { locking, moving, dwelling }))
-        return String(t('stationLayout3d.phase.allActive', { locking, moving }))
-    }
-    if (!activeRun.value) return t('stationLayout3d.phase.selecting')
-    if (activePhase.value === 'locking') return t('stationLayout3d.phase.locking')
-    if (activePhase.value === 'dwelling') return t('stationLayout3d.phase.dwelling')
-    if (activePhase.value === 'moving') {
-        return String(t('stationLayout3d.phase.movingWithProgress', {
-            progress: Math.round(activeRouteProgress.value * 100),
-        }))
-    }
-    if (activePhase.value === 'finished') {
-        return String(t('stationLayout3d.phase.finishedWithCount', {
-            finished: finishedRunCount.value,
-            total: routeRuns.value.length,
-        }))
-    }
-    return t('stationLayout3d.phase.waiting')
-})
-const movementEmptyText = computed(() => {
-    if (isAllTrainPlayback.value) return t('stationLayout3d.gantt.emptyAllPlan')
-    if (!selectedTrain.value) return t('stationLayout3d.playback.selectTrain')
-    if (selectedTrainMovements.value.length === 0) return t('stationLayout3d.gantt.emptyTrainPlan')
-    return t('stationLayout3d.gantt.emptyRoute')
-})
-
-function createEmptyLayout(): StationLayoutData {
-    return {
-        tracks: [],
-        curves: [],
-        nodes: [],
-        signals: [],
-        platforms: [],
-        switches: [],
-    }
-}
-
 function toFiniteNumber(value: unknown, fallback = 0): number {
     const parsed = Number(value)
     return Number.isFinite(parsed) ? parsed : fallback
@@ -1143,305 +423,6 @@ function readString(source: any, ...keys: string[]): string {
         if (value !== undefined && value !== null) return String(value)
     }
     return ''
-}
-
-function readArray(source: unknown, ...keys: string[]) {
-    const record = readRecord(source)
-    for (const key of keys) {
-        const value = record[key]
-        if (Array.isArray(value)) return value
-    }
-    return []
-}
-
-function readRecord(value: unknown): Record<string, unknown> {
-    return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
-}
-
-function readOptionalInteger(source: unknown, ...keys: string[]): number | null {
-    const record = readRecord(source)
-    for (const key of keys) {
-        const value = record[key]
-        if (value === undefined || value === null || value === '') continue
-        const parsed = Number(value)
-        if (Number.isFinite(parsed)) return Math.trunc(parsed)
-    }
-    return null
-}
-
-function readBoolean(source: unknown, defaultValue: boolean, ...keys: string[]) {
-    const record = readRecord(source)
-    for (const key of keys) {
-        const value = record[key]
-        if (value === undefined || value === null || value === '') continue
-        if (typeof value === 'boolean') return value
-        if (typeof value === 'number') return value === 1
-        const text = String(value).trim().toLowerCase()
-        if (['1', 'true', 'yes', 'y'].includes(text)) return true
-        if (['0', 'false', 'no', 'n'].includes(text)) return false
-    }
-    return defaultValue
-}
-
-function normalizeStationSchemeOption(item: any): StationSchemeOption | null {
-    const id = readString(item, 'id', 'ID').trim()
-    if (!id) return null
-
-    const name = readString(item, 'name', 'Name').trim() || id
-    return { id, name }
-}
-
-function normalizeOperationPlanOption(item: unknown): OperationPlanOption | null {
-    const operationPlanID = readString(item, 'operationPlanID', 'OperationPlanID').trim()
-    if (!operationPlanID) return null
-    return {
-        instanceID: readString(item, 'instanceID', 'InstanceID').trim(),
-        stationSchemeID: readString(item, 'stationSchemeID', 'StationSchemeID').trim(),
-        operationPlanID,
-        name: readString(item, 'name', 'Name').trim() || operationPlanID,
-        description: readString(item, 'description', 'Description').trim(),
-        sortOrder: readOptionalInteger(item, 'sortOrder', 'SortOrder'),
-    }
-}
-
-function normalizeStationRouteOption(item: unknown): StationRouteOption | null {
-    const id = readString(item, 'id', 'ID').trim()
-    if (!id) return null
-    const description = readString(item, 'description', 'Description').trim()
-    return {
-        id,
-        name: description || id,
-        type: readString(item, 'type', 'Type').trim(),
-        nodeList: readString(item, 'nodeList', 'NodeList').trim(),
-        linkList: readString(item, 'linkList', 'LinkList').trim(),
-        startNodeID: readString(item, 'startNodeID', 'StartNodeID').trim(),
-        endNodeID: readString(item, 'endNodeID', 'EndNodeID').trim(),
-    }
-}
-
-function normalizeStationRouteTimeOption(item: unknown): StationRouteTimeOption | null {
-    const cellID = readString(item, 'cellID', 'CellID').trim()
-    if (!cellID) return null
-    return {
-        routeID: readString(item, 'routeID', 'RouteID').trim(),
-        trainTypeID: readString(item, 'trainTypeID', 'TrainTypeID').trim(),
-        cellID,
-        startOccupationShift: readOptionalInteger(item, 'startOccupationShift', 'StartOccupationShift'),
-        endOccupationShift: readOptionalInteger(item, 'endOccupationShift', 'EndOccupationShift'),
-        isInterruptCell: readBoolean(item, false, 'isInterruptCell', 'IsInterruptCell'),
-    }
-}
-
-function normalizeTrain(item: unknown): TrainOperationPlanTrain | null {
-    const id = readString(item, 'id', 'ID').trim()
-    if (!id) return null
-    return {
-        id,
-        trainTemplateID: readString(item, 'trainTemplateID', 'TrainTemplateID').trim(),
-        trainNumber: readString(item, 'trainNumber', 'TrainNumber').trim(),
-        name: readString(item, 'name', 'Name').trim(),
-        trainType: readString(item, 'trainType', 'TrainType').trim(),
-        isFixedOperation: readBoolean(item, false, 'isFixedOperation', 'IsFixedOperation'),
-    }
-}
-
-function normalizeMovement(item: unknown): TrainOperationPlanMovement | null {
-    const trainID = readString(item, 'trainID', 'TrainID').trim()
-    const movementID = readString(item, 'movementID', 'MovementID').trim()
-    if (!trainID || !movementID) return null
-    return {
-        trainID,
-        trainTemplateID: readString(item, 'trainTemplateID', 'TrainTemplateID').trim(),
-        movementID,
-        name: readString(item, 'name', 'Name').trim(),
-        routeIDList: readString(item, 'routeIDList', 'RouteIDList').trim(),
-        minDuration: readOptionalInteger(item, 'minDuration', 'MinDuration'),
-        earliestStartTime: readString(item, 'earliestStartTime', 'EarliestStartTime').trim(),
-        latestEndTime: readString(item, 'latestEndTime', 'LatestEndTime').trim(),
-        cellOccupationOverridesJson: readString(item, 'cellOccupationOverridesJson', 'CellOccupationOverridesJson'),
-        cellOccupations: normalizeMovementCellOccupations(readArray(item, 'cellOccupations', 'CellOccupations')),
-        route: readString(item, 'route', 'Route').trim(),
-        tag: readString(item, 'tag', 'Tag').trim(),
-        sortOrder: readOptionalInteger(item, 'sortOrder', 'SortOrder'),
-    }
-}
-
-function normalizeTrainOperationPlanResponse(data: unknown) {
-    const record = readRecord(data)
-    const rawTrains = Array.isArray(record.trains)
-        ? record.trains
-        : Array.isArray(record.Trains)
-            ? record.Trains
-            : []
-    const rawMovements = Array.isArray(record.movements)
-        ? record.movements
-        : Array.isArray(record.Movements)
-            ? record.Movements
-            : []
-    const previousTrainId = selectedTrainId.value
-    trainOperationPlanTrains.value = rawTrains
-        .map(normalizeTrain)
-        .filter((item): item is TrainOperationPlanTrain => item !== null)
-    trainOperationPlanMovements.value = rawMovements
-        .map(normalizeMovement)
-        .filter((item): item is TrainOperationPlanMovement => item !== null)
-    selectedTrainId.value = trainOperationPlanTrains.value.some((train) => train.id === previousTrainId)
-        ? previousTrainId
-        : trainOperationPlanTrains.value[0]?.id || ''
-}
-
-function getLayoutGridSpacing(data: unknown) {
-    const metadata = readRecord(readRecord(data).metadata)
-    const gridSettings = readRecord(metadata.gridSettings)
-    const parsed = Number(gridSettings.spacing ?? gridSettings.Spacing ?? 20)
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : 20
-}
-
-function getLayoutCells(data: unknown): LayoutCell[] {
-    const cells = Array.isArray(readRecord(data).cells) ? readRecord(data).cells as unknown[] : []
-    return cells
-        .map((cell) => ({
-            id: readString(cell, 'id', 'ID').trim(),
-            name: readString(cell, 'name', 'Name').trim(),
-            linkIDList: readString(cell, 'linkIDList', 'LinkIDList').trim(),
-        }))
-        .map((cell) => ({ ...cell, name: cell.name || cell.id }))
-        .filter((cell) => cell.id || cell.name || cell.linkIDList)
-}
-
-function setStationSchemeOptions(options: StationSchemeOption[]) {
-    const optionsById = new Map<string, StationSchemeOption>()
-    for (const option of options) {
-        if (!option.id || optionsById.has(option.id)) continue
-        optionsById.set(option.id, option)
-    }
-
-    stationSchemeOptions.value = Array.from(optionsById.values())
-}
-
-function ensureCurrentStationSchemeOption(name?: string) {
-    const id = currentStationSchemeId.value.trim()
-    if (!id) return
-    if (stationSchemeOptions.value.some((option) => option.id === id)) return
-
-    stationSchemeOptions.value = [
-        ...stationSchemeOptions.value,
-        {
-            id,
-            name: name || id,
-        },
-    ]
-}
-
-function formatStationSchemeLabel(option: StationSchemeOption): string {
-    return option.name && option.name !== option.id ? `${option.name} (${option.id})` : option.id
-}
-
-function formatOperationPlanLabel(option: OperationPlanOption) {
-    return option.name && option.name !== option.operationPlanID
-        ? `${option.name} (${option.operationPlanID})`
-        : option.operationPlanID
-}
-
-function formatTrainLabel(train: TrainOperationPlanTrain) {
-    const number = train.trainNumber || train.id
-    const name = train.name ? ` ${train.name}` : ''
-    return `${number}${name}`
-}
-
-async function loadStationSchemes() {
-    if (isDisposed) return []
-    const instanceID = selectedInstanceId.value
-    stationSchemesInstanceId.value = ''
-    if (!instanceID) {
-        stationSchemeLoadVersion++
-        stationSchemeOptions.value = []
-        clearOperationPlans()
-        clearStationRoutes()
-        clearLayout()
-        loadingStationSchemes.value = false
-        return []
-    }
-
-    const loadVersion = ++stationSchemeLoadVersion
-    const requestedSchemeId = currentStationSchemeId.value
-    loadingStationSchemes.value = true
-    try {
-        const response = await axios.get('/StationLayout/GetStationSchemes', {
-            signal: dataRequests.signal,
-            params: { instanceID },
-        })
-        if (loadVersion !== stationSchemeLoadVersion || instanceID !== selectedInstanceId.value) return []
-
-        const options = (Array.isArray(response.data) ? response.data : [])
-            .map((item: any) => normalizeStationSchemeOption(item))
-            .filter((item: StationSchemeOption | null): item is StationSchemeOption => item !== null)
-        setStationSchemeOptions(options)
-        if (currentStationSchemeId.value === requestedSchemeId) {
-            if (!stationSchemeOptions.value.some((item) => item.id === requestedSchemeId)) {
-                const fallbackId = stationSchemeOptions.value[0]?.id
-                if (fallbackId) currentStationSchemeId.value = fallbackId
-                else capacityStore.clearStationScheme(instanceID)
-            }
-        } else {
-            // A selection made while this list was loading takes precedence.
-            ensureCurrentStationSchemeOption()
-        }
-        stationSchemesInstanceId.value = instanceID
-        return options
-    } catch (error) {
-        if (loadVersion !== stationSchemeLoadVersion || instanceID !== selectedInstanceId.value) return []
-
-        console.error('Failed to load station schemes:', error)
-        stationSchemeOptions.value = []
-        clearOperationPlans()
-        clearStationRoutes()
-        clearLayout()
-        ElMessage.error(t('stationLayout.messages.loadSchemesFailed'))
-        return []
-    } finally {
-        if (loadVersion === stationSchemeLoadVersion && instanceID === selectedInstanceId.value) {
-            loadingStationSchemes.value = false
-        }
-    }
-}
-
-async function handleStationSchemeChange() {
-    const loadVersion = ++schemeDataLoadVersion
-    const instanceID = selectedInstanceId.value
-    const stationSchemeID = currentStationSchemeId.value
-    const previousOperationPlanId = loadedSchemeInstanceId === instanceID && loadedStationSchemeId === stationSchemeID
-        ? currentOperationPlanId.value
-        : ''
-    loadedSchemeInstanceId = instanceID
-    loadedStationSchemeId = stationSchemeID
-    stopPlaybackForReload()
-    clearOperationPlans()
-    currentOperationPlanId.value = previousOperationPlanId
-    clearStationRoutes()
-    clearLayout()
-    await loadOperationPlans()
-    if (
-        isDisposed || loadVersion !== schemeDataLoadVersion ||
-        instanceID !== selectedInstanceId.value || stationSchemeID !== currentStationSchemeId.value
-    ) return
-    await refresh3DData()
-}
-
-async function handleOperationPlanChange() {
-    stopPlaybackForReload()
-    clearTrainPlan()
-    clearGanttSubTableState()
-    await loadTrainOperationPlan()
-    await Promise.all([loadStationRouteTimes(), loadGanttSubTableSettings()])
-}
-
-function handleTrainChange() {
-    resetPlayback()
-}
-
-function handlePlaybackModeChange() {
-    resetPlayback()
 }
 
 function normalizePosition(source: any): Position2D | null {
@@ -1632,230 +613,6 @@ function normalizeUniqueStrings(values: unknown[]) {
         result.push(text)
     })
     return result
-}
-
-function compareMovements(left: TrainOperationPlanMovement, right: TrainOperationPlanMovement) {
-    const leftOrder = Number(left.sortOrder)
-    const rightOrder = Number(right.sortOrder)
-    if (Number.isFinite(leftOrder) && Number.isFinite(rightOrder) && leftOrder !== rightOrder) {
-        return leftOrder - rightOrder
-    }
-    const leftStart = parseOperationPlanTime(left.earliestStartTime)
-    const rightStart = parseOperationPlanTime(right.earliestStartTime)
-    if (leftStart !== null && rightStart !== null && leftStart !== rightStart) return leftStart - rightStart
-    return left.movementID.localeCompare(right.movementID, undefined, { numeric: true, sensitivity: 'base' })
-}
-
-function parseOperationPlanTime(value: string) {
-    const text = String(value || '').trim()
-    if (!text) return null
-    let dayOffset = 0
-    let timeText = text
-    const dayMatch = text.match(/^D\+(\d+)\s+(.+)$/i)
-    if (dayMatch) {
-        dayOffset = Number(dayMatch[1])
-        timeText = (dayMatch[2] || '').trim()
-    }
-    const parts = timeText.split(':')
-    if (parts.length < 2) return null
-    const hours = Number(parts[0])
-    const minutes = Number(parts[1])
-    const seconds = parts.length > 2 ? Number(parts[2]) : 0
-    if (
-        !Number.isFinite(hours) ||
-        !Number.isFinite(minutes) ||
-        !Number.isFinite(seconds) ||
-        hours < 0 ||
-        minutes < 0 ||
-        minutes >= 60 ||
-        seconds < 0 ||
-        seconds >= 60
-    ) {
-        return null
-    }
-    return dayOffset * 24 * 60 + hours * 60 + minutes + seconds / 60
-}
-
-function formatClockSeconds(totalSeconds: number) {
-    const normalizedSeconds = Math.max(0, Math.round(totalSeconds))
-    const days = Math.floor(normalizedSeconds / 86400)
-    const secondsInDay = normalizedSeconds % 86400
-    const hours = Math.floor(secondsInDay / 3600)
-    const minutes = Math.floor((secondsInDay % 3600) / 60)
-    const seconds = secondsInDay % 60
-    const timeText = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
-    return days > 0 ? `D+${days} ${timeText}` : timeText
-}
-
-function formatDurationSeconds(totalSeconds: number) {
-    const normalizedSeconds = Math.max(0, Math.round(totalSeconds))
-    const minutes = Math.floor(normalizedSeconds / 60)
-    const seconds = normalizedSeconds % 60
-    return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
-}
-
-function getRouteDisplayName(routeID: string) {
-    return stationRouteMap.value.get(routeID)?.name || routeID || '-'
-}
-
-function getTrainColor(trainID: string) {
-    const colors = ['#2563eb', '#dc2626', '#059669', '#7c3aed', '#ea580c', '#0891b2']
-    const hash = trainID.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0)
-    return colors[hash % colors.length] || colors[0] || '#2563eb'
-}
-
-function getPlaybackRunSources(): RouteRunSource[] {
-    if (!isAllTrainPlayback.value) {
-        const train = selectedTrain.value
-        if (!train) return []
-        return selectedTrainMovements.value.map((movement, sourceIndex) => ({ train, movement, sourceIndex }))
-    }
-
-    return trainOperationPlanMovements.value
-        .map((movement, sourceIndex) => {
-            const train = trainMap.value.get(movement.trainID)
-            return train ? { train, movement, sourceIndex } : null
-        })
-        .filter((item): item is RouteRunSource => item !== null)
-        .sort(compareRouteRunSources)
-}
-
-function compareRouteRunSources(left: RouteRunSource, right: RouteRunSource) {
-    const leftStart = parseOperationPlanTime(left.movement.earliestStartTime)
-    const rightStart = parseOperationPlanTime(right.movement.earliestStartTime)
-    if (leftStart !== null && rightStart !== null && leftStart !== rightStart) return leftStart - rightStart
-    if (leftStart !== null && rightStart === null) return -1
-    if (leftStart === null && rightStart !== null) return 1
-    const trainCompare = formatTrainLabel(left.train).localeCompare(
-        formatTrainLabel(right.train),
-        undefined,
-        { numeric: true, sensitivity: 'base' },
-    )
-    if (trainCompare !== 0) return trainCompare
-    const movementCompare = compareMovements(left.movement, right.movement)
-    return movementCompare !== 0 ? movementCompare : left.sourceIndex - right.sourceIndex
-}
-
-function buildRouteRuns(): RouteRun[] {
-    const rawRuns = getPlaybackRunSources()
-        .map((source) => {
-            const { movement, train, sourceIndex } = source
-            const routeID = getMovementRouteID(movement)
-            const route = stationRouteMap.value.get(routeID)
-            if (!route) return null
-            const geometry = buildRouteGeometry(route)
-            if (geometry.path.totalLength <= 0 || geometry.path.segments.length === 0) return null
-            const startMinutes = parseOperationPlanTime(movement.earliestStartTime)
-            const endMinutes = parseOperationPlanTime(movement.latestEndTime)
-            return { movement, train, route, geometry, startMinutes, endMinutes, sourceIndex }
-        })
-        .filter((item): item is {
-            movement: TrainOperationPlanMovement
-            train: TrainOperationPlanTrain
-            route: StationRouteOption
-            geometry: RouteGeometry
-            startMinutes: number | null
-            endMinutes: number | null
-            sourceIndex: number
-        } => item !== null)
-
-    const hasValidPlanTime = (item: (typeof rawRuns)[number]) => (
-        item.startMinutes !== null &&
-        item.endMinutes !== null
-    )
-    const playableRuns = isAllTrainPlayback.value
-        ? rawRuns.filter(hasValidPlanTime)
-        : rawRuns
-    const timedRuns = playableRuns.filter(hasValidPlanTime)
-    const usesTimedPlan = isAllTrainPlayback.value
-        ? playableRuns.length > 0
-        : playableRuns.length > 0 && timedRuns.length === playableRuns.length
-    const originSeconds = usesTimedPlan
-        ? Math.min(...timedRuns.map((item) => getRouteOccupationWindowSeconds(item).startSeconds))
-        : 0
-    let syntheticCursor = 0
-
-    return playableRuns.map((item, index) => {
-        const fallbackDuration = getFallbackRouteDurationSeconds(item.movement, item.geometry.path.totalLength)
-        let startSeconds = syntheticCursor
-        let endSeconds = syntheticCursor + fallbackDuration
-        let absoluteStartSeconds = startSeconds
-        let absoluteEndSeconds = endSeconds
-        let runUsesPlanTime = false
-
-        if (usesTimedPlan && hasValidPlanTime(item)) {
-            const occupationWindow = getRouteOccupationWindowSeconds(item)
-            absoluteStartSeconds = occupationWindow.startSeconds
-            absoluteEndSeconds = Math.max(occupationWindow.endSeconds, absoluteStartSeconds + fallbackDuration)
-            startSeconds = absoluteStartSeconds - originSeconds
-            endSeconds = absoluteEndSeconds - originSeconds
-            runUsesPlanTime = true
-        } else {
-            syntheticCursor = endSeconds + syntheticRouteGapSeconds
-        }
-
-        const duration = Math.max(0.1, endSeconds - startSeconds)
-        const lockSeconds = Math.min(routeLockMaxSeconds, Math.max(routeLockMinSeconds, duration * 0.16))
-        return {
-            key: `${item.train.id}-${item.movement.movementID}-${item.route.id}-${index}`,
-            train: item.train,
-            movement: item.movement,
-            route: item.route,
-            path: item.geometry.path,
-            nodeIds: item.geometry.nodeIds,
-            linkIds: item.geometry.linkIds,
-            startSeconds,
-            endSeconds,
-            lockSeconds: isDwellingRoute(item.route.type) ? 0 : Math.min(lockSeconds, duration * 0.65),
-            usesPlanTime: runUsesPlanTime,
-            absoluteStartSeconds,
-            absoluteEndSeconds,
-            color: getStationRouteHighlightColor(item.route.type),
-        }
-    }).sort((left, right) => (
-        left.startSeconds - right.startSeconds ||
-        left.endSeconds - right.endSeconds ||
-        formatTrainLabel(left.train).localeCompare(formatTrainLabel(right.train), undefined, { numeric: true, sensitivity: 'base' })
-    ))
-}
-
-function getRouteOccupationWindowSeconds(item: {
-    movement: TrainOperationPlanMovement
-    train: TrainOperationPlanTrain
-    route: StationRouteOption
-    startMinutes: number | null
-    endMinutes: number | null
-}) {
-    const baseStartSeconds = Number(item.startMinutes || 0) * 60
-    const baseEndSeconds = Number(item.endMinutes || item.startMinutes || 0) * 60
-    const cells = item.movement.cellOccupations || []
-    const startSeconds = Math.min(baseStartSeconds, ...cells.map(cell => cell.startSeconds))
-    const endSeconds = Math.max(baseEndSeconds, ...cells.map(cell => cell.endSeconds))
-    return { startSeconds, endSeconds }
-}
-
-function getMovementRouteID(movement: TrainOperationPlanMovement) {
-    const selectedRouteID = movement.route.trim()
-    if (selectedRouteID) return selectedRouteID
-    return parseRouteReferenceList(movement.routeIDList)[0] || ''
-}
-
-function getStationRouteTimeKey(routeID: string, trainTypeID: string) {
-    return `${routeID.trim()}::${trainTypeID.trim()}`
-}
-
-function getStationRouteTimes(routeID: string, trainTypeID: string) {
-    const specificKey = getStationRouteTimeKey(routeID, trainTypeID)
-    const defaultKey = getStationRouteTimeKey(routeID, '')
-    const specificRows = stationRouteTimesByKey.value[specificKey] || []
-    if (specificRows.length > 0) return specificRows
-    return stationRouteTimesByKey.value[defaultKey] || []
-}
-
-function getFallbackRouteDurationSeconds(movement: TrainOperationPlanMovement, pathLength: number) {
-    const minDuration = Number(movement.minDuration)
-    if (Number.isFinite(minDuration) && minDuration > 0) return Math.max(4, minDuration)
-    return Math.max(8, Math.min(36, pathLength / 55))
 }
 
 function buildRouteGeometry(
@@ -2050,7 +807,7 @@ function buildSimulationTrainCarsForRun(run: RouteRun, currentSeconds: number): 
     const { modelId, carCount, sizing } = consist
     const motion = trainMotionByRun.value.get(run.key) ?? buildTrainMotionProfiles([run]).get(run.key)
     if (!motion) return []
-    const fill = getTrainColor(run.train.id)
+    const fill = run.color
     const cars: SimulationTrainCar[] = []
 
     for (let index = 0; index < carCount; index++) {
@@ -2097,401 +854,6 @@ function toHex(value: number) {
     return Math.max(0, Math.min(255, value)).toString(16).padStart(2, '0')
 }
 
-function secondsToGanttLeft(seconds: number) {
-    const duration = Math.max(1, simulationDurationSeconds.value)
-    return Math.max(0, Math.min(duration, Number(seconds || 0))) * ganttTimeScale.value
-}
-
-function buildGanttTicks(): GanttTick[] {
-    const duration = simulationDurationSeconds.value
-    if (duration <= 0) return []
-
-    const targetTickCount = Math.max(4, Math.min(12, Math.floor(ganttTimelineWidth.value / 120)))
-    const stepSeconds = getNiceGanttTickStepSeconds(duration / targetTickCount)
-    const ticks: GanttTick[] = []
-    const seen = new Set<number>()
-    const originSeconds = usesPlanTime.value ? timelineOriginSeconds.value : 0
-    const firstAlignedSeconds = usesPlanTime.value
-        ? Math.max(0, Math.ceil(originSeconds / stepSeconds) * stepSeconds - originSeconds)
-        : 0
-
-    const addTick = (seconds: number, major: boolean) => {
-        const normalizedSeconds = Math.max(0, Math.min(duration, seconds))
-        const tickKey = Math.round(normalizedSeconds * 10)
-        if (seen.has(tickKey)) return
-        seen.add(tickKey)
-        ticks.push({
-            key: String(tickKey),
-            seconds: normalizedSeconds,
-            left: secondsToGanttLeft(normalizedSeconds),
-            label: formatGanttTickLabel(normalizedSeconds),
-            major,
-        })
-    }
-
-    addTick(0, true)
-    let tickIndex = 0
-    for (let seconds = firstAlignedSeconds; seconds <= duration; seconds += stepSeconds) {
-        addTick(seconds, tickIndex % 2 === 0)
-        tickIndex++
-    }
-    addTick(duration, true)
-    return ticks.sort((left, right) => left.seconds - right.seconds)
-}
-
-function getNiceGanttTickStepSeconds(rawStepSeconds: number) {
-    const steps = [5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200, 10800, 14400, 21600, 43200]
-    return steps.find((step) => step >= rawStepSeconds) || steps[steps.length - 1] || 3600
-}
-
-function formatGanttTickLabel(seconds: number) {
-    return usesPlanTime.value
-        ? formatClockSeconds(timelineOriginSeconds.value + seconds)
-        : formatDurationSeconds(seconds)
-}
-
-function buildGanttLanes(): GanttLane[] {
-    if (routeRuns.value.length === 0) return []
-    const lanesByCell = buildGanttBaseLanes()
-
-    routeRuns.value.forEach((run) => {
-        const trainLabel = formatTrainLabel(run.train)
-        const routeName = getRouteDisplayName(run.route.id)
-        buildGanttBlocksForRun(run).forEach(({ cellID, block }) => {
-            const lane = lanesByCell.get(cellID)
-            if (!lane) return
-            lane.blocks.push({
-                ...block,
-                label: trainLabel,
-                title: `${lane.label} · ${trainLabel} · ${routeName} · ${formatGanttTickLabel(block.startSeconds)} - ${formatGanttTickLabel(block.endSeconds)}`,
-            })
-        })
-    })
-
-    return Array.from(lanesByCell.values())
-        .map((lane) => ({
-            ...lane,
-            blocks: lane.blocks.sort((left, right) => left.left - right.left),
-        }))
-        .sort((left, right) => (
-            left.sortIndex - right.sortIndex ||
-            left.label.localeCompare(right.label, undefined, { numeric: true, sensitivity: 'base' })
-        ))
-}
-
-function buildGanttBaseLanes() {
-    const lanesByCell = new Map<string, GanttLane>()
-    activeGanttSubTableCells.value.forEach((cell, index) => {
-        const cellID = String(cell.id || cell.name || '').trim()
-        if (!cellID || lanesByCell.has(cellID)) return
-        lanesByCell.set(cellID, {
-            key: cellID,
-            label: cell.name || cellID,
-            sortIndex: index,
-            blocks: [],
-        })
-    })
-    return lanesByCell
-}
-
-function getGanttAvailableCells() {
-    return layoutCells.value.length > 0
-        ? layoutCells.value
-        : getFallbackGanttCellsFromRouteTimes()
-}
-
-function getFallbackGanttCellsFromRouteTimes() {
-    const cellsById = new Map<string, LayoutCell>()
-    Object.values(stationRouteTimesByKey.value).flat().forEach((time) => {
-        const cellID = time.cellID.trim()
-        if (!cellID || cellsById.has(cellID)) return
-        cellsById.set(cellID, {
-            id: cellID,
-            name: cellID,
-            linkIDList: '',
-        })
-    })
-    return Array.from(cellsById.values())
-}
-
-function buildGanttBlocksForRun(run: RouteRun) {
-    const origin = run.usesPlanTime ? timelineOriginSeconds.value : run.absoluteStartSeconds - run.startSeconds
-    return (run.movement.cellOccupations || []).map((cell, index) => ({
-        cellID: cell.cellID,
-        block: createGanttBlock(run, cell.cellID, index, cell.startSeconds - origin, cell.endSeconds - origin),
-    }))
-}
-
-function createGanttBlock(
-    run: RouteRun,
-    cellID: string,
-    blockIndex: number,
-    rawStartSeconds: number,
-    rawEndSeconds: number,
-): GanttBlock {
-    const duration = Math.max(0.1, simulationDurationSeconds.value)
-    const orderedStartSeconds = Math.min(rawStartSeconds, rawEndSeconds)
-    const orderedEndSeconds = Math.max(rawStartSeconds, rawEndSeconds)
-    const startSeconds = Math.max(0, Math.min(duration, orderedStartSeconds))
-    const endSeconds = Math.max(startSeconds + 0.1, Math.max(0, Math.min(duration, orderedEndSeconds)))
-    return {
-        key: `${run.key}-${cellID}-${blockIndex}`,
-        label: '',
-        title: '',
-        startSeconds,
-        endSeconds,
-        left: secondsToGanttLeft(startSeconds),
-        width: Math.max(8, (endSeconds - startSeconds) * ganttTimeScale.value),
-        color: run.color,
-    }
-}
-
-function getRouteLayoutCellIds(run: RouteRun) {
-    if (run.linkIds.length === 0) return []
-    const routeLinkIds = new Set(run.linkIds)
-    return layoutCells.value
-        .filter((cell) => parseRouteReferenceList(cell.linkIDList).some((linkID) => routeLinkIds.has(linkID)))
-        .map((cell) => cell.id || cell.name)
-        .filter((cellID) => Boolean(cellID))
-}
-
-function getGanttBlockClassName(block: GanttBlock) {
-    const classes: string[] = []
-    if (playheadSeconds.value >= block.endSeconds) {
-        classes.push('is-finished')
-    } else if (playheadSeconds.value >= block.startSeconds) {
-        classes.push('is-active')
-    } else {
-        classes.push('is-waiting')
-    }
-    return classes.join(' ')
-}
-
-function getGanttSubTableFallbackName(index: number) {
-    return String(t('stationLayout3d.gantt.subTableFallbackName', { index }))
-}
-
-function createGanttSubTable(index: number, name?: string): GanttSubTable {
-    return {
-        id: `occupation-time-sub-table-${index}`,
-        name: name?.trim() || getGanttSubTableFallbackName(index),
-        cellIds: [],
-        hasCustomSelection: false,
-    }
-}
-
-function formatGanttSubTableLabel(subTable: GanttSubTable, index: number) {
-    return subTable.name?.trim() || getGanttSubTableFallbackName(index + 1)
-}
-
-function normalizeGanttSubTableCellIds(cellIds: string[]) {
-    const availableCellIds = new Set(ganttAvailableCells.value.map((cell) => cell.id))
-    return normalizeUniqueStrings(cellIds).filter((cellID) => availableCellIds.has(cellID))
-}
-
-function normalizeStoredGanttSubTableCellIds(cellIds: string[]) {
-    return normalizeUniqueStrings(cellIds)
-}
-
-function runWithoutGanttSubTableSave(action: () => void) {
-    suppressGanttSubTableSave = true
-    try {
-        action()
-    } finally {
-        void nextTick(() => {
-            suppressGanttSubTableSave = false
-        })
-    }
-}
-
-function resetGanttSubTables() {
-    ganttSubTableSequence.value = ganttDefaultSubTableCount
-    ganttSubTables.value = Array.from(
-        { length: ganttDefaultSubTableCount },
-        (_, index) => createGanttSubTable(index + 1),
-    )
-    activeGanttSubTableId.value = ganttSubTables.value[0]?.id || ''
-}
-
-function syncGanttSubTables(cells: LayoutCell[]) {
-    if (ganttSubTables.value.length === 0) {
-        ganttSubTables.value = [createGanttSubTable(1)]
-        ganttSubTableSequence.value = 1
-    }
-
-    const cellIds = cells.map((cell) => cell.id).filter(Boolean)
-    const availableCellIds = new Set(cellIds)
-    if (cellIds.length === 0) return
-
-    ganttSubTables.value = ganttSubTables.value.map((subTable) => ({
-        ...subTable,
-        cellIds: subTable.cellIds.filter((cellID) => availableCellIds.has(cellID)),
-    }))
-
-    if (!ganttSubTables.value.some((subTable) => subTable.id === activeGanttSubTableId.value)) {
-        activeGanttSubTableId.value = ganttSubTables.value[0]?.id || ''
-    }
-
-    const hasCustomSelection = ganttSubTables.value.some((subTable) => subTable.hasCustomSelection)
-    if (hasCustomSelection) return
-
-    const tableCount = Math.max(1, ganttSubTables.value.length)
-    const chunkSize = Math.max(1, Math.ceil(cellIds.length / tableCount))
-    ganttSubTables.value = ganttSubTables.value.map((subTable, index) => ({
-        ...subTable,
-        cellIds: cellIds.slice(index * chunkSize, (index + 1) * chunkSize),
-        hasCustomSelection: false,
-    }))
-}
-
-function getNextGanttSubTableDraft() {
-    const usedIds = new Set(ganttSubTables.value.map((item) => item.id))
-    let sequence = ganttSubTableSequence.value
-    let subTable: GanttSubTable
-    do {
-        sequence += 1
-        subTable = createGanttSubTable(sequence)
-    } while (usedIds.has(subTable.id))
-
-    return { sequence, subTable }
-}
-
-function openCreateGanttSubTableDialog() {
-    const { sequence, subTable } = getNextGanttSubTableDraft()
-    const selectedCellIds = new Set(ganttSubTables.value.flatMap((item) => item.cellIds))
-    const remainingCellIds = ganttAvailableCells.value
-        .map((cell) => cell.id)
-        .filter((cellID) => !selectedCellIds.has(cellID))
-
-    ganttSubTableDialogMode.value = 'create'
-    ganttSubTableDialogTargetId.value = subTable.id
-    ganttSubTableDialogTargetSequence.value = sequence
-    ganttSubTableDialogForm.value = {
-        name: subTable.name,
-        cellIds: remainingCellIds,
-    }
-    ganttSubTableDialogVisible.value = true
-}
-
-function openEditGanttSubTableDialog() {
-    const activeSubTable = activeGanttSubTable.value
-    if (!activeSubTable) return
-
-    const activeIndex = ganttSubTables.value.findIndex((subTable) => subTable.id === activeSubTable.id)
-    ganttSubTableDialogMode.value = 'edit'
-    ganttSubTableDialogTargetId.value = activeSubTable.id
-    ganttSubTableDialogTargetSequence.value = 0
-    ganttSubTableDialogForm.value = {
-        name: activeSubTable.name?.trim() || getGanttSubTableFallbackName(activeIndex + 1),
-        cellIds: [...activeSubTable.cellIds],
-    }
-    ganttSubTableDialogVisible.value = true
-}
-
-function confirmGanttSubTableDialog() {
-    const name = ganttSubTableDialogForm.value.name.trim()
-    if (!name) {
-        ElMessage.warning(t('stationLayout3d.messages.subTableNameRequired'))
-        return
-    }
-
-    const cellIds = normalizeGanttSubTableCellIds(ganttSubTableDialogForm.value.cellIds)
-    if (ganttSubTableDialogMode.value === 'create') {
-        let subTableId = ganttSubTableDialogTargetId.value
-        let sequence = ganttSubTableDialogTargetSequence.value
-        if (!subTableId || ganttSubTables.value.some((subTable) => subTable.id === subTableId)) {
-            const draft = getNextGanttSubTableDraft()
-            subTableId = draft.subTable.id
-            sequence = draft.sequence
-        }
-
-        ganttSubTableSequence.value = Math.max(ganttSubTableSequence.value, sequence)
-        ganttSubTables.value = [
-            ...ganttSubTables.value,
-            {
-                id: subTableId,
-                name,
-                cellIds,
-                hasCustomSelection: true,
-            },
-        ]
-        activeGanttSubTableId.value = subTableId
-    } else {
-        const subTableId = ganttSubTableDialogTargetId.value
-        ganttSubTables.value = ganttSubTables.value.map((subTable) => (
-            subTable.id === subTableId
-                ? {
-                    ...subTable,
-                    name,
-                    cellIds,
-                    hasCustomSelection: true,
-                }
-                : subTable
-        ))
-    }
-
-    ganttSubTableDialogVisible.value = false
-}
-
-function removeGanttSubTable(name: string | number) {
-    if (ganttSubTables.value.length <= 1) return
-
-    const subTableId = String(name)
-    const removedIndex = ganttSubTables.value.findIndex((subTable) => subTable.id === subTableId)
-    if (removedIndex < 0) return
-
-    const nextSubTables = ganttSubTables.value.filter((subTable) => subTable.id !== subTableId)
-    ganttSubTables.value = nextSubTables
-    if (activeGanttSubTableId.value === subTableId) {
-        activeGanttSubTableId.value = nextSubTables[Math.min(removedIndex, nextSubTables.length - 1)]?.id || ''
-    }
-}
-
-function normalizeGanttSubTableSetting(item: unknown): GanttSubTable | null {
-    const id = readString(item, 'subTableID', 'SubTableID', 'id', 'ID').trim()
-    if (!id) return null
-
-    const cellIDs = normalizeStoredGanttSubTableCellIds(
-        readArray(item, 'cellIDs', 'CellIDs', 'cellIds').map((cellID) => String(cellID ?? '')),
-    )
-    const fallbackCellIDList = readString(item, 'cellIDList', 'CellIDList').trim()
-    return {
-        id,
-        name: readString(item, 'subTableName', 'SubTableName', 'name', 'Name').trim(),
-        cellIds: cellIDs.length > 0
-            ? cellIDs
-            : normalizeStoredGanttSubTableCellIds(parseRouteReferenceList(fallbackCellIDList)),
-        hasCustomSelection: true,
-    }
-}
-
-function applyGanttSubTableSettings(settings: GanttSubTable[]) {
-    const nextSettings = settings.length > 0
-        ? settings
-        : Array.from({ length: ganttDefaultSubTableCount }, (_, index) => createGanttSubTable(index + 1))
-
-    runWithoutGanttSubTableSave(() => {
-        ganttSubTables.value = nextSettings.map((setting, index) => ({
-            ...setting,
-            name: setting.name?.trim() || getGanttSubTableFallbackName(index + 1),
-            cellIds: normalizeStoredGanttSubTableCellIds(setting.cellIds),
-            hasCustomSelection: true,
-        }))
-        ganttSubTableSequence.value = Math.max(ganttDefaultSubTableCount, ganttSubTables.value.length)
-        activeGanttSubTableId.value = ganttSubTables.value[0]?.id || ''
-        syncGanttSubTables(ganttAvailableCells.value)
-    })
-}
-
-function buildGanttSubTableSettingsPayload(): GanttSubTableSettingPayload[] {
-    return ganttSubTables.value.map((subTable, index) => ({
-        subTableID: subTable.id,
-        subTableName: subTable.name?.trim() || getGanttSubTableFallbackName(index + 1),
-        cellIDs: normalizeStoredGanttSubTableCellIds(subTable.cellIds),
-        sortOrder: index,
-    }))
-}
-
 function findActiveRunIndex(currentSeconds: number) {
     const runs = routeRuns.value
     if (runs.length === 0) return -1
@@ -2506,197 +868,6 @@ function findActiveRunIndex(currentSeconds: number) {
         if (run && currentSeconds >= run.endSeconds) return index
     }
     return 0
-}
-
-function findHighlightedRunIndices(currentSeconds: number) {
-    if (!isAllTrainPlayback.value) {
-        const index = findActiveRunIndex(currentSeconds)
-        return index >= 0 ? [index] : []
-    }
-    return routeRuns.value
-        .map((run, index) => (currentSeconds >= run.startSeconds && currentSeconds < run.endSeconds ? index : -1))
-        .filter((index) => index >= 0)
-}
-
-function syncActiveRunIndex(currentSeconds = playheadSeconds.value) {
-    const nextIndex = findActiveRunIndex(currentSeconds)
-    if (activeRunIndex.value !== nextIndex) activeRunIndex.value = nextIndex
-    const nextActiveIndices = findHighlightedRunIndices(currentSeconds)
-    if (!areNumberArraysEqual(activeRunIndices.value, nextActiveIndices)) activeRunIndices.value = nextActiveIndices
-    const nextPhaseByKey = buildRunPhaseMap(currentSeconds)
-    if (!areRunPhaseMapsEqual(runPhaseByKey.value, nextPhaseByKey)) runPhaseByKey.value = nextPhaseByKey
-    const nextRun = nextIndex >= 0 ? routeRuns.value[nextIndex] || null : null
-    const nextPhase = getRunPhase(nextRun, currentSeconds)
-    if (activeRunPhase.value !== nextPhase) activeRunPhase.value = nextPhase
-    let lockingCount = 0
-    let movingCount = 0
-    let dwellingCount = 0
-    const visibleRuns = selectTrainMotionRuns(routeRuns.value, currentSeconds)
-    visibleRuns.forEach((run) => {
-        const phase = getRunPhase(run, currentSeconds)
-        if (phase === 'locking') lockingCount++
-        if (phase === 'moving') movingCount++
-        if (phase === 'dwelling') dwellingCount++
-    })
-    if (activeLockingRunCount.value !== lockingCount) activeLockingRunCount.value = lockingCount
-    if (activeMovingRunCount.value !== movingCount) activeMovingRunCount.value = movingCount
-    if (activeDwellingRunCount.value !== dwellingCount) activeDwellingRunCount.value = dwellingCount
-}
-
-function getRunPhase(run: RouteRun | null, currentSeconds: number): RunPhase {
-    if (!run) return 'waiting'
-    if (currentSeconds < run.startSeconds) return 'waiting'
-    if (currentSeconds >= run.endSeconds) return 'finished'
-    if (isDwellingRoute(run.route.type)) return 'dwelling'
-    if (currentSeconds <= run.startSeconds + run.lockSeconds) return 'locking'
-    return 'moving'
-}
-
-function buildRunPhaseMap(currentSeconds: number) {
-    const phaseMap: Record<string, RunPhase> = {}
-    routeRuns.value.forEach((run) => {
-        phaseMap[run.key] = getRunPhase(run, currentSeconds)
-    })
-    return phaseMap
-}
-
-function areNumberArraysEqual(left: number[], right: number[]) {
-    if (left.length !== right.length) return false
-    return left.every((value, index) => value === right[index])
-}
-
-function areRunPhaseMapsEqual(left: Record<string, RunPhase>, right: Record<string, RunPhase>) {
-    const leftKeys = Object.keys(left)
-    const rightKeys = Object.keys(right)
-    if (leftKeys.length !== rightKeys.length) return false
-    return rightKeys.every((key) => left[key] === right[key])
-}
-
-function getActiveRouteProgress(run: RouteRun | null, currentSeconds: number) {
-    if (!run) return 0
-    const moveStart = run.startSeconds + (isDwellingRoute(run.route.type) ? 0 : run.lockSeconds)
-    const moveDuration = Math.max(0.1, run.endSeconds - moveStart)
-    if (currentSeconds <= moveStart) return 0
-    return Math.max(0, Math.min(1, (currentSeconds - moveStart) / moveDuration))
-}
-
-function formatPlayheadTooltip(value: number) {
-    return usesPlanTime.value
-        ? formatClockSeconds(timelineOriginSeconds.value + Number(value || 0))
-        : formatDurationSeconds(Number(value || 0))
-}
-
-function handlePlayheadInput(value: number | number[]) {
-    const nextValue = Array.isArray(value) ? Number(value[0] || 0) : Number(value || 0)
-    setPlayheadSeconds(nextValue)
-}
-
-function togglePlayback() {
-    if (!canPlayback.value) return
-    if (isPlaying.value) {
-        pausePlayback()
-    } else {
-        startPlayback()
-    }
-}
-
-function startPlayback() {
-    if (isDisposed || isPlaying.value || !canPlayback.value) return
-    if (playheadSeconds.value >= simulationDurationSeconds.value) {
-        setPlayheadSeconds(0)
-    }
-    playbackRuntimeSeconds = playheadSeconds.value
-    isPlaying.value = true
-    lastPlaybackTimestamp = 0
-    lastPlaybackRenderTimestamp = 0
-    playbackFrameId = window.requestAnimationFrame(stepPlayback)
-}
-
-function pausePlayback() {
-    if (isPlaying.value) setPlayheadSeconds(playbackRuntimeSeconds)
-    isPlaying.value = false
-    if (playbackFrameId !== null) {
-        window.cancelAnimationFrame(playbackFrameId)
-        playbackFrameId = null
-    }
-}
-
-function resetPlayback() {
-    pausePlayback()
-    clearTrainCarAngleMemory()
-    setPlayheadSeconds(0)
-}
-
-function stepPlayback(timestamp: number) {
-    playbackFrameId = null
-    if (isDisposed || !isPlaying.value) return
-    // Model changes may prepare a new fleet. Keep the clock still while the
-    // worker runs, so preparation time cannot jump playback past an arrival.
-    if (preparingTrainModels.value) {
-        lastPlaybackTimestamp = 0
-        playbackFrameId = window.requestAnimationFrame(stepPlayback)
-        return
-    }
-    if (!lastPlaybackTimestamp) lastPlaybackTimestamp = timestamp
-    // A suspended tab must not skip across a station on its first resumed frame.
-    const deltaSeconds = Math.min(0.05, Math.max(0, (timestamp - lastPlaybackTimestamp) / 1000))
-    lastPlaybackTimestamp = timestamp
-    playbackRuntimeSeconds = Math.min(
-        simulationDurationSeconds.value,
-        playbackRuntimeSeconds + deltaSeconds * playbackSpeed.value,
-    )
-    const shouldRender = timestamp - lastPlaybackRenderTimestamp >= playbackRenderIntervalMs ||
-        playbackRuntimeSeconds >= simulationDurationSeconds.value
-    if (shouldRender) {
-        playheadSeconds.value = playbackRuntimeSeconds
-        syncActiveRunIndex(playbackRuntimeSeconds)
-        lastPlaybackRenderTimestamp = timestamp
-    }
-    if (playbackRuntimeSeconds >= simulationDurationSeconds.value) {
-        setPlayheadSeconds(simulationDurationSeconds.value)
-        pausePlayback()
-        return
-    }
-    playbackFrameId = window.requestAnimationFrame(stepPlayback)
-}
-
-function stopPlaybackForReload() {
-    pausePlayback()
-    clearTrainCarAngleMemory()
-    setPlayheadSeconds(0)
-}
-
-function clampPlayheadToDuration() {
-    if (playheadSeconds.value > simulationDurationSeconds.value) {
-        setPlayheadSeconds(simulationDurationSeconds.value)
-        return
-    }
-    syncActiveRunIndex(playheadSeconds.value)
-}
-
-function setPlayheadSeconds(value: number) {
-    const clamped = Math.max(0, Math.min(simulationDurationSeconds.value, Number(value || 0)))
-    playbackRuntimeSeconds = clamped
-    playheadSeconds.value = clamped
-    syncActiveRunIndex(clamped)
-}
-
-function scheduleScrollGanttToPlayhead() {
-    if (isDisposed) return
-    if (ganttScrollFrameId !== null) {
-        window.cancelAnimationFrame(ganttScrollFrameId)
-    }
-    ganttScrollFrameId = window.requestAnimationFrame(() => {
-        ganttScrollFrameId = null
-        scrollGanttToPlayhead()
-    })
-}
-
-function scrollGanttToPlayhead() {
-    const viewport = ganttViewportRef.value
-    if (!viewport || routeRuns.value.length === 0) return
-    const playheadContentLeft = ganttSidebarWidth + ganttPlayheadLeft.value * ganttScaleX.value
-    viewport.scrollLeft = Math.max(0, playheadContentLeft - viewport.clientWidth * 0.45)
 }
 
 function includeBoundsPoint(bounds: LayoutBounds, point: Position2D) {
@@ -3381,7 +1552,7 @@ async function prepareTrainModels() {
         updateTrainObjects()
     } catch (error) {
         if (isDisposed || version !== trainModelPreparationVersion) return
-        pausePlayback()
+        emit('renderError')
         console.error('Failed to prepare train models', error)
         ElMessage.error(t('stationLayout3d.messages.trainModelLoadFailed'))
     } finally {
@@ -3559,7 +1730,6 @@ function formatDisplayRatio(value: number) {
 
 function handleDisplayRatioChange() {
     appliedDisplayRatio.value = displayRatio.value
-    rebuildScene()
 }
 
 function resetDisplayRatio() {
@@ -3616,7 +1786,7 @@ function renderOnce() {
 function rafTick() {
     rafId = null
     if (isDisposed || !renderer) return
-    if (isPlaying.value) updateTrainObjects(playbackRuntimeSeconds)
+    if (isPlaying.value) updateTrainObjects(props.getPlaybackSeconds())
     renderOnce()
     ensureRafLoop()
 }
@@ -3654,591 +1824,43 @@ function onResize() {
     renderOnce()
 }
 
-function clearOperationPlans() {
-    operationPlanLoadVersion++
-    loadingOperationPlans.value = false
-    operationPlanOptions.value = []
-    currentOperationPlanId.value = ''
-    clearGanttSubTableState()
-    clearTrainPlan()
-}
-
-function clearTrainPlan() {
-    trainPlanLoadVersion++
-    loadingTrainOperationPlan.value = false
-    trainOperationPlanTrains.value = []
-    trainOperationPlanMovements.value = []
-    selectedTrainId.value = ''
-    clearStationRouteTimes()
-    stopPlaybackForReload()
-}
-
-function clearStationRoutes() {
-    stationRouteLoadVersion++
-    loadingStationRoutes.value = false
-    stationRouteOptions.value = []
-    clearStationRouteTimes()
-}
-
-function clearStationRouteTimes() {
-    stationRouteTimeLoadVersion++
-    stationRouteTimesByKey.value = {}
-    loadingStationRouteTimes.value = false
-}
-
-function clearGanttSubTableState() {
-    ganttSubTableLoadVersion++
-    if (ganttSubTableSaveTimer) {
-        window.clearTimeout(ganttSubTableSaveTimer)
-        ganttSubTableSaveTimer = null
-    }
-    loadingGanttSubTableSettings.value = false
-    savingGanttSubTableSettings.value = false
-    ganttSubTableDialogVisible.value = false
-    ganttSubTableDialogTargetId.value = ''
-    ganttSubTableDialogTargetSequence.value = 0
-    ganttSubTableDialogForm.value = {
-        name: '',
-        cellIds: [],
-    }
-    runWithoutGanttSubTableSave(resetGanttSubTables)
-}
-
-function clearLayout() {
-    layoutLoadVersion++
-    loadingData.value = false
-    layoutData.value = createEmptyLayout()
-    layoutCells.value = []
-    layoutGridSpacing.value = 20
-    loadErrorMessage.value = ''
-    rebuildScene()
-}
-
-async function loadOperationPlans() {
-    if (isDisposed) return
-    const instanceID = selectedInstanceId.value
-    const stationSchemeID = currentStationSchemeId.value.trim()
-    if (!instanceID || !stationSchemeID) {
-        clearOperationPlans()
-        return
-    }
-
-    const loadVersion = ++operationPlanLoadVersion
-    const previousId = currentOperationPlanId.value
-    loadingOperationPlans.value = true
-    try {
-        const response = await axios.get('/OperationPlan/GetOperationPlans', {
-            signal: dataRequests.signal,
-            params: { instanceID, stationSchemeID },
-        })
-        if (
-            loadVersion !== operationPlanLoadVersion ||
-            instanceID !== selectedInstanceId.value ||
-            stationSchemeID !== currentStationSchemeId.value.trim()
-        ) {
-            return
-        }
-        operationPlanOptions.value = (Array.isArray(response.data) ? response.data : [])
-            .map(normalizeOperationPlanOption)
-            .filter((item): item is OperationPlanOption => item !== null)
-        currentOperationPlanId.value = operationPlanOptions.value.some((item) => item.operationPlanID === previousId)
-            ? previousId
-            : operationPlanOptions.value.find((item) => item.operationPlanID === defaultOperationPlanID)?.operationPlanID ||
-                operationPlanOptions.value[0]?.operationPlanID ||
-                ''
-    } catch (error) {
-        if (loadVersion !== operationPlanLoadVersion) return
-        console.error('Failed to load 3D operation plans:', error)
-        clearOperationPlans()
-        ElMessage.error(t('stationLayout3d.messages.loadOperationPlansFailed'))
-    } finally {
-        if (loadVersion === operationPlanLoadVersion) loadingOperationPlans.value = false
-    }
-}
-
-async function loadStationRoutes() {
-    if (isDisposed) return
-    const instanceID = selectedInstanceId.value
-    const stationSchemeID = currentStationSchemeId.value.trim()
-    if (!instanceID || !stationSchemeID) {
-        clearStationRoutes()
-        return
-    }
-
-    const loadVersion = ++stationRouteLoadVersion
-    loadingStationRoutes.value = true
-    try {
-        const response = await axios.get('/StationLayout/GetStationRoutes', {
-            signal: dataRequests.signal,
-            params: { instanceID, stationSchemeID },
-        })
-        if (
-            loadVersion !== stationRouteLoadVersion ||
-            instanceID !== selectedInstanceId.value ||
-            stationSchemeID !== currentStationSchemeId.value.trim()
-        ) {
-            return
-        }
-        stationRouteOptions.value = (Array.isArray(response.data) ? response.data : [])
-            .map(normalizeStationRouteOption)
-            .filter((item): item is StationRouteOption => item !== null)
-    } catch (error) {
-        if (loadVersion !== stationRouteLoadVersion) return
-        console.error('Failed to load 3D station routes:', error)
-        stationRouteOptions.value = []
-        ElMessage.error(t('stationLayout3d.messages.loadStationRoutesFailed'))
-    } finally {
-        if (loadVersion === stationRouteLoadVersion) loadingStationRoutes.value = false
-    }
-}
-
-async function loadTrainOperationPlan() {
-    if (isDisposed) return
-    const instanceID = selectedInstanceId.value
-    const stationSchemeID = currentStationSchemeId.value.trim()
-    const operationPlanID = currentOperationPlanId.value.trim()
-    if (!instanceID || !stationSchemeID || !operationPlanID) {
-        clearTrainPlan()
-        return
-    }
-
-    const loadVersion = ++trainPlanLoadVersion
-    loadingTrainOperationPlan.value = true
-    try {
-        const response = await axios.get('/OperationPlan/GetTrainOperationPlan', {
-            signal: dataRequests.signal,
-            params: { instanceID, stationSchemeID, operationPlanID },
-        })
-        if (
-            loadVersion !== trainPlanLoadVersion ||
-            instanceID !== selectedInstanceId.value ||
-            stationSchemeID !== currentStationSchemeId.value.trim() ||
-            operationPlanID !== currentOperationPlanId.value.trim()
-        ) {
-            return
-        }
-        normalizeTrainOperationPlanResponse(response.data)
-        stopPlaybackForReload()
-    } catch (error) {
-        if (loadVersion !== trainPlanLoadVersion) return
-        console.error('Failed to load 3D train operation plan:', error)
-        clearTrainPlan()
-        ElMessage.error(t('stationLayout3d.messages.loadTrainOperationPlanFailed'))
-    } finally {
-        if (loadVersion === trainPlanLoadVersion) loadingTrainOperationPlan.value = false
-    }
-}
-
-function getStationRouteTimePairs() {
-    const pairs = new Map<string, { routeID: string; trainTypeID: string }>()
-    trainOperationPlanMovements.value.forEach((movement) => {
-        const routeID = getMovementRouteID(movement)
-        if (!routeID) return
-        const trainTypeID = trainMap.value.get(movement.trainID)?.trainType?.trim() || ''
-        const defaultKey = getStationRouteTimeKey(routeID, '')
-        pairs.set(defaultKey, { routeID, trainTypeID: '' })
-        if (trainTypeID) {
-            const specificKey = getStationRouteTimeKey(routeID, trainTypeID)
-            pairs.set(specificKey, { routeID, trainTypeID })
-        }
-    })
-    return Array.from(pairs.values())
-}
-
-async function loadStationRouteTimes() {
-    if (isDisposed) return
-    const instanceID = selectedInstanceId.value
-    const stationSchemeID = currentStationSchemeId.value.trim()
-    if (!instanceID || !stationSchemeID || trainOperationPlanMovements.value.length === 0) {
-        clearStationRouteTimes()
-        return
-    }
-
-    const loadVersion = ++stationRouteTimeLoadVersion
-    loadingStationRouteTimes.value = true
-    try {
-        const pairs = getStationRouteTimePairs()
-        if (pairs.length === 0) {
-            stationRouteTimesByKey.value = {}
-            return
-        }
-
-        const entries = await Promise.all(pairs.map(async (pair) => {
-            const response = await axios.get('/StationLayout/GetStationRouteTimes', {
-                signal: dataRequests.signal,
-                params: {
-                    instanceID,
-                    stationSchemeID,
-                    routeID: pair.routeID,
-                    trainTypeID: pair.trainTypeID,
-                },
-            })
-            const rows = (Array.isArray(response.data) ? response.data : [])
-                .map(normalizeStationRouteTimeOption)
-                .filter((item): item is StationRouteTimeOption => item !== null)
-                .map((time) => ({
-                    ...time,
-                    routeID: time.routeID || pair.routeID,
-                    trainTypeID: time.trainTypeID || pair.trainTypeID,
-                }))
-            return [getStationRouteTimeKey(pair.routeID, pair.trainTypeID), rows] as const
-        }))
-
-        if (
-            loadVersion !== stationRouteTimeLoadVersion ||
-            instanceID !== selectedInstanceId.value ||
-            stationSchemeID !== currentStationSchemeId.value.trim()
-        ) {
-            return
-        }
-        stationRouteTimesByKey.value = Object.fromEntries(entries)
-    } catch (error) {
-        if (loadVersion !== stationRouteTimeLoadVersion) return
-        console.error('Failed to load 3D station route times:', error)
-        stationRouteTimesByKey.value = {}
-        ElMessage.error(t('stationLayout3d.messages.loadRouteTimesFailed'))
-    } finally {
-        if (loadVersion === stationRouteTimeLoadVersion) loadingStationRouteTimes.value = false
-    }
-}
-
-async function loadGanttSubTableSettings() {
-    if (isDisposed) return
-    const instanceID = selectedInstanceId.value
-    const stationSchemeID = currentStationSchemeId.value.trim()
-    const operationPlanID = currentOperationPlanId.value.trim()
-    if (!instanceID || !stationSchemeID || !operationPlanID) {
-        runWithoutGanttSubTableSave(resetGanttSubTables)
-        return
-    }
-
-    const loadVersion = ++ganttSubTableLoadVersion
-    loadingGanttSubTableSettings.value = true
-    try {
-        const response = await axios.get('/OperationPlan/GetOperationOccupationTimeSubTables', {
-            signal: dataRequests.signal,
-            params: {
-                instanceID,
-                stationSchemeID,
-                operationPlanID,
-            },
-        })
-        if (
-            loadVersion !== ganttSubTableLoadVersion ||
-            instanceID !== selectedInstanceId.value ||
-            stationSchemeID !== currentStationSchemeId.value.trim() ||
-            operationPlanID !== currentOperationPlanId.value.trim()
-        ) {
-            return
-        }
-
-        const settings = (Array.isArray(response.data) ? response.data : [])
-            .map(normalizeGanttSubTableSetting)
-            .filter((item): item is GanttSubTable => item !== null)
-        if (settings.length > 0) {
-            applyGanttSubTableSettings(settings)
-            return
-        }
-
-        runWithoutGanttSubTableSave(() => {
-            resetGanttSubTables()
-            syncGanttSubTables(ganttAvailableCells.value)
-        })
-        void nextTick(() => {
-            scheduleSaveGanttSubTableSettings(0)
-        })
-    } catch (error) {
-        if (loadVersion !== ganttSubTableLoadVersion) return
-        console.error('Failed to load 3D gantt sub table settings:', error)
-        runWithoutGanttSubTableSave(() => {
-            resetGanttSubTables()
-            syncGanttSubTables(ganttAvailableCells.value)
-        })
-    } finally {
-        if (loadVersion === ganttSubTableLoadVersion) {
-            loadingGanttSubTableSettings.value = false
-        }
-    }
-}
-
-async function saveGanttSubTableSettingsNow() {
-    if (
-        isDisposed ||
-        suppressGanttSubTableSave ||
-        loadingGanttSubTableSettings.value ||
-        savingGanttSubTableSettings.value
-    ) {
-        return
-    }
-
-    const instanceID = selectedInstanceId.value
-    const stationSchemeID = currentStationSchemeId.value.trim()
-    const operationPlanID = currentOperationPlanId.value.trim()
-    if (!instanceID || !stationSchemeID || !operationPlanID) return
-
-    const subTables = buildGanttSubTableSettingsPayload()
-    if (subTables.length === 0) return
-
-    const savingRevision = ganttSubTableSaveRevision
-    ganttSubTableSavingRevision = savingRevision
-    savingGanttSubTableSettings.value = true
-    const request = axios.put('/OperationPlan/SaveOperationOccupationTimeSubTables', {
-        instanceID,
-        stationSchemeID,
-        operationPlanID,
-        subTables,
-    })
-    ganttSubTableSaveRequest = request
-    try {
-        const response = await request
-        if (
-            isDisposed ||
-            instanceID !== selectedInstanceId.value ||
-            stationSchemeID !== currentStationSchemeId.value.trim() ||
-            operationPlanID !== currentOperationPlanId.value.trim()
-        ) {
-            return
-        }
-
-        const settings = (Array.isArray(response.data) ? response.data : [])
-            .map(normalizeGanttSubTableSetting)
-            .filter((item): item is GanttSubTable => item !== null)
-        if (settings.length > 0 && savingRevision === ganttSubTableSaveRevision) {
-            applyGanttSubTableSettings(settings)
-        }
-    } catch (error) {
-        if (!isDisposed) console.error('Failed to save 3D gantt sub table settings:', error)
-    } finally {
-        // An older scheme's save may finish after a new scheme started saving.
-        if (ganttSubTableSaveRequest === request) {
-            ganttSubTableSaveRequest = null
-            savingGanttSubTableSettings.value = false
-            if (!isDisposed && savingRevision !== ganttSubTableSaveRevision) {
-                scheduleSaveGanttSubTableSettings(0)
-            }
-        }
-    }
-}
-
-function flushPendingGanttSubTableSettings() {
-    const hasPendingChanges = ganttSubTableSaveTimer !== null ||
-        (savingGanttSubTableSettings.value && ganttSubTableSavingRevision !== ganttSubTableSaveRevision)
-    if (!hasPendingChanges || loadingGanttSubTableSettings.value || !hasScope.value) return
-    // Finish a user's pending edit before discarding this page. Only the small
-    // request payload survives; its result never updates the disposed component.
-    const payload = {
-        instanceID: selectedInstanceId.value,
-        stationSchemeID: currentStationSchemeId.value.trim(),
-        operationPlanID: currentOperationPlanId.value.trim(),
-        subTables: buildGanttSubTableSettingsPayload(),
-    }
-    if (!payload.subTables.length) return
-    void (ganttSubTableSaveRequest || Promise.resolve())
-        .catch(() => undefined)
-        .then(() => axios.put('/OperationPlan/SaveOperationOccupationTimeSubTables', payload))
-        .catch(error => console.error('Failed to save pending 3D gantt sub table settings:', error))
-}
-
-function scheduleSaveGanttSubTableSettings(delay = 500) {
-    if (isDisposed || suppressGanttSubTableSave || loadingGanttSubTableSettings.value) return
-
-    if (ganttSubTableSaveTimer) {
-        window.clearTimeout(ganttSubTableSaveTimer)
-    }
-    ganttSubTableSaveTimer = window.setTimeout(() => {
-        ganttSubTableSaveTimer = null
-        void saveGanttSubTableSettingsNow()
-    }, delay)
-}
-
-async function loadLayout() {
-    if (isDisposed) return
-    const instanceID = selectedInstanceId.value
-    const stationSchemeID = currentStationSchemeId.value.trim()
-    loadErrorMessage.value = ''
-
-    if (!instanceID || !stationSchemeID) {
-        clearLayout()
-        return
-    }
-
-    const loadVersion = ++layoutLoadVersion
-    loadingData.value = true
-    try {
-        const params: Record<string, string> = { instanceID }
-        if (stationSchemeID) params.stationSchemeID = stationSchemeID
-
-        const response = await axios.post('/StationLayout/GetJson', null, {
-            signal: dataRequests.signal,
-            params,
-        })
-        if (
-            loadVersion !== layoutLoadVersion ||
-            instanceID !== selectedInstanceId.value ||
-            stationSchemeID !== currentStationSchemeId.value.trim()
-        ) return
-        const resolvedStationSchemeId = readString(response.data?.metadata, 'stationSchemeID', 'StationSchemeID').trim()
-        if (resolvedStationSchemeId === stationSchemeID) {
-            ensureCurrentStationSchemeOption()
-        }
-        layoutData.value = normalizeLayout(response.data)
-        layoutCells.value = getLayoutCells(response.data)
-        layoutGridSpacing.value = getLayoutGridSpacing(response.data)
-        await nextTick()
-        if (isDisposed || loadVersion !== layoutLoadVersion) return
-        rebuildScene()
-    } catch (error) {
-        if (loadVersion !== layoutLoadVersion) return
-        console.error('Failed to load station layout 3D data:', error)
-        loadErrorMessage.value = String(t('stationLayout3d.messages.loadFailed'))
-        layoutData.value = createEmptyLayout()
-        layoutCells.value = []
-        layoutGridSpacing.value = 20
-        rebuildScene()
-        ElMessage.error(loadErrorMessage.value)
-    } finally {
-        if (loadVersion === layoutLoadVersion) loadingData.value = false
-    }
-}
-
-async function refresh3DData() {
-    if (isDisposed) return
-    const loadVersion = schemeDataLoadVersion
-    const instanceID = selectedInstanceId.value
-    const stationSchemeID = currentStationSchemeId.value
-    const operationPlanID = currentOperationPlanId.value
-    if (!hasScope.value) {
-        clearStationRoutes()
-        clearTrainPlan()
-        clearGanttSubTableState()
-        await loadLayout()
-        return
-    }
-    stopPlaybackForReload()
-    await Promise.all([loadStationRoutes(), loadTrainOperationPlan(), loadLayout()])
-    if (
-        isDisposed || loadVersion !== schemeDataLoadVersion ||
-        instanceID !== selectedInstanceId.value || stationSchemeID !== currentStationSchemeId.value ||
-        operationPlanID !== currentOperationPlanId.value
-    ) return
-    await Promise.all([loadStationRouteTimes(), loadGanttSubTableSettings()])
-}
-
-watch(() => props.selectedInstanceId, () => {
-    schemeDataLoadVersion++
-    stopPlaybackForReload()
-    clearOperationPlans()
-    clearStationRoutes()
-    clearLayout()
-    stationSchemeOptions.value = []
-    void loadStationSchemes()
-}, { immediate: true })
-
-watch([currentStationSchemeId, stationSchemesInstanceId], () => {
-    if (selectedInstanceId.value && stationSchemesInstanceId.value === selectedInstanceId.value) {
-        void handleStationSchemeChange()
-    }
-})
-
-watch(() => props.activationKey, () => {
-    if (selectedInstanceId.value) {
-        void loadStationSchemes()
-    }
-})
-
-watch(simulationDurationSeconds, () => {
-    clampPlayheadToDuration()
-})
-
-watch(routeRuns, () => {
-    syncActiveRunIndex(playheadSeconds.value)
-    updateTrainObjects()
-    scheduleScrollGanttToPlayhead()
-})
-
+watch([displayLayoutData, layoutGridSpacing], rebuildScene, { flush: 'post' })
 watch(trainConsistByRun, () => {
-    updateTrainObjects()
+    clearTrainCarAngleMemory()
     void prepareTrainModels()
-}, { immediate: true })
-
-watch(
-    ganttAvailableCells,
-    (cells) => {
-        syncGanttSubTables(cells)
-    },
-    { immediate: true },
-)
-
-watch(
-    ganttSubTables,
-    () => {
-        if (suppressGanttSubTableSave || loadingGanttSubTableSettings.value) return
-        ganttSubTableSaveRevision += 1
-        scheduleSaveGanttSubTableSettings()
-    },
-    { deep: true },
-)
-
+}, { flush: 'post' })
 watch(playheadSeconds, () => {
-    if (!isPlaying.value) updateTrainObjects()
+    updateTrainObjects()
     updateTrackOccupancy()
-    scheduleScrollGanttToPlayhead()
-}, {
-    flush: 'post',
-})
-
+    if (!isPlaying.value) renderOnce()
+}, { flush: 'post' })
 watch([showTrackOccupancy, trackOccupancyTimeline], updateTrackOccupancy, { flush: 'post' })
 
 onMounted(() => {
-    panelResizeObserver = new ResizeObserver(() => {
-        maxGanttPanelHeight.value = Math.max(160, (layoutContentRef.value?.clientHeight || 500) - 168)
-        ganttPanelHeight.value = Math.min(ganttPanelHeight.value, maxGanttPanelHeight.value)
-    })
-    if (layoutContentRef.value) panelResizeObserver.observe(layoutContentRef.value)
     nextTick(() => {
         if (isDisposed) return
-        initThree()
-        if (typeof ResizeObserver !== 'undefined' && canvasWrapperRef.value) {
-            resizeObserver = new ResizeObserver(() => onResize())
-            resizeObserver.observe(canvasWrapperRef.value)
-        } else {
-            window.addEventListener('resize', onResize)
+        try {
+            initThree()
+            resizeObserver = new ResizeObserver(onResize)
+            if (canvasWrapperRef.value) resizeObserver.observe(canvasWrapperRef.value)
+            onResize()
+            void prepareTrainModels()
+        } catch (error) {
+            renderError.value = true
+            emit('renderError')
+            console.error('Failed to initialize 3D simulation', error)
         }
-        onResize()
     })
 })
 
 onBeforeUnmount(() => {
-    panelResizeObserver?.disconnect()
-    flushPendingGanttSubTableSettings()
     isDisposed = true
     trainModelPreparationVersion++
-    // Invalidate every in-flight result before aborting; custom adapters may
-    // still complete, and chained loaders must not recreate an unmounted scene.
-    layoutLoadVersion++
-    stationSchemeLoadVersion++
-    schemeDataLoadVersion++
-    operationPlanLoadVersion++
-    stationRouteLoadVersion++
-    stationRouteTimeLoadVersion++
-    trainPlanLoadVersion++
-    ganttSubTableLoadVersion++
-    dataRequests.abort()
-    pausePlayback()
     cancelRafLoop()
-    if (ganttSubTableSaveTimer) {
-        window.clearTimeout(ganttSubTableSaveTimer)
-        ganttSubTableSaveTimer = null
-    }
-    if (ganttScrollFrameId !== null) {
-        window.cancelAnimationFrame(ganttScrollFrameId)
-        ganttScrollFrameId = null
-    }
     if (resizeObserver) {
         resizeObserver.disconnect()
         resizeObserver = null
     }
-    window.removeEventListener('resize', onResize)
     clearTrainObjects()
     trainModelTemplates.dispose()
     clearTrainCarAngleMemory()
@@ -4272,179 +1894,14 @@ onBeforeUnmount(() => {
 })
 </script>
 
-<style scoped lang="css">
-.station-layout-3d-page {
-    display: flex;
-    flex-direction: column;
-    width: 100%;
-    height: 100%;
-    min-height: 0;
-    background: #ffffff;
-    overflow: hidden;
-}
-
-.layout3d-toolbar {
-    flex: 0 0 auto;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 8px 10px;
-    border-bottom: 1px solid #d8e2ef;
-    background: #f7fafc;
-}
-
-.layout3d-toolbar-left {
-    display: inline-flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 10px;
-    min-width: 0;
-}
-
-.layout3d-scheme-control {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    min-width: 0;
-}
-
-.layout3d-control-label {
-    flex: 0 0 auto;
-    color: #4c5968;
-    font-size: 12px;
-    line-height: 1;
-    white-space: nowrap;
-}
-
-.layout3d-ratio-control {
-    display: inline-flex;
-    align-items: center;
-    gap: 10px;
-    min-width: 0;
-    max-width: 100%;
-}
-
-.layout3d-ratio-slider {
-    width: 130px;
-    min-width: 70px;
-}
-
-.layout3d-ratio-value {
-    flex: 0 0 48px;
-    color: #4c5968;
-    font-size: 12px;
-    font-variant-numeric: tabular-nums;
-    white-space: nowrap;
-}
-
-.layout3d-scheme-select {
-    width: 180px;
-}
-
-.layout3d-metrics,
-.layout3d-actions {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    min-width: 0;
-}
-
-.layout3d-actions {
-    justify-content: flex-end;
-    flex: 0 0 auto;
-}
-
-.metric-item {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    min-width: 74px;
-    padding: 4px 8px;
-    border: 1px solid #d6e1ef;
-    border-radius: 3px;
-    background: #ffffff;
-    color: #263342;
-    font-size: 12px;
-    line-height: 1;
-}
-
-.metric-label {
-    color: #5b6777;
-    white-space: nowrap;
-}
-
-.metric-item strong {
-    font-family: "Consolas", "Courier New", monospace;
-    font-size: 13px;
-    color: #1452a3;
-}
-
-.layout3d-plan-select {
-    width: 210px;
-}
-
-.layout3d-train-select {
-    width: 230px;
-}
-
-.layout3d-model-select {
-    width: 180px;
-}
-
-.layout3d-playback-mode :deep(.el-radio-button__inner) {
-    padding: 5px 10px;
-}
-
-.layout3d-playback-clock {
-    min-width: 78px;
-    color: #1f3a68;
-    font-family: Consolas, "Microsoft YaHei", monospace;
-    font-size: 13px;
-    font-weight: 700;
-    text-align: center;
-}
-
-.layout3d-speed-select {
-    width: 92px;
-}
-
-.layout3d-playback-bar {
-    display: flex;
-    flex: 0 0 auto;
-    align-items: center;
-    gap: 12px;
-    min-height: 38px;
-    padding: 4px 10px;
-    border-bottom: 1px solid #d8e2ef;
-    background: #ffffff;
-}
-
-.layout3d-playback-summary {
-    display: inline-flex;
-    flex: 0 0 auto;
-    align-items: center;
-    gap: 8px;
-    min-width: 0;
-    color: #40546b;
-    font-size: 12px;
-    white-space: nowrap;
-}
-
-.layout3d-playhead-slider {
-    flex: 1 1 auto;
-    min-width: 180px;
-}
-
-.layout3d-content {
-    display: flex;
-    flex: 1 1 auto;
-    min-height: 0;
-    flex-direction: column;
-    overflow: hidden;
-    background: #f5f8fb;
-}
-
+<style scoped>
+.station-layout-3d-page { display:flex; flex:1 1 0; flex-direction:column; min-width:0; min-height:220px; overflow:hidden; }
+.layout3d-toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px; padding:6px 10px; border-bottom:1px solid var(--sy-border); }
+.layout3d-scheme-control, .layout3d-ratio-control, .station-toolbar-switch-control { display:flex; align-items:center; gap:6px; min-width:0; font-size:12px; }
+.layout3d-control-label, .station-toolbar-switch-control__label { white-space:nowrap; color:var(--sy-text-muted); }
+.layout3d-model-select { width:170px; }
+.layout3d-ratio-slider { width:100px; }
+.layout3d-ratio-value { min-width:46px; font-variant-numeric:tabular-nums; }
 .layout3d-body {
     position: relative;
     flex: 1 1 auto;
@@ -4520,141 +1977,4 @@ onBeforeUnmount(() => {
     font-weight: 700;
 }
 
-.layout3d-gantt-panel {
-    display: flex;
-    flex: 0 0 260px;
-    min-height: 160px;
-    flex-direction: column;
-    overflow: hidden;
-    border-top: 1px solid var(--sy-border);
-    background: #ffffff;
-}
-
-.layout3d-gantt-header {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    min-height: 40px;
-    padding: 6px 10px;
-    border-bottom: 1px solid #edf2f7;
-}
-
-.layout3d-gantt-title {
-    display: flex;
-    flex: 0 0 auto;
-    align-items: baseline;
-    gap: 8px;
-    min-width: 0;
-    white-space: nowrap;
-}
-
-.layout3d-gantt-header h3 {
-    margin: 0;
-    color: #21354f;
-    font-size: 13px;
-    font-weight: 700;
-}
-
-.layout3d-gantt-title span {
-    color: #65758a;
-    font-size: 12px;
-}
-
-.layout3d-gantt-subtable-toolbar {
-    display: flex;
-    flex: 1 1 auto;
-    align-items: center;
-    gap: 8px;
-    min-width: 0;
-}
-
-.layout3d-gantt-sub-tabs {
-    flex: 1 1 auto;
-    min-width: 0;
-    overflow: hidden;
-}
-
-.layout3d-gantt-sub-tabs :deep(.el-tabs__header) {
-    margin: 0;
-}
-
-.layout3d-gantt-sub-tabs :deep(.el-tabs__nav-wrap::after) {
-    display: none;
-}
-
-.layout3d-gantt-sub-tabs :deep(.el-tabs__item) {
-    height: 28px;
-    padding: 0 12px;
-    font-size: 12px;
-    line-height: 28px;
-}
-
-.layout3d-gantt-subtable-actions {
-    display: flex;
-    flex: 0 0 auto;
-    align-items: center;
-    gap: 6px;
-}
-
-.layout3d-gantt-subtable-actions :deep(.el-button + .el-button) {
-    margin-left: 0;
-}
-
-.layout3d-gantt-subtable-summary {
-    flex: 0 0 auto;
-    color: #65758a;
-    font-size: 12px;
-    font-weight: 600;
-    white-space: nowrap;
-}
-
-.layout3d-gantt-subtable-cell-select {
-    width: 100%;
-}
-
-
-@media (max-width: 768px) {
-    .layout3d-toolbar {
-        align-items: stretch;
-        flex-direction: column;
-    }
-
-    .layout3d-metrics {
-        display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        width: 100%;
-    }
-
-    .metric-item {
-        min-width: 0;
-        justify-content: center;
-    }
-
-    .layout3d-actions {
-        justify-content: flex-start;
-        flex-wrap: wrap;
-    }
-
-    .layout3d-playback-bar,
-    .layout3d-playback-summary,
-    .layout3d-gantt-header,
-    .layout3d-gantt-subtable-toolbar {
-        align-items: stretch;
-        flex-direction: column;
-    }
-
-    .layout3d-scheme-select,
-    .layout3d-plan-select,
-    .layout3d-train-select,
-    .layout3d-model-select,
-    .layout3d-speed-select {
-        width: 100%;
-    }
-
-    .layout3d-gantt-panel {
-        flex-basis: 230px;
-    }
-}
 </style>

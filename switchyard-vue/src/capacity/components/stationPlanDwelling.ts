@@ -1,6 +1,6 @@
 import { isDwellingRoute } from '../simulationDwelling.ts'
 import { StationPlanEditingError, type StationPlanEditMovement, type StationPlanEditRoute } from './stationPlanEditing.ts'
-import { getStationPlanSegmentEditContext, resolveStationPlanMovementRouteID, stationPlanTrainPath,
+import { getStationPlanSegmentEditContext, orderStationPlanMovements, resolveStationPlanMovementRouteID, stationPlanTrainPath,
     type StationPlanAxisRow, type StationPlanEditableSegment, type StationPlanTrack, type StationPlanTrain } from './stationPlanView.ts'
 
 export interface StationPlanDwellingTarget {
@@ -81,11 +81,11 @@ export function resolveStationPlanDwellingTarget(
     return directTarget(train, adjacent, movements, routes, tracks, dwellingMovementIDs)
 }
 
-/** This is a single-activity conversion, independent of dragging, coincident handles and following Movements. */
+/** Keep arrival fixed and shift every subsequent movement by the change in departure time. */
 export function editStationPlanDwelling(
     train: StationPlanTrain, target: StationPlanDwellingTarget, movements: StationPlanEditMovement[],
     routes: StationPlanEditRoute[], tracks: StationPlanTrack[], dwellingMovementIDs: string[] = [],
-): StationPlanEditMovement {
+): StationPlanEditMovement[] {
     if (target.trainID !== train.id || target.movementID !== target.segment.movementID) throw new StationPlanEditingError()
     const current = directTarget(train, target.segment, movements, routes, tracks, dwellingMovementIDs)
     if (!current || current.action !== target.action) throw new StationPlanEditingError()
@@ -93,5 +93,14 @@ export function editStationPlanDwelling(
     const startMinutes = target.action === 'passing-to-stop' ? original.startMinutes : Math.min(original.startMinutes, original.endMinutes)
     const endMinutes = target.action === 'passing-to-stop' ? startMinutes + 2 : startMinutes
     if (!Number.isFinite(startMinutes) || !Number.isFinite(endMinutes)) throw new StationPlanEditingError()
-    return { ...original, startMinutes, endMinutes }
+    const ordered = orderStationPlanMovements(movements, train.id)
+    const selectedIndex = ordered.findIndex(movement => movement.movementID === target.movementID)
+    if (selectedIndex < 0) throw new StationPlanEditingError()
+    const delta = endMinutes - original.endMinutes
+    return ordered.slice(selectedIndex).flatMap((movement, index) => {
+        const updated = index === 0 ? { ...movement, startMinutes, endMinutes }
+            : { ...movement, startMinutes: movement.startMinutes + delta, endMinutes: movement.endMinutes + delta }
+        if (!Number.isFinite(updated.startMinutes) || !Number.isFinite(updated.endMinutes)) throw new StationPlanEditingError()
+        return updated.startMinutes === movement.startMinutes && updated.endMinutes === movement.endMinutes ? [] : [updated]
+    })
 }

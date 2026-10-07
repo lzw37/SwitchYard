@@ -47,7 +47,10 @@ public sealed class OperationProcessController : ControllerBase
             SetScope(request, scope);
             if (string.IsNullOrWhiteSpace(request.Id)) request.Id = Guid.NewGuid().ToString("N");
             if (request.Revision != 0) throw new ProcessRequestException(400, "新建模板 revision 必须为 0。");
-            Validate(request, LoadCatalog(db, scope));
+            ValidateForStorage(request);
+            OperationProcessDwellingAnchors.Refresh(request);
+            ValidateForStorage(request);
+            OperationProcessEventNodes.Refresh(request, LoadCatalog(db, scope));
             if (FindTemplate(db, scope, request.Id) is not null) throw new ProcessRequestException(409, "此范围内已存在相同 id 的模板。");
             request.Revision = 1;
             var parameters = Parameters(request, JsonSerializer.Serialize(request, JsonOptions));
@@ -227,11 +230,16 @@ public sealed class OperationProcessController : ControllerBase
         var catalog = LoadCatalog(db, scope);
         var original = LoadTemplate(db, scope, template.Id, catalog);
         if (original.Revision != template.Revision) throw ConflictException();
-        Validate(template, catalog);
+        ValidateForStorage(template);
+        OperationProcessDwellingAnchors.Refresh(template, original);
+        ValidateForStorage(template);
+        OperationProcessEventNodes.Refresh(template, catalog);
         var originalActivities = original.Activities.ToDictionary(activity => activity.Id, StringComparer.Ordinal);
+        var originalEventIDs = original.Events.Select(ev => ev.Id).ToHashSet(StringComparer.Ordinal);
         var endpointErrors = template.Activities
             .Where(activity => originalActivities.TryGetValue(activity.Id, out var existing) &&
-                (activity.StartEvent != existing.StartEvent || activity.EndEvent != existing.EndEvent))
+                ((activity.StartEvent != existing.StartEvent && originalEventIDs.Contains(existing.StartEvent)) ||
+                 (activity.EndEvent != existing.EndEvent && originalEventIDs.Contains(existing.EndEvent))))
             .Select(activity => $"活动 {activity.Id} 的开始和结束事件创建后不能更换；可编辑事件本身的属性。")
             .ToList();
         if (endpointErrors.Count > 0) throw new ProcessRequestException(400, endpointErrors[0], endpointErrors);
@@ -249,8 +257,8 @@ public sealed class OperationProcessController : ControllerBase
             foreach (var activity in renamedActivities)
             {
                 // Match the editor's naming convention; unrelated saves preserve hand-edited event names.
-                events[activity.StartEvent].Name = $"{activity.Name}开始";
-                events[activity.EndEvent].Name = $"{activity.Name}结束";
+                if (events.TryGetValue(activity.StartEvent, out var start)) start.Name = $"{activity.Name}开始";
+                if (events.TryGetValue(activity.EndEvent, out var end)) end.Name = $"{activity.Name}结束";
             }
         }
         var expectedRevision = template.Revision;
@@ -270,9 +278,9 @@ public sealed class OperationProcessController : ControllerBase
         catch { db.Rollback(); template.Revision = expectedRevision; throw; }
     }
 
-    private static void Validate(OperationProcessTemplate template, ProcessCatalog catalog)
+    private static void ValidateForStorage(OperationProcessTemplate template)
     {
-        var errors = OperationProcessValidator.Validate(template, catalog);
+        var errors = OperationProcessValidator.ValidateForStorage(template);
         if (errors.Count > 0) throw new ProcessRequestException(400, errors[0], errors);
     }
 
@@ -292,17 +300,14 @@ public sealed class OperationProcessController : ControllerBase
     {
         const string layoutFilter = "InstanceID = @InstanceID AND StationSchemeID = @StationSchemeID";
         var nodes = db.Query<StationNodeRow>($"SELECT ID, X, Y FROM node WHERE {layoutFilter} ORDER BY ID", scope) ?? new();
-        var links = db.Query<StationLinkRow>($"SELECT ID, Name, FromNodeID, ToNodeID FROM link WHERE {layoutFilter} ORDER BY ID", scope) ?? new();
         var routes = db.Query<StationRouteRow>($"SELECT ID, Type, Description, StartNodeID, EndNodeID, NodeList, LinkList FROM stationroute WHERE {layoutFilter} ORDER BY ID", scope) ?? new();
         return new ProcessCatalog {
             Nodes = nodes.Select(x => new ProcessCatalogNode { Id = x.ID.ToString(), Name = $"节点 {x.ID}" }).ToList(),
-            Tracks = links.Select(x => new ProcessCatalogTrack { Id = x.ID.ToString(), Name = string.IsNullOrWhiteSpace(x.Name) ? "" : x.Name,
-                FromNodeID = x.FromNodeID.ToString(), ToNodeID = x.ToNodeID.ToString() }).ToList(),
             Routes = routes.Where(x => !string.IsNullOrWhiteSpace(x.ID)).Select(x => {
                 var nodeIDs = ParseIDs(x.NodeList);
                 return new ProcessCatalogRoute { Id = x.ID!, Name = string.IsNullOrWhiteSpace(x.Description) ? x.ID! : x.Description,
                     Type = NormalizeRouteType(x.Type), StartNodeID = NullIfBlank(x.StartNodeID) ?? nodeIDs.FirstOrDefault(),
-                    EndNodeID = NullIfBlank(x.EndNodeID) ?? nodeIDs.LastOrDefault(), TrackIDs = ParseIDs(x.LinkList) };
+                    EndNodeID = NullIfBlank(x.EndNodeID) ?? nodeIDs.LastOrDefault() };
             }).ToList()
         };
     }
@@ -393,6 +398,8 @@ public sealed class OperationProcessController : ControllerBase
                 break;
             case "precedences": template.Precedences.RemoveAll(x => x.Id == id); break;
             case "anchors":
+                if (template.Anchors.Any(anchor => anchor.Id == id && anchor.DwellingActivityID is not null))
+                    throw new ProcessRequestException(400, "停留活动自动生成的锚不能单独删除，请修改或删除对应的停留活动。");
                 template.Anchors.RemoveAll(x => x.Id == id);
                 foreach (var ev in template.Events) { ev.AnchorList.RemoveAll(x => x == id); if (ev.SelectedAnchor == id) ev.SelectedAnchor = null; }
                 foreach (var binding in template.RouteAnchors) { if (binding.StartAnchor == id) binding.StartAnchor = null; if (binding.EndAnchor == id) binding.EndAnchor = null; }

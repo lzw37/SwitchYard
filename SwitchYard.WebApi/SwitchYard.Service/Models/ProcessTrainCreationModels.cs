@@ -12,11 +12,11 @@ public sealed class ProcessTrainCreationRequest : ProcessScope
     public List<ProcessTrainActivitySelection> Selections { get; set; } = new();
 }
 
+[System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
 public sealed class ProcessTrainActivitySelection
 {
     public string ActivityID { get; set; } = "";
     public string? RouteID { get; set; }
-    public string? TrackID { get; set; }
 }
 
 public sealed class ProcessTrainCreationResponse

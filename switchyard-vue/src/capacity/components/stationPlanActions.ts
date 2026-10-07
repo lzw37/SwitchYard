@@ -3,7 +3,7 @@ import type { StationPlanSegmentEdit } from './stationPlanView.ts'
 
 interface MovementIdentity { trainID: string; movementID: string }
 type SaveMovements<T> = (expected: T[], desired: T[]) => Promise<T[]>
-type StationPlanActionKind = StationPlanSegmentEdit['mode'] | 'track' | 'dwelling'
+type StationPlanActionKind = StationPlanSegmentEdit['mode'] | 'track' | 'dwelling' | 'align'
 
 /** Keep server-returned movement snapshots for concurrency checks when undoing or redoing plan edits. */
 export class StationPlanMovementAction<T extends MovementIdentity> implements Action {

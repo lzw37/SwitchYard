@@ -8,10 +8,18 @@
             v-model:show-cell-names="showSimulationCellNames"
             v-model:scale-x="layoutScaleX"
             v-model:scale-y="layoutScaleY"
+            :show-display-controls="!show3D"
             :fit-disabled="!layoutData"
             @fit="fitLayoutToFullView"
         >
             <template #context>
+                <el-switch
+                    v-model="show3D"
+                    class="simulation-view-switch"
+                    :active-text="t('operationSimulation.views.threeDimensional')"
+                    :inactive-text="t('operationSimulation.views.planar')"
+                    :aria-label="t('operationSimulation.views.label')"
+                />
                 <label class="simulation-toolbar-control">
                     <span>{{ t('stationLayout.menu.stationScheme') }}</span>
                     <el-select
@@ -99,7 +107,24 @@
 
         <div ref="simulationBodyRef" class="simulation-body" :style="{ '--simulation-side-width': `${simulationSideWidth}px` }">
             <div ref="simulationLeftPanelRef" class="simulation-left-panel">
+                <StationLayout3D
+                    v-if="show3D && active"
+                    v-model:train-model="selectedTrainModel"
+                    v-model:display-ratio="displayRatio3D"
+                    v-model:show-labels="showLabels3D"
+                    v-model:show-track-occupancy="showTrackOccupancy3D"
+                    :layout="layoutData"
+                    :grid-spacing="layoutGridSpacing"
+                    :runs="routeRuns"
+                    :playhead-seconds="playheadSeconds"
+                    :get-playback-seconds="getPlaybackSeconds"
+                    :is-playing="isPlaying"
+                    :is-all-train-playback="isAllTrainPlayback"
+                    :track-occupancy-timeline="trackOccupancyTimeline"
+                    @render-error="pausePlayback"
+                />
                 <div
+                    v-show="!show3D"
                     ref="layoutViewportRef"
                     class="simulation-layout-view"
                     v-loading="loadingLayout"
@@ -132,7 +157,7 @@
                             :scene-width="layoutViewportState.width"
                             :scene-height="layoutViewportState.height"
                             :projection="layoutViewportState"
-                            :animate="isPlaying"
+                            :animate="isPlaying && !show3D && active"
                             :reset-revision="trainOverlayResetRevision"
                         />
                     </div>
@@ -333,7 +358,7 @@
                             <span>{{ t('operationSimulation.progress') }}</span>
                             <strong>{{ activeRouteProgressText }}</strong>
                         </div>
-                        <div>
+                        <div v-if="!show3D">
                             <span>{{ t('operationSimulation.formation') }}</span>
                             <strong>{{ t('operationSimulation.carCount', { count: 8 }) }}</strong>
                         </div>
@@ -365,8 +390,8 @@ import ActionButton from '@/components/ui/ActionButton.vue'
 import TrackOccupancyGantt from './components/TrackOccupancyGantt.vue'
 import { trackOccupancyGanttMetrics, type TrackOccupancyGanttRow } from './components/trackOccupancyGantt'
 import { namedTrackCellNames } from './components/chartRowKinds'
-import { normalizeMovementCellOccupations, type MovementCellOccupation } from './movementCellOccupation'
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { normalizeMovementCellOccupations } from './movementCellOccupation'
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Check, Close, Edit, Plus, Refresh, RefreshLeft, VideoPause, VideoPlay } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
@@ -374,15 +399,23 @@ import axios from '@/utils/axios'
 import { useCapacityStore } from '@/stores/capacity'
 import { useStationSchemeSelection } from './useStationSchemeSelection'
 import PaneDivider from '@/components/ui/PaneDivider.vue'
+import type {
+    StationRouteOption, TrainOperationPlanTrain, TrainOperationPlanMovement,
+    Point, PathSegment, PolylinePath, RouteGeometry, RouteRun,
+} from './simulationTypes'
+import type { RollingStockModelSelection } from './three/emuModelSelection'
+import { createTrackOccupancyTimeline } from './trackOccupancy'
 
-const { t } = useI18n()
 import StationLayoutEditor from './components/StationLayoutEditor.vue'
-import { projectTrainCarToViewport } from './simulationViewport'
-import { getDwellingHeadDistance, isDwellingRoute, preferDwellingRuns } from './simulationDwelling'
+import { buildPlanarTrainScene, samplePlanarTrainScene } from './simulationTrainMotion'
+import { isDwellingRoute, preferDwellingRuns } from './simulationDwelling'
 import { getStationRouteHighlightColor } from './routeColors'
 import StationLayoutViewToolbar from './components/StationLayoutViewToolbar.vue'
 import SimulationMovementTable from './components/SimulationMovementTable.vue'
 import SimulationTrainOverlay from './components/SimulationTrainOverlay.vue'
+
+const StationLayout3D = defineAsyncComponent(() => import('./StationLayout3D.vue'))
+const { t } = useI18n()
 
 interface StationSchemeOption {
     id: string
@@ -398,16 +431,6 @@ interface OperationPlanOption {
     sortOrder: number | null
 }
 
-interface StationRouteOption {
-    id: string
-    name: string
-    type: string
-    nodeList: string
-    linkList: string
-    startNodeID: string
-    endNodeID: string
-}
-
 interface StationRouteTimeOption {
     routeID: string
     trainTypeID: string
@@ -415,31 +438,6 @@ interface StationRouteTimeOption {
     startOccupationShift: number | null
     endOccupationShift: number | null
     isInterruptCell: boolean
-}
-
-interface TrainOperationPlanTrain {
-    id: string
-    trainTemplateID: string
-    trainNumber: string
-    name: string
-    trainType: string
-    isFixedOperation: boolean
-}
-
-interface TrainOperationPlanMovement {
-    trainID: string
-    trainTemplateID: string
-    movementID: string
-    name: string
-    routeIDList: string
-    minDuration: number | null
-    earliestStartTime: string
-    latestEndTime: string
-    cellOccupationOverridesJson?: string | null
-    cellOccupations?: MovementCellOccupation[]
-    route: string
-    tag: string
-    sortOrder: number | null
 }
 
 interface LayoutNode {
@@ -450,6 +448,7 @@ interface LayoutNode {
 
 interface LayoutTrack {
     id: string
+    name: string
     x1: number
     y1: number
     x2: number
@@ -462,49 +461,6 @@ interface LayoutCell {
     id: string
     name: string
     linkIDList: string
-}
-
-interface Point {
-    x: number
-    y: number
-    nodeId?: string
-}
-
-interface PathSegment {
-    from: Point
-    to: Point
-    length: number
-    startDistance: number
-    angle: number
-}
-
-interface PolylinePath {
-    points: Point[]
-    segments: PathSegment[]
-    totalLength: number
-}
-
-interface RouteGeometry {
-    path: PolylinePath
-    nodeIds: string[]
-    linkIds: string[]
-}
-
-interface RouteRun {
-    key: string
-    train: TrainOperationPlanTrain
-    movement: TrainOperationPlanMovement
-    route: StationRouteOption
-    path: PolylinePath
-    nodeIds: string[]
-    linkIds: string[]
-    startSeconds: number
-    endSeconds: number
-    lockSeconds: number
-    usesPlanTime: boolean
-    absoluteStartSeconds: number
-    absoluteEndSeconds: number
-    color: string
 }
 
 interface RouteHighlight {
@@ -601,16 +557,12 @@ interface GanttSubTableDialogForm {
     cellIds: string[]
 }
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
     selectedInstanceId: string
-}>()
+    active?: boolean
+}>(), { active: true })
 
 const defaultOperationPlanID = 'default'
-const trainCarCount = 8
-const trainCarLength = 34
-const trainCarWidth = 14
-const trainCarGap = 4
-const trainCarTurnSmoothingDistance = trainCarLength * 0.9
 const syntheticRouteGapSeconds = 1.2
 const routeLockMinSeconds = 1.2
 const routeLockMaxSeconds = 8
@@ -656,6 +608,11 @@ const layoutGridSpacing = ref(20)
 const layoutScaleX = ref(1)
 const layoutScaleY = ref(1)
 const viewToolbarDensity = ref('compact')
+const show3D = ref(false)
+const selectedTrainModel = ref<RollingStockModelSelection>('auto')
+const displayRatio3D = ref(1)
+const showLabels3D = ref(true)
+const showTrackOccupancy3D = ref(false)
 const showSimulationGrid = ref(false)
 const showSimulationNodes = ref(true)
 const showSimulationCurveArc = ref(true)
@@ -713,6 +670,7 @@ const ganttSubTableDialogForm = ref<GanttSubTableDialogForm>({
 let stationSchemeLoadVersion = 0
 let schemeDataLoadVersion = 0
 let isDisposed = false
+let layoutNeedsFit = false
 let operationPlanLoadVersion = 0
 let stationRouteLoadVersion = 0
 let stationRouteTimeLoadVersion = 0
@@ -725,6 +683,8 @@ let ganttScrollFrameId: number | null = null
 let ganttSubTableSaveTimer: ReturnType<typeof window.setTimeout> | null = null
 let suppressGanttSubTableSave = false
 let ganttSubTableSaveRevision = 0
+let ganttSubTableSavingRevision = 0
+let ganttSubTableSaveRequest: Promise<unknown> | null = null
 let lastAnimationTimestamp = 0
 let lastPlaybackRenderTimestamp = 0
 let playbackRuntimeSeconds = 0
@@ -808,6 +768,13 @@ const activeGanttSubTableCells = computed<LayoutCell[]>(() => {
     const selectedCellIds = new Set(activeGanttSubTableCellIds.value)
     return ganttAvailableCells.value.filter((cell) => selectedCellIds.has(cell.id))
 })
+// Occupancy in 3D uses all cells, independent of the selected Gantt sub-table.
+const trackOccupancyTimeline = computed(() => createTrackOccupancyTimeline(
+    routeRuns.value.flatMap(run => buildGanttBlocksForRun(run).map(({ cellID, block }) => ({
+        cellID, startSeconds: block.startSeconds, endSeconds: block.endSeconds, color: block.color,
+    }))),
+    layoutCells.value,
+))
 const ganttLanes = computed<GanttLane[]>(() => buildGanttLanes())
 const ganttTrackNamesByCell = computed(() => namedTrackCellNames(layoutCells.value,
     readArray(layoutData.value, 'tracks', 'Tracks').map(track => ({
@@ -881,11 +848,8 @@ const highlightedRouteLinkIds = computed<string[]>((previous) => normalizeUnique
 const highlightedRouteArrowNodeIds = highlightedRouteNodeIds
 const highlightedRouteColor = computed(() => activeRun.value?.color || getStationRouteHighlightColor(''))
 const highlightedRouteArrowVisible = computed(() => highlightedRouteArrowNodeIds.value.length >= 2)
-const simulationTrainCars = computed<SimulationTrainCar[]>(() => buildSimulationTrainCars())
-const simulationScreenTrainCars = computed<SimulationTrainCar[]>(() => simulationTrainCars.value.map(car => ({
-    ...car,
-    ...projectTrainCarToViewport(car, layoutViewportState.value),
-})))
+const planarTrainScene = computed(() => buildPlanarTrainScene(routeRuns.value, layoutViewportState.value))
+const simulationScreenTrainCars = computed<SimulationTrainCar[]>(() => show3D.value || !props.active ? [] : buildSimulationTrainCars())
 const simulationLayoutStageStyle = computed(() => {
     if (layoutViewportState.value.width <= 0 || layoutViewportState.value.height <= 0) return {}
     return {
@@ -899,7 +863,7 @@ const activeRouteName = computed(() => {
         if (activeCount > 0) return t('operationSimulation.activeRoutes', { count: activeCount })
         return routeRuns.value.length > 0 ? t('operationSimulation.waitingNext') : '-'
     }
-    return activeRun.value ? getRouteDisplayName(activeRun.value.route.id) : '-'
+    return activeRun.value ? getRouteDisplayName(activeRun.value.route) : '-'
 })
 const activePhaseText = computed(() => {
     if (isAllTrainPlayback.value) {
@@ -963,7 +927,7 @@ const simulationRows = computed<SimulationRow[]>(() => routeRuns.value.map((run,
     index,
     key: run.key,
     trainName: formatTrainLabel(run.train),
-    routeName: getRouteDisplayName(run.route.id),
+    routeName: getRouteDisplayName(run.route),
     timeText: getRunTimeText(run),
 })))
 const currentSimulationRunIndex = computed(getSimulationTableCurrentRunIndex)
@@ -1028,7 +992,7 @@ function buildGanttLanes(): GanttLane[] {
 
     routeRuns.value.forEach((run) => {
         const trainLabel = formatTrainLabel(run.train)
-        const routeName = getRouteDisplayName(run.route.id)
+        const routeName = getRouteDisplayName(run.route)
         buildGanttBlocksForRun(run).forEach(({ cellID, block }) => {
             const lane = lanesByCell.get(cellID)
             if (!lane) return
@@ -1560,6 +1524,7 @@ function getLayoutTracks(data: unknown): LayoutTrack[] {
             const id = readString(track, 'id', 'ID').trim()
             return {
                 id,
+                name: readString(track, 'name', 'Name').trim(),
                 x1: Number(record.x1 ?? record.X1),
                 y1: Number(record.y1 ?? record.Y1),
                 x2: Number(record.x2 ?? record.X2),
@@ -1684,8 +1649,8 @@ function formatDurationSeconds(totalSeconds: number) {
     return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
 }
 
-function getRouteDisplayName(routeID: string) {
-    return stationRouteMap.value.get(routeID)?.name || routeID || '-'
+function getRouteDisplayName(route: StationRouteOption) {
+    return route.name || route.id || '-'
 }
 
 function getTrainColor(trainID: string) {
@@ -2012,62 +1977,6 @@ function clearTrainCarAngleMemory() {
     trainCarAngleMemory.clear()
 }
 
-function getPointOnPath(path: PolylinePath, distance: number) {
-    if (path.segments.length === 0) {
-        const first = path.points[0] || { x: 0, y: 0 }
-        return { x: first.x, y: first.y, angle: 0, distance: 0 }
-    }
-    const clampedDistance = Math.max(0, Math.min(path.totalLength, distance))
-    const segment = path.segments.find((item) => clampedDistance <= item.startDistance + item.length) ||
-        path.segments[path.segments.length - 1]
-    if (!segment) {
-        const first = path.points[0] || { x: 0, y: 0 }
-        return { x: first.x, y: first.y, angle: 0, distance: clampedDistance }
-    }
-    const localDistance = Math.max(0, Math.min(segment.length, clampedDistance - segment.startDistance))
-    const ratio = segment.length > 0 ? localDistance / segment.length : 0
-    return {
-        x: segment.from.x + (segment.to.x - segment.from.x) * ratio,
-        y: segment.from.y + (segment.to.y - segment.from.y) * ratio,
-        angle: segment.angle,
-        distance: clampedDistance,
-    }
-}
-
-function getPositionOnPath(
-    path: PolylinePath,
-    distance: number,
-    options: { smoothAngle?: boolean; smoothingDistance?: number } = {},
-) {
-    const point = getPointOnPath(path, distance)
-    const angle = options.smoothAngle
-        ? getSmoothedPathAngle(path, point.distance, point.angle, options.smoothingDistance ?? trainCarTurnSmoothingDistance)
-        : point.angle
-    return { x: point.x, y: point.y, angle: normalizePathAngle(angle) }
-}
-
-function getSmoothedPathAngle(
-    path: PolylinePath,
-    distance: number,
-    fallbackAngle: number,
-    smoothingDistance: number,
-) {
-    if (path.segments.length === 0 || path.totalLength <= 0) return fallbackAngle
-    const sampleDistance = Math.max(1, Math.min(path.totalLength / 2, Number(smoothingDistance || 0)))
-    if (!Number.isFinite(sampleDistance) || sampleDistance <= 0) return fallbackAngle
-
-    const beforeDistance = Math.max(0, distance - sampleDistance)
-    const afterDistance = Math.min(path.totalLength, distance + sampleDistance)
-    if (afterDistance - beforeDistance < 0.001) return fallbackAngle
-
-    const before = getPointOnPath(path, beforeDistance)
-    const after = getPointOnPath(path, afterDistance)
-    const deltaX = after.x - before.x
-    const deltaY = after.y - before.y
-    if (Math.hypot(deltaX, deltaY) < 0.001) return fallbackAngle
-    return normalizePathAngle(Math.atan2(deltaY, deltaX) * 180 / Math.PI)
-}
-
 function findActiveRunIndex(currentSeconds: number) {
     const runs = routeRuns.value
     if (runs.length === 0) return -1
@@ -2166,55 +2075,19 @@ function getActiveRouteProgress(run: RouteRun | null, currentSeconds: number) {
 }
 
 function buildSimulationTrainCars(): SimulationTrainCar[] {
-    const currentSeconds = playheadSeconds.value
-    const visibleRuns = isAllTrainPlayback.value
-        ? activeRunIndices.value
-            .map((index) => routeRuns.value[index] || null)
-            .filter((run): run is RouteRun => run !== null)
-        : activeRun.value
-            ? [activeRun.value]
-            : []
-    const cars = preferDwellingRuns(visibleRuns, currentSeconds)
-        .flatMap((run) => buildSimulationTrainCarsForRun(run, currentSeconds))
+    const cars = samplePlanarTrainScene(planarTrainScene.value, playheadSeconds.value, !isAllTrainPlayback.value)
+        .map(car => {
+            const train = trainMap.value.get(car.trainID)
+            const fill = getTrainColor(car.trainID)
+            return {
+                ...car,
+                angle: getContinuousTrainCarAngle(car.key, car.angle),
+                fill: car.carIndex === 0 ? fill : lightenTrainColor(fill, car.carIndex),
+                stroke: '#f8fafc',
+                label: car.carIndex === 0 ? train?.trainNumber || car.trainID : '',
+            }
+        })
     pruneTrainCarAngleMemory(cars)
-    return cars
-}
-
-function buildSimulationTrainCarsForRun(run: RouteRun, currentSeconds: number): SimulationTrainCar[] {
-    const progress = getActiveRouteProgress(run, currentSeconds)
-    const dwelling = isDwellingRoute(run.route.type)
-    // Keep the complete parked consist on short tracks instead of clamping
-    // trailing cars onto the same point at the route entrance.
-    const nominalLength = trainCarCount * trainCarLength + (trainCarCount - 1) * trainCarGap
-    const lengthScale = dwelling ? Math.min(1, run.path.totalLength * 0.75 / nominalLength) : 1
-    const carLength = trainCarLength * lengthScale
-    const carPitch = (trainCarLength + trainCarGap) * lengthScale
-    const headDistance = dwelling
-        ? getDwellingHeadDistance(run.path.totalLength, trainCarCount, carPitch)
-        : run.path.totalLength * progress
-    const fill = getTrainColor(run.train.id)
-    const cars: SimulationTrainCar[] = []
-
-    for (let index = 0; index < trainCarCount; index++) {
-        const offset = index * carPitch
-        const key = `${run.key}-${index}`
-        const position = getPositionOnPath(run.path, headDistance - offset, {
-            smoothAngle: true,
-            smoothingDistance: trainCarTurnSmoothingDistance,
-        })
-        cars.push({
-            key,
-            x: position.x,
-            y: position.y,
-            angle: getContinuousTrainCarAngle(key, position.angle),
-            length: carLength,
-            width: trainCarWidth,
-            fill: index === 0 ? fill : lightenTrainColor(fill, index),
-            stroke: '#f8fafc',
-            label: index === 0 ? run.train.trainNumber || run.train.id : '',
-        })
-    }
-
     return cars
 }
 
@@ -2349,7 +2222,7 @@ function togglePlayback() {
 }
 
 function startPlayback() {
-    if (!canPlayback.value) return
+    if (!canPlayback.value || isPlaying.value || !props.active) return
     if (playheadSeconds.value >= simulationDurationSeconds.value) {
         setPlayheadSeconds(0)
     }
@@ -2361,6 +2234,7 @@ function startPlayback() {
 }
 
 function pausePlayback() {
+    if (isPlaying.value) setPlayheadSeconds(playbackRuntimeSeconds)
     isPlaying.value = false
     if (animationFrameId !== null) {
         window.cancelAnimationFrame(animationFrameId)
@@ -2374,8 +2248,14 @@ function resetPlayback() {
     setPlayheadSeconds(0)
 }
 
+// The 3D renderer samples this same clock each frame; it never advances playback.
+function getPlaybackSeconds() {
+    return isPlaying.value ? playbackRuntimeSeconds : playheadSeconds.value
+}
+
 function stepPlayback(timestamp: number) {
-    if (!isPlaying.value) return
+    animationFrameId = null
+    if (isDisposed || !isPlaying.value) return
     if (!lastAnimationTimestamp) lastAnimationTimestamp = timestamp
     const deltaSeconds = Math.max(0, (timestamp - lastAnimationTimestamp) / 1000)
     lastAnimationTimestamp = timestamp
@@ -2765,6 +2645,7 @@ async function loadGanttSubTableSettings() {
 
 async function saveGanttSubTableSettingsNow() {
     if (
+        isDisposed ||
         suppressGanttSubTableSave ||
         loadingGanttSubTableSettings.value ||
         savingGanttSubTableSettings.value
@@ -2781,15 +2662,19 @@ async function saveGanttSubTableSettingsNow() {
     if (subTables.length === 0) return
 
     const savingRevision = ganttSubTableSaveRevision
+    ganttSubTableSavingRevision = savingRevision
     savingGanttSubTableSettings.value = true
+    const request = axios.put('/OperationPlan/SaveOperationOccupationTimeSubTables', {
+        instanceID,
+        stationSchemeID,
+        operationPlanID,
+        subTables,
+    })
+    ganttSubTableSaveRequest = request
     try {
-        const response = await axios.put('/OperationPlan/SaveOperationOccupationTimeSubTables', {
-            instanceID,
-            stationSchemeID,
-            operationPlanID,
-            subTables,
-        })
+        const response = await request
         if (
+            isDisposed ||
             instanceID !== props.selectedInstanceId ||
             stationSchemeID !== currentStationSchemeId.value.trim() ||
             operationPlanID !== currentOperationPlanId.value.trim()
@@ -2804,17 +2689,40 @@ async function saveGanttSubTableSettingsNow() {
             applyGanttSubTableSettings(settings)
         }
     } catch (error) {
-        console.error('Failed to save simulation gantt sub table settings:', error)
+        if (!isDisposed) console.error('Failed to save simulation gantt sub table settings:', error)
     } finally {
-        savingGanttSubTableSettings.value = false
-        if (savingRevision !== ganttSubTableSaveRevision) {
-            scheduleSaveGanttSubTableSettings(0)
+        // An older scheme's save may finish after a new scheme started saving.
+        if (ganttSubTableSaveRequest === request) {
+            ganttSubTableSaveRequest = null
+            savingGanttSubTableSettings.value = false
+            if (!isDisposed && savingRevision !== ganttSubTableSaveRevision) {
+                scheduleSaveGanttSubTableSettings(0)
+            }
         }
     }
 }
 
+function flushPendingGanttSubTableSettings() {
+    const hasPendingChanges = ganttSubTableSaveTimer !== null ||
+        (savingGanttSubTableSettings.value && ganttSubTableSavingRevision !== ganttSubTableSaveRevision)
+    if (!hasPendingChanges || loadingGanttSubTableSettings.value || !hasScope.value) return
+    // Finish a user's pending edit before discarding this page. Only the small
+    // request payload survives; its result never updates the disposed component.
+    const payload = {
+        instanceID: props.selectedInstanceId,
+        stationSchemeID: currentStationSchemeId.value.trim(),
+        operationPlanID: currentOperationPlanId.value.trim(),
+        subTables: buildGanttSubTableSettingsPayload(),
+    }
+    if (!payload.subTables.length) return
+    void (ganttSubTableSaveRequest || Promise.resolve())
+        .catch(() => undefined)
+        .then(() => axios.put('/OperationPlan/SaveOperationOccupationTimeSubTables', payload))
+        .catch(error => console.error('Failed to save pending simulation gantt sub table settings:', error))
+}
+
 function scheduleSaveGanttSubTableSettings(delay = 500) {
-    if (suppressGanttSubTableSave || loadingGanttSubTableSettings.value) return
+    if (isDisposed || suppressGanttSubTableSave || loadingGanttSubTableSettings.value) return
 
     if (ganttSubTableSaveTimer) {
         window.clearTimeout(ganttSubTableSaveTimer)
@@ -2866,7 +2774,14 @@ async function loadLayoutIntoEditor() {
     await nextTick()
     layoutEditorRef.value?.loadDataFromJson?.(layoutData.value)
     await nextTick()
+    layoutNeedsFit = true
+    fitVisibleLayout()
+}
+
+function fitVisibleLayout() {
+    if (!layoutNeedsFit || show3D.value || !props.active) return
     fitLayoutToFullView()
+    layoutNeedsFit = false
 }
 
 function readLayoutViewportState(): CanvasViewportState {
@@ -3051,6 +2966,17 @@ watch(playheadSeconds, () => {
     flush: 'post',
 })
 
+watch(() => props.active, (active) => {
+    if (!active) pausePlayback()
+    else void nextTick(fitVisibleLayout)
+})
+
+watch(show3D, () => {
+    // Discard interpolation from the hidden 2D overlay when returning to it.
+    trainOverlayResetRevision.value++
+    void nextTick(fitVisibleLayout)
+})
+
 onMounted(() => {
     const syncPanelBounds = () => {
         maxSimulationSideWidth.value = Math.max(280, (simulationBodyRef.value?.clientWidth || 920) - 328)
@@ -3065,6 +2991,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+    flushPendingGanttSubTableSettings()
     isDisposed = true
     schemeDataLoadVersion++
     stationSchemeLoadVersion++

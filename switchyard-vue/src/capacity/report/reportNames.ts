@@ -23,10 +23,11 @@ export function reportTrainName(train: NamedTrain | undefined): string {
 
 export function reportAnchorName(anchor: ProcessAnchor | undefined, catalog: ProcessCatalog): string {
     if (!anchor) return '锚名称未提供'
-    if ([`${anchor.trackID}锚`, `轨道 ${anchor.trackID}锚`, `Track ${anchor.trackID} anchor`, `${anchor.trackID} anchor`].includes(anchor.name.trim())) {
-        const track = catalog.tracks.find(track => track.id === anchor.trackID)
-        const trackName = reportObjectName(track?.name, anchor.trackID, '')
-        return trackName ? `${trackName}锚` : '锚名称未提供'
+    const routeID = anchor.routeIDs.length === 1 ? anchor.routeIDs[0] : undefined
+    if (routeID && [`${routeID}锚`, `进路 ${routeID}锚`, `Route ${routeID} anchor`, `${routeID} anchor`].includes(anchor.name.trim())) {
+        const route = catalog.routes.find(route => route.id === routeID)
+        const routeName = reportObjectName(route?.name, routeID, '')
+        return routeName ? `${routeName}锚` : '锚名称未提供'
     }
     return reportObjectName(anchor.name, anchor.id, '锚名称未提供')
 }

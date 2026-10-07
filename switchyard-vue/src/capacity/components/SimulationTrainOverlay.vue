@@ -12,6 +12,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { interpolatePlanarTrainCar } from '../simulationTrainMotion'
 
 const { t } = useI18n()
 
@@ -66,14 +67,7 @@ function samePose(left: TrainCar, right: TrainCar) {
 function poseAt(car: TrainCar, progress: number): TrainCar {
     const source = sourceCars.get(car.key)
     if (!source || progress >= 1) return car
-    return {
-        ...car,
-        x: source.x + (car.x - source.x) * progress,
-        y: source.y + (car.y - source.y) * progress,
-        angle: source.angle + (car.angle - source.angle) * progress,
-        length: source.length + (car.length - source.length) * progress,
-        width: source.width + (car.width - source.width) * progress,
-    }
+    return interpolatePlanarTrainCar(source, car, progress)
 }
 
 function animationProgress(now: number) {

@@ -2,18 +2,18 @@ using SwitchYard.Service.Models;
 
 namespace SwitchYard.Service.Services;
 
-/// <summary>Checks a complete graph before any write, including writes made by object CRUD endpoints.</summary>
+/// <summary>Separates editable document structure from the complete graph required for execution.</summary>
 public static class OperationProcessValidator
 {
     private static readonly HashSet<string> Types = new(StringComparer.Ordinal)
         { "Arrival", "Departure", "Shunting", "Locomotive", "Dwelling" };
 
-    public static List<string> Validate(OperationProcessTemplate template, ProcessCatalog catalog)
+    /// <summary>Drafts may have unfinished names, resources, references and constraints.</summary>
+    public static List<string> ValidateForStorage(OperationProcessTemplate template)
     {
         var errors = new List<string>();
         if (!ValidID(template.Id)) errors.Add("模板 id 必须为 1–100 个字符，且不能有首尾空白。");
-        if (string.IsNullOrWhiteSpace(template.Name) || template.Name.Length > 200)
-            errors.Add("模板名称必须为 1–200 个字符。");
+        CheckText(template.Name, 200, "模板名称");
         if (template.Description is null || template.Description.Length > 4000)
             errors.Add("模板说明不能为 null，且最多 4000 个字符。");
         if (template.Activities is null || template.Events is null || template.Precedences is null ||
@@ -35,6 +35,55 @@ public static class OperationProcessValidator
             errors.Add("对象数组不能包含 null。");
             return errors;
         }
+        Index(template.Activities, x => x.Id, "活动", errors);
+        Index(template.Events, x => x.Id, "事件", errors);
+        Index(template.Precedences, x => x.Id, "次序", errors);
+        Index(template.Anchors, x => x.Id, "锚", errors);
+        Index(template.RouteAnchors, x => x.RouteID, "进路锚配置", errors);
+        foreach (var activity in template.Activities)
+        {
+            CheckText(activity.Name, 200, $"活动 {activity.Id} 名称");
+            if (activity.Type is null || activity.StartEvent is null || activity.EndEvent is null)
+                errors.Add($"活动 {activity.Id} 的类型与事件引用必须为字符串。");
+            CheckList(activity.RouteList, $"活动 {activity.Id} 的备选进路");
+            if (!double.IsFinite(activity.MinDuration) || !double.IsFinite(activity.MaxDuration) ||
+                !double.IsFinite(activity.X) || !double.IsFinite(activity.Y))
+                errors.Add($"活动 {activity.Id} 的持续时间和坐标必须为有限数值。");
+        }
+        foreach (var ev in template.Events)
+        {
+            CheckText(ev.Name, 200, $"事件 {ev.Id} 名称");
+            CheckList(ev.AnchorList, $"事件 {ev.Id} 的备选锚");
+            if (ev.Time is double time && !double.IsFinite(time)) errors.Add($"事件 {ev.Id} 时刻必须是有限数值或 null。");
+        }
+        foreach (var anchor in template.Anchors)
+        {
+            CheckText(anchor.Name, 200, $"锚 {anchor.Id} 名称");
+            CheckList(anchor.RouteIDs, $"锚 {anchor.Id} 的停留进路");
+        }
+        foreach (var precedence in template.Precedences)
+        {
+            if (precedence.LeadingEvent is null || precedence.FollowingEvent is null)
+                errors.Add($"次序 {precedence.Id} 的事件引用必须为字符串。");
+            if (!double.IsFinite(precedence.Interval)) errors.Add($"次序 {precedence.Id} 间隔必须为有限数值。");
+        }
+        return errors;
+
+        void CheckText(string? value, int max, string label)
+        {
+            if (value is null || value.Length > max) errors.Add($"{label}必须为字符串，且最多 {max} 个字符。");
+        }
+        void CheckList(List<string>? values, string label)
+        {
+            if (values is null || values.Any(value => value is null)) errors.Add($"{label}必须为字符串数组。");
+        }
+    }
+
+    public static List<string> Validate(OperationProcessTemplate template, ProcessCatalog catalog)
+    {
+        var errors = ValidateForStorage(template);
+        if (errors.Count > 0) return errors;
+        ValidateName(template.Name, "模板", errors);
         OperationProcessEventNodes.Refresh(template, catalog);
         var activities = Index(template.Activities, x => x.Id, "活动", errors);
         var events = Index(template.Events, x => x.Id, "事件", errors);
@@ -42,12 +91,14 @@ public static class OperationProcessValidator
         var anchors = Index(template.Anchors, x => x.Id, "锚", errors);
         Index(template.RouteAnchors, x => x.RouteID, "进路锚配置", errors);
         var nodes = catalog.Nodes.Select(x => x.Id).ToHashSet(StringComparer.Ordinal);
-        var tracks = catalog.Tracks.GroupBy(x => x.Id).ToDictionary(x => x.Key, x => x.First(), StringComparer.Ordinal);
         var routes = catalog.Routes.GroupBy(x => x.Id).ToDictionary(x => x.Key, x => x.First(), StringComparer.Ordinal);
 
         foreach (var anchor in template.Anchors)
         {
-            if (!Has(tracks, anchor.TrackID)) errors.Add($"锚 {anchor.Id} 的轨道 {anchor.TrackID} 不属于当前站场方案。");
+            ValidateCandidates(anchor.RouteIDs, null, routes, $"锚 {anchor.Id} 的停留进路", errors);
+            if (anchor.RouteIDs is { Count: 0 }) errors.Add($"锚 {anchor.Id} 必须至少引用一条停留进路。");
+            if (anchor.RouteIDs is not null && anchor.RouteIDs.Any(id => Has(routes, id) && routes[id].Type != "Dwelling"))
+                errors.Add($"锚 {anchor.Id} 必须引用当前站场方案的停留进路。");
             ValidateName(anchor.Name, $"锚 {anchor.Id}", errors);
         }
         foreach (var ev in template.Events)
@@ -60,9 +111,8 @@ public static class OperationProcessValidator
                 foreach (var anchorID in ev.AnchorList.Where(id => Has(anchors, id)))
                 {
                     var anchor = anchors[anchorID];
-                    if (Has(tracks, anchor.TrackID) && !ev.NodeList.Any(nodeID =>
-                            tracks[anchor.TrackID].FromNodeID == nodeID || tracks[anchor.TrackID].ToNodeID == nodeID))
-                        errors.Add($"事件 {ev.Id} 的备选锚 {anchor.Id} 的轨道不连接任何备选节点。");
+                    if (!ev.NodeList.Any(nodeID => OperationProcessResourceLocations.AnchorAtNode(anchor, nodeID, routes)))
+                        errors.Add($"事件 {ev.Id} 的备选锚 {anchor.Id} 的停留进路不连接任何备选节点。");
                 }
         }
         foreach (var activity in template.Activities)
@@ -75,22 +125,10 @@ public static class OperationProcessValidator
             if (!Has(events, activity.StartEvent) || !Has(events, activity.EndEvent)) errors.Add($"活动 {activity.Id} 的开始或结束事件不存在。");
             if (activity.StartEvent == activity.EndEvent) errors.Add($"活动 {activity.Id} 的开始和结束事件不能相同。");
             ValidateCandidates(activity.RouteList, activity.SelectedRoute, routes, $"活动 {activity.Id} 的进路", errors);
-            ValidateCandidates(activity.TrackList, activity.SelectedTrack, tracks, $"活动 {activity.Id} 的轨道", errors);
-            if (activity.Type == "Dwelling")
-            {
-                if (activity.RouteList?.Count > 0 || activity.SelectedRoute is not null) errors.Add($"停留活动 {activity.Id} 应配置轨道，不能配置进路。");
-                if (activity.TrackList is not null)
-                    foreach (var trackID in activity.TrackList.Where(id => Has(tracks, id)))
-                        if (string.IsNullOrWhiteSpace(tracks[trackID].Name))
-                            errors.Add($"停留活动 {activity.Id} 的备选轨道 {trackID} 没有名称，请选择有名称的轨道。");
-            }
-            else
-            {
-                if (activity.TrackList?.Count > 0 || activity.SelectedTrack is not null) errors.Add($"移动活动 {activity.Id} 应配置进路，不能配置轨道。");
-                if (activity.RouteList is not null)
-                    foreach (var routeID in activity.RouteList.Where(id => Has(routes, id)))
-                        if (routes[routeID].Type != activity.Type) errors.Add($"活动 {activity.Id} 与进路 {routeID} 类型不一致。");
-            }
+            if (activity.RouteList is { Count: 0 }) errors.Add($"活动 {activity.Id} 必须配置备选进路。");
+            if (activity.RouteList is not null)
+                foreach (var routeID in activity.RouteList.Where(id => Has(routes, id)))
+                    if (routes[routeID].Type != activity.Type) errors.Add($"活动 {activity.Id} 与进路 {routeID} 类型不一致。");
             if (Has(events, activity.StartEvent) && Has(events, activity.EndEvent) &&
                 events[activity.StartEvent].Time is double start && events[activity.EndEvent].Time is double end &&
                 (end - start < activity.MinDuration - 0.000001 || end - start > activity.MaxDuration + 0.000001))
@@ -103,8 +141,10 @@ public static class OperationProcessValidator
             if (!NonNegative(precedence.Interval)) errors.Add($"次序 {precedence.Id} 间隔必须是非负有限分钟数。");
             if (Has(events, precedence.LeadingEvent) && Has(events, precedence.FollowingEvent) &&
                 events[precedence.LeadingEvent].Time is double leading && events[precedence.FollowingEvent].Time is double following &&
-                following - leading < precedence.Interval - 0.000001)
-                errors.Add($"次序 {precedence.Id} 后序事件时刻必须至少晚于前序事件 {precedence.Interval} 分钟。");
+                (following - leading < precedence.Interval - 0.000001 || (precedence.IsExact && following - leading > precedence.Interval + 0.000001)))
+                errors.Add(precedence.IsExact
+                    ? $"次序 {precedence.Id} 前后序事件时刻差必须严格等于 {precedence.Interval} 分钟。"
+                    : $"次序 {precedence.Id} 后序事件时刻必须至少晚于前序事件 {precedence.Interval} 分钟。");
         }
         foreach (var binding in template.RouteAnchors)
         {
@@ -115,7 +155,7 @@ public static class OperationProcessValidator
             {
                 if (anchorID is null) continue;
                 if (!Has(anchors, anchorID)) errors.Add($"进路 {binding.RouteID} 的{endpoint}锚不存在。");
-                else if (nodeID is not null) ValidateAnchorAtNode(anchors[anchorID], nodeID, tracks, $"进路 {binding.RouteID} 的{endpoint}锚", errors);
+                else if (nodeID is not null) ValidateAnchorAtNode(anchors[anchorID], nodeID, routes, $"进路 {binding.RouteID} 的{endpoint}锚", errors);
             }
         }
         if (HasCycle(events.Keys, template.Activities, template.Precedences))
@@ -144,10 +184,10 @@ public static class OperationProcessValidator
         if (selected is not null && !candidates.Contains(selected, StringComparer.Ordinal)) errors.Add($"{label}选定值必须属于备选列表。");
     }
 
-    private static void ValidateAnchorAtNode(ProcessAnchor anchor, string nodeID, Dictionary<string, ProcessCatalogTrack> tracks, string label, List<string> errors)
+    private static void ValidateAnchorAtNode(ProcessAnchor anchor, string nodeID, Dictionary<string, ProcessCatalogRoute> routes, string label, List<string> errors)
     {
-        if (Has(tracks, anchor.TrackID) && tracks[anchor.TrackID].FromNodeID != nodeID && tracks[anchor.TrackID].ToNodeID != nodeID)
-            errors.Add($"{label} {anchor.Id} 的轨道不连接节点 {nodeID}。");
+        if (!OperationProcessResourceLocations.AnchorAtNode(anchor, nodeID, routes))
+            errors.Add($"{label} {anchor.Id} 的停留进路不连接节点 {nodeID}。");
     }
 
     private static bool HasCycle(IEnumerable<string> eventIDs, IEnumerable<ProcessActivity> activities, IEnumerable<ProcessPrecedence> precedences)

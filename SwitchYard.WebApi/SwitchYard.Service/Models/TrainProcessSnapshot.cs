@@ -11,7 +11,19 @@ public sealed class TrainProcessSnapshot : ProcessScope
     public OperationProcessTemplate Process { get; set; } = new();
     public Dictionary<string, string> ActivityMovementMap { get; set; } = new(StringComparer.Ordinal);
     public Dictionary<string, double> EventTimes { get; set; } = new(StringComparer.Ordinal);
-    public Dictionary<string, string> SelectedTrackIDs { get; set; } = new(StringComparer.Ordinal);
+    public Dictionary<string, string> SelectedRouteIDs { get; set; } = new(StringComparer.Ordinal);
+    /// <summary>Execution-owned timing constraints. Null identifies snapshots written before this field existed.</summary>
+    public List<TrainProcessPrecedence>? Precedences { get; set; }
+}
+
+public sealed class TrainProcessPrecedence
+{
+    public string Id { get; set; } = "";
+    public string LeadingEvent { get; set; } = "";
+    public string FollowingEvent { get; set; } = "";
+    /// <summary>Lower bound in seconds; also the upper bound when IsExact is true.</summary>
+    public double MinIntervalSeconds { get; set; }
+    public bool IsExact { get; set; }
 }
 
 public sealed class GenerateTrainOperationPlanFromProcessRequest

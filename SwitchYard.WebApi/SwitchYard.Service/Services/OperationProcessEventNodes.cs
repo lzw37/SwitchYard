@@ -24,13 +24,18 @@ public static class OperationProcessEventNodes
 
         foreach (var activity in template.Activities ?? Enumerable.Empty<ProcessActivity>())
         {
-            if (activity is null || activity.Type == "Dwelling" || activity.RouteList is null) continue;
+            if (activity is null || activity.RouteList is null) continue;
             foreach (var routeID in activity.RouteList)
             {
                 if (routeID is null || !routes.TryGetValue(routeID, out var route) ||
                     !string.Equals(route.Type, activity.Type, StringComparison.OrdinalIgnoreCase)) continue;
                 AddCandidate(activity.StartEvent, route.StartNodeID);
                 AddCandidate(activity.EndEvent, route.EndNodeID);
+                if (activity.Type == "Dwelling")
+                {
+                    AddCandidate(activity.StartEvent, route.EndNodeID);
+                    AddCandidate(activity.EndEvent, route.StartNodeID);
+                }
             }
         }
         foreach (var ev in template.Events)
