@@ -408,7 +408,8 @@ import { createTrackOccupancyTimeline } from './trackOccupancy'
 
 import StationLayoutEditor from './components/StationLayoutEditor.vue'
 import { buildPlanarTrainScene, samplePlanarTrainScene } from './simulationTrainMotion'
-import { isDwellingRoute, preferDwellingRuns } from './simulationDwelling'
+import { isDwellingRoute } from './simulationDwelling'
+import { countActiveRoutePhases, getHighlightedRouteRunIndices, getRouteRunPhase as getRunPhase, type RouteRunPhase as RunPhase } from './simulationRouteActivity'
 import { getStationRouteHighlightColor } from './routeColors'
 import StationLayoutViewToolbar from './components/StationLayoutViewToolbar.vue'
 import SimulationMovementTable from './components/SimulationMovementTable.vue'
@@ -495,7 +496,6 @@ interface CanvasViewportState {
     scaleY: number
 }
 
-type RunPhase = 'waiting' | 'locking' | 'moving' | 'dwelling' | 'finished'
 type PlaybackMode = 'single' | 'all'
 
 interface RouteRunSource {
@@ -858,7 +858,7 @@ const simulationLayoutStageStyle = computed(() => {
     }
 })
 const activeRouteName = computed(() => {
-    if (isAllTrainPlayback.value) {
+    if (isAllTrainPlayback.value || activeRunIndices.value.length > 1) {
         const activeCount = activeRunIndices.value.length
         if (activeCount > 0) return t('operationSimulation.activeRoutes', { count: activeCount })
         return routeRuns.value.length > 0 ? t('operationSimulation.waitingNext') : '-'
@@ -866,7 +866,7 @@ const activeRouteName = computed(() => {
     return activeRun.value ? getRouteDisplayName(activeRun.value.route) : '-'
 })
 const activePhaseText = computed(() => {
-    if (isAllTrainPlayback.value) {
+    if (isAllTrainPlayback.value || activeRunIndices.value.length > 1) {
         const locking = activeLockingRunCount.value
         const moving = activeMovingRunCount.value
         const dwelling = activeDwellingRunCount.value
@@ -883,7 +883,7 @@ const activePhaseText = computed(() => {
 })
 const finishedRunCount = computed(() => routeRuns.value.filter((run) => runPhaseByKey.value[run.key] === 'finished').length)
 const activeRouteProgressText = computed(() => {
-    if (isAllTrainPlayback.value) return `${finishedRunCount.value}/${routeRuns.value.length}`
+    if (isAllTrainPlayback.value || activeRunIndices.value.length > 1) return `${finishedRunCount.value}/${routeRuns.value.length}`
     return `${Math.round(activeRouteProgress.value * 100)}%`
 })
 const playbackStatusText = computed(() => {
@@ -1994,50 +1994,23 @@ function findActiveRunIndex(currentSeconds: number) {
     return 0
 }
 
-function findHighlightedRunIndices(currentSeconds: number) {
-    if (!isAllTrainPlayback.value) {
-        const index = findActiveRunIndex(currentSeconds)
-        return index >= 0 ? [index] : []
-    }
-    return routeRuns.value
-        .map((run, index) => (currentSeconds >= run.startSeconds && currentSeconds < run.endSeconds ? index : -1))
-        .filter((index) => index >= 0)
-}
-
 function syncActiveRunIndex(currentSeconds = playheadSeconds.value) {
     const nextIndex = findActiveRunIndex(currentSeconds)
     if (activeRunIndex.value !== nextIndex) activeRunIndex.value = nextIndex
-    const nextActiveIndices = findHighlightedRunIndices(currentSeconds)
+    const nextActiveIndices = getHighlightedRouteRunIndices(routeRuns.value, currentSeconds, isAllTrainPlayback.value ? -1 : nextIndex)
     if (!areNumberArraysEqual(activeRunIndices.value, nextActiveIndices)) activeRunIndices.value = nextActiveIndices
     const nextPhaseByKey = buildRunPhaseMap(currentSeconds)
     if (!areRunPhaseMapsEqual(runPhaseByKey.value, nextPhaseByKey)) runPhaseByKey.value = nextPhaseByKey
     const nextRun = nextIndex >= 0 ? routeRuns.value[nextIndex] || null : null
     const nextPhase = getRunPhase(nextRun, currentSeconds)
     if (activeRunPhase.value !== nextPhase) activeRunPhase.value = nextPhase
-    let lockingCount = 0
-    let movingCount = 0
-    let dwellingCount = 0
-    const visibleRuns = preferDwellingRuns(nextActiveIndices
+    const activeRuns = nextActiveIndices
         .map(index => routeRuns.value[index])
-        .filter((run): run is RouteRun => !!run), currentSeconds)
-    visibleRuns.forEach((run) => {
-        const phase = getRunPhase(run, currentSeconds)
-        if (phase === 'locking') lockingCount++
-        if (phase === 'moving') movingCount++
-        if (phase === 'dwelling') dwellingCount++
-    })
+        .filter((run): run is RouteRun => !!run)
+    const { locking: lockingCount, moving: movingCount, dwelling: dwellingCount } = countActiveRoutePhases(activeRuns, currentSeconds)
     if (activeLockingRunCount.value !== lockingCount) activeLockingRunCount.value = lockingCount
     if (activeMovingRunCount.value !== movingCount) activeMovingRunCount.value = movingCount
     if (activeDwellingRunCount.value !== dwellingCount) activeDwellingRunCount.value = dwellingCount
-}
-
-function getRunPhase(run: RouteRun | null, currentSeconds: number): RunPhase {
-    if (!run) return 'waiting'
-    if (currentSeconds < run.startSeconds) return 'waiting'
-    if (currentSeconds >= run.endSeconds) return 'finished'
-    if (isDwellingRoute(run.route.type)) return 'dwelling'
-    if (currentSeconds <= run.startSeconds + run.lockSeconds) return 'locking'
-    return 'moving'
 }
 
 function buildRunPhaseMap(currentSeconds: number) {
@@ -2780,8 +2753,7 @@ async function loadLayoutIntoEditor() {
 
 function fitVisibleLayout() {
     if (!layoutNeedsFit || show3D.value || !props.active) return
-    fitLayoutToFullView()
-    layoutNeedsFit = false
+    if (fitLayoutToFullView()) layoutNeedsFit = false
 }
 
 function readLayoutViewportState(): CanvasViewportState {
@@ -2814,41 +2786,11 @@ function readLayoutViewportState(): CanvasViewportState {
     }
 }
 
-function fitLayoutDataRect(
-    rect: { minX: number; minY: number; maxX: number; maxY: number } | null,
-    options: { screenMargin?: number; padding?: number } = {},
-) {
-    if (!rect) return
-    const screenMargin = Math.max(0, Number(options.screenMargin ?? 36))
-    const viewport = layoutViewportRef.value
-    if (viewport) {
-        const width = Math.max(1, rect.maxX - rect.minX)
-        const height = Math.max(1, rect.maxY - rect.minY)
-        const availableWidth = Math.max(1, viewport.clientWidth - screenMargin * 2)
-        const availableHeight = Math.max(1, viewport.clientHeight - screenMargin * 2)
-        const scale = Math.max(0.18, Math.min(3, Math.min(availableWidth / width, availableHeight / height)))
-        layoutScaleX.value = Number(scale.toFixed(2))
-        layoutScaleY.value = Number(scale.toFixed(2))
-    }
-    nextTick(() => {
-        layoutEditorRef.value?.scrollDataRectIntoView?.(rect, {
-            screenMargin,
-            padding: options.padding ?? 120,
-        })
-    })
-}
-
 function fitLayoutToFullView() {
-    // Keep the data bounds independent of the current zoom. Passing a pixel margin
-    // to getFullViewRect converts it to data units using the current scale, which
-    // makes each click only move the layout toward the eventual fit scale.
-    const contentScreenMargin = 60
-    const viewportScreenMargin = 36
-    const fullRect = layoutEditorRef.value?.getFullViewRect?.({ screenMargin: 0 }) || null
-    fitLayoutDataRect(fullRect, {
-        screenMargin: contentScreenMargin + viewportScreenMargin,
-        padding: 140,
-    })
+    return layoutEditorRef.value?.fitFullView?.(layoutViewportRef.value, (scale: number) => {
+        layoutScaleX.value = scale
+        layoutScaleY.value = scale
+    }) ?? false
 }
 
 async function refreshSimulationData() {
@@ -3097,7 +3039,8 @@ onBeforeUnmount(() => {
 
 .simulation-layout-view {
     position: relative;
-    flex: 1 1 auto;
+    flex: 1 1 0;
+    contain: size;
     min-width: 0;
     min-height: 0;
     overflow: auto;
@@ -3109,7 +3052,7 @@ onBeforeUnmount(() => {
 
 .simulation-layout-stage {
     position: relative;
-    display: inline-block;
+    display: block;
     min-width: 100%;
     min-height: 100%;
 }

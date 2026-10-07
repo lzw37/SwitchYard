@@ -550,6 +550,46 @@ function getFullViewRect(options = {}) {
     return isCanvasContentRectEmpty(rect) ? null : { ...rect };
 }
 
+/** Fit the same geometry and viewport in every host, independent of the current zoom or canvas history. */
+function fitFullView(viewport, applyScale) {
+    if (!viewport || viewport.clientWidth <= 0 || viewport.clientHeight <= 0 || typeof applyScale !== "function") return false;
+    const rect = getFullViewRect({ screenMargin: 0 });
+    if (!rect) return false;
+
+    const style = viewport.ownerDocument?.defaultView?.getComputedStyle(viewport);
+    const pixels = key => parseFloat(style?.[key]) || 0;
+    // Measure the allocated box, including space currently occupied by scrollbars.
+    // The fitted canvas removes those scrollbars; clientWidth would change on the next click.
+    const width = Math.floor((viewport.offsetWidth || viewport.clientWidth)
+        - pixels("borderLeftWidth") - pixels("borderRightWidth") - pixels("paddingLeft") - pixels("paddingRight")) - 1;
+    const height = Math.floor((viewport.offsetHeight || viewport.clientHeight)
+        - pixels("borderTopWidth") - pixels("borderBottomWidth") - pixels("paddingTop") - pixels("paddingBottom")) - 1;
+    if (width <= 1 || height <= 1) return false;
+    const margin = Math.min(80, width / 4, height / 4);
+    const scale = Math.min(4,
+        (width - margin * 2) / Math.max(1, rect.maxX - rect.minX),
+        (height - margin * 2) / Math.max(1, rect.maxY - rect.minY));
+    if (!Number.isFinite(scale) || scale <= 0) return false;
+
+    const centerX = (rect.minX + rect.maxX) / 2;
+    const centerY = (rect.minY + rect.maxY) / 2;
+    // Rebuild display bounds rather than repeatedly expanding the old canvas.
+    // Coordinates in the saved layout and grid origin remain untouched.
+    canvasBounds.value = {
+        minX: centerX - width / scale / 2,
+        maxX: centerX + width / scale / 2,
+        minY: centerY - height / scale / 2,
+        maxY: centerY + height / scale / 2,
+    };
+    applyScale(scale);
+    nextTick(() => {
+        // The host can contain an intermediate stage (e.g. the train overlay).
+        viewport.scrollLeft = 0;
+        viewport.scrollTop = 0;
+    });
+    return true;
+}
+
 function expandCanvasToIncludeRect(rect, options = {}) {
     if (!rect) return false;
     const minX = Math.min(toFiniteNumber(rect.minX), toFiniteNumber(rect.maxX));
@@ -947,8 +987,9 @@ const anchorRects = computed(() => {
 const gridDots = computed(() => {
     const dots = [];
     if (!props.showGrid || !grid.visible) return dots;
-    const stepX = canvasStepX();
-    const stepY = canvasStepY();
+    // Keep the grid bounded when fitting very large stations below the manual zoom range.
+    const stepX = canvasStepX() * Math.max(1, Math.ceil(8 / (canvasStepX() * safeDisplayScaleX.value)));
+    const stepY = canvasStepY() * Math.max(1, Math.ceil(8 / (canvasStepY() * safeDisplayScaleY.value)));
     const bounds = canvasBounds.value;
     const startX = alignCanvasMin(bounds.minX, stepX, canvasOriginX());
     const startY = alignCanvasMin(bounds.minY, stepY, canvasOriginY());
@@ -5526,6 +5567,7 @@ defineExpose({
     updateSelectedEquipment,
     updateSelectedEquipmentBatch,
     clearElements,
+    fitFullView,
     getFullViewRect,
     scrollDataRectIntoView,
     getCanvasViewportState,

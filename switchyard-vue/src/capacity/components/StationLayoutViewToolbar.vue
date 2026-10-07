@@ -121,7 +121,7 @@ function toggleDensity() {
                     <el-slider
                         :model-value="scaleX"
                         size="small"
-                        :min="0.25"
+                        :min="Math.min(0.25, scaleX)"
                         :max="4"
                         :step="0.05"
                         @update:model-value="emit('update:scaleX', $event)"
@@ -133,7 +133,7 @@ function toggleDensity() {
                     <el-slider
                         :model-value="scaleY"
                         size="small"
-                        :min="0.25"
+                        :min="Math.min(0.25, scaleY)"
                         :max="4"
                         :step="0.05"
                         @update:model-value="emit('update:scaleY', $event)"

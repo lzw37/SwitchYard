@@ -1660,8 +1660,10 @@ function fitRouteInLayout(rect: DataRect | null) {
 }
 
 function fitFullLayout() {
-    const rect = stationLayoutEditorRef.value?.getFullViewRect?.({ screenMargin: 80 })
-    fitDataRectInLayout(rect, { screenMargin: 48, padding: 160 })
+    return stationLayoutEditorRef.value?.fitFullView?.(layoutViewportRef.value, (scale: number) => {
+        layoutScaleX.value = scale
+        layoutScaleY.value = scale
+    }) ?? false
 }
 
 function selectStationRoute(row: StationRoute) {

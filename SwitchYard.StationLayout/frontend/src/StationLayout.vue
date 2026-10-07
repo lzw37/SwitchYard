@@ -151,29 +151,11 @@ const selectedBindingCorrectionRows = ref([]);
 const layoutScaleXDisplay = computed(() => layoutScaleX.value.toFixed(2));
 const layoutScaleYDisplay = computed(() => layoutScaleY.value.toFixed(2));
 
-function fitDataRectInLayout(rect, options = {}) {
-    if (!rect) return;
-    const screenMargin = Math.max(0, Number(options.screenMargin ?? 48));
-    const viewport = stationLayoutEditorFrameRef.value;
-    if (viewport) {
-        const width = Math.max(1, Number(rect.maxX) - Number(rect.minX));
-        const height = Math.max(1, Number(rect.maxY) - Number(rect.minY));
-        const scale = Math.max(0.25, Math.min(4, Math.min(
-            (viewport.clientWidth - screenMargin * 2) / width,
-            (viewport.clientHeight - screenMargin * 2) / height
-        )));
-        layoutScaleX.value = Number(scale.toFixed(2));
-        layoutScaleY.value = Number(scale.toFixed(2));
-    }
-    nextTick(() => stationLayoutEditorRef.value?.scrollDataRectIntoView?.(rect, {
-        screenMargin,
-        padding: options.padding ?? 160,
-    }));
-}
-
 function fitFullLayout() {
-    const rect = stationLayoutEditorRef.value?.getFullViewRect?.();
-    fitDataRectInLayout(rect, { screenMargin: 48, padding: 160 });
+    return stationLayoutEditorRef.value?.fitFullView?.(stationLayoutEditorFrameRef.value, scale => {
+        layoutScaleX.value = scale;
+        layoutScaleY.value = scale;
+    }) ?? false;
 }
 
 function cancelLoadedLayoutFit() {
@@ -185,8 +167,7 @@ function cancelLoadedLayoutFit() {
 function tryFitLoadedLayout() {
     const viewport = stationLayoutEditorFrameRef.value;
     if (!pendingLoadedLayoutFit || !viewport || viewport.clientWidth <= 0 || viewport.clientHeight <= 0) return;
-    cancelLoadedLayoutFit();
-    fitFullLayout();
+    if (fitFullLayout()) cancelLoadedLayoutFit();
 }
 
 function scheduleLoadedLayoutFit() {
@@ -3007,12 +2988,12 @@ defineExpose({ exportJson, importJson });
                     <span class="station-toolbar-group__label">{{ t('stationLayout.group.displayScale') }}</span>
                     <div class="scale-slider">
                         <span class="scale-slider-label">{{ t('stationLayout.scale.x') }}</span>
-                        <el-slider v-model="layoutScaleX" :min="0.25" :max="4" :step="0.05" size="small" />
+                        <el-slider v-model="layoutScaleX" :min="Math.min(0.25, layoutScaleX)" :max="4" :step="0.05" size="small" />
                         <span class="scale-slider-value">{{ layoutScaleXDisplay }}</span>
                     </div>
                     <div class="scale-slider">
                         <span class="scale-slider-label">{{ t('stationLayout.scale.y') }}</span>
-                        <el-slider v-model="layoutScaleY" :min="0.25" :max="4" :step="0.05" size="small" />
+                        <el-slider v-model="layoutScaleY" :min="Math.min(0.25, layoutScaleY)" :max="4" :step="0.05" size="small" />
                         <span class="scale-slider-value">{{ layoutScaleYDisplay }}</span>
                     </div>
                 </div>

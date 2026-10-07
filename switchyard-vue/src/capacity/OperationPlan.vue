@@ -6136,31 +6136,11 @@ function clearRoutePickerLayoutPreview() {
     routePickerLayoutEditorRef.value?.clearElements?.()
 }
 
-function fitRoutePickerLayoutDataRect(
-    rect: { minX: number; minY: number; maxX: number; maxY: number } | null,
-    options: { screenMargin?: number; padding?: number } = {},
-) {
-    if (!rect) return
-    const screenMargin = Math.max(0, Number(options.screenMargin ?? 24))
-    const viewport = routePickerLayoutViewportRef.value
-    if (viewport) {
-        const width = Math.max(1, rect.maxX - rect.minX)
-        const height = Math.max(1, rect.maxY - rect.minY)
-        const availableWidth = Math.max(1, viewport.clientWidth - screenMargin * 2)
-        const availableHeight = Math.max(1, viewport.clientHeight - screenMargin * 2)
-        const scale = Math.max(0.18, Math.min(3, Math.min(availableWidth / width, availableHeight / height)))
-        routePickerLayoutScaleX.value = Number(scale.toFixed(2))
-        routePickerLayoutScaleY.value = Number(scale.toFixed(2))
-    }
-    nextTick(() => routePickerLayoutEditorRef.value?.scrollDataRectIntoView?.(rect, {
-        screenMargin,
-        padding: options.padding ?? 80,
-    }))
-}
-
 function fitRoutePickerLayoutToFullView() {
-    const fullRect = routePickerLayoutEditorRef.value?.getFullViewRect?.({ screenMargin: 40 }) || null
-    fitRoutePickerLayoutDataRect(fullRect, { screenMargin: 24, padding: 96 })
+    return routePickerLayoutEditorRef.value?.fitFullView?.(routePickerLayoutViewportRef.value, (scale: number) => {
+        routePickerLayoutScaleX.value = scale
+        routePickerLayoutScaleY.value = scale
+    }) ?? false
 }
 
 async function loadRoutePickerLayoutIntoEditor() {
