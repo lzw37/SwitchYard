@@ -85,6 +85,12 @@ const router = createRouter({
             name: "capacity",
             component: () => import("../capacity/CapacityMain.vue"),
         },
+        {
+            path: "/sketchlayout",
+            name: "sketchlayout",
+            component: () => import("../sketchlayout/SketchLayoutMain.vue"),
+            meta: { requiresAuth: true },
+        },
     ],
 });
 

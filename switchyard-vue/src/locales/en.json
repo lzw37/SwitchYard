@@ -903,6 +903,7 @@
             "description": "Modeling, calculation and 2D/3D visualization for hump profile design and station capacity analysis",
             "btnHump": "Hump Profile",
             "btnCapacity": "Station Capacity",
+            "btnSketchLayout": "Sketch Layout Planning",
             "btnSource": "View Source"
         },
         "features": {
@@ -953,6 +954,29 @@
                         "playback": {
                             "title": "2D and 3D Operation Playback",
                             "description": "Display train arrivals, dwell periods and departures alongside route occupancy to examine the temporal and spatial relationships in a plan."
+                        }
+                    }
+                },
+                "sketchlayout": {
+                    "title": "Sketch Layout Planning",
+                    "description": "Draw facilities and logistics links, design processes, and evaluate flow relationships and occupancy conflicts.",
+                    "link": "Open Sketch Layout Planning",
+                    "items": {
+                        "layout": {
+                            "title": "Layout design",
+                            "description": "Polygon facilities, circular gates and editable curved links."
+                        },
+                        "process": {
+                            "title": "Process design",
+                            "description": "Create alternative process plans with quantities and durations."
+                        },
+                        "slp": {
+                            "title": "SLP flow relationships",
+                            "description": "Generate graded relationship diagrams from process flows."
+                        },
+                        "conflicts": {
+                            "title": "Conflict analysis",
+                            "description": "Estimate occupancy conflicts on shared facilities and crossing links."
                         }
                     }
                 }

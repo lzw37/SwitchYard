@@ -14,6 +14,7 @@ const appVersion = ref('');
 const featureModules = [
     { key: 'hump', icon: '📐', href: '/hump', items: ['profile', 'energy', 'headway', 'simulation'] },
     { key: 'capacity', icon: '🔀', href: '/capacity-preview', items: ['layout', 'planning', 'analysis', 'playback'] },
+    { key: 'sketchlayout', icon: '⬡', href: '/sketchlayout', items: ['layout', 'process', 'slp', 'conflicts'] },
 ];
 
 authStore.hydrateFromStorage();
@@ -315,6 +316,7 @@ console.log('欢迎访问 SwitchYard 项目主页！');
             <div class="hero-buttons">
                 <a href="/hump" class="btn btn-primary">{{ t('home.hero.btnHump') }}</a>
                 <a href="/capacity-preview" class="btn btn-primary">{{ t('home.hero.btnCapacity') }}</a>
+                <a href="/sketchlayout" class="btn btn-primary">{{ t('home.hero.btnSketchLayout') }}</a>
                 <a href="https://gitee.com/lzw37/switchyard" class="btn btn-secondary" target="_blank">{{
                     t('home.hero.btnSource') }}</a>
             </div>
@@ -881,7 +883,7 @@ section {
 
 .features-grid {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
     gap: 2rem;
 }
 

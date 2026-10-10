@@ -97,7 +97,7 @@
             "saved": "已按作业过程生成列车并保存完整过程约束"
         },
         "creation": {
-            "title": "点选新增列车作业线",
+            "title": "点选新增列车作业进路",
             "description": "核对各作业的节点、时刻和进路。匹配不到的进路留空，也可直接生成列车；该作业在选定进路前不生成 Cell 占用。",
             "startPicking": "点选新增列车",
             "pickStart": "作业 {index}：点选起点及开始时刻",
@@ -176,8 +176,8 @@
         "startTime": "作业计划大表开始时间",
         "endTime": "作业计划大表结束时间",
         "summary": "{trains} 列车，{rows} 项股道 / 节点",
-        "trainLegend": "点击作业线或车次可多选；按 Esc 或点击图面空白处取消全部选择；悬停作业线临时加粗",
-        "trainLine": "列车作业线 {train}",
+        "trainLegend": "点击作业进路或车次可多选；按 Esc 或点击图面空白处取消全部选择；悬停作业进路临时加粗",
+        "trainLine": "列车作业进路 {train}",
         "startHandle": "调整 {train} 的 {movement} 开始时刻",
         "endHandle": "调整 {train} 的 {movement} 结束时刻",
         "alignStartHint": "双击以当前开始事件为基准，按固定间隔对齐关联事件，并平移其后续事件",
@@ -858,6 +858,7 @@
             "description": "围绕驼峰纵断面设计与车站能力计算，开展建模、计算分析及二维、三维可视化",
             "btnHump": "驼峰纵断面",
             "btnCapacity": "通过能力 Capacity",
+            "btnSketchLayout": "布置图分析",
             "btnSource": "查看源码"
         },
         "features": {
@@ -908,6 +909,29 @@
                         "playback": {
                             "title": "二维与三维作业回放",
                             "description": "展示列车接车、停留及发车过程，结合进路占用核对作业计划的时间与空间关系。"
+                        }
+                    }
+                },
+                "sketchlayout": {
+                    "title": "布置图分析",
+                    "description": "绘制设施与作业进路，编排作业流程，评估作业关系与占用冲突。",
+                    "link": "进入布置图分析",
+                    "items": {
+                        "layout": {
+                            "title": "布置图设计",
+                            "description": "多边形设施、出入口与可编辑曲线通道。"
+                        },
+                        "process": {
+                            "title": "作业流程设计",
+                            "description": "按设施顺序编排多套流程，设置数量与作业时间。"
+                        },
+                        "slp": {
+                            "title": "SLP 作业关系",
+                            "description": "根据流程作业量生成分级关系图。"
+                        },
+                        "conflicts": {
+                            "title": "作业冲突分析",
+                            "description": "计算共享设施与交叉通道的占用冲突概率。"
                         }
                     }
                 }
@@ -1933,7 +1957,7 @@
         },
         "stationPlanCharts": {
             "defaultName": "作业计划大表",
-            "settingsHint": "每张大表可独立选择股道、节点及其显示顺序。不选择任何股道或节点可保存为空图；端点被隐藏的作业线段不会显示。",
+            "settingsHint": "每张大表可独立选择股道、节点及其显示顺序。不选择任何股道或节点可保存为空图；端点被隐藏的作业进路段不会显示。",
             "newName": "作业计划大表 {number}",
             "add": "添加作业计划大表",
             "edit": "编辑当前作业计划大表",

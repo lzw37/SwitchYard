@@ -381,3 +381,6 @@ switchyard-vue/tests
 SwitchYard.WebApi/SwitchYard.Deletion.Tests
 SwitchYard.WebApi/SwitchYard.Service.StationLayout.IntegrationTests
 SwitchYard.WebApi/SwitchYard.StationLayout.SmokeTests
+
+# Local Sketch Layout Planning database (business data is not source).
+SwitchYard.WebApi/SwitchYard.Service/sketchlayout.db*

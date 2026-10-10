@@ -12,6 +12,7 @@ namespace SwitchYard.Service
     {
         public const string HumpDatabaseSectionName = "HumpDatabase";
         public const string CapacityDatabaseSectionName = "CapacityDatabase";
+        public const string SketchLayoutDatabaseSectionName = "SketchLayoutDatabase";
 
         // Transaction support fields shared by connectors
         protected DbConnection? _transactionConnection;

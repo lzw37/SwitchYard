@@ -155,6 +155,15 @@ CapacityDatabase__MysqlConfig__SslMode=Preferred
 CapacityDatabase__MysqlConfig__CharSet=utf8mb4
 CapacityDatabase__MysqlConfig__ConnectionTimeout=15
 
+SketchLayoutDatabase__DatabaseType=Mysql
+SketchLayoutDatabase__MysqlConfig__Host=${db_host}
+SketchLayoutDatabase__MysqlConfig__Port=${db_port}
+SketchLayoutDatabase__MysqlConfig__Database=sketchlayout
+SketchLayoutDatabase__MysqlConfig__Username=${db_user}
+SketchLayoutDatabase__MysqlConfig__Password=${db_pwd}
+SketchLayoutDatabase__MysqlConfig__SslMode=Preferred
+SketchLayoutDatabase__MysqlConfig__CharSet=utf8mb4
+
 Jwt__SecretKey=${jwt_secret}
 EOF
 

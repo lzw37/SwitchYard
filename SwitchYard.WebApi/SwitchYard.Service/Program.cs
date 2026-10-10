@@ -256,6 +256,7 @@ try
     builder.Services.AddSingleton<RefreshTokenService>();
     builder.Services.AddSingleton<DatabaseSchemaInitializer>();
     builder.Services.AddScoped<UserService>();
+    builder.Services.AddScoped<SketchLayoutStore>();
     builder.Services.AddScoped<InstanceAuthorizationService>();
     builder.Services.AddScoped<HumpInstanceCopyService>();
     builder.Services.AddSingleton<SnowflakeIdGenerator>();
@@ -408,6 +409,14 @@ try
             {
                 missingSecrets.Add("HumpDatabase__MysqlConfig__Password");
             }
+        }
+
+        var sketchDbType = builder.Configuration["SketchLayoutDatabase:DatabaseType"];
+        if (string.Equals(sketchDbType, "Mysql", StringComparison.OrdinalIgnoreCase))
+        {
+            foreach (var key in new[] { "Username", "Password" })
+                if (string.IsNullOrWhiteSpace(builder.Configuration[$"SketchLayoutDatabase:MysqlConfig:{key}"]))
+                    missingSecrets.Add($"SketchLayoutDatabase__MysqlConfig__{key}");
         }
 
         if (missingSecrets.Count > 0)

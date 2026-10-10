@@ -31,6 +31,12 @@ namespace SwitchYard.Service.Services
                 "sqlite-schema.sql",
                 "mysql-schema.sql");
 
+            if (HasDatabaseConfiguration(DBConnector.SketchLayoutDatabaseSectionName))
+            {
+                EnsureSchemaCreatedFor(DBConnector.SketchLayoutDatabaseSectionName,
+                    "sketchlayout-sqlite-schema.sql", "sketchlayout-mysql-schema.sql");
+            }
+
             if (HasDatabaseConfiguration(DBConnector.CapacityDatabaseSectionName))
             {
                 EnsureSchemaCreatedFor(
