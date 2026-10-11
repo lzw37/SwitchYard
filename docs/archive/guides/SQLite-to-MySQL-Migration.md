@@ -1,4 +1,8 @@
+> **历史归档。** 原路径：`doc/SQLite-to-MySQL-Migration.md`。[当前中文手册](../../zh-CN/08-deployment-operations.md) · [English](../../en/08-deployment-operations.md) · [归档目录](../README.md)。下文保留历史操作、实现和验证记录，不再作为当前操作入口。
+
 # SwitchYard SQLite 到 MySQL 迁移说明与历史评估
+
+> **当前版本说明（2026-10-11）：[中文手册](../../zh-CN/08-deployment-operations.md) · [English manual](../../en/08-deployment-operations.md)。** 本文原有内容完整保留；如与当前实现说明不同，以新版手册为准，旧测试记录保留其历史含义。
 
 ## 当前实现与使用入口
 
@@ -6,10 +10,10 @@
 
 仓库已有可运行的**驼峰数据库**迁移工具：
 
-- 包装脚本：[`scripts/Migrate-SqliteToMySql.ps1`](../scripts/Migrate-SqliteToMySql.ps1)
-- .NET 8 工具：[`tools/SQLiteToMySqlMigrator`](../tools/SQLiteToMySqlMigrator/Program.cs)
-- 默认建表脚本：[`mysql-schema.sql`](../SwitchYard.WebApi/SwitchYard.Service/Database/mysql-schema.sql)
-- 默认预检查：[`sqlite-precheck.sql`](../SwitchYard.WebApi/SwitchYard.Service/Database/sqlite-precheck.sql)
+- 包装脚本：[`scripts/Migrate-SqliteToMySql.ps1`](../../../scripts/Migrate-SqliteToMySql.ps1)
+- .NET 8 工具：[`tools/SQLiteToMySqlMigrator`](../../../tools/SQLiteToMySqlMigrator/Program.cs)
+- 默认建表脚本：[`mysql-schema.sql`](../../../SwitchYard.WebApi/SwitchYard.Service/Database/mysql-schema.sql)
+- 默认预检查：[`sqlite-precheck.sql`](../../../SwitchYard.WebApi/SwitchYard.Service/Database/sqlite-precheck.sql)
 
 工具固定迁移下文列出的 20 张驼峰表，**不迁移 `CapacityDatabase`**；仅替换 schema 参数不能使其成为能力库迁移工具。默认 MySQL schema 与工具建库语句使用 `utf8mb4_0900_ai_ci`，目标实例需支持该排序规则。
 

@@ -1,4 +1,8 @@
+> **历史归档。** 原路径：`doc/SwitchYard-Hump-WeChat-Push.md`。[当前中文手册](../../zh-CN/03-hump.md) · [English](../../en/03-hump.md) · [归档目录](../README.md)。下文保留历史操作、实现和验证记录，不再作为当前操作入口。
+
 # SwitchYard.Hump 驼峰纵断面设计辅助工具
+
+> **宣传文案，原文保留。** 当前操作与计算限制见[中文驼峰手册](../../zh-CN/03-hump.md)及 [English](../../en/03-hump.md)。
 
 调车驼峰是铁路编组站中最关键的设备，承担着有改编中转列车的解体任务，但驼峰的设计真是一个特别小众的领域。
 
@@ -24,26 +28,26 @@
 
 工具提供溜放线至调车场线路的平面展开图的展示和维护功能，帮助用户直观的构建平面展开图上的设备布置。
 
-![平面展开图演示](assets/hump-gif/hump-plan-layout.gif)
+平面展开图演示（历史资源未随仓库提供 / historical resource not shipped: `assets/hump-gif/hump-plan-layout.gif`）
 
 ## 车辆参数与计算条件配置
 
 可配置车辆类型、质量、迎风面积、推峰速度、溜放速度、风速、温度、空气密度等参数，为不同工况下的能高计算分析提供基础。
 
-![车辆参数与计算条件维护演示](assets/hump-gif/hump-calculation-params.gif)
+车辆参数与计算条件维护演示（历史资源未随仓库提供 / historical resource not shipped: `assets/hump-gif/hump-calculation-params.gif`）
 
 
 ## 纵断面设计
 
 支持对驼峰峰顶、驼峰溜放部分的边坡点进行编辑，通过交互式的控件实现边坡点高程和水平位置的调整，用户可以对坡段长度、坡度等关键参数进行编辑，并可保存不同设计方案，适合教学演示、课程设计和方案初步比选。
 
-![纵断面设计演示](assets/hump-gif/hump-profile-design.gif)
+纵断面设计演示（历史资源未随仓库提供 / historical resource not shipped: `assets/hump-gif/hump-profile-design.gif`）
 
 ## 能高线计算与展示
 
 支持计算并显示初始动能高线、阻力能高线、动能高线和制动能高线。阻力能高还可进一步查看基本阻力、风阻力、道岔阻力、曲线阻力等分项明细。
 
-![制动位与制动能高设计演示](assets/hump-gif/hump-retarder-energy.gif)
+制动位与制动能高设计演示（历史资源未随仓库提供 / historical resource not shipped: `assets/hump-gif/hump-retarder-energy.gif`）
 
 
 ## 驼峰调速系统的设计
@@ -54,13 +58,13 @@
 
 工具可生成车辆速度-距离曲线、时间-距离曲线，辅助判断车辆在溜放过程中的速度变化和前后行钩车溜经分路道岔、减速器等关键设备的溜放间隔，进而判断驼峰纵断面是否满足溜放要求。
 
-![车辆溜放检算与曲线分析演示](assets/hump-gif/hump-headway-check.gif)
+车辆溜放检算与曲线分析演示（历史资源未随仓库提供 / historical resource not shipped: `assets/hump-gif/hump-headway-check.gif`）
 
 ## 车辆溜放与仿真
 
 支持车辆序列、追踪间隔等检算场景，并提供二维及三维溜放仿真视图，便于观察车辆运行过程。
 
-![车辆溜放过程仿真演示](assets/hump-gif/hump-release-simulation.gif)
+车辆溜放过程仿真演示（历史资源未随仓库提供 / historical resource not shipped: `assets/hump-gif/hump-release-simulation.gif`）
 
 ## 适用场景
 

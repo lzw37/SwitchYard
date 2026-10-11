@@ -1,0 +1,173 @@
+SwitchYard source assets and template notices
+SwitchYard 源码素材与模板声明
+
+Audit reference date / 核查日期: 2026-10-11
+
+This notice records third-party material copied into the source tree. Package
+dependencies are documented separately in this directory. SwitchYard's root
+MIT license does not replace the licenses listed below. Preserve original
+file-level notices and include applicable license texts in redistributed copies.
+此文件记录直接进入源码的第三方素材和模板；软件包依赖在同目录另行登记。
+项目根目录 MIT 许可不替代下列许可。分发时保留原文件声明并附带适用许可正文。
+
+The pinned upstream revisions below are verification references, not claims
+about the original generator version or import date. No upstream copyright
+holder is inferred from the appearance of a graphic or a Git commit author.
+下列固定上游提交用于复核，不代表项目最初使用的生成器版本或导入日期。
+不依据图形外观或 Git 提交作者推断版权归属。
+
+1. Material Design icon / Material Design 图标
+
+Local file / 本地文件:
+  switchyard-vue/src/components/icons/IconTooling.vue
+
+Its original first-line notice identifies Templarian/MaterialDesign and
+Apache-2.0. This file is also an exact Git-blob match to the corresponding
+create-vue template file listed in section 3. The icon's Apache-2.0 notice
+remains applicable independently of create-vue's general template CC0 notice.
+文件原首行明确标注 Templarian/MaterialDesign、Apache-2.0。文件与第 3 节
+create-vue 模板中的对应文件 Git blob 完全匹配；保留图标专属 Apache-2.0
+声明，不以模板通用 CC0 声明覆盖。
+
+Source / 来源:
+  https://github.com/Templarian/MaterialDesign
+Verified upstream license / 核验的上游许可:
+  https://github.com/Templarian/MaterialDesign/blob/2424e748e0cc63ab7b9c095a099b9fe239b737c0/LICENSE
+License text / 许可正文:
+  licenses/Apache-2.0.txt
+  https://www.apache.org/licenses/LICENSE-2.0.txt
+
+Upstream license declaration, reproduced verbatim below. Its font and code
+paragraphs describe the upstream collection; they do not imply that this
+project includes the collection's fonts or other code.
+以下完整保留上游许可声明。其中字体和代码段描述上游集合，不表示本项目包含
+该集合的字体或其他代码。
+
+----- BEGIN UPSTREAM MATERIAL DESIGN LICENSE DECLARATION -----
+Pictogrammers Free License
+--------------------------
+
+This icon collection is released as free, open source, and GPL friendly by
+the [Pictogrammers](http://pictogrammers.com/) icon group. You may use it
+for commercial projects, open source projects, or anything really.
+
+# Icons: Apache 2.0 (https://www.apache.org/licenses/LICENSE-2.0)
+Some of the icons are redistributed under the Apache 2.0 license. All other
+icons are either redistributed under their respective licenses or are
+distributed under the Apache 2.0 license.
+
+# Fonts: Apache 2.0 (https://www.apache.org/licenses/LICENSE-2.0)
+All web and desktop fonts are distributed under the Apache 2.0 license. Web
+and desktop fonts contain some icons that are redistributed under the Apache
+2.0 license. All other icons are either redistributed under their respective
+licenses or are distributed under the Apache 2.0 license.
+
+# Code: MIT (https://opensource.org/licenses/MIT)
+The MIT license applies to all non-font and non-icon files.
+----- END UPSTREAM MATERIAL DESIGN LICENSE DECLARATION -----
+
+2. Vue Theme colour palette / Vue Theme 配色
+
+Local file / 本地文件:
+  switchyard-vue/src/assets/base.css
+
+The opening comment explicitly credits the palette to vuejs/theme. The file
+contains project modifications; retain the original attribution when editing.
+文件开头明确注明配色来自 vuejs/theme，文件包含项目修改；后续修改时保留出处。
+
+Copyright (c) 2021-present Evan You
+License / 许可: MIT
+Source and complete license / 来源与完整许可:
+  https://github.com/vuejs/theme/blob/37ebf25c5d0f7666576ba0f8a05bca6ffc04bb55/LICENSE
+  licenses/vue-theme-LICENSE.txt
+
+3. create-vue starter files / create-vue 初始模板
+
+Source / 来源:
+  https://github.com/vuejs/create-vue/tree/2249ffc076708a0f6dea4103403f5bd573d27b52/template
+Upstream license / 上游许可:
+  https://github.com/vuejs/create-vue/blob/2249ffc076708a0f6dea4103403f5bd573d27b52/LICENSE
+License / 许可: CC0-1.0 for template files and files generated from them,
+subject to the separately identified third-party notices above.
+模板及其生成文件采用 CC0-1.0；其中已单独注明来源的第三方内容按上文单列处理。
+Complete template license section / 完整模板许可段:
+  licenses/create-vue-template-CC0.txt
+
+The following source files exactly match the official template Git blobs
+(normal Git text filtering applies). The first two correspond to template/base;
+the remainder correspond to template/code/typescript-default/src/components.
+以下文件与官方模板 Git blob 完全匹配（按 Git 文本过滤规则核验）。前两项
+对应 template/base，其余项对应 template/code/typescript-default/src/components。
+
+Local path | Git blob SHA-1
+switchyard-vue/public/favicon.ico | df36fcfb72584e00488330b560ebcf34a41c64c2
+switchyard-vue/src/assets/logo.svg | 7565660356e5b3723c9c33d508b830c9cfbea29f
+switchyard-vue/src/components/TheWelcome.vue | 8b731d918bc5236b399d7e73d3602509ad693c89
+switchyard-vue/src/components/WelcomeItem.vue | 6d7086aea08fbb770b2f570dbeb4f8fcd86cb291
+switchyard-vue/src/components/icons/IconCommunity.vue | 2dc8b055253af30fb797037e2fe260505f0cf711
+switchyard-vue/src/components/icons/IconDocumentation.vue | 6d4791cfbcf2782b3e5ffbabd042d4c47b2fbbed
+switchyard-vue/src/components/icons/IconEcosystem.vue | c3a4f078c0bd340a33c61ea9ecd8a755d03571ed
+switchyard-vue/src/components/icons/IconSupport.vue | 7452834d3ef961ce24c3a072ddba2620b6158bae
+switchyard-vue/src/components/icons/IconTooling.vue | 660598d7c76644ffe126a1a1feb1606650bfb937
+
+The logo and favicon identify Vue; their presence does not make them original
+SwitchYard branding. CC0 section 4(a) does not grant trademark or patent rights.
+logo 和 favicon 为 Vue 标识，不应描述为 SwitchYard 原创标识。CC0 第 4(a) 项
+未授予商标权或专利权。
+
+4. Git ignore template / Git 忽略模板
+
+Local file / 本地文件: .gitignore
+The file explicitly identifies github/gitignore/VisualStudio.gitignore as its
+template source and also contains project-specific additions.
+文件明确注明模板来自 github/gitignore/VisualStudio.gitignore，并有项目增补。
+
+Source / 来源:
+  https://github.com/github/gitignore/blob/0e5d690153ca3da8a4a1aef2d053406f408f531c/VisualStudio.gitignore
+Upstream license / 上游许可:
+  https://github.com/github/gitignore/blob/0e5d690153ca3da8a4a1aef2d053406f408f531c/LICENSE
+License / 许可: CC0-1.0
+The same full CC0 terms are included in licenses/create-vue-template-CC0.txt;
+its create-vue introductory paragraph only describes the create-vue material.
+完整 CC0 条款亦收录于 licenses/create-vue-template-CC0.txt；该文件前言对
+create-vue 的说明仅适用于 create-vue 内容。
+
+5. Source references and audit boundary / 资料出处与核查范围
+
+switchyard-vue/src/capacity/three/emuProfiles.ts and locomotiveProfiles.ts
+contain reference URLs to china-emu.cn and CRRC pages. Their comments describe
+hand-built visual approximations, not manufacturing drawings. The reviewed
+source tree contains the model parameters, not copies of the cited photographs.
+Preserve those reference URLs. They do not license external photographs, website
+content, trademarks, or manufacturing designs under SwitchYard's MIT license.
+上述两份车辆配置文件保留 china-emu.cn 与中车网页链接，注释说明模型为手工
+近似建模、不是制造图。核查的源码包含模型参数，未包含引用网页的照片副本。
+保留参考链接；引用不意味着外部照片、网页内容、商标或工业设计获 MIT 授权。
+
+SketchAnalysis.vue and SketchCrossingAnalysis.vue contain external references
+to planning and queueing material. Links are citations, not bundled copies of
+the external publications. No new license for those publications is asserted.
+SketchAnalysis.vue 和 SketchCrossingAnalysis.vue 的规划、排队论链接属于
+参考出处，源码未打包外部出版物，不对这些出版物另行宣称授权。
+
+The tracked station signal SVGs and buffer-stop SVGs have no separately stated
+third-party source. Some contain an Adobe Illustrator generator comment, which
+identifies the export tool only. This audit found no evidence of an additional
+third-party license for those drawings and makes no authorship determination.
+已跟踪的信号机、车挡 SVG 未单独注明第三方来源；部分 Adobe Illustrator 注释
+仅表明导出工具。本次未发现须另列第三方许可证的证据，也不据此判定绘图作者。
+
+No bundled font files or third-party runtime CDN/font downloads were identified
+in the reviewed source files. Python helper scripts use standard-library
+imports; no copied third-party Python implementation was identified.
+本次源码核查未发现随库字体文件、运行时第三方 CDN/字体下载，也未发现 Python
+辅助脚本内复制的第三方实现；脚本采用标准库导入。
+
+Ignored local databases, teaching documents, videos, screenshots, test fixtures,
+node_modules, and generated outputs are outside this source-asset inventory.
+If any are included in a release or distributed separately, record their actual
+sources and permissions at that time; the root MIT file does not establish the
+rights to independently supplied material.
+被忽略的本地数据库、教学文档、视频、截图、测试数据、node_modules 和生成
+产物不属于本源码素材清单。若纳入发行包或单独分发，应登记各自实际来源与
+授权；根目录 MIT 文件不能证明独立提供资料的权利归属。

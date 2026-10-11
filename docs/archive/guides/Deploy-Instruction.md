@@ -1,4 +1,8 @@
+> **历史归档。** 原路径：`doc/Deploy-Instruction.md`。[当前中文手册](../../zh-CN/08-deployment-operations.md) · [English](../../en/08-deployment-operations.md) · [归档目录](../README.md)。下文保留历史操作、实现和验证记录，不再作为当前操作入口。
+
 # SwitchYard 部署说明
+
+> **当前版本说明（2026-10-11）：[中文手册](../../zh-CN/08-deployment-operations.md) · [English manual](../../en/08-deployment-operations.md)。** 本文原有内容完整保留；如与当前实现说明不同，以新版手册为准，旧测试记录保留其历史含义。
 
 本文对应当前 Vue 前端、.NET 8 API 和可选的 .NET 10 CapacityAgent。本地启动见 [开发与配置指南](Getting-Started.md)，日常维护见 [运维说明](Operations-Recommendations.md)。
 
@@ -166,7 +170,7 @@ dotnet SwitchYard.CapacityAgent.dll
 
 按提示输入 API 根 URL、已激活账号和密码；账号如要求首次改密，应先在 Web 页面完成。Agent 使用专用令牌连接 `/hubs/capacity-agent`。默认同时运行 2 个任务，每任务 2 核、2048 MB；通过发布目录中的 `capacity-agent.json` 或 `--config <路径>` 调整。
 
-管理员可配置共享范围，普通用户 Agent 只允许本人使用。当前任务和求解结果保存在 Service 进程内存中；重启前下载需要保留的结果。完整说明见 [CapacityAgent README](../SwitchYard.WebApi/SwitchYard.CapacityAgent/README.md)。
+管理员可配置共享范围，普通用户 Agent 只允许本人使用。当前任务和求解结果保存在 Service 进程内存中；重启前下载需要保留的结果。完整说明见 [CapacityAgent README](../development/capacity-agent.md)。
 
 ## 7. 更新与回滚
 

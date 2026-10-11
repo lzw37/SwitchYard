@@ -1,4 +1,8 @@
+> **历史归档。** 原路径：`SwitchYard.StationLayout/INTEGRATION_GUIDE.zh-CN.md`。[当前中文手册](../../zh-CN/09-development-integration.md) · [English](../../en/09-development-integration.md) · [归档目录](../README.md)。下文保留历史操作、实现和验证记录，不再作为当前操作入口。
+
 # SwitchYard.StationLayout 接入指南
+
+> **当前版本说明（2026-10-11）：[中文手册](../../zh-CN/09-development-integration.md) · [English manual](../../en/09-development-integration.md)。** 本文原有内容完整保留；如与当前实现说明不同，以新版手册为准，旧测试记录保留其历史含义。
 
 本文说明其他程序如何复用 `SwitchYard.StationLayout` 的前端页面和后端业务能力。适用于：
 

@@ -1,6 +1,10 @@
+> **历史归档。** 原路径：`doc/Getting-Started.md`。[当前中文手册](../../zh-CN/07-installation.md) · [English](../../en/07-installation.md) · [归档目录](../README.md)。下文保留历史操作、实现和验证记录，不再作为当前操作入口。
+
 # SwitchYard 开发与配置指南
 
-本文给出主程序的本地启动流程。界面与业务操作见 [项目说明](../README.md)，上线部署见 [部署说明](Deploy-Instruction.md)。示例不会使用仓库中已有的数据库连接信息。
+> **当前版本说明（2026-10-11）：[中文手册](../../zh-CN/07-installation.md) · [English manual](../../en/07-installation.md)。** 本文原有内容完整保留；如与当前实现说明不同，以新版手册为准，旧测试记录保留其历史含义。
+
+本文给出主程序的本地启动流程。界面与业务操作见 [项目说明](../project/README.zh-CN.md)，上线部署见 [部署说明](Deploy-Instruction.md)。示例不会使用仓库中已有的数据库连接信息。
 
 ## 1. 环境要求
 
@@ -154,7 +158,7 @@ dotnet run --project SwitchYard.WebApi/SwitchYard.CapacityAgent/SwitchYard.Capac
 dotnet run --project SwitchYard.WebApi/SwitchYard.CapacityAgent/SwitchYard.CapacityAgent.csproj -- --self-test
 ```
 
-更多参数、权限与日志说明见 [CapacityAgent README](../SwitchYard.WebApi/SwitchYard.CapacityAgent/README.md)。
+更多参数、权限与日志说明见 [CapacityAgent README](../development/capacity-agent.md)。
 
 ## 7. 配置核对顺序
 

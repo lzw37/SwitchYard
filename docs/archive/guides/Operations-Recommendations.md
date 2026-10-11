@@ -1,4 +1,8 @@
+> **历史归档。** 原路径：`doc/Operations-Recommendations.md`。[当前中文手册](../../zh-CN/08-deployment-operations.md) · [English](../../en/08-deployment-operations.md) · [归档目录](../README.md)。下文保留历史操作、实现和验证记录，不再作为当前操作入口。
+
 # SwitchYard 运维说明
+
+> **当前版本说明（2026-10-11）：[中文手册](../../zh-CN/08-deployment-operations.md) · [English manual](../../en/08-deployment-operations.md)。** 本文原有内容完整保留；如与当前实现说明不同，以新版手册为准，旧测试记录保留其历史含义。
 
 本文区分当前行为和后续改进项。安装步骤见 [部署说明](Deploy-Instruction.md)，本地配置见 [开发与配置指南](Getting-Started.md)。
 

@@ -1,4 +1,8 @@
+> **历史归档。** 原路径：`docs/process-generation-review.zh-CN.md`。[当前中文手册](../../zh-CN/05-operation-process.md) · [English](../../en/05-operation-process.md) · [归档目录](../README.md)。下文保留历史操作、实现和验证记录，不再作为当前操作入口。
+
 # 从作业过程生成实现审阅报告
+
+> **历史审阅记录，原文保留。** 当前实现见[中文作业过程手册](../../zh-CN/05-operation-process.md)及 [English](../../en/05-operation-process.md)。本文的 Link 停留资源、SelectedTrackIDs、版本要求和测试结果属于当时状态，不代表当前实现或本次验证结果。
 
 本报告面向功能审阅，依据 2026 年 10 月 2 日当前工作区代码，重点说明如何从已保存的作业过程，批量生成目标作业计划中的列车、移动和过程约束。报告也涵盖同名的列车模板生成入口，以及取消方块拖动限制后的实际行为。
 
@@ -15,7 +19,7 @@
 
 列车模板入口调用 `POST /OperationPlan/GenerateTrainTemplateFromProcess`。每个活动转换为一条移动模板，最小时长从分钟向上取整为秒；停留活动尝试匹配已有的、只对应一条备选股道的停留进路。缺少停留进路时仍生成模板行，并返回警告。最大时长、事件时刻、次序间隔和并行关系等不能完整写入旧模板字段。
 
-依据：[实际计划生成接口](D:/SwitchYard/SwitchYard.WebApi/SwitchYard.Service/Controllers/OperationPlanFromProcessController.cs:14)、[列车模板生成接口](D:/SwitchYard/SwitchYard.WebApi/SwitchYard.Service/Controllers/OperationPlanProcessGenerationController.cs:12)、[模板字段转换](D:/SwitchYard/SwitchYard.WebApi/SwitchYard.Service/Services/OperationProcessTrainTemplateGenerator.cs:13)。
+依据：[实际计划生成接口](../../../SwitchYard.WebApi/SwitchYard.Service/Controllers/OperationPlanFromProcessController.cs#L14)、[列车模板生成接口](../../../SwitchYard.WebApi/SwitchYard.Service/Controllers/OperationPlanProcessGenerationController.cs#L12)、[模板字段转换](../../../SwitchYard.WebApi/SwitchYard.Service/Services/OperationProcessTrainTemplateGenerator.cs#L13)。
 
 ## 作业过程的数据模型
 
@@ -33,7 +37,7 @@
 
 过程中的时长、事件相对时刻和次序间隔以**分钟**为单位；排布算法和快照中的实际事件时刻以**秒**为单位。旧移动表的 `MinDuration` 是整数秒，因此写入时向上取整；完整快照和后续过程求解仍保留小数秒精度。例如，0.001 分钟在快照中对应 0.06 秒，而旧移动字段的最小时长写为 1 秒。
 
-依据：[对象模型和时间单位](D:/SwitchYard/SwitchYard.WebApi/SwitchYard.Service/Models/OperationProcessModels.cs:15)、[共享模板范围](D:/SwitchYard/SwitchYard.WebApi/SwitchYard.Service/Controllers/OperationProcessController.cs:21)、[分钟转换为旧移动整数秒](D:/SwitchYard/SwitchYard.WebApi/SwitchYard.Service/Controllers/OperationPlanFromProcessController.cs:174)。
+依据：[对象模型和时间单位](../../../SwitchYard.WebApi/SwitchYard.Service/Models/OperationProcessModels.cs#L15)、[共享模板范围](../../../SwitchYard.WebApi/SwitchYard.Service/Controllers/OperationProcessController.cs#L21)、[分钟转换为旧移动整数秒](../../../SwitchYard.WebApi/SwitchYard.Service/Controllers/OperationPlanFromProcessController.cs#L174)。
 
 ## 前端批量输入和请求
 
@@ -61,7 +65,7 @@
 
 后端同时兼容旧客户端的单过程请求：当 `Processes` 为 null 时，从顶层的 `ProcessTemplateID + Revision + TrainCount` 构造一项选择；显式传入空数组则不回退，按总数量无效处理。
 
-依据：[数量表格](D:/SwitchYard/switchyard-vue/src/capacity/OperationPlan.vue:258)、[数量与请求项构造](D:/SwitchYard/switchyard-vue/src/capacity/processPlanBatch.ts:6)、[加载和提交流程](D:/SwitchYard/switchyard-vue/src/capacity/OperationPlan.vue:6380)、[请求模型](D:/SwitchYard/SwitchYard.WebApi/SwitchYard.Service/Models/TrainProcessSnapshot.cs:17)。
+依据：[数量表格](../../../switchyard-vue/src/capacity/OperationPlan.vue#L258)、[数量与请求项构造](../../../switchyard-vue/src/capacity/processPlanBatch.ts#L6)、[加载和提交流程](../../../switchyard-vue/src/capacity/OperationPlan.vue#L6380)、[请求模型](../../../SwitchYard.WebApi/SwitchYard.Service/Models/TrainProcessSnapshot.cs#L17)。
 
 ## 后端生成和事务边界
 
@@ -91,7 +95,7 @@ flowchart TD
 
 数据库插入列车、移动和快照时，均要求恰好写入一行。正常结束前，接口读取完整计划，附加 `GeneratedTrainIDs` 和 `Warnings`，提交事务后返回。典型响应为：参数或不可行排布返回 400，范围或模板不存在返回 404，源版本变化返回 409，非所有者且非管理员返回 403，数据库异常返回 500。
 
-依据：[主接口及事务](D:/SwitchYard/SwitchYard.WebApi/SwitchYard.Service/Controllers/OperationPlanFromProcessController.cs:14)、[权限检查](D:/SwitchYard/SwitchYard.WebApi/SwitchYard.Service/Controllers/OperationPlanProcessGenerationController.cs:88)、[模板读取和行锁](D:/SwitchYard/SwitchYard.WebApi/SwitchYard.Service/Controllers/OperationProcessController.cs:197)、[模板迁移](D:/SwitchYard/SwitchYard.WebApi/SwitchYard.Service/Services/SchemeTemplateStore.cs:17)。
+依据：[主接口及事务](../../../SwitchYard.WebApi/SwitchYard.Service/Controllers/OperationPlanFromProcessController.cs#L14)、[权限检查](../../../SwitchYard.WebApi/SwitchYard.Service/Controllers/OperationPlanProcessGenerationController.cs#L88)、[模板读取和行锁](../../../SwitchYard.WebApi/SwitchYard.Service/Controllers/OperationProcessController.cs#L197)、[模板迁移](../../../SwitchYard.WebApi/SwitchYard.Service/Services/SchemeTemplateStore.cs#L17)。
 
 ## 初始时间排布算法
 
@@ -137,7 +141,7 @@ i 从 0 开始
 
 **批量中的每个过程分别使用同一个 `[S, E]`。** 上述公式中的 `N × A` 仅属于当前过程，并非所有过程的总活动数。两个过程的第一列都可能从 08:00 开始；生成阶段也不检查与计划中已有列车的占用冲突。
 
-依据：[基准定位和事件图](D:/SwitchYard/SwitchYard.WebApi/SwitchYard.Service/Services/OperationProcessPlanScheduler.cs:26)、[稳定拓扑排序](D:/SwitchYard/SwitchYard.WebApi/SwitchYard.Service/Services/OperationProcessPlanScheduler.cs:153)、[差分图计算](D:/SwitchYard/SwitchYard.WebApi/SwitchYard.Service/Services/OperationProcessPlanScheduler.cs:263)、[排布结果校验](D:/SwitchYard/SwitchYard.WebApi/SwitchYard.Service/Services/OperationProcessPlanScheduler.cs:224)。
+依据：[基准定位和事件图](../../../SwitchYard.WebApi/SwitchYard.Service/Services/OperationProcessPlanScheduler.cs#L26)、[稳定拓扑排序](../../../SwitchYard.WebApi/SwitchYard.Service/Services/OperationProcessPlanScheduler.cs#L153)、[差分图计算](../../../SwitchYard.WebApi/SwitchYard.Service/Services/OperationProcessPlanScheduler.cs#L263)、[排布结果校验](../../../SwitchYard.WebApi/SwitchYard.Service/Services/OperationProcessPlanScheduler.cs#L224)。
 
 ## 进路和停留股道的选择
 
@@ -149,7 +153,7 @@ i 从 0 开始
 
 实际计划生成停留活动时，选中股道写入快照的 `SelectedTrackIDs`，该移动的 `Route` 和 `RouteIDList` 保持为空。它不依赖进路设计页面中自动生成的停留进路。后续能力输入按 Link 与 Cell 的关联创建临时停留资源，该资源仅存在于求解输入中，不写入站场进路表；找不到关联轨道电路时无法求解。
 
-依据：[候选筛选](D:/SwitchYard/SwitchYard.WebApi/SwitchYard.Service/Services/OperationProcessPlanScheduler.cs:174)、[资源轮换和共享事件搜索](D:/SwitchYard/SwitchYard.WebApi/SwitchYard.Service/Services/OperationProcessPlanScheduler.cs:94)、[共同物理位置](D:/SwitchYard/SwitchYard.WebApi/SwitchYard.Service/Services/OperationProcessResourceLocations.cs:10)、[求解内部停留资源](D:/SwitchYard/SwitchYard.WebApi/SwitchYard.Service/Services/StationCapacityProcessInputBuilder.cs:141)。
+依据：[候选筛选](../../../SwitchYard.WebApi/SwitchYard.Service/Services/OperationProcessPlanScheduler.cs#L174)、[资源轮换和共享事件搜索](../../../SwitchYard.WebApi/SwitchYard.Service/Services/OperationProcessPlanScheduler.cs#L94)、[共同物理位置](../../../SwitchYard.WebApi/SwitchYard.Service/Services/OperationProcessResourceLocations.cs#L10)、[求解内部停留资源](../../../SwitchYard.WebApi/SwitchYard.Service/Services/StationCapacityProcessInputBuilder.cs#L141)。
 
 ## 生成结果如何保存
 
@@ -165,7 +169,7 @@ i 从 0 开始
 
 `GetTrainOperationPlan` 返回普通列车、移动及 `ProcessConstraints` 快照。删除整列车会清理关联移动和快照；计划复制、改 ID、删除及旧自动生成入口重建也维护快照。共享模板库不随单个计划删除。复制或改 ID 后，读取快照时使用数据库行键修正执行归属。
 
-依据：[写入列车及移动](D:/SwitchYard/SwitchYard.WebApi/SwitchYard.Service/Controllers/OperationPlanFromProcessController.cs:90)、[快照字段](D:/SwitchYard/SwitchYard.WebApi/SwitchYard.Service/Models/TrainProcessSnapshot.cs:4)、[快照持久化](D:/SwitchYard/SwitchYard.WebApi/SwitchYard.Service/Services/TrainProcessSnapshotStore.cs:13)、[计划读取快照](D:/SwitchYard/SwitchYard.WebApi/SwitchYard.Service/Controllers/OperationPlanController.cs:2539)。
+依据：[写入列车及移动](../../../SwitchYard.WebApi/SwitchYard.Service/Controllers/OperationPlanFromProcessController.cs#L90)、[快照字段](../../../SwitchYard.WebApi/SwitchYard.Service/Models/TrainProcessSnapshot.cs#L4)、[快照持久化](../../../SwitchYard.WebApi/SwitchYard.Service/Services/TrainProcessSnapshotStore.cs#L13)、[计划读取快照](../../../SwitchYard.WebApi/SwitchYard.Service/Controllers/OperationPlanController.cs#L2539)。
 
 ## 与后续能力求解的衔接
 
@@ -175,7 +179,7 @@ i 从 0 开始
 
 保存求解结果为饱和计划时，会校验完整事件时刻、活动映射和资源衔接，并将求解后的事件时刻、停留股道写入新计划快照。因此初始生成、能力求解、保存饱和计划是三个不同处理阶段。
 
-依据：[过程输入恢复](D:/SwitchYard/SwitchYard.WebApi/SwitchYard.Service/Services/StationCapacityProcessInputBuilder.cs:13)、[代理版本检查](D:/SwitchYard/SwitchYard.WebApi/SwitchYard.Service/Services/CapacityAgentRegistry.cs:138)、[代理中的事件约束](D:/SwitchYard/SwitchYard.WebApi/SwitchYard.CapacityAgent/StationCapacityModel.cs:374)、[求解快照保存](D:/SwitchYard/SwitchYard.WebApi/SwitchYard.Service/Services/SaturatedOperationPlanService.cs:155)。
+依据：[过程输入恢复](../../../SwitchYard.WebApi/SwitchYard.Service/Services/StationCapacityProcessInputBuilder.cs#L13)、[代理版本检查](../../../SwitchYard.WebApi/SwitchYard.Service/Services/CapacityAgentRegistry.cs#L138)、[代理中的事件约束](../../../SwitchYard.WebApi/SwitchYard.CapacityAgent/StationCapacityModel.cs#L374)、[求解快照保存](../../../SwitchYard.WebApi/SwitchYard.Service/Services/SaturatedOperationPlanService.cs#L155)。
 
 ## 取消拖动限制后的当前行为
 
@@ -203,7 +207,7 @@ endOccupationShift   = round((方块新终点分钟 - 移动终点分钟) × 60)
 
 当前前后端仍限制过程列车单独新增、删除移动及调整移动顺序。允许编辑现有移动，并不等同于解除所有结构限制。
 
-依据：[图表拖动](D:/SwitchYard/switchyard-vue/src/capacity/OperationPlan.vue:4899)、[拖动保存](D:/SwitchYard/switchyard-vue/src/capacity/OperationPlan.vue:4987)、[后端编辑](D:/SwitchYard/SwitchYard.WebApi/SwitchYard.Service/Controllers/OperationPlanController.cs:1199)、[快照覆盖移动输入](D:/SwitchYard/SwitchYard.WebApi/SwitchYard.Service/Services/StationCapacityProcessInputBuilder.cs:65)、[占用偏移参与求解](D:/SwitchYard/SwitchYard.WebApi/SwitchYard.CapacityAgent/StationCapacityModel.cs:475)、[抽屉读取事件快照](D:/SwitchYard/switchyard-vue/src/capacity/OperationPlan.vue:318)。
+依据：[图表拖动](../../../switchyard-vue/src/capacity/OperationPlan.vue#L4899)、[拖动保存](../../../switchyard-vue/src/capacity/OperationPlan.vue#L4987)、[后端编辑](../../../SwitchYard.WebApi/SwitchYard.Service/Controllers/OperationPlanController.cs#L1199)、[快照覆盖移动输入](../../../SwitchYard.WebApi/SwitchYard.Service/Services/StationCapacityProcessInputBuilder.cs#L65)、[占用偏移参与求解](../../../SwitchYard.WebApi/SwitchYard.CapacityAgent/StationCapacityModel.cs#L475)、[抽屉读取事件快照](../../../switchyard-vue/src/capacity/OperationPlan.vue#L318)。
 
 ## 实现边界和审阅事项
 
@@ -217,7 +221,7 @@ endOccupationShift   = round((方块新终点分钟 - 移动终点分钟) × 60)
 | 停留方块显示 | 实际停留移动的 Route 为空；作业计划图的方块构建遇到空进路直接跳过 | 是否要求停留活动独立显示为可编辑方块 |
 | 重复提交 | 前端阻止进行中的重复点击；接口没有批次幂等键，重新提交会追加新列车 | 响应丢失后重试，是否应识别已成功的同一批次 |
 
-停留显示问题来自当前 Gantt 方块构建逻辑，不表示停留活动没有保存或没有参与过程能力求解。它也不会因为站场中新增了同名停留进路而自动建立移动关联。依据：[作业计划图方块构建](D:/SwitchYard/switchyard-vue/src/capacity/OperationPlan.vue:2727)。
+停留显示问题来自当前 Gantt 方块构建逻辑，不表示停留活动没有保存或没有参与过程能力求解。它也不会因为站场中新增了同名停留进路而自动建立移动关联。依据：[作业计划图方块构建](../../../switchyard-vue/src/capacity/OperationPlan.vue#L2727)。
 
 重复提交的结论是对接口流程的代码推断：请求没有批次标识，每次成功都重新生成列车 ID。若服务端已提交但客户端未收到响应，再次发送相同请求可能产生另一批列车。当前版本检查用于防止使用过期源过程，不用于消除重复生成。
 
@@ -233,6 +237,6 @@ endOccupationShift   = round((方块新终点分钟 - 移动终点分钟) × 60)
 
 后端测试通过上轮按当前实现编译的测试程序执行，使用随机本机 HTTP 端口、临时 SQLite 和测试身份验证。本次未启用 `SWITCHYARD_PROCESS_TEST_WORKER`，因此没有实际启动 CapacityAgent 求解器；真实 Worker 的求解及饱和计划回归属于可选测试。MySQL 分支经过代码审阅，本次未连接 MySQL 执行。
 
-相关测试：[批量输入测试](D:/SwitchYard/switchyard-vue/checks/processPlanBatch.test.mjs:1)、[图表交互测试](D:/SwitchYard/switchyard-vue/checks/operationPlanChart.test.mjs:1)、[实际过程生成集成测试](D:/SwitchYard/SwitchYard.WebApi/SwitchYard.OperationProcess.Tests/Program.cs:1192)、[最早事件测试](D:/SwitchYard/SwitchYard.WebApi/SwitchYard.OperationProcess.Tests/Program.cs:1389)、[多过程批量测试](D:/SwitchYard/SwitchYard.WebApi/SwitchYard.OperationProcess.Tests/Program.cs:1443)。
+相关测试：批量输入测试（历史资源未随仓库提供 / historical resource not shipped: `D:/SwitchYard/switchyard-vue/checks/processPlanBatch.test.mjs:1`）、图表交互测试（历史资源未随仓库提供 / historical resource not shipped: `D:/SwitchYard/switchyard-vue/checks/operationPlanChart.test.mjs:1`）、实际过程生成集成测试（历史资源未随仓库提供 / historical resource not shipped: `D:/SwitchYard/SwitchYard.WebApi/SwitchYard.OperationProcess.Tests/Program.cs:1192`）、最早事件测试（历史资源未随仓库提供 / historical resource not shipped: `D:/SwitchYard/SwitchYard.WebApi/SwitchYard.OperationProcess.Tests/Program.cs:1389`）、多过程批量测试（历史资源未随仓库提供 / historical resource not shipped: `D:/SwitchYard/SwitchYard.WebApi/SwitchYard.OperationProcess.Tests/Program.cs:1443`）。
 
 建议优先审阅“多过程是否统一分布”“手工调整后的求解基准”“停留活动是否独立显示”三项。这三项决定生成结果及后续调整是否符合预期业务语义。
