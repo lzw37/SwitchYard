@@ -23,7 +23,7 @@ public partial class OperationPlanController
             if (request is null || new[] { scope.InstanceID, scope.StationSchemeID, scope.OperationPlanID }.Any(id => id.Length is 0 or > 50))
                 return BadRequest(new { message = "请提供有效的实例、站场方案、作业计划、已保存过程 id 和正整数 revision。" });
             var selections = request.Processes ?? new List<ProcessPlanGenerationItem> { new() {
-                ProcessTemplateID = request.ProcessTemplateID, Revision = request.Revision, TrainCount = request.TrainCount
+                ProcessTemplateID = request.ProcessTemplateID, Revision = request.Revision, TrainCount = request.TrainCount, CalculationParameterSetID = request.CalculationParameterSetID
             } };
             if (selections.Any(item => item is null || item.TrainCount is < 0 or > 1000))
                 return BadRequest(new { message = "每个作业过程的列车数量必须为 0–1000。" });
@@ -89,9 +89,10 @@ public partial class OperationPlanController
                     var train = new TrainRow {
                         InstanceID = scope.InstanceID, StationSchemeID = scope.StationSchemeID, OperationPlanID = scope.OperationPlanID,
                         ID = trainID, TrainTemplateID = "", TrainNumber = (nextTrainNumber++).ToString(CultureInfo.InvariantCulture),
-                        Name = trainName, TrainType = "", IsFixedOperation = 0
+                        Name = trainName, TrainType = "", CalculationParameterSetID = selection.CalculationParameterSetID ?? request.CalculationParameterSetID, IsFixedOperation = 0
                     };
                     InsertProcessPlanTrain(db, train);
+                    var occupations = new MovementCellOccupationStore(db, scope.InstanceID, scope.StationSchemeID, scope.OperationPlanID, train);
                     var snapshot = new TrainProcessSnapshot {
                         InstanceID = scope.InstanceID, StationSchemeID = scope.StationSchemeID, OperationPlanID = scope.OperationPlanID,
                         TrainID = trainID, SourceTemplateID = source.Id, SourceRevision = source.Revision, SourceName = source.Name,
@@ -112,7 +113,7 @@ public partial class OperationPlanController
                             EarliestStartTime = OperationProcessPlanScheduler.FormatTime(schedule.EventTimes[activity.StartEvent]),
                             LatestEndTime = OperationProcessPlanScheduler.FormatTime(schedule.EventTimes[activity.EndEvent]),
                             Route = schedule.SelectedRouteIDs.GetValueOrDefault(activity.Id, ""), Tag = "", SortOrder = sortOrder++
-                        });
+                        }, occupations);
                     }
                     TrainProcessSnapshotStore.Insert(db, scope, snapshot);
                     generatedTrainIDs.Add(trainID);
@@ -145,19 +146,21 @@ public partial class OperationPlanController
 
     private static void InsertProcessPlanTrain(DBConnector db, TrainRow train)
     {
+        CalculationParameterSets.ResolveTrain(db, train);
         var inserted = db.ExecuteNonQuery($@"INSERT INTO {QuoteIdentifier("train")}
-            (InstanceID, StationSchemeID, OperationPlanID, {QuoteIdentifier("ID")}, TrainTemplateID, TrainNumber, Name, TrainType, IsFixedOperation)
-            VALUES (@InstanceID, @StationSchemeID, @OperationPlanID, @ID, @TrainTemplateID, @TrainNumber, @Name, @TrainType, @IsFixedOperation)", train);
+            (InstanceID, StationSchemeID, OperationPlanID, {QuoteIdentifier("ID")}, TrainTemplateID, TrainNumber, Name, TrainType, CalculationParameterSetID, IsFixedOperation)
+            VALUES (@InstanceID, @StationSchemeID, @OperationPlanID, @ID, @TrainTemplateID, @TrainNumber, @Name, @TrainType, @CalculationParameterSetID, @IsFixedOperation)", train);
         if (inserted != 1) throw new InvalidOperationException("Expected exactly one process train to be inserted.");
     }
 
-    private static void InsertProcessPlanMovement(DBConnector db, MovementRow movement)
+    private static void InsertProcessPlanMovement(DBConnector db, MovementRow movement, MovementCellOccupationStore occupations)
     {
+        occupations.Prepare(movement);
         var inserted = db.ExecuteNonQuery($@"INSERT INTO {QuoteIdentifier("movement")}
             (InstanceID, StationSchemeID, OperationPlanID, TrainID, TrainTemplateID, MovementID, Name, RouteIDList,
-             MinDuration, EarliestStartTime, LatestEndTime, {QuoteIdentifier("Route")}, Tag, SortOrder)
+             MinDuration, EarliestStartTime, LatestEndTime, {QuoteIdentifier("Route")}, Tag, SortOrder, CellOccupationsJson)
             VALUES (@InstanceID, @StationSchemeID, @OperationPlanID, @TrainID, @TrainTemplateID, @MovementID, @Name, @RouteIDList,
-             @MinDuration, @EarliestStartTime, @LatestEndTime, @Route, @Tag, @SortOrder)", movement);
+             @MinDuration, @EarliestStartTime, @LatestEndTime, @Route, @Tag, @SortOrder, @CellOccupationsJson)", movement);
         if (inserted != 1) throw new InvalidOperationException("Expected exactly one process movement to be inserted.");
     }
 

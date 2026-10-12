@@ -49,6 +49,7 @@ public sealed class LegacyStationLayoutRepository : IStationLayoutRepository
         "stationroute",
         "stationrouteend",
         "stationroutetime",
+        "calculationparameterset",
         "cell",
         "annotation"
     ];
@@ -175,6 +176,7 @@ public sealed class LegacyStationLayoutRepository : IStationLayoutRepository
                     scheme.Name,
                     GridSettings = DefaultGridSettings
                 });
+            CalculationParameterSets.EnsureDefault(database, scheme.ScopeId, scheme.SchemeId);
             database.Commit();
             return Task.FromResult(true);
         }
@@ -265,6 +267,7 @@ public sealed class LegacyStationLayoutRepository : IStationLayoutRepository
                 }
             }
             cancellationToken.ThrowIfCancellationRequested();
+            CalculationParameterSets.EnsureDefault(database, scopeId, targetSchemeId);
             database.Commit();
             return Task.FromResult(true);
         }
@@ -569,6 +572,7 @@ public sealed class LegacyStationLayoutRepository : IStationLayoutRepository
                 new { scopeId, schemeId }) ?? []).Count > 0;
         if (exists)
         {
+            CalculationParameterSets.EnsureDefault(database, scopeId, schemeId);
             return;
         }
 
@@ -584,6 +588,7 @@ public sealed class LegacyStationLayoutRepository : IStationLayoutRepository
                     : schemeId,
                 gridSettings = DefaultGridSettings
             });
+        CalculationParameterSets.EnsureDefault(database, scopeId, schemeId);
     }
 
     private sealed class MutableScheme

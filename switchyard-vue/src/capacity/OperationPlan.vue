@@ -224,6 +224,19 @@
             </template>
         </el-dialog>
 
+        <el-dialog v-model="trainGenerationDialogVisible" :title="t('calculationParameterSets.generationTitle')" width="min(760px, 94vw)" :close-on-click-modal="false" :show-close="!generatingTrainOperationPlan" :close-on-press-escape="!generatingTrainOperationPlan">
+            <p>{{ t('calculationParameterSets.fallbackHelp') }}</p>
+            <el-alert v-if="parameterSetLoadError" :title="t('calculationParameterSets.failed')" type="error" :closable="false" />
+            <el-table :data="trainTemplates.filter(row => !row.isDraft && (row.number || 0) > 0)" size="small" max-height="400">
+                <el-table-column prop="name" :label="t('operationPlan.train.fromProcess.sourceLabel')" min-width="180" />
+                <el-table-column prop="number" :label="t('operationPlan.trainOperationPlan.fromProcess.trainCount')" width="100" />
+                <el-table-column :label="t('calculationParameterSets.title')" min-width="240">
+                    <template #default="{ row }"><CalculationParameterSetSelect v-model="templateParameterSetIDs[row.trainTemplateID]" :sets="calculationParameterSets" :disabled="generatingTrainOperationPlan || loadingParameterSets" /></template>
+                </el-table-column>
+            </el-table>
+            <template #footer><el-button :disabled="generatingTrainOperationPlan" @click="trainGenerationDialogVisible = false">{{ t('calculationParameterSets.cancel') }}</el-button><el-button type="primary" :loading="generatingTrainOperationPlan" :disabled="loadingParameterSets || !!parameterSetLoadError" @click="generateTrainOperationPlan">{{ t('calculationParameterSets.generate') }}</el-button></template>
+        </el-dialog>
+
         <el-dialog v-model="processPlanDialogVisible" :title="t('operationPlan.trainOperationPlan.fromProcess.title')" width="min(900px, 94vw)" :close-on-click-modal="false" :close-on-press-escape="!generatingPlanFromProcess" :show-close="!generatingPlanFromProcess">
             <div class="operation-process-generation-dialog">
                 <el-alert :title="t('operationPlan.trainOperationPlan.fromProcess.appendHint')" type="info" show-icon :closable="false" />
@@ -241,6 +254,9 @@
                             <template #default="{ row }">
                                 <el-input-number v-model="row.trainCount" :min="0" :max="1000" :precision="0" controls-position="right" :aria-label="`${row.name} — ${t('operationPlan.trainOperationPlan.fromProcess.trainCount')}`" />
                             </template>
+                        </el-table-column>
+                        <el-table-column :label="t('calculationParameterSets.title')" min-width="220">
+                            <template #default="{ row }"><CalculationParameterSetSelect v-model="row.calculationParameterSetID" :sets="calculationParameterSets" :disabled="generatingPlanFromProcess || loadingParameterSets" /></template>
                         </el-table-column>
                     </el-table>
                     <p class="operation-process-generation-help operation-process-plan-summary">{{ t('operationPlan.trainOperationPlan.fromProcess.batchSummary', { processes: processPlanSources.length, trains: processPlanTrainCount }) }}</p>
@@ -820,7 +836,7 @@
                                 type="primary"
                                 :loading="generatingTrainOperationPlan"
                                 :disabled="!canGenerateTrainOperationPlan"
-                                @click="generateTrainOperationPlan" :label="t('operationPlan.trainOperationPlan.actions.autoGenerate')" />
+                                @click="openTrainGenerationDialog" :label="t('operationPlan.trainOperationPlan.actions.autoGenerate')" />
                             <ActionButton :icon="MagicStick" :disabled="!canGeneratePlanFromProcess" :loading="generatingPlanFromProcess" @click="openProcessPlanDialog" :label="t('operationPlan.train.fromProcess.action')" />
                             <ActionButton :icon="UploadFilled" :disabled="!canImportCellOccupancy" :loading="cellOccupancyImportBusy || refreshingCellOccupancyImport" @click="cellOccupancyImportVisible = true" :label="t('operationPlan.cellOccupancyImport.action')" />
                         </div>
@@ -917,6 +933,12 @@
                                             clearable
                                         />
                                         <span v-else>{{ row.trainType }}</span>
+                                    </template>
+                                </el-table-column>
+                                <el-table-column :label="t('calculationParameterSets.title')" min-width="200">
+                                    <template #default="{ row }">
+                                        <CalculationParameterSetSelect v-if="isTrainOperationPlanTrainInlineEditing(row)" v-model="trainOperationPlanTrainForm.calculationParameterSetID" :sets="calculationParameterSets" :disabled="loadingParameterSets" />
+                                        <span v-else>{{ parameterSetLabel(row.calculationParameterSetID) }}</span>
                                     </template>
                                 </el-table-column>
                                 <el-table-column
@@ -1298,7 +1320,7 @@
                         v-model:train="stationPlanCreationTrain"
                         :nodes="stationPlanNodeOptions.map(node => ({ id: node.sourceID, label: node.label }))"
                         :routes="stationPlanEditRoutes"
-                        :train-types="stationPlanCreationTrainTypes"
+                        :train-types="stationPlanCreationTrainTypes" :parameter-sets="calculationParameterSets"
                         :saving="stationPlanCreationSaving"
                         @repick="repickStationPlanEndpoint"
                         @confirm="confirmStationPlanCreation"
@@ -1308,7 +1330,7 @@
                         :model-value="stationProcessTrainVisible"
                         :sources="stationProcessTrainSources" :sourceID="stationProcessTrainSourceID"
                         :form="stationProcessTrainForm" :catalog="stationProcessTrainCatalog"
-                        :selections="stationProcessTrainSelections" :train-types="stationPlanCreationTrainTypes"
+                        :selections="stationProcessTrainSelections" :train-types="stationPlanCreationTrainTypes" :parameter-sets="calculationParameterSets"
                         :loading="stationProcessTrainLoading" :load-error="stationProcessTrainLoadError"
                         :previewing="stationProcessTrainPreviewing" :saving="stationProcessTrainSaving"
                         :preview="stationProcessTrainPreview" :preview-fresh="stationProcessTrainPreviewFresh" :error="stationProcessTrainError"
@@ -2114,6 +2136,8 @@ import { ArrowDown, ArrowRight, ArrowUp, Check, Close, CopyDocument, Delete, Dow
 import axios from '@/utils/axios'
 import { useCapacityStore } from '@/stores/capacity'
 import { useStationSchemeSelection } from './useStationSchemeSelection'
+import { useCalculationParameterSets } from './calculationParameterSets'
+import CalculationParameterSetSelect from './components/CalculationParameterSetSelect.vue'
 import OperationPlanSelector from './components/OperationPlanSelector.vue'
 import ResourceOccupancyCharts from './components/ResourceOccupancyCharts.vue'
 import StationLayoutEditor from './components/StationLayoutEditor.vue'
@@ -2255,6 +2279,7 @@ interface TrainOperationPlanTrain {
     trainTemplateID: string
     trainNumber: string
     name: string
+    calculationParameterSetID: string
     trainType: string
     isFixedOperation: boolean
     isDraft?: boolean
@@ -2500,6 +2525,17 @@ const defaultOperationPlanID = 'default'
 const operationOccupationTimeDefaultSubTableCount = 3
 const capacityStore = useCapacityStore()
 const currentStationSchemeId = useStationSchemeSelection(() => props.selectedInstanceId)
+const { sets: calculationParameterSets, loading: loadingParameterSets, error: parameterSetLoadError, reload: reloadParameterSets } = useCalculationParameterSets(() => props.selectedInstanceId, () => currentStationSchemeId.value)
+const trainGenerationDialogVisible = ref(false)
+const templateParameterSetIDs = ref<Record<string, string>>({})
+watch([() => props.selectedInstanceId, currentStationSchemeId], () => {
+    trainGenerationDialogVisible.value = false
+    templateParameterSetIDs.value = {}
+})
+function parameterSetLabel(id: string) {
+    return calculationParameterSets.value.find(set => set.id === id)?.name || ''
+}
+function openTrainGenerationDialog() { trainGenerationDialogVisible.value = true; void reloadParameterSets() }
 const currentOperationPlanId = ref('')
 const activeOperationPlanWorkspace = ref<OperationPlanWorkspace>('templates')
 const activeTemplateView = ref<OperationTemplateView>('trainTemplate')
@@ -2575,7 +2611,7 @@ let stationPlanCreationVersion = 0
 const stationPlanPickMode = ref(false)
 const stationPlanPickedPoints = ref<StationPlanDraftPoint[]>([])
 const stationPlanCreationMovements = ref<StationPlanDraftMovement[]>([])
-const stationPlanCreationTrain = ref({ id: '', trainNumber: '', name: '', trainType: '' })
+const stationPlanCreationTrain = ref({ id: '', trainNumber: '', name: '', calculationParameterSetID: '', trainType: '' })
 const stationPlanRepick = ref<{ movementID: string; edge: 'start' | 'end' } | null>(null)
 const stationPlanCreationActive = computed(() => !!stationPlanCreationScope.value)
 const stationPlanCreationTrainTypes = computed(() => [...new Set(trainOperationPlanTrains.value.map(train => train.trainType).filter(Boolean))].map(id => ({ id, name: id })))
@@ -2586,7 +2622,7 @@ const stationProcessTrainSources = ref<ProcessTemplate[]>([])
 const stationProcessTrainSourceID = ref('')
 const stationProcessTrainCatalog = ref<ProcessCatalog>({ nodes: [], routes: [] })
 const stationProcessTrainSelections = ref<ProcessTrainActivitySelection[]>([])
-const stationProcessTrainForm = ref<ProcessTrainCreationForm>({ id: '', trainNumber: '', name: '', trainType: '', originTime: '00:00', endTime: '24:00' })
+const stationProcessTrainForm = ref<ProcessTrainCreationForm>({ id: '', trainNumber: '', name: '', calculationParameterSetID: '', trainType: '', originTime: '00:00', endTime: '24:00' })
 const stationProcessTrainLoading = ref(false)
 const stationProcessTrainLoadError = ref('')
 const stationProcessTrainError = ref('')
@@ -2602,7 +2638,7 @@ const selectedStationProcessTrainSource = computed(() => stationProcessTrainSour
 const stationProcessTrainRequest = computed(() => {
     const source = selectedStationProcessTrainSource.value, form = stationProcessTrainForm.value
     return source ? { ...getOperationPlanScope(), processTemplateID: source.id, revision: source.revision,
-        train: { id: form.id, trainNumber: form.trainNumber.trim(), name: form.name.trim(), trainType: form.trainType.trim() },
+        train: { id: form.id, trainNumber: form.trainNumber.trim(), name: form.name.trim(), trainType: form.trainType.trim(), calculationParameterSetID: form.calculationParameterSetID },
         originTime: form.originTime.trim(), endTime: form.endTime.trim(),
         selections: stationProcessTrainSelections.value.map(selection => ({ ...selection })),
     } : null
@@ -4084,6 +4120,7 @@ function createEmptyTrainOperationPlanTrain(): TrainOperationPlanTrain {
         trainNumber: '',
         name: '',
         trainType: '',
+        calculationParameterSetID: '',
         isFixedOperation: false,
     }
 }
@@ -4331,6 +4368,7 @@ function normalizeTrainOperationPlanTrain(item: any): TrainOperationPlanTrain | 
         trainNumber: readString(item, 'trainNumber', 'TrainNumber').trim(),
         name: readString(item, 'name', 'Name').trim(),
         trainType: readString(item, 'trainType', 'TrainType').trim(),
+        calculationParameterSetID: readString(item, 'calculationParameterSetID', 'CalculationParameterSetID').trim(),
         isFixedOperation: readBoolean(item, false, 'isFixedOperation', 'IsFixedOperation'),
     }
 }
@@ -5503,13 +5541,13 @@ async function loadOperationAnalysisSnapshotFallback(
     }
 }
 
-function getOperationPlanChartRouteTimeKey(routeID: string, trainTypeID: string) {
-    return `${routeID.trim()}::${trainTypeID.trim()}`
+function getOperationPlanChartRouteTimeKey(routeID: string, trainTypeID: string, parameterSetID = '') {
+    return JSON.stringify([routeID.trim(), trainTypeID.trim(), parameterSetID])
 }
 
-function getOperationPlanChartRouteTimes(routeID: string, trainTypeID: string) {
-    const specificKey = getOperationPlanChartRouteTimeKey(routeID, trainTypeID)
-    const defaultKey = getOperationPlanChartRouteTimeKey(routeID, '')
+function getOperationPlanChartRouteTimes(routeID: string, trainTypeID: string, parameterSetID = '') {
+    const specificKey = getOperationPlanChartRouteTimeKey(routeID, trainTypeID, parameterSetID)
+    const defaultKey = getOperationPlanChartRouteTimeKey(routeID, '', parameterSetID)
     const specificRows = stationRouteTimesByKey.value[specificKey] || []
     if (specificRows.length > 0) return specificRows
     return stationRouteTimesByKey.value[defaultKey] || []
@@ -7095,6 +7133,7 @@ async function loadStationRouteEnds() {
 }
 
 function openProcessPlanDialog() {
+    void reloadParameterSets()
     if (!canGeneratePlanFromProcess.value) return
     processPlanSources.value = []
     processPlanStartTime.value = trainOperationPlanStartTime.value
@@ -7463,17 +7502,18 @@ async function loadTrainOperationPlan() {
 }
 
 function getOperationPlanChartRouteTimePairs() {
-    const pairs = new Map<string, { routeID: string; trainTypeID: string }>()
+    const pairs = new Map<string, { routeID: string; trainTypeID: string; calculationParameterSetID: string }>()
     trainOperationPlanMovements.value.forEach((movement) => {
         const routeID = resolveStationPlanMovementRouteID(movement.route, movement.routeIDList)
         if (!routeID) return
 
+        const calculationParameterSetID = trainOperationPlanTrainMap.value.get(movement.trainID)?.calculationParameterSetID || ''
         const trainTypeID = trainOperationPlanTrainMap.value.get(movement.trainID)?.trainType?.trim() || ''
-        const defaultKey = getOperationPlanChartRouteTimeKey(routeID, '')
-        pairs.set(defaultKey, { routeID, trainTypeID: '' })
+        const defaultKey = getOperationPlanChartRouteTimeKey(routeID, '', calculationParameterSetID)
+        pairs.set(defaultKey, { routeID, trainTypeID: '', calculationParameterSetID })
         if (trainTypeID) {
-            const specificKey = getOperationPlanChartRouteTimeKey(routeID, trainTypeID)
-            pairs.set(specificKey, { routeID, trainTypeID })
+            const specificKey = getOperationPlanChartRouteTimeKey(routeID, trainTypeID, calculationParameterSetID)
+            pairs.set(specificKey, { routeID, trainTypeID, calculationParameterSetID })
         }
     })
     return Array.from(pairs.values())
@@ -7508,7 +7548,7 @@ async function loadOperationPlanChartResources(instanceID: string, stationScheme
         const rows = readArray(pair, 'rows', 'Rows').map(normalizeStationRouteTimeOption)
             .filter((row): row is StationRouteTimeOption => row !== null)
             .map(row => ({ ...row, routeID: row.routeID || routeID, trainTypeID: row.trainTypeID || trainTypeID }))
-        return [getOperationPlanChartRouteTimeKey(routeID, trainTypeID), rows]
+        return [getOperationPlanChartRouteTimeKey(routeID, trainTypeID, readString(pair, 'calculationParameterSetID', 'CalculationParameterSetID')), rows]
     }))
 }
 
@@ -7693,7 +7733,7 @@ async function openStationProcessTrain() {
     if (!canOpenStationProcessTrain.value) return
     resetStationProcessTrain()
     stationProcessTrainScope.value = operationPlanScopeKey.value
-    stationProcessTrainForm.value = { id: stationPlanDraftID(), trainNumber: '', name: '', trainType: '',
+    stationProcessTrainForm.value = { id: stationPlanDraftID(), trainNumber: '', name: '', calculationParameterSetID: '', trainType: '',
         originTime: trainOperationPlanStartTime.value || '00:00', endTime: trainOperationPlanEndTime.value || '24:00' }
     stationProcessTrainVisible.value = true
     await loadStationProcessTrainSources()
@@ -7853,7 +7893,7 @@ function resetStationPlanCreation() {
     stationPlanPickedPoints.value = []
     stationPlanCreationMovements.value = []
     stationPlanRepick.value = null
-    stationPlanCreationTrain.value = { id: '', trainNumber: '', name: '', trainType: '' }
+    stationPlanCreationTrain.value = { id: '', trainNumber: '', name: '', calculationParameterSetID: '', trainType: '' }
 }
 
 function stationPlanDraftID() {
@@ -8367,6 +8407,7 @@ async function generateTrainOperationPlan() {
             instanceID,
             stationSchemeID,
             operationPlanID,
+            templateParameterSetIDs: { ...templateParameterSetIDs.value },
             startTime: trainOperationPlanStartTime.value.trim(),
             endTime: trainOperationPlanEndTime.value.trim(),
         })
@@ -8378,6 +8419,7 @@ async function generateTrainOperationPlan() {
             return
         }
 
+        trainGenerationDialogVisible.value = false
         normalizeTrainOperationPlanResponse(response.data)
         if (isOperationPlanChartDataTab(activeOperationPlanTab.value)) {
             await loadOperationPlanChartData()

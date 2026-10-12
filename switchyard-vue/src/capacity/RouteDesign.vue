@@ -356,6 +356,7 @@
                                                 </span>
                                             </div>
                                             <div class="route-list-description" :title="row.description">{{ row.description || '—' }}</div>
+                                            <div class="route-list-description">{{ row.trainTypes.map((type: RouteTrainType) => t(`routeDesign.stationRoute.trainTypes.${type}`)).join(' / ') || '—' }}</div>
                                         </template>
                                     </el-table-column>
                                     <el-table-column :label="t('routeDesign.sidebar.endpoints')" width="110">
@@ -408,7 +409,9 @@
                                         </el-form-item>
                                         <el-form-item :label="t('routeDesign.stationRoute.fields.type')">
                                             <el-select
-                                                v-model="routeForm.type"
+                                                :model-value="routeForm.type"
+                                                @update:model-value="changeStationRouteType"
+                                                value-on-clear=""
                                                 filterable
                                                 allow-create
                                                 default-first-option
@@ -420,6 +423,24 @@
                                                     v-for="option in routeTypeOptions"
                                                     :key="option"
                                                     :label="getStationRouteTypeLabel(option)"
+                                                    :value="option"
+                                                />
+                                            </el-select>
+                                        </el-form-item>
+                                        <el-form-item :label="t('routeDesign.stationRoute.fields.trainTypes')" class="is-wide">
+                                            <el-select
+                                                v-model="routeForm.trainTypes"
+                                                multiple
+                                                clearable
+                                                :disabled="!canEditRoutes || savingRoute"
+                                                :placeholder="t('routeDesign.stationRoute.placeholders.trainTypes')"
+                                                :aria-label="t('routeDesign.stationRoute.fields.trainTypes')"
+                                                class="station-route-full-control"
+                                            >
+                                                <el-option
+                                                    v-for="option in allowedRouteTrainTypes(routeForm.type)"
+                                                    :key="option"
+                                                    :label="t(`routeDesign.stationRoute.trainTypes.${option}`)"
                                                     :value="option"
                                                 />
                                             </el-select>
@@ -942,6 +963,7 @@ import { useStationSchemeSelection } from './useStationSchemeSelection'
 import StationLayoutEditor from './components/StationLayoutEditor.vue'
 import StationLayoutViewToolbar from './components/StationLayoutViewToolbar.vue'
 import { getStationRouteHighlightColor, routeHighlightColors } from './routeColors'
+import { allowedRouteTrainTypes, readRouteTrainTypes, changeRouteTrainTypes, type RouteTrainType } from './routeTrainTypes'
 
 interface StationSchemeOption {
     id: string
@@ -963,6 +985,7 @@ interface StationRoute {
     stationSchemeID: string
     id: string
     type: string
+    trainTypes: RouteTrainType[]
     description: string
     nodeList: string
     linkList: string
@@ -1136,6 +1159,7 @@ const routeForm = ref<StationRoute>({
     stationSchemeID: '',
     id: '',
     type: '',
+    trainTypes: allowedRouteTrainTypes(''),
     description: '',
     nodeList: '',
     linkList: '',
@@ -2195,6 +2219,7 @@ function createEmptyStationRouteForm(): StationRoute {
         stationSchemeID: currentStationSchemeId.value.trim(),
         id: '',
         type: '',
+        trainTypes: allowedRouteTrainTypes(''),
         description: '',
         nodeList: '',
         linkList: '',
@@ -2218,6 +2243,7 @@ function normalizeStationRoute(item: any): StationRoute | null {
         stationSchemeID: readString(item, 'stationSchemeID', 'StationSchemeID').trim(),
         id,
         type: readString(item, 'type', 'Type').trim(),
+        trainTypes: readRouteTrainTypes(item.trainTypes ?? item.TrainTypes, readString(item, 'type', 'Type')),
         description: readString(item, 'description', 'Description').trim(),
         nodeList: readString(item, 'nodeList', 'NodeList').trim(),
         linkList: readString(item, 'linkList', 'LinkList').trim(),
@@ -2232,8 +2258,14 @@ function normalizeStationRoute(item: any): StationRoute | null {
     }
 }
 
+function changeStationRouteType(value: string | null | undefined) {
+    const type = value ?? ''
+    routeForm.value.trainTypes = changeRouteTrainTypes(routeForm.value.trainTypes, routeForm.value.type, type)
+    routeForm.value.type = type
+}
+
 function cloneStationRoute(route: StationRoute): StationRoute {
-    return { ...route }
+    return { ...route, trainTypes: [...route.trainTypes] }
 }
 
 function syncStationRouteFormScope() {
@@ -2796,6 +2828,7 @@ function applySelectedRouteCandidate() {
         ...createEmptyStationRouteForm(),
         id: routeForm.value.id || existingRouteId,
         type: routeForm.value.type,
+        trainTypes: [...routeForm.value.trainTypes],
         description: routeForm.value.description,
         startNodeID: candidate.startNodeID,
         endNodeID: candidate.endNodeID,
@@ -2819,6 +2852,7 @@ function buildStationRoutePayloadFromRoute(route: StationRoute, originalID = '')
         originalID: originalID.trim(),
         id: route.id.trim(),
         type: route.type.trim(),
+        trainTypes: JSON.stringify(route.trainTypes),
         description: route.description.trim(),
         nodeList: route.nodeList.trim(),
         linkList: route.linkList.trim(),
@@ -2949,6 +2983,7 @@ function buildAutoGeneratedStationRoute(
     return {
         ...createEmptyStationRouteForm(),
         type: routeType,
+        trainTypes: allowedRouteTrainTypes(routeType),
         description,
         startNodeID: candidate.startNodeID,
         endNodeID: candidate.endNodeID,

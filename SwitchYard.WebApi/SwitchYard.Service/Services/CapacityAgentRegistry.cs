@@ -140,7 +140,7 @@ public sealed class CapacityAgentRegistry
                  !record.Models.Any(model => string.Equals(model.Id, modelId, StringComparison.OrdinalIgnoreCase) &&
                     Version.TryParse(model.Version, out var version) && version >= requiredVersion)))
             {
-                error = $"该作业计划包含作业过程约束，需要模型版本 {minimumModelVersion} 或更新的 CapacityAgent；请更新并重新连接计算代理。";
+                error = $"该作业计划需要模型版本 {minimumModelVersion} 或更新的 CapacityAgent；请更新并重新连接计算代理。";
                 return false;
             }
 

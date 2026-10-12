@@ -925,7 +925,7 @@ namespace SwitchYard.Service.Controllers
                     normalized.StationSchemeID!,
                     normalized.OperationPlanID!,
                     normalized.StartMinutes,
-                    normalized.EndMinutes);
+                    normalized.EndMinutes, request?.CalculationParameterSetID, request?.TemplateParameterSetIDs);
 
                 dbConnector.BeginTransaction();
                 DeleteTrainOperationPlan(dbConnector, normalized.InstanceID!, normalized.StationSchemeID!, normalized.OperationPlanID!);
@@ -1018,11 +1018,12 @@ namespace SwitchYard.Service.Controllers
                 }
 
                 dbConnector.BeginTransaction();
-                var oldType = dbConnector.Query<string>(@"SELECT TrainType FROM train
+                var previousTrain = dbConnector.Query<TrainRow>(@"SELECT TrainType, CalculationParameterSetID FROM train
                     WHERE InstanceID=@InstanceID AND StationSchemeID=@StationSchemeID AND OperationPlanID=@OperationPlanID AND ID=@ID",
-                    train)?.SingleOrDefault() ?? "";
+                    train)?.SingleOrDefault();
+                if (request?.CalculationParameterSetID is null) train.CalculationParameterSetID = previousTrain?.CalculationParameterSetID;
                 UpdateTrain(dbConnector, train);
-                if (oldType != (train.TrainType ?? ""))
+                if ((previousTrain?.TrainType ?? "") != (train.TrainType ?? "") || previousTrain?.CalculationParameterSetID != train.CalculationParameterSetID)
                     MovementCellOccupationStore.RefreshTrain(dbConnector, train);
                 dbConnector.Commit();
                 return Ok(train);
@@ -1780,6 +1781,7 @@ namespace SwitchYard.Service.Controllers
                 TrainNumber = TrimToMaxLength(request?.TrainNumber ?? string.Empty, 50),
                 Name = request?.Name?.Trim() ?? string.Empty,
                 TrainType = TrimToMaxLength(request?.TrainType ?? string.Empty, 20),
+                CalculationParameterSetID = request?.CalculationParameterSetID?.Trim(),
                 IsFixedOperation = NormalizeBinaryFlag(request?.IsFixedOperation)
             }, null);
         }
@@ -2026,8 +2028,11 @@ namespace SwitchYard.Service.Controllers
             string stationSchemeID,
             string operationPlanID,
             int startMinutes,
-            int endMinutes)
+            int endMinutes,
+            string? calculationParameterSetID,
+            Dictionary<string, string>? templateParameterSetIDs)
         {
+            var parameterSets = new CalculationParameterSets(dbConnector, instanceID, stationSchemeID);
             var templates = LoadTrainTemplates(dbConnector, instanceID, stationSchemeID, operationPlanID);
             var movementTemplatesByTrainTemplate = LoadMovementTemplatesByTrainTemplate(
                 dbConnector,
@@ -2088,6 +2093,7 @@ namespace SwitchYard.Service.Controllers
                     TrainNumber = (generatedTrainSequence++).ToString(),
                     Name = TrimToMaxLength(template.Name ?? string.Empty, 50),
                     TrainType = TrimToMaxLength(template.Type ?? string.Empty, 20),
+                    CalculationParameterSetID = parameterSets.ResolveSelection(templateParameterSetIDs?.GetValueOrDefault(trainTemplateID) ?? calculationParameterSetID),
                     IsFixedOperation = NormalizeBinaryFlag(template.IsFixedOperation)
                 });
 
@@ -2537,7 +2543,7 @@ namespace SwitchYard.Service.Controllers
             string operationPlanID)
         {
             var trains = dbConnector.Query<TrainRow>(
-                $@"SELECT InstanceID, StationSchemeID, OperationPlanID, {QuoteIdentifier("ID")}, TrainTemplateID, TrainNumber, Name, TrainType, IsFixedOperation
+                $@"SELECT InstanceID, StationSchemeID, OperationPlanID, {QuoteIdentifier("ID")}, TrainTemplateID, TrainNumber, Name, TrainType, CalculationParameterSetID, IsFixedOperation
                    FROM {QuoteIdentifier("train")}
                    WHERE InstanceID = @instanceID
                      AND StationSchemeID = @stationSchemeID
@@ -3268,11 +3274,12 @@ namespace SwitchYard.Service.Controllers
         {
             foreach (var train in plan.Trains)
             {
+                CalculationParameterSets.ResolveTrain(dbConnector, train);
                 dbConnector.ExecuteNonQuery(
                     $@"INSERT INTO {QuoteIdentifier("train")} (
-                           InstanceID, StationSchemeID, OperationPlanID, {QuoteIdentifier("ID")}, TrainTemplateID, TrainNumber, Name, TrainType, IsFixedOperation)
+                           InstanceID, StationSchemeID, OperationPlanID, {QuoteIdentifier("ID")}, TrainTemplateID, TrainNumber, Name, TrainType, CalculationParameterSetID, IsFixedOperation)
                        VALUES (
-                           @InstanceID, @StationSchemeID, @OperationPlanID, @ID, @TrainTemplateID, @TrainNumber, @Name, @TrainType, @IsFixedOperation)",
+                           @InstanceID, @StationSchemeID, @OperationPlanID, @ID, @TrainTemplateID, @TrainNumber, @Name, @TrainType, @CalculationParameterSetID, @IsFixedOperation)",
                     train);
             }
 
@@ -3283,22 +3290,25 @@ namespace SwitchYard.Service.Controllers
 
         private int InsertTrain(DBConnector dbConnector, TrainRow train)
         {
+            CalculationParameterSets.ResolveTrain(dbConnector, train);
             return dbConnector.ExecuteNonQuery(
                 $@"INSERT INTO {QuoteIdentifier("train")} (
-                       InstanceID, StationSchemeID, OperationPlanID, {QuoteIdentifier("ID")}, TrainTemplateID, TrainNumber, Name, TrainType, IsFixedOperation)
+                       InstanceID, StationSchemeID, OperationPlanID, {QuoteIdentifier("ID")}, TrainTemplateID, TrainNumber, Name, TrainType, CalculationParameterSetID, IsFixedOperation)
                    VALUES (
-                       @InstanceID, @StationSchemeID, @OperationPlanID, @ID, @TrainTemplateID, @TrainNumber, @Name, @TrainType, @IsFixedOperation)",
+                       @InstanceID, @StationSchemeID, @OperationPlanID, @ID, @TrainTemplateID, @TrainNumber, @Name, @TrainType, @CalculationParameterSetID, @IsFixedOperation)",
                 train);
         }
 
         private void UpdateTrain(DBConnector dbConnector, TrainRow train)
         {
+            CalculationParameterSets.ResolveTrain(dbConnector, train);
             dbConnector.ExecuteNonQuery(
                 $@"UPDATE {QuoteIdentifier("train")}
                    SET TrainTemplateID = @TrainTemplateID,
                        TrainNumber = @TrainNumber,
                        Name = @Name,
                        TrainType = @TrainType,
+                       CalculationParameterSetID = @CalculationParameterSetID,
                        IsFixedOperation = @IsFixedOperation
                     WHERE InstanceID = @InstanceID
                       AND StationSchemeID = @StationSchemeID

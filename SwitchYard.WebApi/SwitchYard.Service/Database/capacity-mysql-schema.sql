@@ -143,6 +143,7 @@ CREATE TABLE IF NOT EXISTS `stationroute` (
     `StationSchemeID` VARCHAR(50) COLLATE utf8mb4_bin NULL,
     `ID` VARCHAR(50) COLLATE utf8mb4_bin NULL,
     `Type` VARCHAR(50) NULL,
+    `TrainTypes` TEXT NULL,
     `Description` LONGTEXT NULL,
     `NodeList` LONGTEXT NULL,
     `LinkList` LONGTEXT NULL,
@@ -157,6 +158,7 @@ CREATE TABLE IF NOT EXISTS `stationroute` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `stationroutetime` (
+    `CalculationParameterSetID` VARCHAR(50) COLLATE utf8mb4_bin NULL,
     `InstanceID` VARCHAR(50) COLLATE utf8mb4_bin NULL,
     `StationSchemeID` VARCHAR(50) COLLATE utf8mb4_bin NULL,
     `RouteID` VARCHAR(50) COLLATE utf8mb4_bin NULL,
@@ -250,6 +252,7 @@ CREATE TABLE IF NOT EXISTS `movementtemplate` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `train` (
+    `CalculationParameterSetID` VARCHAR(50) COLLATE utf8mb4_bin NULL,
     `InstanceID` VARCHAR(50) COLLATE utf8mb4_bin NULL,
     `StationSchemeID` VARCHAR(50) COLLATE utf8mb4_bin NULL,
     `OperationPlanID` VARCHAR(50) COLLATE utf8mb4_bin NULL,
@@ -401,4 +404,13 @@ CREATE TABLE IF NOT EXISTS `operationthroughputsummaryroute` (
     `CategoryID` VARCHAR(50) COLLATE utf8mb4_bin NULL,
     `RouteID` VARCHAR(50) COLLATE utf8mb4_bin NULL,
     `SortOrder` INT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `calculationparameterset` (
+    `InstanceID` VARCHAR(50) COLLATE utf8mb4_bin NOT NULL,
+    `StationSchemeID` VARCHAR(50) COLLATE utf8mb4_bin NOT NULL,
+    `ID` VARCHAR(50) COLLATE utf8mb4_bin NOT NULL,
+    `Name` VARCHAR(200) NOT NULL,
+    `IsDefault` INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (`InstanceID`, `StationSchemeID`, `ID`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

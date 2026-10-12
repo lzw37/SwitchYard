@@ -84,6 +84,7 @@ namespace SwitchYard.Service.Controllers
                             StationSchemeID = stationSchemeID,
                             ID = routeID,
                             Type = StationRouteTypes.Dwelling.ToString(),
+                            TrainTypes = StationRouteTrainTypes.DefaultJson("Dwelling"),
                             Description = BuildStationDwellingRouteDescription(link.Name!),
                             StartNodeID = startNodeID,
                             EndNodeID = endNodeID,
@@ -106,11 +107,11 @@ namespace SwitchYard.Service.Controllers
                             $@"INSERT INTO {QuoteIdentifier("stationroute")} (
                                    InstanceID, StationSchemeID, ID, {QuoteIdentifier("Type")}, Description,
                                    NodeList, LinkList, SwitchList, CellList, InterruptCellList, SignalList,
-                                   AllowanceTags, ForbiddenTags, StartNodeID, EndNodeID)
+                                   AllowanceTags, ForbiddenTags, TrainTypes, StartNodeID, EndNodeID)
                                VALUES (
                                    @InstanceID, @StationSchemeID, @ID, @Type, @Description,
                                    @NodeList, @LinkList, @SwitchList, @CellList, @InterruptCellList, @SignalList,
-                                   @AllowanceTags, @ForbiddenTags, @StartNodeID, @EndNodeID)", route);
+                                   @AllowanceTags, @ForbiddenTags, @TrainTypes, @StartNodeID, @EndNodeID)", route);
                         if (inserted != 1) throw new InvalidOperationException("Failed to insert a dwelling route.");
                         createdRoutes.Add(route);
                         existingLinkIDs.Add(linkID);

@@ -2546,6 +2546,31 @@
             "trainModelLoadFailed": "列车模型加载失败，请刷新后重试"
         }
     },
+    "calculationParameterSets": {
+        "title": "计算参数集",
+        "manage": "管理计算参数集",
+        "actions": "操作",
+        "default": "默认",
+        "useDefault": "使用默认：{name}",
+        "missing": "参数集已失效，使用默认",
+        "create": "新建参数集",
+        "copy": "复制计算参数集",
+        "rename": "重命名",
+        "makeDefault": "设为默认",
+        "delete": "删除",
+        "deleteConfirm": "删除“{name}”及其参数？引用此参数集的列车在下次生成或重算占用时将使用默认参数，已有占用时刻保留。",
+        "name": "参数集名称",
+        "copyFrom": "复制来源",
+        "copySuffix": " 副本",
+        "fallbackHelp": "列车未指定参数集或指定的参数集不存在时，使用该车站方案的默认参数集。",
+        "saved": "计算参数集已保存",
+        "failed": "计算参数集操作失败，请重试",
+        "cancel": "取消",
+        "save": "保存",
+        "refresh": "刷新",
+        "generationTitle": "选择生成列车使用的计算参数",
+        "generate": "生成作业计划"
+    },
     "calculationParameters": {
         "batchSet": {
             "button": "批量设置",
@@ -2671,6 +2696,7 @@
                 "stationSchemeID": "StationSchemeID",
                 "id": "ID",
                 "type": "进路类别",
+                "trainTypes": "列车类型",
                 "description": "进路描述",
                 "nodeList": "途经节点",
                 "linkList": "途经边",
@@ -2693,6 +2719,12 @@
                 "locomotive": "机车出入段进路",
                 "shunting": "调车进路",
                 "dwelling": "停留进路"
+            },
+            "trainTypes": {
+                "PassengerTrain": "旅客列车",
+                "FreightTrain": "货物列车",
+                "PassengerCar": "客车（车体）",
+                "FreightCar": "货车（车体）"
             },
             "actions": {
                 "add": "新增",
@@ -2725,6 +2757,7 @@
                 "rightToLeft": "右向左"
             },
             "placeholders": {
+                "trainTypes": "请选择列车类型（可多选）",
                 "autoId": "留空则自动生成",
                 "selectRouteItems": "输入名称或 ID 筛选后选择",
                 "selectRouteTags": "选择或输入标签"

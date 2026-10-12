@@ -98,7 +98,7 @@ public sealed class CellOccupancyImportBuilder
                 previousEnd = end;
                 var shifts = rows.Select(r => new CellOccupancyRouteTime
                 {
-                    CellID = mappings[r.SourceCell], StartOccupationShift = r.Start - start, EndOccupationShift = r.End - end
+                    CalculationParameterSetID = catalog.CalculationParameterSetID, CellID = mappings[r.SourceCell], StartOccupationShift = r.Start - start, EndOccupationShift = r.End - end
                 }).OrderBy(r => r.CellID, StringComparer.Ordinal).ToList();
                 var signature = key + "|" + string.Join(",", path.Links) + "|" + string.Join(",", path.Nodes)
                     + "|" + string.Join(";", shifts.Select(t => $"{t.CellID}:{t.StartOccupationShift}:{t.EndOccupationShift}"));
@@ -537,7 +537,7 @@ public sealed class CellOccupancyImportBuilder
 
         public CellOccupancyRoute MakeRoute(string id, string type, Path path, string description) => new()
         {
-            ID = id, Type = type, Description = description,
+            ID = id, Type = type, Description = description, TrainTypes = SwitchYard.Capacity.StationRouteTrainTypes.DefaultJson(type),
             NodeList = JsonSerializer.Serialize(path.Nodes), LinkList = JsonSerializer.Serialize(path.Links),
             CellList = JsonSerializer.Serialize(path.Cells), StartNodeID = path.Nodes[0], EndNodeID = path.Nodes[^1],
             SwitchList = JsonSerializer.Serialize(path.Nodes.SelectMany(n => catalog.Switches.Where(s => s.BindingNodeID == n).Select(s => s.ID)).Distinct()),

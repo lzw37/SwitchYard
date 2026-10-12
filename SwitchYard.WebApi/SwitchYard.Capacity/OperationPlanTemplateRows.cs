@@ -141,6 +141,8 @@ namespace SwitchYard.Capacity
 
     public sealed class TrainRow
     {
+        public string? CalculationParameterSetID { get; set; }
+
         public string? InstanceID { get; set; }
 
         public string? StationSchemeID { get; set; }
@@ -262,6 +264,10 @@ namespace SwitchYard.Capacity
 
     public sealed class GenerateTrainOperationPlanRequest
     {
+        public Dictionary<string, string>? TemplateParameterSetIDs { get; set; }
+
+        public string? CalculationParameterSetID { get; set; }
+
         public string? InstanceID { get; set; }
 
         public string? StationSchemeID { get; set; }

@@ -67,7 +67,7 @@ public sealed class SaturatedOperationPlanService
 
         var sourceTrains = db.Query<TrainRow>(
             $@"SELECT InstanceID, StationSchemeID, OperationPlanID, {Quote("ID")}, TrainTemplateID,
-                      TrainNumber, Name, TrainType, IsFixedOperation
+                      TrainNumber, Name, TrainType, CalculationParameterSetID, IsFixedOperation
                FROM {Quote("train")}
                WHERE InstanceID = @instanceId
                  AND StationSchemeID = @stationSchemeId
@@ -237,10 +237,10 @@ public sealed class SaturatedOperationPlanService
             var insertedTrain = db.ExecuteNonQuery(
                 $@"INSERT INTO {Quote("train")} (
                        InstanceID, StationSchemeID, OperationPlanID, {Quote("ID")}, TrainTemplateID,
-                       TrainNumber, Name, TrainType, IsFixedOperation)
+                       TrainNumber, Name, TrainType, CalculationParameterSetID, IsFixedOperation)
                    VALUES (
                        @InstanceID, @StationSchemeID, @OperationPlanID, @ID, @TrainTemplateID,
-                       @TrainNumber, @Name, @TrainType, @IsFixedOperation)",
+                       @TrainNumber, @Name, @TrainType, @CalculationParameterSetID, @IsFixedOperation)",
                 new TrainRow
                 {
                     InstanceID = context.InstanceId,
@@ -251,6 +251,7 @@ public sealed class SaturatedOperationPlanService
                     TrainNumber = sourceTrain.TrainNumber,
                     Name = sourceTrain.Name,
                     TrainType = sourceTrain.TrainType,
+                    CalculationParameterSetID = sourceTrain.CalculationParameterSetID,
                     IsFixedOperation = sourceTrain.IsFixedOperation
                 });
             if (insertedTrain != 1) throw new InvalidOperationException("保存饱和计划列车失败。");

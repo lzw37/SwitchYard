@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import CalculationParameterSetSelect from './CalculationParameterSetSelect.vue'
+import type { CalculationParameterSet } from '../calculationParameterSets'
 import { Check, Close, Refresh, View } from '@element-plus/icons-vue'
 import ActionButton from '@/components/ui/ActionButton.vue'
 import type { ProcessCatalog, ProcessTemplate } from '../operationProcess'
@@ -16,6 +18,7 @@ const props = defineProps<{
     catalog: ProcessCatalog
     selections: ProcessTrainActivitySelection[]
     trainTypes: { id: string; name: string }[]
+    parameterSets: CalculationParameterSet[]
     loading: boolean
     loadError: string
     previewing: boolean
@@ -105,6 +108,10 @@ function handleDialogClose(done: () => void) {
                     </el-form-item>
                     <el-form-item :label="t('stationPlanView.creation.trainName')">
                         <el-input :model-value="form.name" data-field="name" :aria-label="t('stationPlanView.creation.trainName')" @update:model-value="updateForm('name', $event)" />
+                    </el-form-item>
+                    <el-form-item :label="t('calculationParameterSets.title')">
+                        <CalculationParameterSetSelect :model-value="form.calculationParameterSetID" :sets="parameterSets"
+                            @update:model-value="updateForm('calculationParameterSetID', $event)" />
                     </el-form-item>
                     <el-form-item :label="t('stationPlanView.creation.trainType')">
                         <el-select :model-value="form.trainType" filterable allow-create default-first-option clearable data-field="trainType"

@@ -40,6 +40,11 @@
             </template>
         </StationLayoutViewToolbar>
 
+        <CalculationParameterSetManager v-model="selectedParameterSetID"
+            :instance-i-d="selectedInstanceId" :station-scheme-i-d="currentStationSchemeId"
+            :disabled="loadingData || creatingRouteTimes || savingRouteTimes || batchSettingRouteTimes"
+            @change="changeParameterSet" />
+
         <div ref="bodyRef" class="calc-params-body" :style="calcBodyStyle">
             <aside class="calc-route-pane" v-loading="loadingRoutes">
                 <header class="calc-pane-header">
@@ -538,6 +543,7 @@ import axios from '@/utils/axios'
 import { useCapacityStore } from '@/stores/capacity'
 import { useStationSchemeSelection } from './useStationSchemeSelection'
 import OccupationTimeGantt from './components/OccupationTimeGantt.vue'
+import CalculationParameterSetManager from './components/CalculationParameterSetManager.vue'
 import { namedTrackCellNames } from './components/chartRowKinds'
 import StationLayoutEditor from './components/StationLayoutEditor.vue'
 import StationLayoutViewToolbar from './components/StationLayoutViewToolbar.vue'
@@ -579,6 +585,7 @@ type RouteObjectOptionMap = Record<StationRouteObjectListField, RouteListSelectO
 interface RouteFilterControl { field: StationRouteObjectFilterField; placeholderKey: string; optionField: StationRouteObjectListField }
 interface DataRect { minX: number; minY: number; maxX: number; maxY: number }
 interface StationRouteTime {
+    calculationParameterSetID?: string
     instanceID: string
     stationSchemeID: string
     routeID: string
@@ -689,6 +696,7 @@ const routeFilters = ref<StationRouteFilters>(createEmptyRouteFilters())
 const routeQuickTypeFilter = ref('')
 const routeQuickStartRouteEndIds = ref<string[]>([])
 const routeQuickEndRouteEndIds = ref<string[]>([])
+const selectedParameterSetID = ref('')
 const routeTimes = ref<StationRouteTime[]>([])
 const batchRouteTimeSettings = ref<BatchRouteTimeSetting[]>([])
 const uniformStartOccupationShift = ref<number | null>(0)
@@ -731,8 +739,8 @@ const routeFilterFieldControls: RouteFilterControl[] = [
 
 const selectedInstanceId = computed(() => props.selectedInstanceId?.trim() || '')
 const canLoadRoutes = computed(() => Boolean(selectedInstanceId.value && currentStationSchemeId.value.trim()))
-const canCreateRouteTimes = computed(() => Boolean(selectedInstanceId.value && currentStationSchemeId.value.trim() && selectedRouteId.value && !loadingRouteTimes.value && !creatingRouteTimes.value && !savingRouteTimes.value))
-const canSaveRouteTimes = computed(() => Boolean(selectedInstanceId.value && currentStationSchemeId.value.trim() && selectedRouteId.value && routeTimes.value.length > 0 && !loadingRouteTimes.value && !creatingRouteTimes.value && !savingRouteTimes.value))
+const canCreateRouteTimes = computed(() => Boolean(selectedParameterSetID.value && selectedInstanceId.value && currentStationSchemeId.value.trim() && selectedRouteId.value && !loadingRouteTimes.value && !creatingRouteTimes.value && !savingRouteTimes.value))
+const canSaveRouteTimes = computed(() => Boolean(selectedParameterSetID.value && selectedInstanceId.value && currentStationSchemeId.value.trim() && selectedRouteId.value && routeTimes.value.length > 0 && !loadingRouteTimes.value && !creatingRouteTimes.value && !savingRouteTimes.value))
 const canApplyUniformRouteTimes = computed(() => Boolean(routeTimes.value.length > 0 && !loadingRouteTimes.value && !creatingRouteTimes.value && !savingRouteTimes.value))
 const routeTypeSummaries = computed<BatchRouteTypeSummary[]>(() => {
     const summaries = new Map<string, BatchRouteTypeSummary>()
@@ -757,6 +765,7 @@ const routeTypeSummaries = computed<BatchRouteTypeSummary[]>(() => {
         .sort((a, b) => a.type.localeCompare(b.type, undefined, { numeric: true }))
 })
 const canBatchSetRouteTimes = computed(() => Boolean(
+    selectedParameterSetID.value &&
     selectedInstanceId.value &&
     currentStationSchemeId.value.trim() &&
     routeTypeSummaries.value.length > 0 &&
@@ -1215,6 +1224,7 @@ function mergeRouteTimesWithSelectedRouteCells(rows: StationRouteTime[], include
                 stationSchemeID: currentStationSchemeId.value.trim(),
                 routeID: selectedRouteId.value,
                 trainTypeID: '',
+                calculationParameterSetID: selectedParameterSetID.value,
                 cellID,
                 startOccupationShift: interruptCellSet.has(lowerCellID) ? defaultWindow.startOccupationShift : 0,
                 endOccupationShift: interruptCellSet.has(lowerCellID) ? defaultWindow.endOccupationShift : 0,
@@ -1524,6 +1534,7 @@ async function applyBatchSetRouteTimes() {
             instanceID,
             stationSchemeID,
             trainTypeID: '',
+            calculationParameterSetID: selectedParameterSetID.value,
             settings: selectedSettings.map((setting) => ({
                 type: setting.type,
                 routeIDs: setting.selectedRouteIds,
@@ -1785,7 +1796,7 @@ async function loadStationRoutes() {
     const previousId = selectedRouteId.value
     loadingRoutes.value = true
     try {
-        const response = await axios.get('/StationLayout/GetStationRoutes', { params: { instanceID, stationSchemeID } })
+        const response = await axios.get('/StationLayout/GetStationRoutes', { params: { instanceID, stationSchemeID, calculationParameterSetID: selectedParameterSetID.value } })
         if (loadVersion !== routeLoadVersion || instanceID !== selectedInstanceId.value || stationSchemeID !== currentStationSchemeId.value.trim()) return
         stationRoutes.value = (Array.isArray(response.data) ? response.data : []).map(normalizeStationRoute).filter((item): item is StationRoute => item !== null)
         await nextTick()
@@ -1846,7 +1857,7 @@ async function loadRouteTimes() {
     loadingRouteTimes.value = true
     try {
         const response = await axios.get('/StationLayout/GetStationRouteTimes', {
-            params: { instanceID, stationSchemeID, routeID, trainTypeID: '' },
+            params: { instanceID, stationSchemeID, routeID, trainTypeID: '', calculationParameterSetID: selectedParameterSetID.value },
         })
         if (loadVersion !== routeTimeLoadVersion || routeID !== selectedRouteId.value || instanceID !== selectedInstanceId.value || stationSchemeID !== currentStationSchemeId.value) return
         routeTimes.value = mergeRouteTimesWithSelectedRouteCells((Array.isArray(response.data) ? response.data : [])
@@ -1869,6 +1880,7 @@ async function createRouteTimes() {
     const instanceID = selectedInstanceId.value
     const stationSchemeID = currentStationSchemeId.value.trim()
     const routeID = selectedRouteId.value
+    const calculationParameterSetID = selectedParameterSetID.value
     if (!instanceID || !stationSchemeID || !routeID) {
         ElMessage.warning(t('calculationParameters.manager.messages.selectRoute'))
         return
@@ -1882,7 +1894,10 @@ async function createRouteTimes() {
             stationSchemeID,
             routeID,
             trainTypeID: '',
+            calculationParameterSetID,
         })
+        if (instanceID !== selectedInstanceId.value || stationSchemeID !== currentStationSchemeId.value.trim()
+            || routeID !== selectedRouteId.value || calculationParameterSetID !== selectedParameterSetID.value) return
         routeTimes.value = mergeRouteTimesWithSelectedRouteCells((Array.isArray(response.data) ? response.data : [])
             .map(normalizeStationRouteTime)
             .filter((item): item is StationRouteTime => item !== null), true)
@@ -1901,6 +1916,7 @@ async function saveRouteTimes() {
     const instanceID = selectedInstanceId.value
     const stationSchemeID = currentStationSchemeId.value.trim()
     const routeID = selectedRouteId.value
+    const calculationParameterSetID = selectedParameterSetID.value
     if (!instanceID || !stationSchemeID || !routeID) {
         ElMessage.warning(t('calculationParameters.manager.messages.selectRoute'))
         return
@@ -1918,12 +1934,15 @@ async function saveRouteTimes() {
             stationSchemeID,
             routeID,
             trainTypeID: '',
+            calculationParameterSetID,
             times: routeTimes.value.map((row) => ({
                 cellID: row.cellID,
                 startOccupationShift: normalizeNullableInteger(row.startOccupationShift),
                 endOccupationShift: normalizeNullableInteger(row.endOccupationShift),
             })),
         })
+        if (instanceID !== selectedInstanceId.value || stationSchemeID !== currentStationSchemeId.value.trim()
+            || routeID !== selectedRouteId.value || calculationParameterSetID !== selectedParameterSetID.value) return
         routeTimes.value = mergeRouteTimesWithSelectedRouteCells((Array.isArray(response.data) ? response.data : [])
             .map(normalizeStationRouteTime)
             .filter((item): item is StationRouteTime => item !== null), true)
@@ -1943,6 +1962,14 @@ async function refreshForInstance() {
     await loadStationSchemes()
     if (disposed || instanceID !== selectedInstanceId.value) return
     await handleStationSchemeChange()
+}
+
+function changeParameterSet() {
+    routeTimeLoadVersion++
+    routeLoadVersion++
+    routeTimes.value = []
+    syncUniformShiftDraftFromRows()
+    void loadStationRoutes()
 }
 
 async function refreshRouteList() {

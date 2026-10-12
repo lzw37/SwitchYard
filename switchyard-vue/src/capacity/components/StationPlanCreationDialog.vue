@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, reactive, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import CalculationParameterSetSelect from './CalculationParameterSetSelect.vue'
+import type { CalculationParameterSet } from '../calculationParameterSets'
 import { ArrowDown, ArrowUp, Check, Close, Delete, Plus } from '@element-plus/icons-vue'
 import ActionButton from '@/components/ui/ActionButton.vue'
 import type { StationPlanEditRoute } from './stationPlanEditing.ts'
@@ -16,6 +18,7 @@ const props = withDefaults(defineProps<{
     nodes: { id: string; label: string }[]
     routes: StationPlanEditRoute[]
     trainTypes: { id: string; name: string }[]
+    parameterSets: CalculationParameterSet[]
     saving?: boolean
 }>(), { saving: false })
 const emit = defineEmits<{
@@ -56,7 +59,7 @@ function cancel() {
     emit('update:modelValue', false)
     emit('cancel')
 }
-function updateTrain(field: 'trainNumber' | 'name' | 'trainType', value: string) {
+function updateTrain(field: 'trainNumber' | 'name' | 'trainType' | 'calculationParameterSetID', value: string) {
     if (!props.saving) emit('update:train', { ...props.train, [field]: String(value ?? '') })
 }
 function updateMovement(id: string, update: (row: StationPlanDraftMovement) => StationPlanDraftMovement) {
@@ -129,7 +132,11 @@ function confirm() {
                     <el-input :model-value="train.name" :aria-label="t('stationPlanView.creation.trainName')"
                         @update:model-value="updateTrain('name', $event)" />
                 </el-form-item>
-                <el-form-item :label="t('stationPlanView.creation.trainType')">
+                <el-form-item :label="t('calculationParameterSets.title')">
+                        <CalculationParameterSetSelect :model-value="train.calculationParameterSetID" :sets="parameterSets"
+                            @update:model-value="updateTrain('calculationParameterSetID', $event)" />
+                    </el-form-item>
+                    <el-form-item :label="t('stationPlanView.creation.trainType')">
                     <el-select :model-value="train.trainType" filterable allow-create default-first-option clearable
                         :aria-label="t('stationPlanView.creation.trainType')" @update:model-value="updateTrain('trainType', $event)">
                         <el-option v-for="type in trainTypes" :key="type.id" :label="type.name" :value="type.id" />

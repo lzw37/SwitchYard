@@ -10,7 +10,8 @@ public sealed class MovementCellOccupationStore
 {
     private readonly Dictionary<string, StationRouteRow> _routes;
     private readonly List<StationRouteTimeRow> _times;
-    private readonly Dictionary<string, string> _trainTypes;
+    private readonly Dictionary<string, TrainRow> _trains;
+    private readonly CalculationParameterSets _parameterSets;
 
     public MovementCellOccupationStore(DBConnector db, string instanceID, string stationSchemeID, string operationPlanID,
         TrainRow? previewTrain = null, IReadOnlyList<MovementRow>? movements = null)
@@ -23,12 +24,13 @@ public sealed class MovementCellOccupationStore
         _routes = (routeIDs is { Length: 0 } ? [] : db.Query<StationRouteRow>($"SELECT ID,Type,LinkList,CellList,InterruptCellList FROM stationroute WHERE {station}" +
             (routeIDs is null ? "" : " AND ID IN @routeIDs"), parameters) ?? [])
             .Where(row => !string.IsNullOrWhiteSpace(row.ID)).ToDictionary(row => row.ID!, StringComparer.OrdinalIgnoreCase);
-        _times = routeIDs is { Length: 0 } ? [] : db.Query<StationRouteTimeRow>($"SELECT RouteID,TrainTypeID,CellID,StartOccupationShift,EndOccupationShift FROM stationroutetime WHERE {station}" +
+        _times = routeIDs is { Length: 0 } ? [] : db.Query<StationRouteTimeRow>($"SELECT CalculationParameterSetID,RouteID,TrainTypeID,CellID,StartOccupationShift,EndOccupationShift FROM stationroutetime WHERE {station}" +
             (routeIDs is null ? "" : " AND RouteID IN @routeIDs"), parameters) ?? [];
-        _trainTypes = (trainIDs is { Length: 0 } ? [] : db.Query<TrainRow>($"SELECT ID,TrainType FROM train WHERE {station} AND OperationPlanID=@OperationPlanID" +
+        _parameterSets = new CalculationParameterSets(db, instanceID, stationSchemeID);
+        _trains = (trainIDs is { Length: 0 } ? [] : db.Query<TrainRow>($"SELECT ID,TrainType,CalculationParameterSetID FROM train WHERE {station} AND OperationPlanID=@OperationPlanID" +
             (trainIDs is null ? "" : " AND ID IN @trainIDs"), parameters) ?? [])
-            .Where(row => !string.IsNullOrWhiteSpace(row.ID)).ToDictionary(row => row.ID!, row => row.TrainType ?? "", StringComparer.OrdinalIgnoreCase);
-        if (previewTrain?.ID is not null) _trainTypes[previewTrain.ID] = previewTrain.TrainType ?? "";
+            .Where(row => !string.IsNullOrWhiteSpace(row.ID)).ToDictionary(row => row.ID!, row => row, StringComparer.OrdinalIgnoreCase);
+        if (previewTrain?.ID is not null) _trains[previewTrain.ID] = previewTrain;
 
     }
 
@@ -38,8 +40,11 @@ public sealed class MovementCellOccupationStore
         _routes.TryGetValue(routeID, out var route);
         var cellIDs = StationCapacityInputBuilder.ParseList(route?.CellList);
         var interruptIDs = StationCapacityInputBuilder.ParseList(route?.InterruptCellList);
-        var type = _trainTypes.GetValueOrDefault(movement.TrainID ?? "", "");
-        var times = _times.Where(row => string.Equals(row.RouteID, routeID, StringComparison.OrdinalIgnoreCase)).ToList();
+        var train = _trains.GetValueOrDefault(movement.TrainID ?? "");
+        var type = train?.TrainType ?? "";
+        var parameterSetID = _parameterSets.Resolve(train?.CalculationParameterSetID);
+        var times = _times.Where(row => string.Equals(row.RouteID, routeID, StringComparison.OrdinalIgnoreCase)
+            && (row.CalculationParameterSetID ?? CalculationParameterSets.InitialDefaultID) == parameterSetID).ToList();
         var overrides = MovementCellOccupationOverrides.Read(movement.CellOccupationOverridesJson);
         if (cellIDs.Count + interruptIDs.Count == 0)
             cellIDs = times.Select(row => row.CellID ?? "").Concat(overrides.Where(pair => pair.Value.RouteID == routeID).Select(pair => pair.Key))

@@ -78,7 +78,7 @@ public partial class OperationPlanController
                 InstanceID = scope.InstanceID, StationSchemeID = scope.StationSchemeID, OperationPlanID = scope.OperationPlanID,
                 ID = trainID, TrainTemplateID = "", TrainNumber = trainNumber,
                 Name = ProcessPlanName(string.IsNullOrWhiteSpace(request.Train?.Name) ? source.Name : request.Train.Name.Trim(), "列车", warnings),
-                TrainType = trainType, IsFixedOperation = 0
+                TrainType = trainType, CalculationParameterSetID = request.Train?.CalculationParameterSetID, IsFixedOperation = 0
             };
             var snapshot = new TrainProcessSnapshot {
                 InstanceID = scope.InstanceID, StationSchemeID = scope.StationSchemeID, OperationPlanID = scope.OperationPlanID,
@@ -103,6 +103,7 @@ public partial class OperationPlanController
                     StartNodeID = events[activity.StartEvent].NodeID, EndNodeID = events[activity.EndEvent].NodeID
                 });
             }
+            CalculationParameterSets.ResolveTrain(db, train);
             var occupations = new MovementCellOccupationStore(db, scope.InstanceID, scope.StationSchemeID, scope.OperationPlanID, train);
             foreach (var movement in movements) occupations.Prepare(movement);
             TrainProcessSnapshotStore.EnsurePrecedences(snapshot);

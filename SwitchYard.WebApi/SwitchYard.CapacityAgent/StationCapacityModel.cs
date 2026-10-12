@@ -24,7 +24,7 @@ internal sealed class StationCapacityModel : ICapacityModel
     {
         Id = CapacityAgentProtocol.StationCapacityModelId,
         Name = "铁路车站通过能力模型",
-        Version = "2.3.0",
+        Version = "2.4.0",
         Description = "支持原列车作业与完整作业过程事件图、资源地点、持续时间和轨道电路占用约束。"
     };
 
@@ -206,6 +206,7 @@ internal sealed class StationCapacityModel : ICapacityModel
             {
                 Id = firstContext.Train.Id,
                 TrainType = firstContext.Train.TrainType,
+                CalculationParameterSetId = firstContext.Train.CalculationParameterSetId,
                 EventTimes = firstContext.Train.ProcessConstraints?.Events.ToDictionary(ev => ev.Id,
                     ev => CleanSecond(eventVariables[(firstContext.TrainIndex, ev.Id)].SolutionValue(), 0, horizon),
                     StringComparer.Ordinal) ?? new(StringComparer.Ordinal)
@@ -515,7 +516,7 @@ internal sealed class StationCapacityModel : ICapacityModel
                 {
                     var window = context.Movement.CellOccupationOverrides.FirstOrDefault(occupation =>
                         occupation.RouteId == route.Id && occupation.CellId == cellId)
-                        ?? ResolveOccupationWindow(input.RouteOccupations, route.Id, context.Train.TrainType, cellId);
+                        ?? ResolveOccupationWindow(input.RouteOccupations, route.Id, context.Train.TrainType, cellId, context.Train.CalculationParameterSetId);
                     var occupationStart = occupationStarts[(context.Key, cellId)];
                     var occupationEnd = occupationEnds[(context.Key, cellId)];
                     solver.Add(occupationStart + bigM * (1 - routeSelected) >=
@@ -616,9 +617,11 @@ internal sealed class StationCapacityModel : ICapacityModel
         IEnumerable<StationCapacityRouteOccupationInput> windows,
         string routeId,
         string trainType,
-        string cellId)
+        string cellId,
+        string calculationParameterSetId)
     {
         var candidates = windows.Where(item =>
+            string.Equals(item.CalculationParameterSetId, calculationParameterSetId, StringComparison.Ordinal) &&
             string.Equals(item.RouteId, routeId, StringComparison.OrdinalIgnoreCase) &&
             string.Equals(item.CellId, cellId, StringComparison.OrdinalIgnoreCase)).ToList();
         var exact = candidates.FirstOrDefault(item =>

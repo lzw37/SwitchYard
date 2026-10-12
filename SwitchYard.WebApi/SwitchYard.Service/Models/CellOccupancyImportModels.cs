@@ -56,6 +56,7 @@ public sealed class CellOccupancyRouteMatch
 /// <summary>A read-only station snapshot. The builder never accesses a database.</summary>
 public sealed class CellOccupancyImportCatalog
 {
+    public string CalculationParameterSetID { get; set; } = "default";
     public List<CellOccupancyCell> Cells { get; set; } = new();
     public List<CellOccupancyLink> Links { get; set; } = new();
     public List<CellOccupancyNode> Nodes { get; set; } = new();
@@ -99,6 +100,7 @@ public sealed class CellOccupancyRoute
 {
     public string ID { get; set; } = "";
     public string Type { get; set; } = "";
+    public string? TrainTypes { get; set; }
     public string Description { get; set; } = "";
     public string NodeList { get; set; } = "[]";
     public string LinkList { get; set; } = "[]";
@@ -114,6 +116,8 @@ public sealed class CellOccupancyRoute
 
 public sealed class CellOccupancyRouteTime
 {
+    public string? CalculationParameterSetID { get; set; }
+
     public string RouteID { get; set; } = "";
     public string TrainTypeID { get; set; } = "";
     public string CellID { get; set; } = "";
@@ -123,6 +127,8 @@ public sealed class CellOccupancyRouteTime
 
 public sealed class CellOccupancyTrainDraft
 {
+    public string? CalculationParameterSetID { get; set; }
+
     public string ID { get; set; } = "";
     public string TrainNumber { get; set; } = "";
     public string Name { get; set; } = "";

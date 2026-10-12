@@ -37,9 +37,21 @@ Fit all scales and centers the view within its current container without changin
 
 Topology edits may affect equipment, Cells, and existing routes. Review the equipment-deletion prompt when removing a bound node, then recheck routes. Visual proximity alone does not establish connectivity.
 
+Each route has a multiple-selection Train types field. Arrival and departure routes offer Passenger train and Freight train; other routes offer Passenger coach (rolling stock) and Freight wagon (rolling stock). Changing route type within a group preserves the selection; changing groups selects the new group's defaults. An empty selection can also be saved.
+
+New routes, including automatically generated and imported routes, default to both types in their group. On the first backend startup after upgrading, SQLite and MySQL databases gain a `stationroute.TrainTypes` field containing a JSON array, and existing routes receive the corresponding defaults. Repeated migration does not overwrite saved selections.
+
 ## Calibrate occupation parameters
 
-Select a route in Calculation parameters, inspect both directly traversed and interrupting Cells, set start/end occupation offsets, and save. You can drag chart endpoints, shift offsets together, or apply settings by route type. Train-type-specific settings take priority; each Cell without such settings falls back to common parameters.
+Each station scheme can store multiple calculation parameter sets. In Calculation parameters, click the round gear button beside the set selector to open the management dialog. Create, copy, rename, delete, and default actions are available inside the dialog. The Copy parameters icon duplicates all route parameters, including common and train-type-specific offsets, under a new name. Copies are independent: editing or deleting the source does not change the copy. New and copied sets can be made the default; choose another default before deleting the current one.
+
+After selecting a set, select a route, inspect directly traversed and interrupting Cells, set start/end occupation offsets, and save. Dragging chart endpoints, shifting offsets together, and applying settings by route type affect only the selected set. Train-type-specific offsets take priority over common offsets within that set. Generate or enter parameters for an empty set, or copy an existing set instead.
+
+Plan generation supports a parameter set selection per train template or process. Individual train creation and editing also support selection. Unassigned sets remain empty in storage and in the operation plan list. Occupation generation and calculation use the current scheme default. Deleted or other-scheme references also fall back to the current scheme default. Changing a train's set recalculates occupations while preserving manually edited times. Changing the default, editing parameters, or deleting a set does not overwrite saved plan occupations; use Recalculate occupations when needed.
+
+Backend startup upgrades SQLite and MySQL automatically: a scheme-scoped `calculationparameterset` table is added, `stationroutetime` and `train` gain `CalculationParameterSetID`, and legacy parameters join the initial default set while existing trains remain unassigned and use the default at calculation time. Copying a station scheme includes its parameter sets, default selection, and all parameter rows.
+
+Update and restart CapacityAgent as well (model version 2.4.0 or later) so solving uses each train's parameter set. The backend rejects older models for these inputs.
 
 ```text
 Initial Cell start seconds = movement start seconds + start occupation offset

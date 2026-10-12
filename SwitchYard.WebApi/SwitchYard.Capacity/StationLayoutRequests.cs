@@ -60,6 +60,8 @@ namespace SwitchYard.Capacity
 
         public string? Type { get; set; }
 
+        public string? TrainTypes { get; set; }
+
         public string? Description { get; set; }
 
         public string? NodeList { get; set; }
@@ -85,6 +87,8 @@ namespace SwitchYard.Capacity
 
     public sealed class StationRouteTimeCreateRequest
     {
+        public string? CalculationParameterSetID { get; set; }
+
         public string? InstanceID { get; set; }
 
         public string? StationSchemeID { get; set; }
@@ -110,6 +114,8 @@ namespace SwitchYard.Capacity
 
     public sealed class StationRouteTimeSaveRequest
     {
+        public string? CalculationParameterSetID { get; set; }
+
         public string? InstanceID { get; set; }
 
         public string? StationSchemeID { get; set; }
@@ -123,6 +129,8 @@ namespace SwitchYard.Capacity
 
     public sealed class StationRouteTimeBatchSetRequest
     {
+        public string? CalculationParameterSetID { get; set; }
+
         public string? InstanceID { get; set; }
 
         public string? StationSchemeID { get; set; }

@@ -6,6 +6,7 @@ export interface ProcessTrainActivitySelection {
 }
 
 export interface ProcessTrainCreationForm {
+    calculationParameterSetID: string
     id: string
     trainNumber: string
     name: string

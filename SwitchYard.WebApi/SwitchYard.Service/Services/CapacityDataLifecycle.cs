@@ -25,7 +25,7 @@ public static class CapacityDataLifecycle
     public static readonly IReadOnlyList<string> SchemeTables = PlanTables.Concat(new[]
     {
         "operationplan", "operationprocesstemplate", "movementtemplate", "traintemplate",
-        "stationroutetime", "stationroute", "stationrouteend", "switchbranchvector", "switch",
+        "stationroutetime", "calculationparameterset", "stationroute", "stationrouteend", "switchbranchvector", "switch",
         "bufferstop", "insulationjoint", "signal", "platform", "cell", "annotation", "curve", "link", "node",
         "stationlayoutrevision"
     }).ToArray();

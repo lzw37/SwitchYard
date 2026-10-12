@@ -27,6 +27,11 @@ public static class OperationProcessRouteMigration
 
     public static Report Run(DBConnector db, bool apply, string? backupDirectory = null)
     {
+        if (apply)
+        {
+            StationRouteTrainTypesMigration.Apply(db);
+            CalculationParameterSetMigration.Apply(db);
+        }
         var changes = new List<DocumentChange>();
         var movements = new List<MovementChange>();
         var newRoutes = new List<StationRouteRow>();
@@ -59,7 +64,7 @@ public static class OperationProcessRouteMigration
                     if (routes.Any(route => route.ID == id)) throw new InvalidDataException("Dwelling route identity collision: " + id);
                     var ends = new[] { link.FromNodeID, link.ToNodeID };
                     var route = new StationRouteRow {
-                        InstanceID = scope.InstanceID, StationSchemeID = scope.StationSchemeID, ID = id, Type = "Dwelling",
+                        InstanceID = scope.InstanceID, StationSchemeID = scope.StationSchemeID, ID = id, Type = "Dwelling", TrainTypes = StationRouteTrainTypes.DefaultJson("Dwelling"),
                         Description = string.IsNullOrWhiteSpace(link.Name) ? $"线路 {trackID} 停留进路" : link.Name.Trim() + (link.Name.Trim().EndsWith('道') ? "" : "道") + "停留进路",
                         StartNodeID = link.FromNodeID, EndNodeID = link.ToNodeID, NodeList = JsonSerializer.Serialize(ends), LinkList = JsonSerializer.Serialize(new[] { trackID }),
                         CellList = JsonSerializer.Serialize(cells.Where(cell => IDs(cell.LinkIDList).Contains(trackID)).Select(cell => cell.ID)),
@@ -171,8 +176,8 @@ public static class OperationProcessRouteMigration
                     file.Flush(true);
                 }
                 foreach (var route in newRoutes)
-                    MustUpdate(db.ExecuteNonQuery(@"INSERT INTO stationroute(InstanceID,StationSchemeID,ID,Type,Description,StartNodeID,EndNodeID,NodeList,LinkList,CellList,SwitchList,SignalList,InterruptCellList,AllowanceTags,ForbiddenTags)
-                        VALUES(@InstanceID,@StationSchemeID,@ID,@Type,@Description,@StartNodeID,@EndNodeID,@NodeList,@LinkList,@CellList,@SwitchList,@SignalList,@InterruptCellList,@AllowanceTags,@ForbiddenTags)", route));
+                    MustUpdate(db.ExecuteNonQuery(@"INSERT INTO stationroute(InstanceID,StationSchemeID,ID,Type,Description,StartNodeID,EndNodeID,NodeList,LinkList,CellList,SwitchList,SignalList,InterruptCellList,AllowanceTags,ForbiddenTags,TrainTypes)
+                        VALUES(@InstanceID,@StationSchemeID,@ID,@Type,@Description,@StartNodeID,@EndNodeID,@NodeList,@LinkList,@CellList,@SwitchList,@SignalList,@InterruptCellList,@AllowanceTags,@ForbiddenTags,@TrainTypes)", route));
                 foreach (var planGroup in movements.GroupBy(m => (m.After.InstanceID, m.After.StationSchemeID, m.After.OperationPlanID)))
                 {
                     var catalog = new MovementCellOccupationStore(db, planGroup.Key.InstanceID!, planGroup.Key.StationSchemeID!, planGroup.Key.OperationPlanID!);

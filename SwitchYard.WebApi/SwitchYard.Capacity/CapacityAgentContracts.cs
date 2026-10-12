@@ -208,6 +208,8 @@ public sealed class StationCapacityRouteInput
 
 public sealed class StationCapacityRouteOccupationInput
 {
+    public string CalculationParameterSetId { get; set; } = "";
+
     public string RouteId { get; set; } = string.Empty;
     public string TrainTypeId { get; set; } = string.Empty;
     public string CellId { get; set; } = string.Empty;
@@ -217,6 +219,8 @@ public sealed class StationCapacityRouteOccupationInput
 
 public sealed class StationCapacityTrainInput
 {
+    public string CalculationParameterSetId { get; set; } = "";
+
     public string Id { get; set; } = string.Empty;
     public string TrainType { get; set; } = string.Empty;
     public List<StationCapacityMovementInput> Movements { get; set; } = new();
@@ -298,6 +302,8 @@ public sealed class StationCapacitySolveResult
 
 public sealed class StationCapacityTrainResult
 {
+    public string CalculationParameterSetId { get; set; } = "";
+
     public string Id { get; set; } = string.Empty;
     public string TrainType { get; set; } = string.Empty;
     public List<StationCapacityMovementResult> Movements { get; set; } = new();

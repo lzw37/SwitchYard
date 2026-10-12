@@ -101,10 +101,16 @@ public sealed class CapacitySolveJobService
         string? requestedMinimum = null;
         var containsProcess = false;
         var containsExactPrecedence = false;
+        var containsParameterSets = false;
         foreach (var property in request.Input.EnumerateObject())
         {
             if (string.Equals(property.Name, "minimumModelVersion", StringComparison.OrdinalIgnoreCase) && property.Value.ValueKind == JsonValueKind.String)
                 requestedMinimum = property.Value.GetString();
+            if ((string.Equals(property.Name, "trains", StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(property.Name, "routeOccupations", StringComparison.OrdinalIgnoreCase)) && property.Value.ValueKind == JsonValueKind.Array)
+                containsParameterSets |= property.Value.EnumerateArray().Any(item => item.ValueKind == JsonValueKind.Object &&
+                    item.EnumerateObject().Any(field => string.Equals(field.Name, "calculationParameterSetId", StringComparison.OrdinalIgnoreCase) &&
+                        field.Value.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(field.Value.GetString())));
             if (string.Equals(property.Name, "trains", StringComparison.OrdinalIgnoreCase) && property.Value.ValueKind == JsonValueKind.Array)
                 foreach (var train in property.Value.EnumerateArray().Where(train => train.ValueKind == JsonValueKind.Object))
                     foreach (var field in train.EnumerateObject().Where(field => string.Equals(field.Name, "processConstraints", StringComparison.OrdinalIgnoreCase)))
@@ -117,8 +123,8 @@ public sealed class CapacitySolveJobService
                                 precedence.EnumerateObject().Any(flag => string.Equals(flag.Name, "isExact", StringComparison.OrdinalIgnoreCase) && flag.Value.ValueKind == JsonValueKind.True)));
                     }
         }
-        var required = containsExactPrecedence ? new Version(2, 3, 0) : new Version(2, 2, 0);
-        if (containsProcess && (!Version.TryParse(requestedMinimum, out var version) || version < required)) return required.ToString();
+        var required = containsParameterSets ? new Version(2, 4, 0) : containsExactPrecedence ? new Version(2, 3, 0) : new Version(2, 2, 0);
+        if ((containsProcess || containsParameterSets) && (!Version.TryParse(requestedMinimum, out var version) || version < required)) return required.ToString();
         return requestedMinimum;
     }
 

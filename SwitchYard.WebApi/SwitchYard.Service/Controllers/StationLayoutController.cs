@@ -30,6 +30,7 @@ namespace SwitchYard.Service.Controllers
         {
             "cell",
             "stationroutetime",
+            "calculationparameterset",
             "stationroute",
             "stationrouteend",
             "switchbranchvector",
@@ -331,7 +332,8 @@ namespace SwitchYard.Service.Controllers
         [HttpGet(Name = "GetStationRoutes")]
         public IActionResult GetStationRoutes(
             [FromQuery] string? instanceID = null,
-            [FromQuery] string? stationSchemeID = null)
+            [FromQuery] string? stationSchemeID = null,
+            [FromQuery] string? calculationParameterSetID = null)
         {
             try
             {
@@ -354,7 +356,7 @@ namespace SwitchYard.Service.Controllers
                     return Ok(new List<StationRouteRow>());
                 }
 
-                return Ok(LoadStationRoutes(dbConnector, normalizedInstanceID, normalizedStationSchemeID));
+                return Ok(LoadStationRoutes(dbConnector, normalizedInstanceID, normalizedStationSchemeID, calculationParameterSetID));
             }
             catch (Exception ex)
             {
@@ -487,11 +489,11 @@ namespace SwitchYard.Service.Controllers
                     $@"INSERT INTO {tableName} (
                            InstanceID, StationSchemeID, ID, {QuoteIdentifier("Type")}, Description,
                            NodeList, LinkList, SwitchList, CellList, InterruptCellList, SignalList,
-                           AllowanceTags, ForbiddenTags, StartNodeID, EndNodeID)
+                           AllowanceTags, ForbiddenTags, TrainTypes, StartNodeID, EndNodeID)
                        VALUES (
                            @InstanceID, @StationSchemeID, @ID, @Type, @Description,
                            @NodeList, @LinkList, @SwitchList, @CellList, @InterruptCellList, @SignalList,
-                           @AllowanceTags, @ForbiddenTags, @StartNodeID, @EndNodeID)",
+                           @AllowanceTags, @ForbiddenTags, @TrainTypes, @StartNodeID, @EndNodeID)",
                     route);
                 if (result <= 0)
                 {
@@ -512,7 +514,8 @@ namespace SwitchYard.Service.Controllers
             [FromQuery] string? instanceID = null,
             [FromQuery] string? stationSchemeID = null,
             [FromQuery] string? routeID = null,
-            [FromQuery] string? trainTypeID = null)
+            [FromQuery] string? trainTypeID = null,
+            [FromQuery] string? calculationParameterSetID = null)
         {
             try
             {
@@ -544,13 +547,14 @@ namespace SwitchYard.Service.Controllers
                     normalizedInstanceID,
                     normalizedStationSchemeID,
                     normalizedRouteID,
-                    normalizedTrainTypeID);
+                    normalizedTrainTypeID, calculationParameterSetID);
                 return Ok(OrderStationRouteTimesByCellList(
                     routeTimes,
                     route?.CellList,
                     route?.InterruptCellList,
                     routeTimes.Count > 0));
             }
+            catch (ArgumentException ex) { return BadRequest(ex.Message); }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to load station route times.");
@@ -568,6 +572,7 @@ namespace SwitchYard.Service.Controllers
                 var stationSchemeID = request?.StationSchemeID?.Trim();
                 var routeID = request?.RouteID?.Trim();
                 var trainTypeID = request?.TrainTypeID?.Trim() ?? string.Empty;
+                var calculationParameterSetID = request?.CalculationParameterSetID;
                 if (string.IsNullOrWhiteSpace(instanceID) ||
                     string.IsNullOrWhiteSpace(stationSchemeID) ||
                     string.IsNullOrWhiteSpace(routeID))
@@ -604,14 +609,15 @@ namespace SwitchYard.Service.Controllers
                         CellID = cellID,
                         StartOccupationShift = 0,
                         EndOccupationShift = 0,
-                    }).ToList());
+                    }).ToList(), calculationParameterSetID);
 
                 return Ok(OrderStationRouteTimesByCellList(
-                    LoadStationRouteTimes(dbConnector, instanceID, stationSchemeID, routeID, trainTypeID),
+                    LoadStationRouteTimes(dbConnector, instanceID, stationSchemeID, routeID, trainTypeID, calculationParameterSetID),
                     route.CellList,
                     route.InterruptCellList,
                     true));
             }
+            catch (ArgumentException ex) { return BadRequest(ex.Message); }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to create station route times.");
@@ -629,6 +635,7 @@ namespace SwitchYard.Service.Controllers
                 var stationSchemeID = request?.StationSchemeID?.Trim();
                 var routeID = request?.RouteID?.Trim();
                 var trainTypeID = request?.TrainTypeID?.Trim() ?? string.Empty;
+                var calculationParameterSetID = request?.CalculationParameterSetID;
                 if (string.IsNullOrWhiteSpace(instanceID) ||
                     string.IsNullOrWhiteSpace(stationSchemeID) ||
                     string.IsNullOrWhiteSpace(routeID))
@@ -680,14 +687,15 @@ namespace SwitchYard.Service.Controllers
                 }
 
                 ApplyStationRouteInterruptCellTimeDefaults(rows, routeTimePlan.InterruptCellIDSet);
-                ReplaceStationRouteTimes(dbConnector, instanceID, stationSchemeID, routeID, trainTypeID, rows);
+                ReplaceStationRouteTimes(dbConnector, instanceID, stationSchemeID, routeID, trainTypeID, rows, calculationParameterSetID);
 
                 return Ok(OrderStationRouteTimesByCellList(
-                    LoadStationRouteTimes(dbConnector, instanceID, stationSchemeID, routeID, trainTypeID),
+                    LoadStationRouteTimes(dbConnector, instanceID, stationSchemeID, routeID, trainTypeID, calculationParameterSetID),
                     route.CellList,
                     route.InterruptCellList,
                     true));
             }
+            catch (ArgumentException ex) { return BadRequest(ex.Message); }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to save station route times.");
@@ -704,6 +712,7 @@ namespace SwitchYard.Service.Controllers
                 var instanceID = request?.InstanceID?.Trim();
                 var stationSchemeID = request?.StationSchemeID?.Trim();
                 var trainTypeID = request?.TrainTypeID?.Trim() ?? string.Empty;
+                var calculationParameterSetID = request?.CalculationParameterSetID;
                 if (string.IsNullOrWhiteSpace(instanceID) ||
                     string.IsNullOrWhiteSpace(stationSchemeID))
                 {
@@ -779,13 +788,14 @@ namespace SwitchYard.Service.Controllers
                             CellID = cellID,
                             StartOccupationShift = setting.StartOccupationShift,
                             EndOccupationShift = setting.EndOccupationShift,
-                        }).ToList());
+                        }).ToList(), calculationParameterSetID);
                     updatedRouteCount++;
                     updatedRowCount += cellIDs.Count;
                 }
 
                 return Ok(new { routeCount = updatedRouteCount, rowCount = updatedRowCount });
             }
+            catch (ArgumentException ex) { return BadRequest(ex.Message); }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to batch set station route times.");
@@ -831,6 +841,13 @@ namespace SwitchYard.Service.Controllers
                     return BadRequest("StartNodeID and EndNodeID must reference existing nodes in the selected station scheme.");
                 }
 
+                if (string.IsNullOrWhiteSpace(request?.TrainTypes))
+                {
+                    var existing = FindStationRouteByID(dbConnector, route.InstanceID!, route.StationSchemeID!, originalID!);
+                    if (StationRouteTrainTypes.AllowedFor(existing?.Type).SequenceEqual(StationRouteTrainTypes.AllowedFor(route.Type)))
+                        route.TrainTypes = StationRouteTrainTypes.Normalize(existing?.TrainTypes, route.Type);
+                }
+
                 var dwellingError = ValidateStationDwellingRoute(dbConnector, route);
                 if (dwellingError != null) return dwellingError;
 
@@ -856,6 +873,7 @@ namespace SwitchYard.Service.Controllers
                            SignalList = @SignalList,
                            AllowanceTags = @AllowanceTags,
                            ForbiddenTags = @ForbiddenTags,
+                           TrainTypes = @TrainTypes,
                            StartNodeID = @StartNodeID,
                            EndNodeID = @EndNodeID
                        WHERE InstanceID = @InstanceID
@@ -876,6 +894,7 @@ namespace SwitchYard.Service.Controllers
                         route.SignalList,
                         route.AllowanceTags,
                         route.ForbiddenTags,
+                        route.TrainTypes,
                         route.StartNodeID,
                         route.EndNodeID,
                         OriginalID = originalID
@@ -1991,12 +2010,17 @@ namespace SwitchYard.Service.Controllers
                 }
             }
 
+            string trainTypes;
+            try { trainTypes = StationRouteTrainTypes.Normalize(request.TrainTypes, request.Type); }
+            catch (ArgumentException ex) { return (null, BadRequest(ex.Message)); }
+
             return (new StationRouteRow
             {
                 InstanceID = instanceID,
                 StationSchemeID = stationSchemeID,
                 ID = id,
                 Type = NormalizeNullableRouteEndField(request.Type),
+                TrainTypes = trainTypes,
                 Description = NormalizeNullableRouteEndField(request.Description),
                 NodeList = NormalizeNullableRouteEndField(request.NodeList),
                 LinkList = NormalizeNullableRouteEndField(request.LinkList),
@@ -2028,26 +2052,29 @@ namespace SwitchYard.Service.Controllers
         private static List<StationRouteRow> LoadStationRoutes(
             DBConnector dbConnector,
             string instanceID,
-            string stationSchemeID)
+            string stationSchemeID,
+            string? calculationParameterSetID = null)
         {
 
+            var parameterSetID = new CalculationParameterSets(dbConnector, instanceID, stationSchemeID).Resolve(calculationParameterSetID);
             var tableName = QuoteIdentifier("stationroute");
             var timeTableName = QuoteIdentifier("stationroutetime");
             return dbConnector.Query<StationRouteRow>(
                 $@"SELECT InstanceID, StationSchemeID, ID, {QuoteIdentifier("Type")} AS {QuoteIdentifier("Type")},
                           Description, NodeList, LinkList, SwitchList, CellList, InterruptCellList, SignalList,
-                          AllowanceTags, ForbiddenTags, StartNodeID, EndNodeID,
+                          AllowanceTags, ForbiddenTags, TrainTypes, StartNodeID, EndNodeID,
                           CASE WHEN EXISTS (
                               SELECT 1
                               FROM {timeTableName}
                               WHERE {timeTableName}.InstanceID = {tableName}.InstanceID
                                 AND {timeTableName}.StationSchemeID = {tableName}.StationSchemeID
                                 AND {timeTableName}.RouteID = {tableName}.ID
+                                AND COALESCE({timeTableName}.CalculationParameterSetID, 'default') = @parameterSetID
                           ) THEN 1 ELSE 0 END AS OccupancyTimeConfigured
                    FROM {tableName}
                    WHERE InstanceID = @instanceID AND StationSchemeID = @stationSchemeID
                    ORDER BY ID",
-                new { instanceID, stationSchemeID }) ?? new List<StationRouteRow>();
+                new { instanceID, stationSchemeID, parameterSetID }) ?? new List<StationRouteRow>();
         }
 
         private static bool StationRouteIDExists(
@@ -2083,7 +2110,7 @@ namespace SwitchYard.Service.Controllers
             return (dbConnector.Query<StationRouteRow>(
                 $@"SELECT InstanceID, StationSchemeID, ID, {QuoteIdentifier("Type")} AS {QuoteIdentifier("Type")},
                           Description, NodeList, LinkList, SwitchList, CellList, InterruptCellList, SignalList,
-                          AllowanceTags, ForbiddenTags, StartNodeID, EndNodeID
+                          AllowanceTags, ForbiddenTags, TrainTypes, StartNodeID, EndNodeID
                    FROM {tableName}
                    WHERE InstanceID = @instanceID
                      AND StationSchemeID = @stationSchemeID
@@ -2375,44 +2402,55 @@ namespace SwitchYard.Service.Controllers
             string stationSchemeID,
             string routeID,
             string trainTypeID,
-            List<StationRouteTimeRow> rows)
+            List<StationRouteTimeRow> rows,
+            string? calculationParameterSetID = null)
         {
-
-            var tableName = QuoteIdentifier("stationroutetime");
-            dbConnector.ExecuteNonQuery(
-                $@"DELETE FROM {tableName}
-                   WHERE InstanceID = @instanceID
-                     AND StationSchemeID = @stationSchemeID
-                     AND RouteID = @routeID
-                     AND COALESCE(TrainTypeID, '') = @trainTypeID",
-                new { instanceID, stationSchemeID, routeID, trainTypeID });
-
-            foreach (var row in rows)
+            dbConnector.BeginTransaction();
+            try
             {
-                var cellID = row.CellID?.Trim();
-                if (string.IsNullOrWhiteSpace(cellID))
-                {
-                    continue;
-                }
-
+                LockParameterSetScheme(dbConnector, instanceID, stationSchemeID);
+                CalculationParameterSets.EnsureDefault(dbConnector, instanceID, stationSchemeID);
+                var parameterSetID = RequireCalculationParameterSet(dbConnector, instanceID, stationSchemeID, calculationParameterSetID);
+                var tableName = QuoteIdentifier("stationroutetime");
                 dbConnector.ExecuteNonQuery(
-                    $@"INSERT INTO {tableName} (
-                           InstanceID, StationSchemeID, RouteID, TrainTypeID,
-                           CellID, StartOccupationShift, EndOccupationShift)
-                       VALUES (
-                           @InstanceID, @StationSchemeID, @RouteID, @TrainTypeID,
-                           @CellID, @StartOccupationShift, @EndOccupationShift)",
-                    new StationRouteTimeRow
+                    $@"DELETE FROM {tableName}
+                       WHERE InstanceID = @instanceID
+                         AND StationSchemeID = @stationSchemeID
+                         AND RouteID = @routeID
+                         AND COALESCE(TrainTypeID, '') = @trainTypeID
+                         AND COALESCE(CalculationParameterSetID, 'default') = @parameterSetID",
+                    new { instanceID, stationSchemeID, routeID, trainTypeID, parameterSetID });
+
+                foreach (var row in rows)
+                {
+                    var cellID = row.CellID?.Trim();
+                    if (string.IsNullOrWhiteSpace(cellID))
                     {
-                        InstanceID = instanceID,
-                        StationSchemeID = stationSchemeID,
-                        RouteID = routeID,
-                        TrainTypeID = trainTypeID,
-                        CellID = cellID,
-                        StartOccupationShift = row.StartOccupationShift,
-                        EndOccupationShift = row.EndOccupationShift,
-                    });
+                        continue;
+                    }
+
+                    dbConnector.ExecuteNonQuery(
+                        $@"INSERT INTO {tableName} (
+                               InstanceID, StationSchemeID, CalculationParameterSetID, RouteID, TrainTypeID,
+                               CellID, StartOccupationShift, EndOccupationShift)
+                           VALUES (
+                               @InstanceID, @StationSchemeID, @CalculationParameterSetID, @RouteID, @TrainTypeID,
+                               @CellID, @StartOccupationShift, @EndOccupationShift)",
+                        new StationRouteTimeRow
+                        {
+                            InstanceID = instanceID,
+                            StationSchemeID = stationSchemeID,
+                            RouteID = routeID,
+                            CalculationParameterSetID = parameterSetID,
+                            TrainTypeID = trainTypeID,
+                            CellID = cellID,
+                            StartOccupationShift = row.StartOccupationShift,
+                            EndOccupationShift = row.EndOccupationShift,
+                        });
+                }
+                dbConnector.Commit();
             }
+            catch { dbConnector.Rollback(); throw; }
         }
 
         private static List<StationRouteTimeRow> LoadStationRouteTimes(
@@ -2420,19 +2458,22 @@ namespace SwitchYard.Service.Controllers
             string instanceID,
             string stationSchemeID,
             string routeID,
-            string trainTypeID)
+            string trainTypeID,
+            string? calculationParameterSetID = null)
         {
 
+            var parameterSetID = RequireCalculationParameterSet(dbConnector, instanceID, stationSchemeID, calculationParameterSetID);
             var tableName = QuoteIdentifier("stationroutetime");
             return dbConnector.Query<StationRouteTimeRow>(
-                $@"SELECT InstanceID, StationSchemeID, RouteID, TrainTypeID, CellID,
+                $@"SELECT InstanceID, StationSchemeID, CalculationParameterSetID, RouteID, TrainTypeID, CellID,
                           StartOccupationShift, EndOccupationShift
                    FROM {tableName}
                    WHERE InstanceID = @instanceID
                      AND StationSchemeID = @stationSchemeID
                      AND RouteID = @routeID
-                     AND COALESCE(TrainTypeID, '') = @trainTypeID",
-                new { instanceID, stationSchemeID, routeID, trainTypeID }) ?? new List<StationRouteTimeRow>();
+                     AND COALESCE(TrainTypeID, '') = @trainTypeID
+                     AND COALESCE(CalculationParameterSetID, 'default') = @parameterSetID",
+                new { instanceID, stationSchemeID, routeID, trainTypeID, parameterSetID }) ?? new List<StationRouteTimeRow>();
         }
 
         private static bool StationNodeIDExists(
@@ -3133,6 +3174,7 @@ namespace SwitchYard.Service.Controllers
                             {QuoteIdentifier("SignalList")} LONGTEXT NULL,
                             {QuoteIdentifier("AllowanceTags")} LONGTEXT NULL,
                             {QuoteIdentifier("ForbiddenTags")} LONGTEXT NULL,
+                            {QuoteIdentifier("TrainTypes")} TEXT NULL,
                             {QuoteIdentifier("StartNodeID")} VARCHAR(50) NULL,
                             {QuoteIdentifier("EndNodeID")} VARCHAR(50) NULL
                         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
@@ -3154,6 +3196,7 @@ namespace SwitchYard.Service.Controllers
                             {QuoteIdentifier("SignalList")} TEXT NULL,
                             {QuoteIdentifier("AllowanceTags")} TEXT NULL,
                             {QuoteIdentifier("ForbiddenTags")} TEXT NULL,
+                            {QuoteIdentifier("TrainTypes")} TEXT NULL,
                             {QuoteIdentifier("StartNodeID")} TEXT NULL,
                             {QuoteIdentifier("EndNodeID")} TEXT NULL
                         )");
@@ -3180,6 +3223,7 @@ namespace SwitchYard.Service.Controllers
                 ["SignalList"] = longTextType,
                 ["AllowanceTags"] = longTextType,
                 ["ForbiddenTags"] = longTextType,
+                ["TrainTypes"] = "TEXT NULL",
                 ["StartNodeID"] = shortTextType,
                 ["EndNodeID"] = shortTextType
             };
@@ -3209,6 +3253,7 @@ namespace SwitchYard.Service.Controllers
                             {QuoteIdentifier("StationSchemeID")} VARCHAR(50) NULL,
                             {QuoteIdentifier("RouteID")} VARCHAR(50) NULL,
                             {QuoteIdentifier("TrainTypeID")} VARCHAR(50) NULL,
+                            {QuoteIdentifier("CalculationParameterSetID")} VARCHAR(50) NULL,
                             {QuoteIdentifier("CellID")} VARCHAR(50) NULL,
                             {QuoteIdentifier("StartOccupationShift")} INT NULL,
                             {QuoteIdentifier("EndOccupationShift")} INT NULL
@@ -3222,6 +3267,7 @@ namespace SwitchYard.Service.Controllers
                             {QuoteIdentifier("StationSchemeID")} TEXT NULL,
                             {QuoteIdentifier("RouteID")} TEXT NULL,
                             {QuoteIdentifier("TrainTypeID")} TEXT NULL,
+                            {QuoteIdentifier("CalculationParameterSetID")} TEXT NULL,
                             {QuoteIdentifier("CellID")} TEXT NULL,
                             {QuoteIdentifier("StartOccupationShift")} INTEGER NULL,
                             {QuoteIdentifier("EndOccupationShift")} INTEGER NULL
@@ -3240,6 +3286,7 @@ namespace SwitchYard.Service.Controllers
                 ["StationSchemeID"] = textType,
                 ["RouteID"] = textType,
                 ["TrainTypeID"] = textType,
+                ["CalculationParameterSetID"] = textType,
                 ["CellID"] = textType,
                 ["StartOccupationShift"] = intType,
                 ["EndOccupationShift"] = intType

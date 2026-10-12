@@ -110,7 +110,7 @@ public partial class OperationPlanController
             foreach (var movement in result.Movements) InsertCellImportRow(db, "movement", movement, target, true);
             // Read back the whole batch before commit: ignored/altered inserts must roll back.
             VerifyCellImportRows(result.NewRoutes, LoadCellImportRows<CellOccupancyRoute>(db, "stationroute", "ID", target, false, false), row => row.ID);
-            VerifyCellImportRows(result.NewRouteTimes, LoadCellImportRows<CellOccupancyRouteTime>(db, "stationroutetime", "RouteID,TrainTypeID,CellID", target, false, false), row => $"{row.RouteID}\0{row.TrainTypeID}\0{row.CellID}");
+            VerifyCellImportRows(result.NewRouteTimes, LoadCellImportRows<CellOccupancyRouteTime>(db, "stationroutetime", "RouteID,TrainTypeID,CellID", target, false, false), row => $"{row.CalculationParameterSetID}\0{row.RouteID}\0{row.TrainTypeID}\0{row.CellID}");
             VerifyCellImportRows(result.Trains, LoadCellImportRows<CellOccupancyTrainDraft>(db, "train", "ID", target, false, true), row => row.ID);
             VerifyCellImportRows(result.Movements, LoadCellImportRows<CellOccupancyMovementDraft>(db, "movement", "TrainID,MovementID", target, false, true), row => $"{row.TrainID}\0{row.MovementID}");
             if (db.Query<long>($"SELECT COUNT(1) FROM operationplan WHERE {CellImportPlanFilter}", target)?.Single() != 1)
@@ -148,7 +148,9 @@ public partial class OperationPlanController
     private static CellOccupancyImportCatalog LoadCellOccupancyCatalog(DBConnector db, ProcessScope scope, bool locking)
     {
         var suffix = locking && DBConnector.IsMySql(DBConnector.CapacityDatabaseSectionName) ? " FOR UPDATE" : "";
+        var parameterSetID = new CalculationParameterSets(db, scope.InstanceID, scope.StationSchemeID).DefaultID;
         return new() {
+            CalculationParameterSetID = parameterSetID,
             Cells = LoadCellImportRows<CellOccupancyCell>(db, "cell", "ID", scope, locking, false),
             Links = LoadCellImportRows<CellOccupancyLink>(db, "link", "ID", scope, locking, false),
             Nodes = LoadCellImportRows<CellOccupancyNode>(db, "node", "ID", scope, locking, false),
@@ -156,7 +158,7 @@ public partial class OperationPlanController
             Signals = LoadCellImportRows<CellOccupancyBoundItem>(db, "signal", "ID", scope, locking, false),
             RouteEnds = db.Query<CellOccupancyBoundItem>($"SELECT ID, ID AS Name, BindingNodeID FROM stationrouteend WHERE {CellImportStationFilter} ORDER BY ID{suffix}", scope) ?? new(),
             Routes = LoadCellImportRows<CellOccupancyRoute>(db, "stationroute", "ID", scope, locking, false),
-            RouteTimes = LoadCellImportRows<CellOccupancyRouteTime>(db, "stationroutetime", "RouteID,TrainTypeID,CellID", scope, locking, false)
+            RouteTimes = LoadCellImportRows<CellOccupancyRouteTime>(db, "stationroutetime", "RouteID,TrainTypeID,CellID", scope, locking, false).Where(row => (row.CalculationParameterSetID ?? "default") == parameterSetID).ToList()
         };
     }
 

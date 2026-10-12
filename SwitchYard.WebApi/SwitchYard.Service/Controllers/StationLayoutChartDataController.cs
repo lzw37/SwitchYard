@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using SwitchYard.Capacity;
+using SwitchYard.Service.Services;
 using System.Text.Json.Nodes;
 
 namespace SwitchYard.Service.Controllers;
@@ -27,18 +28,19 @@ public partial class StationLayoutController
             }).ToList();
             var tracks = (db.Query<StationLinkRow>($"SELECT ID,Name,FromNodeID,ToNodeID FROM link WHERE {filter}", request) ?? [])
                 .Select(row => new { row.ID, row.Name, row.FromNodeID, row.ToNodeID }).ToList();
-            var pairs = request.Pairs.DistinctBy(pair => (pair.RouteID, pair.TrainTypeID ?? "")).ToList();
+            var pairs = request.Pairs.DistinctBy(pair => (pair.RouteID, pair.TrainTypeID ?? "", pair.CalculationParameterSetID ?? "")).ToList();
             var routeIDs = pairs.Select(pair => pair.RouteID).Distinct(StringComparer.Ordinal).ToArray();
             var parameters = new { request.InstanceID, request.StationSchemeID, routeIDs };
             var routes = routeIDs.Length == 0 ? [] : db.Query<StationRouteRow>($"SELECT ID,CellList,InterruptCellList FROM stationroute WHERE {filter} AND ID IN @routeIDs", parameters) ?? [];
-            var times = routeIDs.Length == 0 ? [] : db.Query<StationRouteTimeRow>($"SELECT RouteID,TrainTypeID,CellID,StartOccupationShift,EndOccupationShift FROM stationroutetime WHERE {filter} AND RouteID IN @routeIDs", parameters) ?? [];
+            var times = routeIDs.Length == 0 ? [] : db.Query<StationRouteTimeRow>($"SELECT CalculationParameterSetID,RouteID,TrainTypeID,CellID,StartOccupationShift,EndOccupationShift FROM stationroutetime WHERE {filter} AND RouteID IN @routeIDs", parameters) ?? [];
             var routesById = routes.ToDictionary(route => route.ID!, StringComparer.Ordinal);
-            var timesByPair = times.ToLookup(row => (row.RouteID, row.TrainTypeID ?? ""));
+            var parameterSets = new CalculationParameterSets(db, request.InstanceID, request.StationSchemeID);
+            var timesByPair = times.ToLookup(row => (row.RouteID, row.TrainTypeID ?? "", row.CalculationParameterSetID ?? CalculationParameterSets.InitialDefaultID));
             var routeTimes = pairs.Select(pair =>
             {
                 var route = routesById.GetValueOrDefault(pair.RouteID);
-                var rows = timesByPair[(pair.RouteID, pair.TrainTypeID ?? "")].ToList();
-                return new { pair.RouteID, TrainTypeID = pair.TrainTypeID ?? "", Rows = OrderStationRouteTimesByCellList(rows, route?.CellList, route?.InterruptCellList, rows.Count > 0) };
+                var rows = timesByPair[(pair.RouteID, pair.TrainTypeID ?? "", parameterSets.Resolve(pair.CalculationParameterSetID))].ToList();
+                return new { pair.RouteID, CalculationParameterSetID = pair.CalculationParameterSetID ?? "", TrainTypeID = pair.TrainTypeID ?? "", Rows = OrderStationRouteTimesByCellList(rows, route?.CellList, route?.InterruptCellList, rows.Count > 0) };
             }).ToList();
             return Ok(new { cells = cells.Select(row => new { row.ID, row.Name, row.LinkIDList }), nodes, tracks, routeTimes });
         }
@@ -51,6 +53,6 @@ public partial class StationLayoutController
         public string StationSchemeID { get; set; } = "";
         public List<ChartRoutePair> Pairs { get; set; } = [];
     }
-    public sealed class ChartRoutePair { public string RouteID { get; set; } = ""; public string? TrainTypeID { get; set; } }
+    public sealed class ChartRoutePair { public string? CalculationParameterSetID { get; set; } public string RouteID { get; set; } = ""; public string? TrainTypeID { get; set; } }
     private sealed class ChartNodeRow { public string ID { get; set; } = ""; public string? ExtraProperties { get; set; } }
 }

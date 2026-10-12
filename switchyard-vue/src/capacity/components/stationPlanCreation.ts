@@ -14,6 +14,7 @@ export interface StationPlanDraftMovement {
 }
 
 export interface StationPlanDraftTrain {
+    calculationParameterSetID: string
     id: string
     trainNumber: string
     name: string

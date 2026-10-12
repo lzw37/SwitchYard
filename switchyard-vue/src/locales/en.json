@@ -2546,6 +2546,31 @@
             "trainModelLoadFailed": "Train models could not be loaded. Please refresh and try again."
         }
     },
+    "calculationParameterSets": {
+        "title": "Calculation parameter set",
+        "manage": "Manage calculation parameter sets",
+        "actions": "Actions",
+        "default": "Default",
+        "useDefault": "Use default: {name}",
+        "missing": "Set unavailable; using default",
+        "create": "New parameter set",
+        "copy": "Copy parameters",
+        "rename": "Rename",
+        "makeDefault": "Set as default",
+        "delete": "Delete",
+        "deleteConfirm": "Delete “{name}” and its parameters? Referencing trains will use the default set when occupations are generated or recalculated. Existing occupation times are preserved.",
+        "name": "Parameter set name",
+        "copyFrom": "Copy from",
+        "copySuffix": " copy",
+        "fallbackHelp": "Trains with no parameter set, or a missing set, use the station scheme’s default set.",
+        "saved": "Parameter set saved",
+        "failed": "Parameter set operation failed. Please retry.",
+        "cancel": "Cancel",
+        "save": "Save",
+        "refresh": "Refresh",
+        "generationTitle": "Choose parameters for generated trains",
+        "generate": "Generate operation plan"
+    },
     "calculationParameters": {
         "batchSet": {
             "button": "Batch Set",
@@ -2671,6 +2696,7 @@
                 "stationSchemeID": "StationSchemeID",
                 "id": "ID",
                 "type": "Route Type",
+                "trainTypes": "Train types",
                 "description": "Route Description",
                 "nodeList": "Via Nodes",
                 "linkList": "Via Links",
@@ -2693,6 +2719,12 @@
                 "locomotive": "Locomotive Depot Route",
                 "shunting": "Shunting Route",
                 "dwelling": "Dwelling Route"
+            },
+            "trainTypes": {
+                "PassengerTrain": "Passenger train",
+                "FreightTrain": "Freight train",
+                "PassengerCar": "Passenger coach (rolling stock)",
+                "FreightCar": "Freight wagon (rolling stock)"
             },
             "actions": {
                 "add": "Add",
@@ -2725,6 +2757,7 @@
                 "rightToLeft": "Right to Left"
             },
             "placeholders": {
+                "trainTypes": "Select train types (multiple allowed)",
                 "autoId": "Auto-generated when empty",
                 "selectRouteItems": "Type a name or ID to filter",
                 "selectRouteTags": "Select or enter tags"

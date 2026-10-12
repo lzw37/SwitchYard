@@ -25,16 +25,17 @@ public sealed class StationCapacityInputBuilder
             new { instanceId, stationSchemeId }) ?? new List<StationRouteRow>();
 
         var occupationRows = dbConnector.Query<StationRouteTimeRow>(
-            @"SELECT InstanceID, StationSchemeID, RouteID, TrainTypeID, CellID,
+            @"SELECT InstanceID, StationSchemeID, CalculationParameterSetID, RouteID, TrainTypeID, CellID,
                      StartOccupationShift, EndOccupationShift
               FROM stationroutetime
               WHERE InstanceID = @instanceId AND StationSchemeID = @stationSchemeId
               ORDER BY RouteID, TrainTypeID, CellID",
             new { instanceId, stationSchemeId }) ?? new List<StationRouteTimeRow>();
 
+        var parameterSets = new CalculationParameterSets(dbConnector, instanceId, stationSchemeId);
         var trainRows = dbConnector.Query<TrainRow>(
             @"SELECT InstanceID, StationSchemeID, OperationPlanID, ID, TrainTemplateID,
-                     TrainNumber, Name, TrainType, IsFixedOperation
+                     TrainNumber, Name, TrainType, CalculationParameterSetID, IsFixedOperation
               FROM train
               WHERE InstanceID = @instanceId
                 AND StationSchemeID = @stationSchemeId
@@ -80,6 +81,7 @@ public sealed class StationCapacityInputBuilder
                 {
                     RouteId = row.RouteID!.Trim(),
                     TrainTypeId = row.TrainTypeID?.Trim() ?? string.Empty,
+                    CalculationParameterSetId = row.CalculationParameterSetID ?? CalculationParameterSets.InitialDefaultID,
                     CellId = row.CellID!.Trim(),
                     StartOccupationShiftSeconds = row.StartOccupationShift ?? 0,
                     EndOccupationShiftSeconds = row.EndOccupationShift ?? 0
@@ -94,7 +96,8 @@ public sealed class StationCapacityInputBuilder
             var train = new StationCapacityTrainInput
             {
                 Id = trainId,
-                TrainType = trainRow.TrainType?.Trim() ?? string.Empty
+                TrainType = trainRow.TrainType?.Trim() ?? string.Empty,
+                CalculationParameterSetId = parameterSets.Resolve(trainRow.CalculationParameterSetID)
             };
 
             var orderedMovements = (trainMovements ?? new List<MovementRow>())
@@ -155,10 +158,8 @@ public sealed class StationCapacityInputBuilder
             StationSchemeID = stationSchemeId,
             OperationPlanID = operationPlanId
         }, input);
-        if (input.RouteOccupations.Concat(input.Trains.SelectMany(train => train.Movements).SelectMany(movement => movement.CellOccupationOverrides))
-            .Any(cell => cell.StartOccupationShiftSeconds != Math.Truncate(cell.StartOccupationShiftSeconds) ||
-                cell.EndOccupationShiftSeconds != Math.Truncate(cell.EndOccupationShiftSeconds)))
-            input.MinimumModelVersion = "2.1.0";
+        // Older agents ignore set IDs and can silently mix windows from different sets.
+        input.MinimumModelVersion = "2.4.0";
         return input;
     }
 

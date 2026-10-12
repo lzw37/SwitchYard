@@ -28,6 +28,8 @@ public sealed class TrainProcessPrecedence
 
 public sealed class GenerateTrainOperationPlanFromProcessRequest
 {
+    public string? CalculationParameterSetID { get; set; }
+
     public string? InstanceID { get; set; }
     public string? StationSchemeID { get; set; }
     public string? OperationPlanID { get; set; }
@@ -41,6 +43,8 @@ public sealed class GenerateTrainOperationPlanFromProcessRequest
 
 public sealed class ProcessPlanGenerationItem
 {
+    public string? CalculationParameterSetID { get; set; }
+
     public string? ProcessTemplateID { get; set; }
     public int? Revision { get; set; }
     public int TrainCount { get; set; }

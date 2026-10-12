@@ -143,6 +143,7 @@ CREATE TABLE IF NOT EXISTS "stationroute" (
     "StationSchemeID" TEXT NULL,
     "ID" TEXT NULL,
     "Type" TEXT NULL,
+    "TrainTypes" TEXT NULL,
     "Description" TEXT NULL,
     "NodeList" TEXT NULL,
     "LinkList" TEXT NULL,
@@ -157,6 +158,7 @@ CREATE TABLE IF NOT EXISTS "stationroute" (
 );
 
 CREATE TABLE IF NOT EXISTS "stationroutetime" (
+    "CalculationParameterSetID" TEXT NULL,
     "InstanceID" TEXT NULL,
     "StationSchemeID" TEXT NULL,
     "RouteID" TEXT NULL,
@@ -250,6 +252,7 @@ CREATE TABLE IF NOT EXISTS "movementtemplate" (
 );
 
 CREATE TABLE IF NOT EXISTS "train" (
+    "CalculationParameterSetID" TEXT NULL,
     "InstanceID" TEXT NULL,
     "StationSchemeID" TEXT NULL,
     "OperationPlanID" TEXT NULL,
@@ -401,4 +404,13 @@ CREATE TABLE IF NOT EXISTS "operationthroughputsummaryroute" (
     "CategoryID" TEXT NULL,
     "RouteID" TEXT NULL,
     "SortOrder" INTEGER NULL
+);
+
+CREATE TABLE IF NOT EXISTS "calculationparameterset" (
+    "InstanceID" TEXT NOT NULL,
+    "StationSchemeID" TEXT NOT NULL,
+    "ID" TEXT NOT NULL,
+    "Name" TEXT NOT NULL,
+    "IsDefault" INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY ("InstanceID", "StationSchemeID", "ID")
 );
