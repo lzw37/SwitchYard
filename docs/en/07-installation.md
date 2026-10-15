@@ -177,7 +177,7 @@ $env:VITE_API_BASE_URL = 'http://localhost:7297'
 npm.cmd run dev
 ```
 
-Do not append `/api`: business routes also use `/Hump`, `/Capacity`, `/StationLayout`, `/OperationPlan`, and other roots. `VITE_API_BASE_URL` overrides frontend JSON configuration and can be kept in your private `.env.development.local`.
+Do not append `/api`: business routes also use `/Hump`, `/Capacity`, `/StationLayout`, `/OperationPlan`, and other roots. For normal source startup, `VITE_API_BASE_URL` overrides frontend JSON configuration and can be kept in your private `.env.development.local`. Docker frontend runtime configuration has higher precedence; see [Docker environment variables](12-docker-deployment.md#3-environment-variables).
 
 Vite's development proxy covers only `/api`, not every business route. The current frontend generally requests the configured API root directly. Development API CORS permits any origin; production uses the configured list.
 
@@ -194,7 +194,7 @@ npm.cmd run preview
 
 Output is `dist/`, with preview defaulting to port `4173`. `npm run build` combines type checking and building; separate commands simplify failure diagnosis. On Linux/macOS use `npm` instead of `npm.cmd`, for example `VITE_API_BASE_URL=https://api.example.com npm run build-only -- --mode production`.
 
-The API URL is read when the development server starts or the frontend is built. Changing a deployment server variable does not update an existing build. Current `config.ts` selects production JSON outside the development server, so `build:dev` does not necessarily select the development API; set the URL explicitly.
+For direct source builds, the API URL is read when the development server starts or the frontend is built; changing a deployment server variable does not update existing output. Docker deployment generates higher-priority runtime configuration at container startup, so changing the API address only requires recreating the container. Current `config.ts` selects production JSON outside the development server, so `build:dev` does not necessarily select the development API; set the URL explicitly. These runtime configuration notes were reviewed on 2026-10-15.
 
 ## 7. Install CapacityAgent
 

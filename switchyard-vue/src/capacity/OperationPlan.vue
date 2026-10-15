@@ -2134,6 +2134,7 @@ import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox, type TableInstance } from 'element-plus'
 import { ArrowDown, ArrowRight, ArrowUp, Check, Close, CopyDocument, Delete, Download, Edit, Filter, List, MagicStick, Plus, Refresh, Search, Setting, UploadFilled } from '@element-plus/icons-vue'
 import axios from '@/utils/axios'
+import { createClientId } from '@/utils/clientId'
 import { useCapacityStore } from '@/stores/capacity'
 import { useStationSchemeSelection } from './useStationSchemeSelection'
 import { useCalculationParameterSets } from './calculationParameterSets'
@@ -8188,7 +8189,7 @@ async function loadStationPlanSettings() {
 }
 
 function createDefaultStationPlanChart(): StationPlanChart {
-    return { chartID: crypto.randomUUID(), chartName: t('operationPlan.stationPlanCharts.defaultName'), endpointNodeIDs: [] }
+    return { chartID: createClientId(), chartName: t('operationPlan.stationPlanCharts.defaultName'), endpointNodeIDs: [] }
 }
 
 function normalizeStationPlanCharts(source: unknown): StationPlanChart[] {
@@ -8284,7 +8285,7 @@ async function saveStationPlanSettings() {
     stationPlanChartNameError.value = !chartName ? t('operationPlan.stationPlanCharts.nameRequired')
         : chartName.length > 100 ? t('operationPlan.stationPlanCharts.nameTooLong') : ''
     if (stationPlanChartNameError.value || (!stationPlanEditingChartID.value && stationPlanCharts.value.length >= 100)) return
-    const chartID = stationPlanEditingChartID.value || pendingStationPlanChartSave?.selectedID || crypto.randomUUID()
+    const chartID = stationPlanEditingChartID.value || pendingStationPlanChartSave?.selectedID || createClientId()
     const chart: StationPlanChart = { chartID, chartName, endpointNodeIDs: normalizeRoutePickerValues(stationPlanAxisDraft.value
         .filter(isStationPlanRowSelected).flatMap(stationPlanRowNodeIDs)) }
     const charts = materializeStationPlanCharts()

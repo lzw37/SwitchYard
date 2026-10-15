@@ -4,6 +4,8 @@
 
 This chapter follows current source and the repository's Ubuntu/systemd deployment scripts. See [Installation and configuration](07-installation.md) for local setup and initial Agent installation. The [original deployment guide](../archive/guides/Deploy-Instruction.md), [operations guide](../archive/guides/Operations-Recommendations.md), and [SQLite-to-MySQL document](../archive/guides/SQLite-to-MySQL-Migration.md) are preserved. Their historical row counts, two-database architecture, and early migration proposals are not current deployment facts.
 
+For containers, start with [Docker deployment](12-docker-deployment.md), reviewed on 2026-10-15. It covers frontend/backend Dockerfiles, Compose, environment variables, same-origin proxying, and offline delivery. This chapter's manual build, systemd, and static frontend commands apply to their respective deployment methods; data initialization, backup, and migration requirements also apply to containers.
+
 ## 1. Deployment layout and artifacts
 
 The example places the frontend at `https://app.example.com` and the API at `https://api.example.com`, with TLS terminated by a reverse proxy. Replace example domains and paths for your environment.
@@ -112,7 +114,7 @@ npm run type-check
 VITE_API_BASE_URL=https://api.example.com npm run build-only -- --mode production
 ```
 
-Stop publication if type checking fails. In PowerShell, use `$env:VITE_API_BASE_URL = 'https://api.example.com'` and `npm.cmd`. The API URL is embedded at build time; changing the server environment does not update existing output.
+Stop publication if type checking fails. In PowerShell, use `$env:VITE_API_BASE_URL = 'https://api.example.com'` and `npm.cmd`. With this direct static deployment, changing the server environment does not update the embedded API URL; rebuild when it changes. Docker frontend containers generate separate runtime configuration at startup; see [Docker environment variables](12-docker-deployment.md#3-environment-variables).
 
 Use the API server root without `/api`. Deploy the contents of `dist/` to the static frontend directory, and preserve the complete source structure needed by the local station-layout frontend dependency during builds.
 

@@ -4,6 +4,8 @@
 
 This manual is for teachers, students, planners, deployment maintainers, and developers. It describes the repository implementation as of 11 October 2026, including workflows, calculation assumptions, persistence scope, and current limitations. The Chinese edition provides the same chapters with matching numbers.
 
+The Docker deployment chapter was reviewed on 15 October 2026; each chapter's review date identifies its applicability.
+
 ## Read by task
 
 | Goal | Suggested reading order |
@@ -14,6 +16,7 @@ This manual is for teachers, students, planners, deployment maintainers, and dev
 | Analyze facility relationships, conflicts, and queues | 06 Sketch layout analysis |
 | Run the source locally | 07 Installation and first run |
 | Deploy, upgrade, back up, restore, or migrate | 08 Deployment and operations |
+| Deploy frontend and backend with Docker | 12 Docker deployment → 08 Deployment and operations |
 | Develop the frontend or embed station layouts | 09 Development and integration |
 | Integrate APIs or investigate revisions and related deletion | 10 API and data reference → HTTP API inventory |
 | Distribute the application or update third party notices | 11 Licensing and third party notices |
@@ -33,6 +36,7 @@ This manual is for teachers, students, planners, deployment maintainers, and dev
 | [09 Development and integration](09-development-integration.md) | Frontend structure, UI, test availability, standalone station Gateway, and host services |
 | [10 API and data reference](10-api-data-reference.md) | Authentication, examples, errors, concurrent revisions, databases, copying, and deletion scope |
 | [11 Open source licensing and third party notices](11-licensing.md) | Project MIT license, dependencies and assets, packaging, maintenance commands, and outstanding checks |
+| [12 Docker deployment](12-docker-deployment.md) | Frontend/backend images, Compose, environment variables, external MySQL, HTTPS, persistence, and offline delivery |
 | [Appendix HTTP API inventory](appendix-api-routes.md) | All 175 main service HTTP operations, standalone module endpoints, and SignalR notes |
 
 ## Archive and maintenance

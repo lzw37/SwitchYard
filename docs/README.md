@@ -4,6 +4,8 @@
 
 This documentation describes the implementation as of 11 October 2026, covering usage, calculations, installation, deployment, operations, integration, and APIs. Chinese and English editions have matching chapters and language links.
 
+Docker 部署说明核对至 2026-10-15；各章以其核对日期为准。The Docker deployment chapter was reviewed on 15 October 2026; see each chapter's review date for its scope.
+
 **[中文完整目录](zh-CN/README.md)** · **[Complete English manual](en/README.md)**
 
 ## 从这里开始 / Start here
@@ -13,6 +15,7 @@ This documentation describes the implementation as of 11 October 2026, covering 
 | 使用程序 / Use the application | [用户指南](zh-CN/02-user-guide.md) | [User guide](en/02-user-guide.md) |
 | 安装启动 / Install and run | [安装与首次启动](zh-CN/07-installation.md) | [Installation and first run](en/07-installation.md) |
 | 部署维护 / Deploy and maintain | [部署与运维](zh-CN/08-deployment-operations.md) | [Deployment and operations](en/08-deployment-operations.md) |
+| Docker 部署 / Deploy with Docker | [Docker 部署](zh-CN/12-docker-deployment.md) | [Docker deployment](en/12-docker-deployment.md) |
 | 开发接入 / Develop and integrate | [开发与接入](zh-CN/09-development-integration.md) | [Development and integration](en/09-development-integration.md) |
 | 查找旧文档 / Find an older document | [归档与迁移对照](archive/README.md) | [Archive and relocation map](archive/README.md) |
 | 修改文档 / Update documentation | [文档维护约定](MAINTENANCE.md) | [Documentation maintenance](MAINTENANCE.md) |
@@ -33,6 +36,7 @@ This documentation describes the implementation as of 11 October 2026, covering 
 | 09 | [开发与接入](zh-CN/09-development-integration.md) | [Development and integration](en/09-development-integration.md) |
 | 10 | [接口与数据参考](zh-CN/10-api-data-reference.md) | [API and data reference](en/10-api-data-reference.md) |
 | 11 | [开源许可与第三方声明](zh-CN/11-licensing.md) | [Licensing and third party notices](en/11-licensing.md) |
+| 12 | [Docker 部署](zh-CN/12-docker-deployment.md) | [Docker deployment](en/12-docker-deployment.md) |
 | 附录 / Appendix | [HTTP 接口清单](zh-CN/appendix-api-routes.md) | [HTTP API inventory](en/appendix-api-routes.md) |
 
 ## 文档放在哪里 / Where documentation lives

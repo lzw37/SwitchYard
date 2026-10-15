@@ -1,1 +1,7 @@
 /scripts/deploy/* text eol=lf
+/Dockerfile text eol=lf
+/compose*.yaml text eol=lf
+/.env.docker.example text eol=lf
+/deploy/docker/** text eol=lf
+/switchyard-vue/Dockerfile text eol=lf
+/switchyard-vue/docker/** text eol=lf

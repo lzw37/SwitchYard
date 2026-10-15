@@ -177,7 +177,7 @@ $env:VITE_API_BASE_URL = 'http://localhost:7297'
 npm.cmd run dev
 ```
 
-根 URL 不带 `/api` 后缀；业务还使用 `/Hump`、`/Capacity`、`/StationLayout`、`/OperationPlan` 等根路径。`VITE_API_BASE_URL` 优先于前端 JSON 配置，可保存到自己的 `.env.development.local`。
+根 URL 不带 `/api` 后缀；业务还使用 `/Hump`、`/Capacity`、`/StationLayout`、`/OperationPlan` 等根路径。常规源码启动时 `VITE_API_BASE_URL` 优先于前端 JSON 配置，可保存到自己的 `.env.development.local`。Docker 前端的运行时配置优先级更高，见 [Docker 环境变量](12-docker-deployment.md#3-环境变量)。
 
 Vite 开发代理只代理 `/api`，并不涵盖全部业务路径。当前前端主要直接请求配置的 API 根地址。开发 API 的动态 CORS 策略允许任意来源；生产只接受配置列表中的来源。
 
@@ -194,7 +194,7 @@ npm.cmd run preview
 
 产物为 `dist/`，预览默认端口 `4173`。`npm run build` 组合类型检查与构建；分步命令方便定位失败。Linux/macOS 将 `npm.cmd` 换为 `npm`，环境变量可写成 `VITE_API_BASE_URL=https://api.example.com npm run build-only -- --mode production`。
 
-API 地址在开发服务器启动或构建时读取。修改部署服务器环境变量不会更新已构建页面，必须重新构建。当前 `config.ts` 在非开发服务器环境选择生产 JSON，因此 `build:dev` 不等于使用开发 API，需显式指定 URL。
+这种直接源码构建的 API 地址在开发服务器启动或构建时读取，修改部署服务器环境变量不会更新已构建页面。Docker 部署会在容器启动时生成更高优先级的运行时配置，改变 API 地址后重建容器即可。当前 `config.ts` 在非开发服务器环境选择生产 JSON，因此 `build:dev` 不等于使用开发 API，需显式指定 URL。以上运行时配置说明核对至 2026-10-15。
 
 ## 7. 安装 CapacityAgent
 

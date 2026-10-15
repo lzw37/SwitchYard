@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { createClientId } from '@/utils/clientId'
 
 /** Durations and event times are in minutes; time is relative to the template origin. */
 export const activityTypes = ['Arrival', 'Departure', 'Shunting', 'Locomotive', 'Dwelling'] as const
@@ -180,7 +181,7 @@ export function syncDwellingAnchors(template: ProcessTemplate): void {
         }
     }
 }
-export function makeID(prefix: string) { return `${prefix}-${crypto.randomUUID()}` }
+export function makeID(prefix: string) { return `${prefix}-${createClientId()}` }
 export type ProcessTranslate = (key: string, parameters?: Record<string, string | number>) => string
 function processText(translate: ProcessTranslate | undefined, key: string, fallback: string, parameters?: Record<string, string | number>) {
     return translate?.(`operationProcess.defaults.${key}`, parameters) ?? fallback

@@ -4,6 +4,7 @@ import { ArrowDown, ArrowUp, Check, Close, Delete, Edit, Plus, Refresh } from '@
 import { useI18n } from 'vue-i18n'
 import ActionButton from '@/components/ui/ActionButton.vue'
 import axios from '@/utils/axios'
+import { createClientId } from '@/utils/clientId'
 
 interface ChartScope { instanceID: string; stationSchemeID: string; operationPlanID: string }
 interface Chart { chartID: string; chartName: string; cellIDs: string[] | null }
@@ -62,7 +63,7 @@ function uniqueIDs(values: string[]): string[] {
 }
 
 function defaultChart(): Chart {
-    return { chartID: crypto.randomUUID(), chartName: text('defaultName'), cellIDs: null }
+    return { chartID: createClientId(), chartName: text('defaultName'), cellIDs: null }
 }
 
 function parseResponse(value: unknown): { isConfigured: boolean; charts: Chart[] } {
@@ -181,7 +182,7 @@ async function saveDraft() {
     const chartName = draftName.value.trim()
     nameError.value = !chartName ? text('nameRequired') : chartName.length > 100 ? text('nameTooLong') : ''
     if (nameError.value) return
-    const chartID = editingChartID.value || pendingSave?.selectedID || crypto.randomUUID()
+    const chartID = editingChartID.value || pendingSave?.selectedID || createClientId()
     const updated: SavedChart = { chartID, chartName, cellIDs: [...(draftFollowsAllCells.value ? availableCellIDs.value : draftCellIDs.value)] }
     const next = savedCharts()
     const index = next.findIndex(chart => chart.chartID === chartID)

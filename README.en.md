@@ -13,6 +13,7 @@ SwitchYard supports railway station and terminal teaching, planning, and computa
 | Understand features, architecture, and current boundaries | [Overview](docs/en/01-overview.md) |
 | Set up and run the application | [Installation and first run](docs/en/07-installation.md) |
 | Deploy, back up, upgrade, or troubleshoot | [Deployment and operations](docs/en/08-deployment-operations.md) |
+| Deploy the frontend and backend with Docker | [Docker deployment](docs/en/12-docker-deployment.md) |
 | Develop the frontend or embed station layouts | [Development and integration](docs/en/09-development-integration.md) |
 | Look up APIs and related data rules | [API and data reference](docs/en/10-api-data-reference.md) |
 

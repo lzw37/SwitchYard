@@ -1,3 +1,5 @@
+import { createClientId } from "@/utils/clientId";
+
 export interface Point {
   x: number;
   y: number;
@@ -194,7 +196,7 @@ export interface CrossingQueueMetrics {
   delayStandardErrorSeconds: number | null;
   queueLengthStandardError: number | null;
 }
-export const uid = () => crypto.randomUUID();
+export const uid = createClientId;
 export const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value));
 export function normalizePlanQuantities(document: SchemeDocument) {
   for (const plan of document.plans) {

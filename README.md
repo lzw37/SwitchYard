@@ -13,6 +13,7 @@ SwitchYard 是面向铁路站场与枢纽教学、方案编制和计算分析的
 | 了解当前功能、架构和实现边界 | [程序总览](docs/zh-CN/01-overview.md) |
 | 配置环境并首次启动 | [安装与首次启动](docs/zh-CN/07-installation.md) |
 | 部署、备份、升级或排错 | [部署与运维](docs/zh-CN/08-deployment-operations.md) |
+| 使用 Docker 部署前后端 | [Docker 部署](docs/zh-CN/12-docker-deployment.md) |
 | 开发前端或接入独立站场控件 | [开发与接入](docs/zh-CN/09-development-integration.md) |
 | 查询接口和关联数据规则 | [接口与数据参考](docs/zh-CN/10-api-data-reference.md) |
 

@@ -9,6 +9,13 @@ scripts/deploy/api.env
 scripts/deploy/*.env
 !scripts/deploy/*.env.example
 
+# Docker runtime configuration and image exports contain local deployment data.
+.env.docker
+.env.docker.*
+!.env.docker.example
+docker-images*.tar
+/switchyard-*.tar
+
 ## Get latest from https://github.com/github/gitignore/blob/master/VisualStudio.gitignore
 
 # User-specific files
@@ -373,7 +380,16 @@ LocalData
 switchyard-vue/src/assets/教学文档
 switchyard-vue/src/assets/站场视频
 switchyardvid
-switchyard-vue/src/assets/capacity_fig
+# CapacityPreview imports these assets at build time; keep them in source control.
+/switchyard-vue/src/assets/capacity_fig/*
+!/switchyard-vue/src/assets/capacity_fig/2.png
+!/switchyard-vue/src/assets/capacity_fig/Station_layout_and_route_design.png
+!/switchyard-vue/src/assets/capacity_fig/Operation_process_editor.png
+!/switchyard-vue/src/assets/capacity_fig/Train_operation_plan.png
+!/switchyard-vue/src/assets/capacity_fig/Operation_chart_and_section_occupancy.png
+!/switchyard-vue/src/assets/capacity_fig/Bottleneck_analysis_and_capacity summaries.png
+!/switchyard-vue/src/assets/capacity_fig/2D_operation_playback.gif
+!/switchyard-vue/src/assets/capacity_fig/3D_operation_playback.gif
 SwitchYard.StationLayout/frontend/dist
 SwitchYard.WebApi/SwitchYard.OperationProcess.Tests
 switchyard-vue/checks

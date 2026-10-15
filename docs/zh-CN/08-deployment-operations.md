@@ -4,6 +4,8 @@
 
 本文以当前代码和仓库自带的 Ubuntu/systemd 部署脚本为依据。开发环境与 Agent 首次安装见[安装与配置](07-installation.md)。[原部署说明](../archive/guides/Deploy-Instruction.md)、[原运维说明](../archive/guides/Operations-Recommendations.md)和[原 SQLite→MySQL 迁移文档](../archive/guides/SQLite-to-MySQL-Migration.md)完整保留，其中历史数据量、两库架构与早期迁移建议不能直接作为当前运行事实。
 
+使用容器请先阅读 [Docker 部署](12-docker-deployment.md)（2026-10-15 核对），其中提供前后端 Dockerfile、Compose、环境变量、同源代理及离线交付步骤。本章的手工构建、systemd 和静态前端部署命令仍按各自方式使用；数据初始化、备份与迁移要求也适用于容器部署。
+
 ## 1. 部署结构与交付物
 
 推荐把前端放在 `https://app.example.com`，API 放在 `https://api.example.com`，由反向代理终止 TLS。以下域名和路径都是示例，应替换为本环境的值。
@@ -112,7 +114,7 @@ npm run type-check
 VITE_API_BASE_URL=https://api.example.com npm run build-only -- --mode production
 ```
 
-类型检查失败时应停止发布。PowerShell 使用 `$env:VITE_API_BASE_URL = 'https://api.example.com'` 和 `npm.cmd`。构建产物中的 API URL 不会因运行服务器环境变化而更新，地址改变须重新构建。
+类型检查失败时应停止发布。PowerShell 使用 `$env:VITE_API_BASE_URL = 'https://api.example.com'` 和 `npm.cmd`。这种直接部署静态产物的方式不会因运行服务器环境变化而更新 API URL，地址改变须重新构建。Docker 前端另有容器启动时生成的运行时配置，见 [Docker 环境变量](12-docker-deployment.md#3-环境变量)。
 
 API URL 是服务器根地址，不追加 `/api`。把 `dist/` 内容部署到前端静态目录，保留独立站场前端本地依赖的完整构建来源。
 
