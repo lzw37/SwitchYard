@@ -11,6 +11,8 @@
 !SwitchYard.WebApi/SwitchYard.Hump/**
 !SwitchYard.WebApi/SwitchYard.SketchLayout/
 !SwitchYard.WebApi/SwitchYard.SketchLayout/**
+!SwitchYard.WebApi/SwitchYard.SpeedProfile/
+!SwitchYard.WebApi/SwitchYard.SpeedProfile/**
 !SwitchYard.StationLayout/
 !SwitchYard.StationLayout/README.md
 !SwitchYard.StationLayout/backend/

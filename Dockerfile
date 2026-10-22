@@ -26,6 +26,7 @@ COPY SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj SwitchYard.W
 COPY SwitchYard.WebApi/SwitchYard.Capacity/SwitchYard.Capacity.csproj SwitchYard.WebApi/SwitchYard.Capacity/
 COPY SwitchYard.WebApi/SwitchYard.Hump/SwitchYard.Hump.csproj SwitchYard.WebApi/SwitchYard.Hump/
 COPY SwitchYard.WebApi/SwitchYard.SketchLayout/SwitchYard.SketchLayout.csproj SwitchYard.WebApi/SwitchYard.SketchLayout/
+COPY SwitchYard.WebApi/SwitchYard.SpeedProfile/SwitchYard.SpeedProfile.csproj SwitchYard.WebApi/SwitchYard.SpeedProfile/
 COPY SwitchYard.StationLayout/backend/SwitchYard.StationLayout.csproj SwitchYard.StationLayout/backend/
 RUN dotnet restore SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj
 
@@ -33,6 +34,7 @@ COPY --exclude=appsettings.json SwitchYard.WebApi/SwitchYard.Service/ SwitchYard
 COPY SwitchYard.WebApi/SwitchYard.Capacity/ SwitchYard.WebApi/SwitchYard.Capacity/
 COPY SwitchYard.WebApi/SwitchYard.Hump/ SwitchYard.WebApi/SwitchYard.Hump/
 COPY SwitchYard.WebApi/SwitchYard.SketchLayout/ SwitchYard.WebApi/SwitchYard.SketchLayout/
+COPY SwitchYard.WebApi/SwitchYard.SpeedProfile/ SwitchYard.WebApi/SwitchYard.SpeedProfile/
 COPY SwitchYard.StationLayout/backend/ SwitchYard.StationLayout/backend/
 COPY SwitchYard.StationLayout/README.md SwitchYard.StationLayout/README.md
 COPY LICENSE ./LICENSE

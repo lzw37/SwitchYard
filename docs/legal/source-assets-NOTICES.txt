@@ -171,3 +171,34 @@ rights to independently supplied material.
 被忽略的本地数据库、教学文档、视频、截图、测试数据、node_modules 和生成
 产物不属于本源码素材清单。若纳入发行包或单独分发，应登记各自实际来源与
 授权；根目录 MIT 文件不能证明独立提供资料的权利归属。
+
+6. TrainRuns.jl algorithm adaptation / TrainRuns.jl 算法移植
+
+Local component / 本地组件:
+  SwitchYard.WebApi/SwitchYard.SpeedProfile
+Upstream / 上游:
+  https://github.com/railtoolkit/TrainRuns.jl
+Version / 版本: v1.0.4
+Pinned commit / 固定提交: 529cdd1d2a158077440ce4e3093a8b875a1191fb
+License / 许可: ISC
+Copyright 2022 Max Kannenberg, Martin Scheidt
+
+Adapted source files / 移植来源文件:
+  src/behavior.jl: secureBrakingBehavior! backward speed constraints
+  src/calc.jl: calculateTractiveEffort interpolation
+  src/formulary.jl: force, acceleration, and kinematics relationships
+
+The C# adaptation adds typed models, a distance grid, a forward solver, and
+validation. Braking is extended to use brake force, train resistance, and
+track gradient instead of the upstream constant net braking deceleration;
+identical numerical output is not asserted. No OSRD or ALTRIOS code is copied.
+C# 移植增加类型化模型、距离网格、前向求解与输入验证。制动扩展为制动力、
+列车阻力和坡度共同作用，不沿用上游恒定净减速度模型，不保证数值完全一致。
+未复制 OSRD 或 ALTRIOS 代码。
+
+Retain the ISC copyright and permission notice in copies and distributions.
+保留 ISC 版权及许可声明，随包含移植实现的源码和发行产物提供。
+Full license / 完整许可:
+  licenses/trainruns-ISC.txt
+Component attribution and bundled license / 组件归属与随附许可:
+  ../../SwitchYard.WebApi/SwitchYard.SpeedProfile/THIRD-PARTY-NOTICES.txt

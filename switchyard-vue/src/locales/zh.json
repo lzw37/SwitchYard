@@ -1417,6 +1417,7 @@
             "simulation": "仿真功能（待开发）"
         },
         "tabs": {
+            "traction": "牵引计算",
             "stationLayout": "车站布置图",
             "routeDesign": "进路设计",
             "layout3d": "3D",

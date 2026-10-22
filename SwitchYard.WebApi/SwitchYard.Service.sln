@@ -25,12 +25,30 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SwitchYard.SketchLayout", "
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SwitchYard.SketchLayout.Tests", "SwitchYard.SketchLayout.Tests\SwitchYard.SketchLayout.Tests.csproj", "{DF899AA2-1CD1-4BE3-9D90-A4A5CEFC18DF}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SwitchYard.SpeedProfile", "SwitchYard.SpeedProfile\SwitchYard.SpeedProfile.csproj", "{B19C4F68-6883-40D2-A2B2-017B731B5ED5}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SwitchYard.SpeedProfile.Tests", "SwitchYard.SpeedProfile.Tests\SwitchYard.SpeedProfile.Tests.csproj", "{4C696CF3-F2BC-45C1-AC9E-D7FDE8A2064F}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SwitchYard.SpeedProfile.ApiTests", "SwitchYard.SpeedProfile.ApiTests\SwitchYard.SpeedProfile.ApiTests.csproj", "{85716A3D-6054-4646-856A-EF975C3B26CF}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{85716A3D-6054-4646-856A-EF975C3B26CF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{85716A3D-6054-4646-856A-EF975C3B26CF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{85716A3D-6054-4646-856A-EF975C3B26CF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{85716A3D-6054-4646-856A-EF975C3B26CF}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B19C4F68-6883-40D2-A2B2-017B731B5ED5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B19C4F68-6883-40D2-A2B2-017B731B5ED5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B19C4F68-6883-40D2-A2B2-017B731B5ED5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B19C4F68-6883-40D2-A2B2-017B731B5ED5}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4C696CF3-F2BC-45C1-AC9E-D7FDE8A2064F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4C696CF3-F2BC-45C1-AC9E-D7FDE8A2064F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4C696CF3-F2BC-45C1-AC9E-D7FDE8A2064F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4C696CF3-F2BC-45C1-AC9E-D7FDE8A2064F}.Release|Any CPU.Build.0 = Release|Any CPU
 		{DF899AA2-1CD1-4BE3-9D90-A4A5CEFC18DF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{DF899AA2-1CD1-4BE3-9D90-A4A5CEFC18DF}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{DF899AA2-1CD1-4BE3-9D90-A4A5CEFC18DF}.Release|Any CPU.ActiveCfg = Release|Any CPU

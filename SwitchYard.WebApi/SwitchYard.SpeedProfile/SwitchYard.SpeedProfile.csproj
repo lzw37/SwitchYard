@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <Description>Train traction and braking speed profile calculation.</Description>
+    <PackageLicenseExpression>MIT AND ISC</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Update="README.md;RESEARCH.md;API.md" Pack="true" PackagePath="" />
+    <None Update="THIRD-PARTY-NOTICES.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="licenses/SwitchYard.SpeedProfile/THIRD-PARTY-NOTICES.txt" Pack="true" PackagePath="" />
+    <None Include="../../LICENSE" Link="LICENSE" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="licenses/SwitchYard.SpeedProfile/LICENSE" Pack="true" PackagePath="" />
+  </ItemGroup>
+</Project>
