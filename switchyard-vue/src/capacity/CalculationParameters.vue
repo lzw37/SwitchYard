@@ -544,6 +544,7 @@ import { Check, Close, DataAnalysis, Filter, List, Plus, Refresh, SetUp } from '
 import axios from '@/utils/axios'
 import { useCapacityStore } from '@/stores/capacity'
 import { useStationSchemeSelection } from './useStationSchemeSelection'
+import { useCalculationParameterSetSelection } from './useCalculationParameterSetSelection'
 import OccupationTimeGantt from './components/OccupationTimeGantt.vue'
 import CalculationParameterSetManager from './components/CalculationParameterSetManager.vue'
 import { namedTrackCellNames } from './components/chartRowKinds'
@@ -698,7 +699,7 @@ const routeFilters = ref<StationRouteFilters>(createEmptyRouteFilters())
 const routeQuickTypeFilter = ref('')
 const routeQuickStartRouteEndIds = ref<string[]>([])
 const routeQuickEndRouteEndIds = ref<string[]>([])
-const selectedParameterSetID = ref('')
+const selectedParameterSetID = useCalculationParameterSetSelection(() => props.selectedInstanceId, currentStationSchemeId)
 const routeTimes = ref<StationRouteTime[]>([])
 const batchRouteTimeSettings = ref<BatchRouteTimeSetting[]>([])
 const uniformStartOccupationShift = ref<number | null>(0)
@@ -890,6 +891,8 @@ let layoutLoadVersion = 0
 let routeLoadVersion = 0
 let routeEndLoadVersion = 0
 let routeTimeLoadVersion = 0
+let routeParameterScope = ''
+const parameterScopeKey = () => JSON.stringify([selectedInstanceId.value, currentStationSchemeId.value, selectedParameterSetID.value])
 
 function readString(source: any, ...keys: string[]) {
     for (const key of keys) {
@@ -1516,6 +1519,7 @@ function readResponseCount(source: any, ...keys: string[]) {
 async function applyBatchSetRouteTimes() {
     const instanceID = selectedInstanceId.value
     const stationSchemeID = currentStationSchemeId.value.trim()
+    const calculationParameterSetID = selectedParameterSetID.value
     if (!instanceID || !stationSchemeID) {
         ElMessage.warning(t('calculationParameters.batchSet.selectScheme'))
         return
@@ -1530,13 +1534,15 @@ async function applyBatchSetRouteTimes() {
         return
     }
 
+    const loadVersion = ++routeTimeLoadVersion
+    loadingRouteTimes.value = false
     batchSettingRouteTimes.value = true
     try {
         const response = await axios.put('/StationLayout/BatchSetStationRouteTimes', {
             instanceID,
             stationSchemeID,
             trainTypeID: '',
-            calculationParameterSetID: selectedParameterSetID.value,
+            calculationParameterSetID,
             settings: selectedSettings.map((setting) => ({
                 type: setting.type,
                 routeIDs: setting.selectedRouteIds,
@@ -1544,6 +1550,8 @@ async function applyBatchSetRouteTimes() {
                 endOccupationShift: normalizeNullableInteger(setting.endOccupationShift),
             })),
         })
+        if (loadVersion !== routeTimeLoadVersion || instanceID !== selectedInstanceId.value
+            || stationSchemeID !== currentStationSchemeId.value.trim() || calculationParameterSetID !== selectedParameterSetID.value) return
         batchSetDialogVisible.value = false
         ElMessage.success(t('calculationParameters.batchSet.success', {
             routeCount: readResponseCount(response.data, 'routeCount', 'RouteCount'),
@@ -1552,6 +1560,8 @@ async function applyBatchSetRouteTimes() {
         await loadStationRoutes()
         if (selectedRouteId.value) await loadRouteTimes()
     } catch (error) {
+        if (loadVersion !== routeTimeLoadVersion || instanceID !== selectedInstanceId.value
+            || stationSchemeID !== currentStationSchemeId.value.trim() || calculationParameterSetID !== selectedParameterSetID.value) return
         console.error('Failed to batch set station route times:', error)
         ElMessage.error(t('calculationParameters.batchSet.failed'))
     } finally {
@@ -1695,7 +1705,7 @@ function selectStationRoute(row: StationRoute) {
 function selectStationRouteById(id: string) {
     const row = stationRoutes.value.find((item) => item.id === id) || stationRoutes.value[0]
     if (row) selectStationRoute(row)
-    else selectedRouteId.value = ''
+    else { selectedRouteId.value = ''; void loadRouteTimes() }
 }
 
 function clearLayout() {
@@ -1716,6 +1726,9 @@ function clearLayout() {
 function clearStationRoutes() {
     routeLoadVersion++
     routeTimeLoadVersion++
+    loadingRoutes.value = false
+    loadingRouteTimes.value = false
+    routeParameterScope = ''
     stationRoutes.value = []
     selectedRouteId.value = ''
     routeTimes.value = []
@@ -1794,28 +1807,37 @@ async function loadLayout() {
     }
 }
 
-async function loadStationRoutes() {
+async function loadStationRoutes(preferredRouteId = '') {
     const instanceID = selectedInstanceId.value
     const stationSchemeID = currentStationSchemeId.value.trim()
+    const calculationParameterSetID = selectedParameterSetID.value
     if (!instanceID || !stationSchemeID) {
         clearStationRoutes()
         return
     }
     const loadVersion = ++routeLoadVersion
-    const previousId = selectedRouteId.value
+    routeParameterScope = parameterScopeKey()
+    const update = capacityStore.routeOccupancyUpdate
+    const notifiedRoute = update?.instanceID === instanceID && update.stationSchemeID === stationSchemeID
+        && update.calculationParameterSetID === calculationParameterSetID ? update.routeIDs[0] || '' : ''
+    const previousId = preferredRouteId || selectedRouteId.value || notifiedRoute
+    const isCurrent = () => loadVersion === routeLoadVersion && instanceID === selectedInstanceId.value
+        && stationSchemeID === currentStationSchemeId.value.trim() && calculationParameterSetID === selectedParameterSetID.value
     loadingRoutes.value = true
     try {
-        const response = await axios.get('/StationLayout/GetStationRoutes', { params: { instanceID, stationSchemeID, calculationParameterSetID: selectedParameterSetID.value } })
-        if (loadVersion !== routeLoadVersion || instanceID !== selectedInstanceId.value || stationSchemeID !== currentStationSchemeId.value.trim()) return
+        const response = await axios.get('/StationLayout/GetStationRoutes', { params: { instanceID, stationSchemeID, calculationParameterSetID } })
+        if (!isCurrent()) return
         stationRoutes.value = (Array.isArray(response.data) ? response.data : []).map(normalizeStationRoute).filter((item): item is StationRoute => item !== null)
         await nextTick()
-        if (loadVersion !== routeLoadVersion || instanceID !== selectedInstanceId.value || stationSchemeID !== currentStationSchemeId.value) return
+        if (!isCurrent()) return
         selectStationRouteById(previousId)
     } catch (error) {
-        if (loadVersion !== routeLoadVersion || instanceID !== selectedInstanceId.value || stationSchemeID !== currentStationSchemeId.value) return
+        if (!isCurrent()) return
         console.error('Failed to load calculation parameter routes:', error)
         stationRoutes.value = []
         selectedRouteId.value = ''
+        routeTimeLoadVersion++
+        loadingRouteTimes.value = false
         routeTimes.value = []
         syncUniformShiftDraftFromRows()
         ElMessage.error(t('routeDesign.stationRoute.messages.loadFailed'))
@@ -1856,26 +1878,30 @@ async function loadRouteTimes() {
     const instanceID = selectedInstanceId.value
     const stationSchemeID = currentStationSchemeId.value.trim()
     const routeID = selectedRouteId.value
-    if (!instanceID || !stationSchemeID || !routeID) {
+    const calculationParameterSetID = selectedParameterSetID.value
+    const loadVersion = ++routeTimeLoadVersion
+    if (!instanceID || !stationSchemeID || !routeID || !calculationParameterSetID) {
         routeTimes.value = []
+        loadingRouteTimes.value = false
         syncUniformShiftDraftFromRows()
         return
     }
-
-    const loadVersion = ++routeTimeLoadVersion
+    const isCurrent = () => loadVersion === routeTimeLoadVersion && routeID === selectedRouteId.value
+        && instanceID === selectedInstanceId.value && stationSchemeID === currentStationSchemeId.value.trim()
+        && calculationParameterSetID === selectedParameterSetID.value
     loadingRouteTimes.value = true
     try {
         const response = await axios.get('/StationLayout/GetStationRouteTimes', {
-            params: { instanceID, stationSchemeID, routeID, trainTypeID: '', calculationParameterSetID: selectedParameterSetID.value },
+            params: { instanceID, stationSchemeID, routeID, trainTypeID: '', calculationParameterSetID },
         })
-        if (loadVersion !== routeTimeLoadVersion || routeID !== selectedRouteId.value || instanceID !== selectedInstanceId.value || stationSchemeID !== currentStationSchemeId.value) return
+        if (!isCurrent()) return
         routeTimes.value = mergeRouteTimesWithSelectedRouteCells((Array.isArray(response.data) ? response.data : [])
             .map(normalizeStationRouteTime)
             .filter((item): item is StationRouteTime => item !== null))
         syncUniformShiftDraftFromRows()
         setSelectedRouteOccupancyConfigured(routeTimes.value.length > 0)
     } catch (error) {
-        if (loadVersion !== routeTimeLoadVersion || routeID !== selectedRouteId.value || instanceID !== selectedInstanceId.value || stationSchemeID !== currentStationSchemeId.value) return
+        if (!isCurrent()) return
         console.error('Failed to load station route times:', error)
         routeTimes.value = []
         syncUniformShiftDraftFromRows()
@@ -1895,7 +1921,8 @@ async function createRouteTimes() {
         return
     }
 
-    routeTimeLoadVersion++
+    const loadVersion = ++routeTimeLoadVersion
+    loadingRouteTimes.value = false
     creatingRouteTimes.value = true
     try {
         const response = await axios.post('/StationLayout/CreateStationRouteTimes', {
@@ -1905,7 +1932,7 @@ async function createRouteTimes() {
             trainTypeID: '',
             calculationParameterSetID,
         })
-        if (instanceID !== selectedInstanceId.value || stationSchemeID !== currentStationSchemeId.value.trim()
+        if (loadVersion !== routeTimeLoadVersion || instanceID !== selectedInstanceId.value || stationSchemeID !== currentStationSchemeId.value.trim()
             || routeID !== selectedRouteId.value || calculationParameterSetID !== selectedParameterSetID.value) return
         routeTimes.value = mergeRouteTimesWithSelectedRouteCells((Array.isArray(response.data) ? response.data : [])
             .map(normalizeStationRouteTime)
@@ -1914,6 +1941,8 @@ async function createRouteTimes() {
         setSelectedRouteOccupancyConfigured(routeTimes.value.length > 0)
         ElMessage.success(t('calculationParameters.manager.messages.createSuccess', { count: routeTimes.value.length }))
     } catch (error) {
+        if (loadVersion !== routeTimeLoadVersion || instanceID !== selectedInstanceId.value || stationSchemeID !== currentStationSchemeId.value.trim()
+            || routeID !== selectedRouteId.value || calculationParameterSetID !== selectedParameterSetID.value) return
         console.error('Failed to create station route times:', error)
         ElMessage.error(t('calculationParameters.manager.messages.createFailed'))
     } finally {
@@ -1935,7 +1964,8 @@ async function saveRouteTimes() {
         return
     }
 
-    routeTimeLoadVersion++
+    const loadVersion = ++routeTimeLoadVersion
+    loadingRouteTimes.value = false
     savingRouteTimes.value = true
     try {
         const response = await axios.put('/StationLayout/SaveStationRouteTimes', {
@@ -1950,7 +1980,7 @@ async function saveRouteTimes() {
                 endOccupationShift: normalizeNullableInteger(row.endOccupationShift),
             })),
         })
-        if (instanceID !== selectedInstanceId.value || stationSchemeID !== currentStationSchemeId.value.trim()
+        if (loadVersion !== routeTimeLoadVersion || instanceID !== selectedInstanceId.value || stationSchemeID !== currentStationSchemeId.value.trim()
             || routeID !== selectedRouteId.value || calculationParameterSetID !== selectedParameterSetID.value) return
         routeTimes.value = mergeRouteTimesWithSelectedRouteCells((Array.isArray(response.data) ? response.data : [])
             .map(normalizeStationRouteTime)
@@ -1959,6 +1989,8 @@ async function saveRouteTimes() {
         setSelectedRouteOccupancyConfigured(routeTimes.value.length > 0)
         ElMessage.success(t('calculationParameters.manager.messages.saveSuccess'))
     } catch (error) {
+        if (loadVersion !== routeTimeLoadVersion || instanceID !== selectedInstanceId.value || stationSchemeID !== currentStationSchemeId.value.trim()
+            || routeID !== selectedRouteId.value || calculationParameterSetID !== selectedParameterSetID.value) return
         console.error('Failed to save station route times:', error)
         ElMessage.error(t('calculationParameters.manager.messages.saveFailed'))
     } finally {
@@ -1974,8 +2006,11 @@ async function refreshForInstance() {
 }
 
 function changeParameterSet() {
+    // Managers emit change after metadata reloads too; keep drafts when the selection is unchanged.
+    if (parameterScopeKey() === routeParameterScope || !selectedParameterSetID.value) return
     routeTimeLoadVersion++
     routeLoadVersion++
+    loadingRouteTimes.value = false
     routeTimes.value = []
     syncUniformShiftDraftFromRows()
     void loadStationRoutes()
@@ -2011,6 +2046,25 @@ function resetParamPaneWidth() {
 function resetLayoutPaneHeight() {
     layoutPaneHeight.value = 0
 }
+
+watch([selectedInstanceId, currentStationSchemeId, selectedParameterSetID],
+    ([instanceID, schemeID, parameterSetID], [previousInstanceID, previousSchemeID, previousParameterSetID]) => {
+        // A deliberate shared selection change must never leave rows from another set available to save.
+        if (instanceID === previousInstanceID && schemeID === previousSchemeID && parameterSetID !== previousParameterSetID) changeParameterSet()
+    }, { flush: 'sync' })
+
+watch(() => capacityStore.routeOccupancyUpdate, update => {
+    if (!update || update.instanceID !== selectedInstanceId.value || update.stationSchemeID !== currentStationSchemeId.value.trim()) return
+    selectedParameterSetID.value = update.calculationParameterSetID
+    routeLoadVersion++
+    routeTimeLoadVersion++
+    loadingRouteTimes.value = false
+    routeTimes.value = []
+    syncUniformShiftDraftFromRows()
+    clearRouteFilters()
+    selectedRouteId.value = update.routeIDs[0] || ''
+    void loadStationRoutes(selectedRouteId.value)
+}, { flush: 'sync' })
 
 watch(selectedInstanceId, () => {
     stationSchemeOptions.value = []

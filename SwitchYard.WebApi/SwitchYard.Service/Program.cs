@@ -252,6 +252,7 @@ try
     });
 
     // 注册JWT服务
+    builder.Services.AddSingleton<SpeedProfileCalculationService>();
     builder.Services.AddSingleton<JwtTokenService>();
     builder.Services.AddSingleton<RefreshTokenService>();
     builder.Services.AddSingleton<DatabaseSchemaInitializer>();

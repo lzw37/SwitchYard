@@ -51,6 +51,12 @@
                     </div>
                     <el-empty v-else :description="t('capacityMain.placeholders.selectInstance')" />
                 </el-tab-pane>
+                <el-tab-pane :label="t('capacityMain.tabs.traction')" name="traction" lazy>
+                    <div v-if="hasSelectedInstance" class="traction-pane">
+                        <TractionMain :selected-instance-id="selectedInstance || ''" :active="activeTab === 'traction'" />
+                    </div>
+                    <el-empty v-else :description="t('capacityMain.placeholders.selectInstance')" />
+                </el-tab-pane>
                 <el-tab-pane :label="t('capacityMain.tabs.calcParams')" name="calcParams" lazy>
                     <div v-if="hasSelectedInstance" class="calculation-parameters-pane">
                         <CalculationParameters :selected-instance-id="selectedInstance || ''" />
@@ -110,6 +116,7 @@ import { actionIcons } from '@/components/ui/actionIcons'
 import { User } from '@element-plus/icons-vue'
 import StationLayout from './StationLayout.vue'
 import RouteDesign from './RouteDesign.vue'
+import TractionMain from '@/traction/TractionMain.vue'
 import CalculationParameters from './CalculationParameters.vue'
 import OperationPlan from './OperationPlan.vue'
 import OperationSimulation from './OperationSimulation.vue'
@@ -231,7 +238,7 @@ onMounted(() => {
 .capacity-tabs :deep(> .el-tabs__content), .capacity-tabs :deep(> .el-tabs__content > .el-tab-pane) { width:100%; min-width:0; min-height:0; overflow:hidden; }
 .capacity-tabs :deep(> .el-tabs__content) { grid-column:1 / -1; grid-row:2; }
 .capacity-tabs :deep(> .el-tabs__content > .el-tab-pane) { height:100%; }
-.station-layout-pane, .route-design-pane, .calculation-parameters-pane, .operation-plan-pane, .operation-simulation-pane, .model-solving-pane { width:100%; height:100%; min-width:0; min-height:0; overflow:hidden; }
+.station-layout-pane, .traction-pane, .route-design-pane, .calculation-parameters-pane, .operation-plan-pane, .operation-simulation-pane, .model-solving-pane { width:100%; height:100%; min-width:0; min-height:0; overflow:hidden; }
 .tab-placeholder { display:flex; height:100%; align-items:center; justify-content:center; }
 @media (max-width:768px) { .capacity-main { padding:8px; } .capacity-tabs-wrapper { column-gap:8px; } }
 </style>

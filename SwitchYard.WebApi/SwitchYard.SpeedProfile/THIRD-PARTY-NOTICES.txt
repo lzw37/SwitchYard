@@ -1,0 +1,55 @@
+SwitchYard.SpeedProfile third-party notices
+
+Component: TrainRuns.jl
+Upstream: https://github.com/railtoolkit/TrainRuns.jl
+Release: v1.0.4
+Pinned source commit: 529cdd1d2a158077440ce4e3093a8b875a1191fb
+License: ISC
+Copyright 2022 Max Kannenberg, Martin Scheidt
+
+Source files used for the C# adaptation:
+  https://github.com/railtoolkit/TrainRuns.jl/blob/529cdd1d2a158077440ce4e3093a8b875a1191fb/src/behavior.jl
+  https://github.com/railtoolkit/TrainRuns.jl/blob/529cdd1d2a158077440ce4e3093a8b875a1191fb/src/calc.jl
+  https://github.com/railtoolkit/TrainRuns.jl/blob/529cdd1d2a158077440ce4e3093a8b875a1191fb/src/formulary.jl
+
+Adapted material:
+- secureBrakingBehavior!: backward propagation of speed restrictions using
+  the maximum entry speed from which the following target can be reached.
+- calculateTractiveEffort: piecewise linear interpolation of a speed/tractive
+  effort table, including the final-value behavior above its upper bound.
+- forceFromCoefficient, acceleration, distance-step kinematics, and braking
+  speed/distance relationships from formulary.jl.
+
+SwitchYard changes:
+The typed C# request/result models, distance grid, forward solver, validation,
+and integration are new implementation work. The braking model is extended to
+combine brake force, train resistance, and track gradient; upstream uses a
+specified constant net braking deceleration. Numerical behavior and output are
+therefore not claimed to be identical to TrainRuns.jl. This is a scoped
+adaptation, not a port of the entire Julia package or its data dependencies.
+
+Retain the upstream copyright and permission notice below in source copies and
+with distributions containing the adapted implementation. This notice does not
+replace the license of independent SwitchYard code. No OSRD or ALTRIOS code is
+included by this adaptation.
+
+The exact upstream license is also stored at:
+  docs/legal/licenses/trainruns-ISC.txt
+
+Complete upstream license:
+
+ISC License (ISC)
+
+Copyright 2022 Max Kannenberg, Martin Scheidt
+
+Permission to use, copy, modify, and/or distribute this software for any purpose
+with or without fee is hereby granted, provided that the above copyright notice
+and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND
+FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS
+OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
+TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
+THIS SOFTWARE.

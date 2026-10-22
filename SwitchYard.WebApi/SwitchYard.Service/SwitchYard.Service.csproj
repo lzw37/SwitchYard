@@ -23,6 +23,7 @@
     <ProjectReference Include="..\SwitchYard.Capacity\SwitchYard.Capacity.csproj" />
     <ProjectReference Include="..\SwitchYard.Hump\SwitchYard.Hump.csproj" />
     <ProjectReference Include="..\SwitchYard.SketchLayout\SwitchYard.SketchLayout.csproj" />
+    <ProjectReference Include="..\SwitchYard.SpeedProfile\SwitchYard.SpeedProfile.csproj" />
     <ProjectReference Include="..\..\SwitchYard.StationLayout\backend\SwitchYard.StationLayout.csproj" />
   </ItemGroup>
 

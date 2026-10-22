@@ -1417,6 +1417,7 @@
             "simulation": "Simulation (Coming soon)"
         },
         "tabs": {
+            "traction": "Traction",
             "stationLayout": "Station Layout",
             "routeDesign": "Route Design",
             "layout3d": "3D",
