@@ -55,6 +55,19 @@ const svgRef = ref(null);
 const inlineRename = ref(null);
 const inlineRenameInputRef = ref(null);
 const inlineRenameContainerRef = ref(null);
+const freeZoomActive = ref(false);
+const freeZoomBox = ref(null);
+let freeZoomSession = null;
+let freeZoomClickCleanup = null;
+const freeZoomBoxView = computed(() => {
+    if (!freeZoomBox.value) return null;
+    const rect = normalizeSelectionBox(freeZoomBox.value);
+    return {
+        x: screenX(rect.minX), y: screenY(rect.minY),
+        width: screenDeltaX(rect.maxX - rect.minX),
+        height: screenDeltaY(rect.maxY - rect.minY),
+    };
+});
 const defaultEditorDisplayStyles = {
     switchName: { fontSize: 8, fontFamily: "Arial", fontWeight: "normal", fontStyle: "normal", color: "#ffffff" },
     platformName: { fontSize: 10, fontFamily: "Arial", fontWeight: "normal", fontStyle: "normal", color: "#ffffff" },
@@ -71,7 +84,7 @@ const defaultEditorDisplayStyles = {
 
 const editModeCode = ref(0);
 const drawingObject = ref("l");
-const isDrawingMode = computed(() => editModeCode.value === 1 && !props.readonly);
+const isDrawingMode = computed(() => editModeCode.value === 1 && !props.readonly && !freeZoomActive.value);
 const mouseGridSnapModeCode = ref(1);
 const mouseObjectSnapModeCode = ref(1);
 const snapDistance = computed(() => Math.max(0, toFiniteNumber(props.objectSnapDistance)));
@@ -124,8 +137,8 @@ const createDefaultCanvasBounds = () => ({
     maxY: Math.max(1, toFiniteNumber(props.height)),
 });
 const canvasBounds = ref(createDefaultCanvasBounds());
-const canvasWidth = computed(() => Math.max(1, canvasBounds.value.maxX - canvasBounds.value.minX));
-const canvasHeight = computed(() => Math.max(1, canvasBounds.value.maxY - canvasBounds.value.minY));
+const canvasWidth = computed(() => Math.max(Number.EPSILON, canvasBounds.value.maxX - canvasBounds.value.minX));
+const canvasHeight = computed(() => Math.max(Number.EPSILON, canvasBounds.value.maxY - canvasBounds.value.minY));
 const svgScreenWidth = computed(() => canvasWidth.value * safeDisplayScaleX.value);
 const svgScreenHeight = computed(() => canvasHeight.value * safeDisplayScaleY.value);
 const svgStyle = computed(() => ({
@@ -414,6 +427,7 @@ function dataY(value) {
 }
 
 function resetCanvasBounds() {
+    cancelFreeZoom();
     const bounds = createDefaultCanvasBounds();
     const stepX = canvasStepX();
     const stepY = canvasStepY();
@@ -550,21 +564,31 @@ function getFullViewRect(options = {}) {
     return isCanvasContentRectEmpty(rect) ? null : { ...rect };
 }
 
-/** Fit the same geometry and viewport in every host, independent of the current zoom or canvas history. */
-function fitFullView(viewport, applyScale) {
-    if (!viewport || viewport.clientWidth <= 0 || viewport.clientHeight <= 0 || typeof applyScale !== "function") return false;
-    const rect = getFullViewRect({ screenMargin: 0 });
-    if (!rect) return false;
-
+function measureViewport(viewport, includeScrollbars = true) {
+    if (!viewport || viewport.clientWidth <= 0 || viewport.clientHeight <= 0) return null;
     const style = viewport.ownerDocument?.defaultView?.getComputedStyle(viewport);
     const pixels = key => parseFloat(style?.[key]) || 0;
-    // Measure the allocated box, including space currently occupied by scrollbars.
-    // The fitted canvas removes those scrollbars; clientWidth would change on the next click.
-    const width = Math.floor((viewport.offsetWidth || viewport.clientWidth)
-        - pixels("borderLeftWidth") - pixels("borderRightWidth") - pixels("paddingLeft") - pixels("paddingRight")) - 1;
-    const height = Math.floor((viewport.offsetHeight || viewport.clientHeight)
-        - pixels("borderTopWidth") - pixels("borderBottomWidth") - pixels("paddingTop") - pixels("paddingBottom")) - 1;
-    if (width <= 1 || height <= 1) return false;
+    // Fit All removes scrollbars and needs the allocated box. Rectangle zoom
+    // keeps the full canvas, so it must fit inside the remaining client area.
+    const boxWidth = includeScrollbars
+        ? (viewport.offsetWidth || viewport.clientWidth) - pixels("borderLeftWidth") - pixels("borderRightWidth")
+        : viewport.clientWidth;
+    const boxHeight = includeScrollbars
+        ? (viewport.offsetHeight || viewport.clientHeight) - pixels("borderTopWidth") - pixels("borderBottomWidth")
+        : viewport.clientHeight;
+    const width = Math.floor(boxWidth - pixels("paddingLeft") - pixels("paddingRight")) - (includeScrollbars ? 1 : 0);
+    const height = Math.floor(boxHeight - pixels("paddingTop") - pixels("paddingBottom")) - (includeScrollbars ? 1 : 0);
+    return width > 1 && height > 1 ? { width, height } : null;
+}
+
+/** Fit the same geometry and viewport in every host, independent of the current zoom or canvas history. */
+function fitFullView(viewport, applyScale) {
+    cancelFreeZoom();
+    const size = measureViewport(viewport);
+    if (!size || typeof applyScale !== "function") return false;
+    const rect = getFullViewRect({ screenMargin: 0 });
+    if (!rect) return false;
+    const { width, height } = size;
     const margin = Math.min(80, width / 4, height / 4);
     const scale = Math.min(4,
         (width - margin * 2) / Math.max(1, rect.maxX - rect.minX),
@@ -588,6 +612,163 @@ function fitFullView(viewport, applyScale) {
         viewport.scrollTop = 0;
     });
     return true;
+}
+
+function blockFreeZoomEvent(event) {
+    event.preventDefault();
+    event.stopPropagation();
+}
+
+function cancelFreeZoom(suppressClick = false) {
+    freeZoomClickCleanup?.();
+    const session = freeZoomSession;
+    freeZoomSession = null;
+    freeZoomActive.value = false;
+    freeZoomBox.value = null;
+    if (!session) return;
+    const { viewport } = session;
+    viewport.removeEventListener("mousedown", onFreeZoomMouseDown, true);
+    viewport.removeEventListener("wheel", blockFreeZoomEvent, true);
+    window.removeEventListener("mousemove", onFreeZoomMouseMove, true);
+    window.removeEventListener("mouseup", onFreeZoomMouseUp, true);
+    window.removeEventListener("keydown", onFreeZoomKeydown, true);
+    window.removeEventListener("blur", onFreeZoomBlur);
+    viewport.classList.remove("station-layout-free-zoom");
+    const removeClickGuards = () => {
+        viewport.removeEventListener("click", blockFreeZoomEvent, true);
+        viewport.removeEventListener("dblclick", blockFreeZoomEvent, true);
+        freeZoomClickCleanup = null;
+    };
+    if (suppressClick) {
+        // Keep capture guards through the click dispatched immediately after mouseup.
+        const timer = setTimeout(removeClickGuards, 0);
+        freeZoomClickCleanup = () => { clearTimeout(timer); removeClickGuards(); };
+    } else {
+        removeClickGuards();
+    }
+}
+
+function toggleFreeZoom(viewport, applyScale) {
+    if (freeZoomActive.value) {
+        cancelFreeZoom();
+        return false;
+    }
+    if (!measureViewport(viewport) || !svgRef.value || typeof applyScale !== "function") return false;
+    freeZoomClickCleanup?.();
+    cancelInlineRename();
+    clearTemporaryDrawingState();
+    cancelSelectionBox();
+    finishAnchorInteraction();
+    finishNodeInteraction();
+    finishAnnotationInteraction();
+    clearHoveredElement();
+    freeZoomSession = { viewport, applyScale };
+    freeZoomActive.value = true;
+    viewport.classList.add("station-layout-free-zoom");
+    // Capture on the viewport also covers hosts with a train overlay above the SVG.
+    viewport.addEventListener("mousedown", onFreeZoomMouseDown, true);
+    viewport.addEventListener("wheel", blockFreeZoomEvent, { capture: true, passive: false });
+    viewport.addEventListener("click", blockFreeZoomEvent, true);
+    viewport.addEventListener("dblclick", blockFreeZoomEvent, true);
+    window.addEventListener("mousemove", onFreeZoomMouseMove, true);
+    window.addEventListener("mouseup", onFreeZoomMouseUp, true);
+    window.addEventListener("keydown", onFreeZoomKeydown, true);
+    window.addEventListener("blur", onFreeZoomBlur);
+    svgRef.value.focus({ preventScroll: true });
+    return true;
+}
+
+function freeZoomPoint(event) {
+    if (!freeZoomSession) return null;
+    const { viewport } = freeZoomSession;
+    const bounds = viewport.getBoundingClientRect();
+    const svgBounds = svgRef.value.getBoundingClientRect();
+    const left = Math.max(svgBounds.left, bounds.left + viewport.clientLeft);
+    const top = Math.max(svgBounds.top, bounds.top + viewport.clientTop);
+    const right = Math.min(svgBounds.right, bounds.left + viewport.clientLeft + viewport.clientWidth);
+    const bottom = Math.min(svgBounds.bottom, bounds.top + viewport.clientTop + viewport.clientHeight);
+    if (right <= left || bottom <= top) return null;
+    return clientPointToDataPoint(
+        Math.min(right, Math.max(left, event.clientX)),
+        Math.min(bottom, Math.max(top, event.clientY)),
+    );
+}
+
+function onFreeZoomMouseDown(event) {
+    blockFreeZoomEvent(event);
+    if (event.button !== 0) return;
+    const point = freeZoomPoint(event);
+    if (!point) return;
+    freeZoomBox.value = { startX: point.x, startY: point.y, endX: point.x, endY: point.y };
+    svgRef.value?.focus({ preventScroll: true });
+}
+
+function onFreeZoomMouseMove(event) {
+    if (!freeZoomBox.value) return;
+    blockFreeZoomEvent(event);
+    const point = freeZoomPoint(event);
+    if (!point) return;
+    freeZoomBox.value.endX = point.x;
+    freeZoomBox.value.endY = point.y;
+}
+
+function onFreeZoomMouseUp(event) {
+    if (event.button !== 0 || !freeZoomBox.value) return;
+    onFreeZoomMouseMove(event);
+    const view = freeZoomBoxView.value;
+    // Require a real rectangle in screen pixels, including at extreme zoom levels.
+    if (!view || view.width < selectionBoxDragThreshold || view.height < selectionBoxDragThreshold) {
+        freeZoomBox.value = null;
+        return;
+    }
+    const rect = normalizeSelectionBox(freeZoomBox.value);
+    const { viewport, applyScale } = freeZoomSession;
+    cancelFreeZoom(true);
+    void zoomToDataRect(rect, viewport, applyScale);
+}
+
+async function zoomToDataRect(rect, viewport, applyScale) {
+    const previousBounds = { ...canvasBounds.value };
+    const content = getFullViewRect();
+    let size = measureViewport(viewport, false);
+    // Scrollbars can appear on either axis after zooming. Re-measure after
+    // rendering so the selected rectangle fills the actual visible area.
+    for (let attempt = 0; size && attempt < 3; attempt++) {
+        const scaleX = size.width / (rect.maxX - rect.minX);
+        const scaleY = size.height / (rect.maxY - rect.minY);
+        if (![scaleX, scaleY].every(scale => Number.isFinite(scale) && scale > 0)) return;
+        const marginX = canvasElementScreenMargin / scaleX;
+        const marginY = canvasElementScreenMargin / scaleY;
+        // A zoom rectangle is a view target, not a crop of the scrollable canvas.
+        // Include all content as well, even if an earlier view had tighter bounds.
+        canvasBounds.value = {
+            minX: Math.min(previousBounds.minX, rect.minX, content ? content.minX - marginX : rect.minX),
+            minY: Math.min(previousBounds.minY, rect.minY, content ? content.minY - marginY : rect.minY),
+            maxX: Math.max(previousBounds.maxX, rect.maxX, content ? content.maxX + marginX : rect.maxX),
+            maxY: Math.max(previousBounds.maxY, rect.maxY, content ? content.maxY + marginY : rect.maxY),
+        };
+        const appliedBounds = canvasBounds.value;
+        applyScale(scaleX, scaleY);
+        await nextTick();
+        if (!svgRef.value || canvasBounds.value !== appliedBounds) return;
+        const nextSize = measureViewport(viewport, false);
+        if (!nextSize) return;
+        if (nextSize.width === size.width && nextSize.height === size.height) break;
+        size = nextSize;
+    }
+    viewport.scrollLeft = screenX(rect.minX);
+    viewport.scrollTop = screenY(rect.minY);
+}
+
+function onFreeZoomKeydown(event) {
+    if (event.key === "Escape") {
+        blockFreeZoomEvent(event);
+        cancelFreeZoom();
+    }
+}
+
+function onFreeZoomBlur() {
+    cancelFreeZoom();
 }
 
 function expandCanvasToIncludeRect(rect, options = {}) {
@@ -806,6 +987,7 @@ function canHoverElement(kind, id) {
 }
 
 function setHoveredElement(kind, id) {
+    if (freeZoomActive.value) return;
     if (!canHoverElement(kind, id)) return;
     hoveredElement.value = { kind, id };
 }
@@ -1762,6 +1944,7 @@ function clearTemporaryDrawingState() {
 }
 
 function setEditMode(code) {
+    cancelFreeZoom();
     cancelInlineRename();
     clearHoveredElement();
     const nextEditModeCode = props.readonly ? 0 : Number(code);
@@ -1784,6 +1967,7 @@ function setDrawingBufferStopType(type) {
 }
 
 function setDrawingObject(obj) {
+    cancelFreeZoom();
     if (props.readonly) return;
 
     const nextDrawingObject = String(obj || "");
@@ -4650,6 +4834,7 @@ function onAnchorInteractionWindowMouseUp(event) {
 }
 
 function onMouseMove(event) {
+    if (freeZoomActive.value) return;
     if (inlineRename.value) return;
     updateCursorPosition(event.clientX, event.clientY);
     svgRef.value?.focus({ preventScroll: true });
@@ -4721,6 +4906,7 @@ function onMouseUp(event) {
 }
 
 function onKeydown(event) {
+    if (freeZoomActive.value) return;
     if (inlineRename.value || event.target?.closest?.("input, textarea, [contenteditable='true']")) return;
     if (event.key === "Delete") {
         event.preventDefault();
@@ -5512,8 +5698,12 @@ watch(() => props.readonly, (readonly) => {
 });
 
 watch(() => [props.routePickTarget, props.editorState, props.displayScaleX, props.displayScaleY], cancelInlineRename);
+watch(() => [props.routePickTarget, props.editorState, props.displayScaleX, props.displayScaleY], () => {
+    if (freeZoomActive.value) cancelFreeZoom();
+});
 
 onBeforeUnmount(() => {
+    cancelFreeZoom();
     cancelInlineRename();
     removeSelectionBoxWindowListeners();
     removeAnchorInteractionWindowListeners();
@@ -5568,6 +5758,8 @@ defineExpose({
     updateSelectedEquipmentBatch,
     clearElements,
     fitFullView,
+    toggleFreeZoom,
+    freeZoomActive,
     getFullViewRect,
     scrollDataRectIntoView,
     getCanvasViewportState,
@@ -5849,6 +6041,9 @@ defineExpose({
                 <div class="inline-rename-hint">{{ t('stationLayout.editor.rename.hint') }}</div>
             </div>
         </foreignObject>
+        <rect v-if="freeZoomBoxView" class="selection-box free-zoom-box"
+            :x="freeZoomBoxView.x" :y="freeZoomBoxView.y"
+            :width="freeZoomBoxView.width" :height="freeZoomBoxView.height" />
     </svg>
 </template>
 

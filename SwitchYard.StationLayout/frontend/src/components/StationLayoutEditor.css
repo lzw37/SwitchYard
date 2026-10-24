@@ -83,6 +83,15 @@
     user-select: none;
 }
 
+:global(.station-layout-free-zoom),
+:global(.station-layout-free-zoom *) {
+    cursor: crosshair !important;
+}
+
+.selection-box.free-zoom-box {
+    stroke-width: 2px;
+}
+
 .selection-box {
     fill: rgba(64, 158, 255, 0.14);
     stroke: #409eff;

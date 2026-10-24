@@ -10,6 +10,8 @@
             v-model:scale-x="layoutScaleX"
             v-model:scale-y="layoutScaleY"
             @fit="fitFullLayout"
+            :free-zoom-active="!!stationLayoutEditorRef?.freeZoomActive"
+            @free-zoom="toggleLayoutFreeZoom"
         >
             <template #context>
                 <div class="route-design-scheme-control">
@@ -3637,6 +3639,13 @@ function clearLayout() {
     routeObjectOptions.value = createEmptyRouteObjectOptions()
     routeListFilterQueries.value = createEmptyRouteListFilterQueries()
     stationLayoutEditorRef.value?.clearElements()
+}
+
+function toggleLayoutFreeZoom() {
+    return stationLayoutEditorRef.value?.toggleFreeZoom?.(layoutViewportRef.value, (scaleX: number, scaleY: number) => {
+        layoutScaleX.value = scaleX
+        layoutScaleY.value = scaleY
+    }) ?? false
 }
 
 function fitFullLayout() {

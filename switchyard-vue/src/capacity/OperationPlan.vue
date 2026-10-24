@@ -1775,6 +1775,8 @@
                     v-model:scale-y="routePickerLayoutScaleY"
                     :fit-disabled="!routePickerLayoutData"
                     @fit="fitRoutePickerLayoutToFullView"
+                    :free-zoom-active="!!routePickerLayoutEditorRef?.freeZoomActive"
+                    @free-zoom="toggleLayoutFreeZoom"
                 >
                     <template #context>
                         <span>{{ routePickerSummaryText }}</span>
@@ -6173,6 +6175,13 @@ function clearRoutePickerLayoutPreview() {
     routePickerLayoutScaleY.value = 1
     loadingRoutePickerLayout.value = false
     routePickerLayoutEditorRef.value?.clearElements?.()
+}
+
+function toggleLayoutFreeZoom() {
+    return routePickerLayoutEditorRef.value?.toggleFreeZoom?.(routePickerLayoutViewportRef.value, (scaleX: number, scaleY: number) => {
+        routePickerLayoutScaleX.value = scaleX
+        routePickerLayoutScaleY.value = scaleY
+    }) ?? false
 }
 
 function fitRoutePickerLayoutToFullView() {

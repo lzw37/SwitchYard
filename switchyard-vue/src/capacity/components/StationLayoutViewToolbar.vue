@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import ActionButton from '@/components/ui/ActionButton.vue'
 import { computed } from 'vue'
-import { Aim, Expand, Fold, Grid, Location } from '@element-plus/icons-vue'
+import { Aim, Expand, Fold, Grid, Location, ZoomIn } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
 
 const props = defineProps({
@@ -14,6 +14,7 @@ const props = defineProps({
     scaleX: { type: Number, default: 1 },
     scaleY: { type: Number, default: 1 },
     fitDisabled: { type: Boolean, default: false },
+    freeZoomActive: { type: Boolean, default: false },
 })
 
 defineSlots<{
@@ -31,6 +32,7 @@ const emit = defineEmits([
     'update:scaleX',
     'update:scaleY',
     'fit',
+    'free-zoom',
 ])
 
 const { t } = useI18n()
@@ -77,6 +79,15 @@ function toggleDensity() {
                         :disabled="fitDisabled"
                         @click="emit('fit')"
                     />
+                    <ActionButton
+                        :label="t('stationLayout.tools.freeZoom')"
+                        :title="t('stationLayout.tools.freeZoomHint')"
+                        :icon="ZoomIn"
+                        :active="freeZoomActive"
+                        :type="freeZoomActive ? 'primary' : 'default'"
+                        :disabled="fitDisabled"
+                        @click="emit('free-zoom')"
+                    />
                 </template>
                 <slot v-if="displayControlsFirst" name="primary" />
             </div>
@@ -122,7 +133,7 @@ function toggleDensity() {
                         :model-value="scaleX"
                         size="small"
                         :min="Math.min(0.25, scaleX)"
-                        :max="4"
+                        :max="Math.max(4, scaleX)"
                         :step="0.05"
                         @update:model-value="emit('update:scaleX', $event)"
                     />
@@ -134,7 +145,7 @@ function toggleDensity() {
                         :model-value="scaleY"
                         size="small"
                         :min="Math.min(0.25, scaleY)"
-                        :max="4"
+                        :max="Math.max(4, scaleY)"
                         :step="0.05"
                         @update:model-value="emit('update:scaleY', $event)"
                     />

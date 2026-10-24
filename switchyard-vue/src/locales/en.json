@@ -2175,6 +2175,8 @@
             "generateSwitch": "Gen Switch",
             "generateCurve": "Gen Curve",
             "fitFullView": "Fit All",
+            "freeZoom": "Free Zoom",
+            "freeZoomHint": "Drag a rectangle to fill the view; press Esc to cancel",
             "mergeNodes": "Merge Nodes",
             "correctBindings": "Correct Bindings",
             "searchPath": "Search Path",
