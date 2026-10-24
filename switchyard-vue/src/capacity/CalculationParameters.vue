@@ -198,6 +198,7 @@
                         v-model:auto-fit="occupancyGanttAutoFit"
                         :cells="ganttCells"
                         :times="routeTimes"
+                        :operation-time-s="routeOperationTimeS"
                         :disabled="loadingRouteTimes || savingRouteTimes"
                         :refresh-disabled="!selectedRouteId"
                         :empty-text="occupancyGanttEmptyText"
@@ -233,6 +234,14 @@
                             @click="saveRouteTimes" :label="t('calculationParameters.manager.saveOccupancyTime')" />
                     </div>
                 </header>
+                <label class="calc-operation-time">
+                    <span :title="t('calculationParameters.manager.operationTimeHint')">{{ t('calculationParameters.manager.operationTime') }}</span>
+                    <el-input-number :key="String(operationTimeDisabled)" :model-value="routeOperationTimeS === null ? undefined : Number(routeOperationTimeS.toFixed(3))"
+                        :min="0" :step="1" :precision="3" size="small" controls-position="right"
+                        :aria-label="t('calculationParameters.manager.operationTime')" :placeholder="t('calculationParameters.manager.operationTimeUnset')"
+                        :disabled="operationTimeDisabled"
+                        @update:model-value="routeOperationTimeS = $event ?? null" />
+                </label>
                 <div class="calc-uniform-shift-panel">
                     <span class="calc-uniform-shift-title">{{ t('calculationParameters.manager.uniformShift.title') }}</span>
                     <label class="calc-uniform-shift-field">
@@ -701,6 +710,17 @@ const routeQuickStartRouteEndIds = ref<string[]>([])
 const routeQuickEndRouteEndIds = ref<string[]>([])
 const selectedParameterSetID = useCalculationParameterSetSelection(() => props.selectedInstanceId, currentStationSchemeId)
 const routeTimes = ref<StationRouteTime[]>([])
+const routeOperationTimeS = ref<number | null>(null)
+// Element Plus initializes aria-disabled only on mount; remount this field when busy changes.
+const operationTimeDisabled = computed(() => !selectedRouteId.value || loadingRouteTimes.value || creatingRouteTimes.value || savingRouteTimes.value)
+function readRouteParameterResponse(data: unknown) {
+    const response = data as { times?: unknown; operationTimeS?: unknown } | null
+    if (!response || !Array.isArray(response.times)
+        || !(response.operationTimeS === null || typeof response.operationTimeS === 'number'
+            && Number.isFinite(response.operationTimeS) && response.operationTimeS >= 0)) throw new Error('Invalid route parameter response.')
+    routeOperationTimeS.value = response.operationTimeS as number | null
+    return response.times
+}
 const batchRouteTimeSettings = ref<BatchRouteTimeSetting[]>([])
 const uniformStartOccupationShift = ref<number | null>(0)
 const uniformEndOccupationShift = ref<number | null>(0)
@@ -1731,7 +1751,7 @@ function clearStationRoutes() {
     routeParameterScope = ''
     stationRoutes.value = []
     selectedRouteId.value = ''
-    routeTimes.value = []
+    routeTimes.value = []; routeOperationTimeS.value = null
     syncUniformShiftDraftFromRows()
     clearRouteFilters()
 }
@@ -1838,7 +1858,7 @@ async function loadStationRoutes(preferredRouteId = '') {
         selectedRouteId.value = ''
         routeTimeLoadVersion++
         loadingRouteTimes.value = false
-        routeTimes.value = []
+        routeTimes.value = []; routeOperationTimeS.value = null
         syncUniformShiftDraftFromRows()
         ElMessage.error(t('routeDesign.stationRoute.messages.loadFailed'))
     } finally {
@@ -1881,7 +1901,7 @@ async function loadRouteTimes() {
     const calculationParameterSetID = selectedParameterSetID.value
     const loadVersion = ++routeTimeLoadVersion
     if (!instanceID || !stationSchemeID || !routeID || !calculationParameterSetID) {
-        routeTimes.value = []
+        routeTimes.value = []; routeOperationTimeS.value = null
         loadingRouteTimes.value = false
         syncUniformShiftDraftFromRows()
         return
@@ -1892,10 +1912,10 @@ async function loadRouteTimes() {
     loadingRouteTimes.value = true
     try {
         const response = await axios.get('/StationLayout/GetStationRouteTimes', {
-            params: { instanceID, stationSchemeID, routeID, trainTypeID: '', calculationParameterSetID },
+            params: { instanceID, stationSchemeID, routeID, trainTypeID: '', calculationParameterSetID, includeOperationTime: true },
         })
         if (!isCurrent()) return
-        routeTimes.value = mergeRouteTimesWithSelectedRouteCells((Array.isArray(response.data) ? response.data : [])
+        routeTimes.value = mergeRouteTimesWithSelectedRouteCells(readRouteParameterResponse(response.data)
             .map(normalizeStationRouteTime)
             .filter((item): item is StationRouteTime => item !== null))
         syncUniformShiftDraftFromRows()
@@ -1903,7 +1923,7 @@ async function loadRouteTimes() {
     } catch (error) {
         if (!isCurrent()) return
         console.error('Failed to load station route times:', error)
-        routeTimes.value = []
+        routeTimes.value = []; routeOperationTimeS.value = null
         syncUniformShiftDraftFromRows()
         ElMessage.error(t('calculationParameters.manager.messages.loadFailed'))
     } finally {
@@ -1974,15 +1994,16 @@ async function saveRouteTimes() {
             routeID,
             trainTypeID: '',
             calculationParameterSetID,
+            operationTimeS: routeOperationTimeS.value,
             times: routeTimes.value.map((row) => ({
                 cellID: row.cellID,
                 startOccupationShift: normalizeNullableInteger(row.startOccupationShift),
                 endOccupationShift: normalizeNullableInteger(row.endOccupationShift),
             })),
-        })
+        }, { params: { includeOperationTime: true } })
         if (loadVersion !== routeTimeLoadVersion || instanceID !== selectedInstanceId.value || stationSchemeID !== currentStationSchemeId.value.trim()
             || routeID !== selectedRouteId.value || calculationParameterSetID !== selectedParameterSetID.value) return
-        routeTimes.value = mergeRouteTimesWithSelectedRouteCells((Array.isArray(response.data) ? response.data : [])
+        routeTimes.value = mergeRouteTimesWithSelectedRouteCells(readRouteParameterResponse(response.data)
             .map(normalizeStationRouteTime)
             .filter((item): item is StationRouteTime => item !== null), true)
         syncUniformShiftDraftFromRows()
@@ -2011,7 +2032,7 @@ function changeParameterSet() {
     routeTimeLoadVersion++
     routeLoadVersion++
     loadingRouteTimes.value = false
-    routeTimes.value = []
+    routeTimes.value = []; routeOperationTimeS.value = null
     syncUniformShiftDraftFromRows()
     void loadStationRoutes()
 }
@@ -2059,7 +2080,7 @@ watch(() => capacityStore.routeOccupancyUpdate, update => {
     routeLoadVersion++
     routeTimeLoadVersion++
     loadingRouteTimes.value = false
-    routeTimes.value = []
+    routeTimes.value = []; routeOperationTimeS.value = null
     syncUniformShiftDraftFromRows()
     clearRouteFilters()
     selectedRouteId.value = update.routeIDs[0] || ''
@@ -2587,4 +2608,9 @@ onBeforeUnmount(() => {
 .calc-occupancy-pane :deep(.el-empty) {
     flex: 1 1 auto;
 }
+</style>
+
+<style scoped>
+.calc-operation-time { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:12px; font-size:12px; border-bottom:1px solid var(--el-border-color-lighter); }
+.calc-operation-time .el-input-number { width:146px; }
 </style>

@@ -2646,6 +2646,12 @@
             "saveOccupancyTime": "保存",
             "emptyRouteTimes": "暂无占用时间记录",
             "directInterrupt": "直接妨碍",
+            "operationTime": "作业时间 (s)",
+            "operationTimeHint": "进路结束时刻减开始时刻",
+            "operationTimeUnset": "未设置",
+            "operationStart": "作业开始",
+            "operationEnd": "作业结束",
+            "invalidOccupancyOrder": "{cell}：结束锚点的绝对时刻不能早于开始锚点，请调整偏移量。",
             "uniformShift": {
                 "title": "统一偏移",
                 "apply": "应用",

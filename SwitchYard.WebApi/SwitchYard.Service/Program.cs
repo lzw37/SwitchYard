@@ -253,6 +253,7 @@ try
 
     // 注册JWT服务
     builder.Services.AddSingleton<SpeedProfileCalculationService>();
+    builder.Services.AddScoped(_ => new TractionWorkspaceStore(DBConnector.GetDBConnector(DBConnector.CapacityDatabaseSectionName)));
     builder.Services.AddSingleton<JwtTokenService>();
     builder.Services.AddSingleton<RefreshTokenService>();
     builder.Services.AddSingleton<DatabaseSchemaInitializer>();

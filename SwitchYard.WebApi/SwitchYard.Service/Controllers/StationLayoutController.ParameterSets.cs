@@ -22,6 +22,7 @@ public partial class StationLayoutController
         if (error is not null) return error;
         var name = request.Name?.Trim() ?? "";
         if (name.Length is 0 or > 200) return BadRequest("计算参数集名称必须为 1–200 个字符。");
+        RouteOperationTimeStore.EnsureSchema(db);
         db.BeginTransaction();
         try
         {
@@ -41,8 +42,12 @@ public partial class StationLayoutController
                 ? "INSERT INTO calculationparameterset(InstanceID,StationSchemeID,ID,Name,IsDefault) VALUES(@InstanceID,@StationSchemeID,@ID,@Name,@IsDefault)"
                 : $"UPDATE calculationparameterset SET Name=@Name,IsDefault=@IsDefault WHERE {CalculationParameterSets.Scope} AND ID=@ID", row);
             if (creating && !string.IsNullOrWhiteSpace(request.CopyFromID))
+            {
                 db.ExecuteNonQuery($"INSERT INTO stationroutetime(InstanceID,StationSchemeID,CalculationParameterSetID,RouteID,TrainTypeID,CellID,StartOccupationShift,EndOccupationShift) SELECT InstanceID,StationSchemeID,@ID,RouteID,TrainTypeID,CellID,StartOccupationShift,EndOccupationShift FROM stationroutetime WHERE {CalculationParameterSets.Scope} AND COALESCE(CalculationParameterSetID,'default')=@CopyFromID",
                     new { row.InstanceID, row.StationSchemeID, row.ID, request.CopyFromID });
+                db.ExecuteNonQuery($"INSERT INTO stationrouteoperationtime(InstanceID,StationSchemeID,CalculationParameterSetID,RouteID,TrainTypeID,OperationTimeS) SELECT InstanceID,StationSchemeID,@ID,RouteID,TrainTypeID,OperationTimeS FROM stationrouteoperationtime WHERE {CalculationParameterSets.Scope} AND CalculationParameterSetID=@CopyFromID",
+                    new { row.InstanceID, row.StationSchemeID, row.ID, request.CopyFromID });
+            }
             db.Commit();
             return Ok(row);
         }
@@ -64,6 +69,8 @@ public partial class StationLayoutController
             if (catalog.DefaultID == id) { db.Rollback(); return BadRequest("请先将其他计算参数集设为默认，再删除此参数集。"); }
             var scope = new { InstanceID = instanceID, StationSchemeID = stationSchemeID, id };
             db.ExecuteNonQuery($"DELETE FROM stationroutetime WHERE {CalculationParameterSets.Scope} AND CalculationParameterSetID=@id", scope);
+            if (CapacityDataLifecycle.TableExists(db, RouteOperationTimeStore.Table))
+                db.ExecuteNonQuery($"DELETE FROM stationrouteoperationtime WHERE {CalculationParameterSets.Scope} AND CalculationParameterSetID=@id", scope);
             db.ExecuteNonQuery($"DELETE FROM calculationparameterset WHERE {CalculationParameterSets.Scope} AND ID=@id", scope);
             db.Commit();
             return Ok();

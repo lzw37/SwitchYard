@@ -1,4 +1,4 @@
-import { defaultTrainParameters } from './tractionCalculation.ts'
+import { defaultTrainParameters, generateBrakingCurve, generateResistanceCurve } from './tractionCalculation.ts'
 import type { TrainParameters } from './tractionCalculation'
 
 export interface TrainPreset {
@@ -26,6 +26,7 @@ export function createDefaultTrainPresetCatalog(): TrainPresetCatalog {
         resistanceA: short.resistanceA * 2, resistanceB: short.resistanceB * 2, resistanceC: short.resistanceC * 2,
     }
     const freight: TrainParameters = {
+        brakingCurve: [], resistanceCurve: [],
         lengthM: 750, massT: 5000, rotatingMassFactor: 1.06, maxSpeedKmh: 120,
         tractionCurve: [
             { speedKmh: 0, forceKn: 600 }, { speedKmh: 20, forceKn: 600 },
@@ -33,6 +34,10 @@ export function createDefaultTrainPresetCatalog(): TrainPresetCatalog {
             { speedKmh: 80, forceKn: 260 }, { speedKmh: 100, forceKn: 210 }, { speedKmh: 120, forceKn: 175 },
         ],
         maxBrakeForceKn: 1800, resistanceA: 20, resistanceB: 0.35, resistanceC: 0.006,
+    }
+    for (const train of [long, freight]) {
+        train.brakingCurve = generateBrakingCurve(train)
+        train.resistanceCurve = generateResistanceCurve(train)
     }
     return {
         version: 1, selectedId: 'example-short-passenger', presets: [
@@ -49,6 +54,8 @@ export function cloneTrainParameters(train: TrainParameters): TrainParameters {
         lengthM: train.lengthM, massT: train.massT, rotatingMassFactor: train.rotatingMassFactor,
         maxSpeedKmh: train.maxSpeedKmh, maxBrakeForceKn: train.maxBrakeForceKn,
         resistanceA: train.resistanceA, resistanceB: train.resistanceB, resistanceC: train.resistanceC,
+        brakingCurve: (train.brakingCurve ?? generateBrakingCurve(train)).map(point => ({ speedKmh: point.speedKmh, forceKn: point.forceKn })),
+        resistanceCurve: (train.resistanceCurve ?? generateResistanceCurve(train)).map(point => ({ speedKmh: point.speedKmh, forceKn: point.forceKn })),
         tractionCurve: train.tractionCurve.map(point => ({ speedKmh: point.speedKmh, forceKn: point.forceKn })),
     }
 }
@@ -83,6 +90,17 @@ function validateParameters(value: unknown): string {
     if (!inRange(value.maxBrakeForceKn, 0.001, 10_000_000)) return 'invalid-brake-force'
     if (!inRange(value.resistanceA, 0, 10_000_000) || !inRange(value.resistanceB, 0, 10_000_000)
         || !inRange(value.resistanceC, 0, 10_000_000)) return 'invalid-resistance'
+    for (const name of ['brakingCurve', 'resistanceCurve'] as const) {
+        const curve = value[name]
+        if (curve === undefined) continue // Upgrade legacy scalar-only records when cloning.
+        if (!Array.isArray(curve) || curve.length < 1 || curve.length > 128) return 'invalid-' + name
+        let previous = -1
+        for (const point of curve) {
+            if (!isRecord(point) || !inRange(point.speedKmh, 0, 10000) || !inRange(point.forceKn, 0, 10000000)
+                || (previous < 0 && point.speedKmh !== 0) || point.speedKmh <= previous) return 'invalid-' + name
+            previous = point.speedKmh
+        }
+    }
     if (!Array.isArray(value.tractionCurve) || value.tractionCurve.length < 1 || value.tractionCurve.length > 128) return 'invalid-traction-curve'
     let previousSpeed = -1, previousForce = Infinity
     for (const point of value.tractionCurve) {

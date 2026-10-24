@@ -414,3 +414,6 @@ CREATE TABLE IF NOT EXISTS `calculationparameterset` (
     `IsDefault` INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (`InstanceID`, `StationSchemeID`, `ID`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Per-route operation time, scoped to calculation parameters.
+CREATE TABLE IF NOT EXISTS stationrouteoperationtime (InstanceID VARCHAR(50) COLLATE utf8mb4_bin NOT NULL, StationSchemeID VARCHAR(50) COLLATE utf8mb4_bin NOT NULL, CalculationParameterSetID VARCHAR(50) COLLATE utf8mb4_bin NOT NULL, RouteID VARCHAR(50) COLLATE utf8mb4_bin NOT NULL, TrainTypeID VARCHAR(50) COLLATE utf8mb4_bin NOT NULL, OperationTimeS DOUBLE NOT NULL, PRIMARY KEY(InstanceID,StationSchemeID,CalculationParameterSetID,RouteID,TrainTypeID)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

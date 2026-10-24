@@ -32,6 +32,17 @@ internal static class TrainRunPhysics
         return curve[low].ForceNewtons + fraction * (curve[high].ForceNewtons - curve[low].ForceNewtons);
     }
 
+    // A piecewise-linear force reaches its minimum at an endpoint or a contained knot.
+    internal static double MinimumEffort(double from, double to, TractionPoint[] curve)
+    {
+        var low = Math.Min(from, to); var high = Math.Max(from, to);
+        var minimum = Math.Min(TractiveEffort(low, curve), TractiveEffort(high, curve));
+        int left = 0, right = curve.Length;
+        while (left < right) { int middle = (left + right) / 2; if (curve[middle].SpeedMps <= low) left = middle + 1; else right = middle; }
+        for (int i = left; i < curve.Length && curve[i].SpeedMps < high; i++) minimum = Math.Min(minimum, curve[i].ForceNewtons);
+        return minimum;
+    }
+
     // Port of the spatial constant-acceleration step; callers handle infeasible negative radicands.
     internal static double NextSpeedSquared(double speed, double acceleration, double distance) =>
         speed * speed + 2 * acceleration * distance;

@@ -13,33 +13,47 @@ public sealed class SpeedProfileCalculationService
     {
         cancellationToken.ThrowIfCancellationRequested();
         Validate(request);
-        var train = request.Train;
+        var train = TrainCharacteristicTables.Normalize(request.Train);
         var profile = request.Profile;
         var options = request.Options;
         var signal = request.Signal;
+        var coreTrain = new TrainParameters
+        {
+            MassKg = train.MassT * 1000,
+            RotatingMassFactor = train.RotatingMassFactor,
+            MaxSpeedMps = train.MaxSpeedKmh / 3.6,
+            MaxBrakeForceNewtons = train.MaxBrakeForceKn * 1000,
+            ResistanceConstantNewtons = train.ResistanceA * 1000,
+            ResistanceLinearNewtonsPerMps = train.ResistanceB * 3600,
+            ResistanceQuadraticNewtonsPerMpsSquared = train.ResistanceC * 12960,
+            BrakingCurve = train.BrakingCurve!.Select(p => new TractionPoint(p.SpeedKmh / 3.6, p.ForceKn * 1000)).ToArray(),
+            ResistanceCurve = train.ResistanceCurve!.Select(p => new TractionPoint(p.SpeedKmh / 3.6, p.ForceKn * 1000)).ToArray(),
+            TractionCurve = train.TractionCurve.Select(p => new TractionPoint(p.SpeedKmh / 3.6, p.ForceKn * 1000)).ToArray()
+        };
+        var calculator = new SpeedProfileCalculator();
+        double approachDistance = 0;
+        if (options.Mode == "arrival")
+        {
+            var entry = profile.Segments[0];
+            approachDistance = calculator.CalculateBrakingDistance(coreTrain, new TrackSection {
+                GradientPermille = entry.GradientPermille,
+                AdditionalResistanceNewtons = entry.AdditionalResistanceKn * 1000
+            }, options.StepM, options.MaxPointCount, cancellationToken);
+            profile = PrependArrivalApproach(profile, approachDistance, train.MaxSpeedKmh);
+        }
         var sections = BuildSections(profile, train, cancellationToken);
         var coreRequest = new SpeedProfileRequest
         {
-            Train = new TrainParameters
-            {
-                MassKg = train.MassT * 1000,
-                RotatingMassFactor = train.RotatingMassFactor,
-                MaxSpeedMps = train.MaxSpeedKmh / 3.6,
-                MaxBrakeForceNewtons = train.MaxBrakeForceKn * 1000,
-                ResistanceConstantNewtons = train.ResistanceA * 1000,
-                ResistanceLinearNewtonsPerMps = train.ResistanceB * 3600,
-                ResistanceQuadraticNewtonsPerMpsSquared = train.ResistanceC * 12960,
-                TractionCurve = train.TractionCurve.Select(p => new TractionPoint(p.SpeedKmh / 3.6, p.ForceKn * 1000)).ToArray()
-            },
+            Train = coreTrain,
             Sections = sections,
-            Stops = options.Stops.Select(s => new TrainStop(s.PositionM, s.DwellS)).ToArray(),
+            Stops = options.Stops.Select(s => new TrainStop(s.PositionM + approachDistance, s.DwellS)).ToArray(),
             InitialSpeedMps = options.InitialSpeedKmh / 3.6,
             FinalSpeedMps = options.FinalSpeedKmh / 3.6,
             DistanceStepMeters = options.StepM,
             MaxPointCount = options.MaxPointCount
         };
         // This is the only numerical speed-profile solver. No browser solver is reproduced here.
-        var calculated = new SpeedProfileCalculator().Calculate(coreRequest, cancellationToken);
+        var calculated = calculator.Calculate(coreRequest, cancellationToken);
         var motionStart = signal.RouteSettingS + signal.ReactionS;
         var samples = calculated.Points.Select(p => new SpeedProfileSample(
             p.PositionMeters, p.SpeedMps * 3.6, p.SpeedLimitMps * 3.6, p.TimeSeconds + motionStart)).ToArray();
@@ -80,12 +94,26 @@ public sealed class SpeedProfileCalculationService
         return new SpeedProfileCalculationResponse
         {
             Samples = samples, JointTimes = joints, CellOccupancies = cells,
-            LengthM = profile.LengthM, TrainLengthM = train.LengthM, Mode = options.Mode,
+            LengthM = profile.LengthM, ApproachDistanceM = approachDistance, TrainLengthM = train.LengthM, Mode = options.Mode,
             DurationS = calculated.TotalTimeSeconds, MotionStartS = motionStart,
             TotalTimeS = motionStart + calculated.TotalTimeSeconds,
             RunningTimeS = calculated.RunningTimeSeconds,
             DwellTimeS = calculated.TotalTimeSeconds - calculated.RunningTimeSeconds,
             MaxSpeedKmh = calculated.MaxSpeedMps * 3.6, Warnings = warnings
+        };
+    }
+
+    private static SpeedProfileRouteInput PrependArrivalApproach(
+        SpeedProfileRouteInput route, double distance, double maximumSpeedKmh)
+    {
+        var entry = route.Segments[0];
+        return route with {
+            LengthM = route.LengthM + distance,
+            Segments = new[] { entry with { StartM = 0, EndM = distance, SpeedLimitKmh = maximumSpeedKmh } }
+                .Concat(route.Segments.Select(s => s with { StartM = s.StartM + distance, EndM = s.EndM + distance })).ToArray(),
+            Devices = route.Devices.Select(d => d with { PositionM = d.PositionM + distance }).ToArray(),
+            Joints = route.Joints.Select(j => j with { PositionM = j.PositionM + distance }).ToArray(),
+            Cells = route.Cells.Select(c => c with { StartM = c.StartM + distance, EndM = c.EndM + distance }).ToArray()
         };
     }
 
@@ -197,6 +225,16 @@ public sealed class SpeedProfileCalculationService
                 Invalid("invalid-curve", "牵引特性须从 0 km/h 开始，速度严格递增、牵引力非递增，所有数值须为非负有限数。");
             previousSpeed = point!.SpeedKmh;
             previousForce = point.ForceKn;
+        }
+        foreach (var (curve, name) in new[] { (train.BrakingCurve, "制动"), (train.ResistanceCurve, "阻力") }) {
+            if (curve is null) continue;
+            if (curve.Count is < 1 or > 128) Invalid("invalid-curve", name + "特性表须包含 1 至 128 个数据点。");
+            double speed = -1;
+            foreach (var point in curve) {
+                if (point is null || !double.IsFinite(point.SpeedKmh) || point.SpeedKmh < 0 || point.SpeedKmh > 10000 || !double.IsFinite(point.ForceKn) || point.ForceKn < 0 || point.ForceKn > 10000000 || (speed < 0 && point.SpeedKmh != 0) || point.SpeedKmh <= speed)
+                    Invalid("invalid-curve", name + "特性须从 0 km/h 开始，速度严格递增，力为非负有限数。");
+                speed = point!.SpeedKmh;
+            }
         }
         Range(profile.LengthM, "进路长度 (m)", 0.001, 10_000_000, "invalid-route");
         if (profile.Segments is null || profile.Segments.Count is < 1 or > 10_000)

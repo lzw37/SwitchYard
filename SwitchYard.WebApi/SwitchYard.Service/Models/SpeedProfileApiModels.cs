@@ -23,6 +23,8 @@ public sealed record SpeedProfileTrainInput
     [JsonRequired] public double ResistanceA { get; init; }
     [JsonRequired] public double ResistanceB { get; init; }
     [JsonRequired] public double ResistanceC { get; init; }
+    public IReadOnlyList<SpeedProfileForceInput>? BrakingCurve { get; init; }
+    public IReadOnlyList<SpeedProfileForceInput>? ResistanceCurve { get; init; }
     [JsonRequired] public IReadOnlyList<SpeedProfileForceInput> TractionCurve { get; init; } = null!;
 }
 
@@ -122,6 +124,8 @@ public sealed record SpeedProfileCellOccupancy : SpeedProfileCellInput
 }
 public sealed record SpeedProfileCalculationResponse
 {
+    /// <summary>Automatic approach before an arrival route; all result positions include this offset.</summary>
+    public double ApproachDistanceM { get; init; }
     public required IReadOnlyList<SpeedProfileSample> Samples { get; init; }
     public required IReadOnlyList<SpeedProfileJointTime> JointTimes { get; init; }
     public required IReadOnlyList<SpeedProfileCellOccupancy> CellOccupancies { get; init; }

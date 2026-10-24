@@ -114,6 +114,11 @@ namespace SwitchYard.Capacity
 
     public sealed class StationRouteTimeSaveRequest
     {
+        private double? operationTimeS;
+        public double? OperationTimeS { get => operationTimeS; set { operationTimeS = value; HasOperationTime = true; } }
+        [System.Text.Json.Serialization.JsonIgnore]
+        public bool HasOperationTime { get; private set; }
+
         public string? CalculationParameterSetID { get; set; }
 
         public string? InstanceID { get; set; }

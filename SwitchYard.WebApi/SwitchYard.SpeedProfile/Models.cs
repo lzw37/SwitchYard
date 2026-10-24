@@ -16,6 +16,9 @@ public sealed record TrainParameters
     public double ResistanceLinearNewtonsPerMps { get; init; }
     public double ResistanceQuadraticNewtonsPerMpsSquared { get; init; }
     /// <summary>Strictly increasing speeds, non-increasing nonnegative forces. Last force is held above the table.</summary>
+    /// <summary>Discrete force tables; null upgrades legacy scalar generators before solving.</summary>
+    public IReadOnlyList<TractionPoint>? BrakingCurve { get; init; }
+    public IReadOnlyList<TractionPoint>? ResistanceCurve { get; init; }
     public IReadOnlyList<TractionPoint> TractionCurve { get; init; } = [];
 }
 

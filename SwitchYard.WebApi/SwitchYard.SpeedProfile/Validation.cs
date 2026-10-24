@@ -1,7 +1,7 @@
 namespace SwitchYard.SpeedProfile;
 
 internal sealed record ValidatedInput(
-    TrainParameters Train, TractionPoint[] Curve, TrackSection[] Sections, TrainStop[] Stops,
+    TrainParameters Train, TractionPoint[] Curve, TractionPoint[] Resistance, TractionPoint[] NetTraction, TractionPoint[] NetBraking, TrackSection[] Sections, TrainStop[] Stops,
     double TotalDistance, double InertialMass);
 
 internal static class Validation
@@ -44,6 +44,20 @@ internal static class Validation
                 throw new ArgumentException("Traction samples must start at zero speed, have increasing speeds and non-increasing forces.");
         }
 
+        // Only legacy callers without tables use the generators. Supplied tables always take precedence.
+        TractionPoint[] Generate(Func<double, double> force) {
+            const double spacing = 10 / 3.6;
+            if (train.MaxSpeedMps / spacing > 1_000_000) throw new ArgumentException("Maximum speed exceeds the legacy table generation range.");
+            var points = new List<TractionPoint>();
+            for (int i = 0; i * spacing < train.MaxSpeedMps; i++) points.Add(new(i * spacing, force(i * spacing)));
+            points.Add(new(train.MaxSpeedMps, force(train.MaxSpeedMps))); return points.ToArray();
+        }
+        var braking = train.BrakingCurve?.ToArray() ?? Generate(_ => train.MaxBrakeForceNewtons);
+        var resistance = train.ResistanceCurve?.ToArray() ?? Generate(v => train.ResistanceConstantNewtons + train.ResistanceLinearNewtonsPerMps * v + train.ResistanceQuadraticNewtonsPerMpsSquared * v * v);
+        ValidateTable(braking, "BrakingCurve"); ValidateTable(resistance, "ResistanceCurve");
+        TractionPoint[] Combine(TractionPoint[] first, double sign) => first.Concat(resistance).Select(p => p.SpeedMps).Distinct().Order().Select(v =>
+            new TractionPoint(v, TrainRunPhysics.TractiveEffort(v, first) + sign * TrainRunPhysics.TractiveEffort(v, resistance))).ToArray();
+        var netTraction = Combine(curve, -1); var netBraking = Combine(braking, 1);
         var mass = train.MassKg * train.RotatingMassFactor;
         Positive(mass, "Effective inertial mass");
         Positive(train.MaxSpeedMps * train.MaxSpeedMps, "Squared maximum speed");
@@ -60,19 +74,12 @@ internal static class Validation
             Positive(nextDistance, "Route length");
             if (nextDistance <= distance) throw new ArgumentException("Section lengths cannot be represented at this route scale.");
             distance = nextDistance;
-            var resistance0 = train.ResistanceConstantNewtons + section.AdditionalResistanceNewtons +
-                TrainRunPhysics.ForceFromCoefficient(section.GradientPermille, train.MassKg);
-            var resistanceMax = resistance0 + train.ResistanceLinearNewtonsPerMps * train.MaxSpeedMps +
-                train.ResistanceQuadraticNewtonsPerMpsSquared * train.MaxSpeedMps * train.MaxSpeedMps;
-            Finite(resistance0, "Resistance");
-            Finite(resistanceMax, "Resistance at maximum speed");
-            Finite((curve[0].ForceNewtons - resistance0) / mass, "Maximum acceleration");
-            Finite((curve[^1].ForceNewtons - resistanceMax) / mass, "Minimum acceleration");
-            var brake0 = (train.MaxBrakeForceNewtons + resistance0) / mass;
-            Finite(brake0, "Effective braking");
-            Finite((train.MaxBrakeForceNewtons + resistanceMax) / mass, "Effective braking at maximum speed");
-            if (brake0 <= 0)
-                throw new InfeasibleProfileException("This conservative model requires positive net braking down to zero speed in every section; the supplied downhill section is unsupported.");
+            var extra = section.AdditionalResistanceNewtons + TrainRunPhysics.ForceFromCoefficient(section.GradientPermille, train.MassKg);
+            foreach (var point in netTraction) Finite((point.ForceNewtons - extra) / mass, "Traction acceleration");
+            foreach (var point in netBraking) Finite((point.ForceNewtons + extra) / mass, "Effective braking");
+            var minimumBrake = (TrainRunPhysics.MinimumEffort(0, train.MaxSpeedMps, netBraking) + extra) / mass;
+            if (minimumBrake <= 0)
+                throw new InfeasibleProfileException("This conservative model requires positive net braking throughout the operating speed range in every section.");
         }
         var stops = request.Stops.ToArray();
         foreach (var stop in stops)
@@ -89,9 +96,19 @@ internal static class Validation
         if ((stops.Length > 0 && stops[0].PositionMeters == 0 && request.InitialSpeedMps != 0) ||
             (stops.Length > 0 && stops[^1].PositionMeters == distance && request.FinalSpeedMps != 0))
             throw new InfeasibleProfileException("A boundary stop requires zero boundary speed.");
-        return new(train, curve, sections, stops, distance, mass);
+        return new(train, curve, resistance, netTraction, netBraking, sections, stops, distance, mass);
     }
 
+    private static void ValidateTable(TractionPoint[] curve, string name)
+    {
+        if (curve.Length is < 1 or > 1_000_001) throw new ArgumentException(name + " must contain 1–1,000,001 points.");
+        for (int i = 0; i < curve.Length; i++) {
+            ArgumentNullException.ThrowIfNull(curve[i]);
+            Nonnegative(curve[i].SpeedMps, name + ".SpeedMps"); Nonnegative(curve[i].ForceNewtons, name + ".ForceNewtons");
+            if ((i == 0 && curve[i].SpeedMps != 0) || (i > 0 && curve[i].SpeedMps <= curve[i - 1].SpeedMps))
+                throw new ArgumentException(name + " speeds must start at zero and strictly increase.");
+        }
+    }
     private static void Positive(double value, string name)
     {
         if (!double.IsFinite(value) || value <= 0) throw new ArgumentException(name + " must be finite and positive.");

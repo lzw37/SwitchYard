@@ -1,5 +1,6 @@
 // main.ts initializes the shared axios authentication/refresh interceptors before mounting the app.
 import axios from 'axios'
+import { cloneTrainParameters } from './trainPresets.ts'
 import type {
     SignalParameters, TrainParameters, TractionRouteProfile, TractionRunOptions, TractionResult,
 } from './tractionCalculation'
@@ -26,12 +27,7 @@ export function buildTractionApiRequest(
                 entryBoundaryKnown: c.entryBoundaryKnown ?? true, exitBoundaryKnown: c.exitBoundaryKnown ?? true,
             })),
         },
-        train: {
-            lengthM: train.lengthM, massT: train.massT, rotatingMassFactor: train.rotatingMassFactor,
-            maxSpeedKmh: train.maxSpeedKmh, maxBrakeForceKn: train.maxBrakeForceKn,
-            tractionCurve: train.tractionCurve.map(p => ({ speedKmh: p.speedKmh, forceKn: p.forceKn })),
-            resistanceA: train.resistanceA, resistanceB: train.resistanceB, resistanceC: train.resistanceC,
-        },
+        train: cloneTrainParameters(train),
         signal: { routeSettingS: signal.routeSettingS, reactionS: signal.reactionS, clearanceS: signal.clearanceS },
         options: {
             mode: options.mode, initialSpeedKmh: options.initialSpeedKmh, finalSpeedKmh: options.finalSpeedKmh,

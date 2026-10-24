@@ -128,7 +128,7 @@ test('one unknown repeated occurrence prevents updating the whole Cell', () => {
     assert.deepEqual(output.times, [row('B', 5, 8)])
 })
 
-test('unknown profile or server boundaries and stopped tails are preserved', () => {
+test('unknown profile or server boundaries and stopped tails in other modes are preserved', () => {
     for (const target of ['profile', 'result']) {
         for (const flag of ['entryBoundaryKnown', 'exitBoundaryKnown']) {
             const f = fixture()
@@ -137,7 +137,6 @@ test('unknown profile or server boundaries and stopped tails are preserved', () 
         }
     }
     const f = fixture()
-    f.result.mode = 'arrival'
     f.result.cellOccupancies[2].exitTimeS = null; f.result.cellOccupancies[2].releaseTimeS = null
     assert.deepEqual(calculate(f)[1].skippedCellIDs, ['C'])
 })
@@ -225,4 +224,134 @@ test('backend synthesized rows may omit route scope with null or empty values', 
         assert.deepEqual(merge([{ ...row('interference', 0, 0), routeID, trainTypeID: null }], update),
             [row('interference', 0, 0), ...update.times])
     }
+})
+
+
+test('arrival reservation starts at route setting and uses station entry and route end references', () => {
+    const f = fixture()
+    f.result.mode = 'arrival'
+    f.result.approachDistanceM = 1250
+    f.result.lengthM += 1250
+    f.result.totalTimeS += 100
+    f.result.samples.forEach(p => { p.positionM += 1250; p.timeS += 100 })
+    f.result.samples.unshift({ positionM: 0, timeS: 18, speedKmh: 36, limitKmh: 180 })
+    f.result.cellOccupancies.forEach(c => {
+        c.startM += 1250; c.endM += 1250
+        c.entryTimeS += 100; c.exitTimeS += 100; c.releaseTimeS += 100
+    })
+    const before = structuredClone(f)
+    const actual = calculate(f)
+    assert.deepEqual(f, before)
+    assert.deepEqual(actual.map(r => r.times), [
+        [row('A', -118, -3), row('B', -118, 8)],
+        [row('B', -128, -2), row('C', -128, 7)],
+    ])
+    assert.equal(actual[0].startTimeS, 118)
+    assert.equal(actual[0].endTimeS, 128)
+    assert.equal(actual[1].endTimeS, 138)
+    f.result.approachDistanceM = 0
+    assert.throws(() => calculate(f), /scope/)
+})
+
+function arrivalFixture() {
+    const f = fixture()
+    f.routes = [{ id: 'R1', startNodeID: 'N0', endNodeID: 'N2', linkList: 'L1,L2', cellList: 'A,B,C' }]
+    f.profile.routeIds = ['R1']
+    Object.assign(f.result, { mode: 'arrival', approachDistanceM: 1000, lengthM: 1200, totalTimeS: 138 })
+    f.result.samples.forEach(p => { p.positionM += 1000; p.timeS += 100 })
+    f.result.samples.unshift({ positionM: 0, timeS: 18, speedKmh: 36, limitKmh: 80 })
+    f.result.samples.at(-1).speedKmh = 0
+    f.result.cellOccupancies.forEach(c => {
+        c.startM += 1000; c.endM += 1000
+        c.entryTimeS += 100; c.exitTimeS += 100; c.releaseTimeS += 100
+    })
+    Object.assign(f.result.cellOccupancies[2], { exitTimeS: null, releaseTimeS: null })
+    return f
+}
+
+test('arrival includes setting, reaction and approach before station entry and zeros the occupied terminal cell', () => {
+    const f = arrivalFixture(), before = structuredClone(f)
+    assert.deepEqual(calculate(f), [{ routeID: 'R1', startTimeS: 118, endTimeS: 138,
+        times: [row('A', -118, -13), row('B', -118, -2), row('C', -118, 0)], skippedCellIDs: [] }])
+    assert.deepEqual(f, before, 'parameter convention must not change saved release events')
+    f.result.motionStartS += 12
+    f.result.samples.forEach(p => { p.timeS += 12 })
+    f.result.cellOccupancies.forEach(c => {
+        for (const field of ['entryTimeS', 'exitTimeS', 'releaseTimeS']) if (c[field] !== null) c[field] += 12
+    })
+    assert.deepEqual(calculate(f)[0].times, [row('A', -130, -13), row('B', -130, -2), row('C', -130, 0)])
+})
+
+test('arrival first head entry and first route-end arrival exclude subsequent dwell', () => {
+    const f = arrivalFixture()
+    f.result.samples[1].speedKmh = 0
+    f.result.samples.slice(2).forEach(p => { p.timeS += 30 })
+    f.result.samples.splice(2, 0, { ...f.result.samples[1], timeS: 148 })
+    f.result.samples.push({ ...f.result.samples.at(-1), timeS: 198 })
+    const output = calculate(f)[0]
+    assert.equal(output.startTimeS, 118)
+    assert.equal(output.endTimeS, 168)
+    assert.deepEqual(output.times, [row('A', -118, -43), row('B', -118, -32), row('C', -118, 0)])
+})
+
+test('arrival offsets retain outward integer rounding and both signs for known releases', () => {
+    const f = arrivalFixture()
+    f.result.samples.slice(1).forEach(p => { p.timeS += .25 })
+    f.result.cellOccupancies[0].releaseTimeS = 138.5
+    f.result.cellOccupancies[1].releaseTimeS = 136.5
+    assert.deepEqual(calculate(f)[0].times, [row('A', -119, 1), row('B', -119, -1), row('C', -119, 0)])
+})
+
+test('arrival can reserve an entrance-clipped circuit and zero a terminal-clipped circuit', () => {
+    const f = arrivalFixture()
+    f.profile.cells[0].entryBoundaryKnown = false
+    Object.assign(f.result.cellOccupancies[0], { entryBoundaryKnown: false, entryTimeS: null })
+    f.profile.cells[2].exitBoundaryKnown = false
+    f.result.cellOccupancies[2].exitBoundaryKnown = false
+    assert.deepEqual(calculate(f)[0].times, [row('A', -118, -13), row('B', -118, -2), row('C', -118, 0)])
+})
+
+test('arrival repeated occurrences use latest known release or zero if one remains occupied', () => {
+    const f = arrivalFixture()
+    f.profile.cells.push({ id: 'A@2', label: 'Again', startM: 170, endM: 200 })
+    f.result.cellOccupancies.push({ ...f.profile.cells.at(-1), startM: 1170, endM: 1200,
+        entryTimeS: 135, exitTimeS: null, releaseTimeS: null })
+    assert.deepEqual(calculate(f)[0].times[0], row('A', -118, 0))
+    Object.assign(f.result.cellOccupancies.at(-1), { exitTimeS: 139, releaseTimeS: 145 })
+    assert.deepEqual(calculate(f)[0].times[0], row('A', -118, 7))
+})
+
+test('arrival never substitutes zero for missing records, malformed times or unoccupied unknown boundaries', () => {
+    const mutations = [
+        f => { f.result.cellOccupancies.pop() },
+        f => { f.result.cellOccupancies[2].releaseTimeS = undefined },
+        f => { f.result.cellOccupancies[2].exitTimeS = 140 },
+        f => { f.result.cellOccupancies[2].exitTimeS = NaN },
+        f => { f.result.cellOccupancies[2].entryTimeS = null },
+        f => { f.result.cellOccupancies[2].entryTimeS = -1 },
+        f => { f.result.cellOccupancies[2].entryTimeS = 999 },
+        f => { f.result.cellOccupancies[2].entryTimeS = '133' },
+        f => { f.result.cellOccupancies[2].releaseTimeS = Infinity },
+        f => { f.result.cellOccupancies[2].releaseTimeS = 0 },
+        f => { f.result.trainLengthM = NaN },
+        f => { f.result.samples.at(-1).speedKmh = 36 },
+    ]
+    for (const mutation of mutations) {
+        const f = arrivalFixture(); mutation(f)
+        assert.deepEqual(calculate(f)[0].skippedCellIDs, ['C'])
+    }
+    const f = arrivalFixture()
+    Object.assign(f.result.cellOccupancies[0], { exitTimeS: null, releaseTimeS: null, exitBoundaryKnown: false })
+    f.profile.cells[0].exitBoundaryKnown = false
+    assert.deepEqual(calculate(f)[0].skippedCellIDs, ['A'])
+    const existing = [row('A', -77, 88), row('B', 0, 0), row('C', -50, 75), row('indirect', -5, 9)]
+    assert.deepEqual(merge(existing, calculate(f)[0]),
+        [row('A', -77, 88), row('B', -118, -2), row('C', -118, 0), row('indirect', -5, 9)])
+})
+
+test('arrival with no exterior reservation uses the saved route origin and still includes preparation', () => {
+    const f = fixture()
+    f.result.mode = 'arrival'
+    assert.equal(calculate(f)[0].startTimeS, 18)
+    assert.deepEqual(calculate(f)[0].times, [row('A', -18, -3), row('B', -18, 8)])
 })
