@@ -2176,6 +2176,8 @@
             "generateSwitch": "道岔生成",
             "generateCurve": "曲线生成",
             "fitFullView": "显示全图",
+            "freeZoom": "自由缩放",
+            "freeZoomHint": "拖拽矩形以缩放至该区域，按 Esc 取消",
             "mergeNodes": "节点合并",
             "correctBindings": "修正设备绑定",
             "searchPath": "路径搜索",

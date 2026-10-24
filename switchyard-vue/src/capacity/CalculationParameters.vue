@@ -9,6 +9,8 @@
             v-model:scale-x="layoutScaleX"
             v-model:scale-y="layoutScaleY"
             @fit="fitFullLayout"
+            :free-zoom-active="!!stationLayoutEditorRef?.freeZoomActive"
+            @free-zoom="toggleLayoutFreeZoom"
         >
             <template #context>
                 <div class="calc-scheme-control">
@@ -1698,6 +1700,13 @@ function fitDataRectInLayout(rect: DataRect | null, options: { screenMargin?: nu
 
 function fitRouteInLayout(rect: DataRect | null) {
     fitDataRectInLayout(rect, { screenMargin: 72, padding: 180 })
+}
+
+function toggleLayoutFreeZoom() {
+    return stationLayoutEditorRef.value?.toggleFreeZoom?.(layoutViewportRef.value, (scaleX: number, scaleY: number) => {
+        layoutScaleX.value = scaleX
+        layoutScaleY.value = scaleY
+    }) ?? false
 }
 
 function fitFullLayout() {

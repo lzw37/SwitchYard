@@ -11,6 +11,8 @@
             :show-display-controls="!show3D"
             :fit-disabled="!layoutData"
             @fit="fitLayoutToFullView"
+            :free-zoom-active="!!layoutEditorRef?.freeZoomActive"
+            @free-zoom="toggleLayoutFreeZoom"
         >
             <template #context>
                 <el-switch
@@ -2784,6 +2786,13 @@ function readLayoutViewportState(): CanvasViewportState {
         scaleX,
         scaleY,
     }
+}
+
+function toggleLayoutFreeZoom() {
+    return layoutEditorRef.value?.toggleFreeZoom?.(layoutViewportRef.value, (scaleX: number, scaleY: number) => {
+        layoutScaleX.value = scaleX
+        layoutScaleY.value = scaleY
+    }) ?? false
 }
 
 function fitLayoutToFullView() {

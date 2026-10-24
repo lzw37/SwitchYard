@@ -13,7 +13,7 @@ import StationLayoutEditToolbar from "./components/StationLayoutEditToolbar.vue"
 import { createStationLayoutTranslator } from "./messages";
 import { isStationLayoutArchive, parseStationLayoutJson, serializeStationLayoutJson, validateStationLayoutJson, remapStationLayoutIds } from "./layoutJson";
 import {
-    Download, Upload, Aim, Hide, Connection, Scissor,
+    Download, Upload, Aim, ZoomIn, Hide, Connection, Scissor,
     Share, SetUp,
     Pointer, EditPen,
     Minus, Location, Bell, Switch, Filter, Guide, Stopwatch, Platform,
@@ -150,6 +150,13 @@ const bindingCorrectionRows = ref([]);
 const selectedBindingCorrectionRows = ref([]);
 const layoutScaleXDisplay = computed(() => layoutScaleX.value.toFixed(2));
 const layoutScaleYDisplay = computed(() => layoutScaleY.value.toFixed(2));
+
+function toggleLayoutFreeZoom() {
+    return stationLayoutEditorRef.value?.toggleFreeZoom?.(stationLayoutEditorFrameRef.value, (scaleX, scaleY) => {
+        layoutScaleX.value = scaleX;
+        layoutScaleY.value = scaleY;
+    }) ?? false;
+}
 
 function fitFullLayout() {
     return stationLayoutEditorRef.value?.fitFullView?.(stationLayoutEditorFrameRef.value, scale => {
@@ -2871,6 +2878,12 @@ defineExpose({ exportJson, importJson });
                 <el-button size="small" :icon="Aim" @click="fitFullLayout">
                     {{ t('stationLayout.tools.fitFullView') }}
                 </el-button>
+                <el-button size="small" :icon="ZoomIn"
+                    :type="stationLayoutEditorRef?.freeZoomActive ? 'primary' : 'default'"
+                    :aria-pressed="!!stationLayoutEditorRef?.freeZoomActive"
+                    :title="t('stationLayout.tools.freeZoomHint')" @click="toggleLayoutFreeZoom">
+                    {{ t('stationLayout.tools.freeZoom') }}
+                </el-button>
                 <el-dropdown v-if="editToolbarDensity === 'compact'" trigger="click" @command="handleFileToolbarCommand">
                     <el-button size="small" :icon="Download">
                         {{ t('stationLayout.menu.file') }}
@@ -2988,12 +3001,12 @@ defineExpose({ exportJson, importJson });
                     <span class="station-toolbar-group__label">{{ t('stationLayout.group.displayScale') }}</span>
                     <div class="scale-slider">
                         <span class="scale-slider-label">{{ t('stationLayout.scale.x') }}</span>
-                        <el-slider v-model="layoutScaleX" :min="Math.min(0.25, layoutScaleX)" :max="4" :step="0.05" size="small" />
+                        <el-slider v-model="layoutScaleX" :min="Math.min(0.25, layoutScaleX)" :max="Math.max(4, layoutScaleX)" :step="0.05" size="small" />
                         <span class="scale-slider-value">{{ layoutScaleXDisplay }}</span>
                     </div>
                     <div class="scale-slider">
                         <span class="scale-slider-label">{{ t('stationLayout.scale.y') }}</span>
-                        <el-slider v-model="layoutScaleY" :min="Math.min(0.25, layoutScaleY)" :max="4" :step="0.05" size="small" />
+                        <el-slider v-model="layoutScaleY" :min="Math.min(0.25, layoutScaleY)" :max="Math.max(4, layoutScaleY)" :step="0.05" size="small" />
                         <span class="scale-slider-value">{{ layoutScaleYDisplay }}</span>
                     </div>
                 </div>
