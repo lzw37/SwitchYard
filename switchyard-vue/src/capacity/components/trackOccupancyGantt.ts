@@ -35,19 +35,34 @@ export interface TrackOccupancyGanttTick {
     label: string | number
     major?: boolean
     zero?: boolean
+    align?: 'start' | 'end'
+    reference?: 'start' | 'end' | 'both'
 }
 
 export interface TrackOccupancyGanttBlock {
     key: string
     left: number
     width: number
+    minWidth?: number
     top?: number
     label: string
     title?: string
     color?: string
     className?: string
     editable?: boolean
+    startHandle?: 'start' | 'end' | false
+    endHandle?: 'start' | 'end' | false
     conflict?: ResourceConflictMarker
+}
+
+export interface TrackOccupancyGanttAnchor {
+    key: string
+    left: number
+    mode: 'start' | 'end'
+    outside?: boolean
+    offsetLabel?: string
+    label: string
+    title?: string
 }
 
 export interface TrackOccupancyGanttRow {
@@ -57,6 +72,8 @@ export interface TrackOccupancyGanttRow {
     trackNames?: string[]
     height?: number
     blocks: TrackOccupancyGanttBlock[]
+    anchors?: TrackOccupancyGanttAnchor[]
+    connectors?: { key: string; left: number; width: number; title?: string; top?: number; color?: string; className?: string }[]
 }
 
 export interface TrackOccupancyGanttRowHit {

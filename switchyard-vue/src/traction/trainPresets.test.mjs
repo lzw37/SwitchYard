@@ -133,7 +133,7 @@ test('missing train objects and every missing required scalar are rejected', () 
         const catalog = onePreset(); catalog.presets[0].parameters = value
         assert.equal(validate(catalog), 'invalid-train-parameters')
     }
-    for (const field of Object.keys(defaultTrainParameters())) {
+    for (const field of Object.keys(defaultTrainParameters()).filter(key => !['brakingCurve', 'resistanceCurve'].includes(key))) {
         const catalog = onePreset(); delete catalog.presets[0].parameters[field]
         assert.notEqual(validate(catalog), '', field)
     }
@@ -221,4 +221,33 @@ test('validation and cloning leave input unchanged and omit unrelated persisted 
     const clean = parse(JSON.stringify(contaminated))
     assert.deepEqual(clean, original)
     assert.equal({}.polluted, undefined)
+})
+
+test('braking and resistance curves preserve rising and falling force, zero values and isolated edits', () => {
+    const catalog = onePreset(), train = catalog.presets[0].parameters
+    for (const key of ['brakingCurve', 'resistanceCurve']) train[key] = [{ speedKmh: 0, forceKn: 0 }, { speedKmh: 10, forceKn: 20 }, { speedKmh: 20, forceKn: 5 }]
+    assert.equal(validate(catalog), '')
+    const copy = cloneTrainPresetCatalog(catalog)
+    copy.presets[0].parameters.brakingCurve[1].forceKn = 99
+    copy.presets[0].parameters.resistanceCurve[1].speedKmh = 12
+    assert.equal(train.brakingCurve[1].forceKn, 20)
+    assert.equal(train.resistanceCurve[1].speedKmh, 10)
+    for (const key of ['brakingCurve', 'resistanceCurve']) {
+        for (const invalid of [[], null, [{ speedKmh: 1, forceKn: 1 }], [{ speedKmh: 0, forceKn: -1 }], [{ speedKmh: 0, forceKn: 1 }, { speedKmh: 0, forceKn: 2 }]])
+            assert.notEqual(validate(withParameter(key, invalid)), '')
+    }
+})
+test('legacy generators materialize once and never replace an existing discrete table', () => {
+    const catalog = onePreset(), train = catalog.presets[0].parameters
+    delete train.brakingCurve; delete train.resistanceCurve
+    train.maxSpeedKmh = 25; train.maxBrakeForceKn = 123
+    train.resistanceA = 1; train.resistanceB = 2; train.resistanceC = .1
+    const upgraded = parse(JSON.stringify(catalog)).presets[0].parameters
+    assert.deepEqual(upgraded.brakingCurve.map(p => p.speedKmh), [0, 10, 20, 25])
+    assert.deepEqual(upgraded.brakingCurve.map(p => p.forceKn), [123,123,123,123])
+    assert.deepEqual(upgraded.resistanceCurve.map(p => p.forceKn), [1,31,81,113.5])
+    upgraded.maxBrakeForceKn = 900; upgraded.resistanceA = 200
+    const clone = cloneTrainParameters(upgraded)
+    assert.deepEqual(clone.brakingCurve, upgraded.brakingCurve)
+    assert.deepEqual(clone.resistanceCurve, upgraded.resistanceCurve)
 })

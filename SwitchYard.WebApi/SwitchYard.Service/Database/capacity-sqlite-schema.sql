@@ -414,3 +414,6 @@ CREATE TABLE IF NOT EXISTS "calculationparameterset" (
     "IsDefault" INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY ("InstanceID", "StationSchemeID", "ID")
 );
+
+-- Per-route operation time, scoped to calculation parameters.
+CREATE TABLE IF NOT EXISTS stationrouteoperationtime (InstanceID TEXT NOT NULL, StationSchemeID TEXT NOT NULL, CalculationParameterSetID TEXT NOT NULL, RouteID TEXT NOT NULL, TrainTypeID TEXT NOT NULL, OperationTimeS REAL NOT NULL CHECK(OperationTimeS >= 0), PRIMARY KEY(InstanceID,StationSchemeID,CalculationParameterSetID,RouteID,TrainTypeID));

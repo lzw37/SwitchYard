@@ -56,6 +56,8 @@ namespace SwitchYard.Service.Services
                     DBConnector.IsMySql(DBConnector.CapacityDatabaseSectionName));
                 StationRouteTrainTypesMigration.Apply(DBConnector.GetDBConnector(DBConnector.CapacityDatabaseSectionName));
                 CalculationParameterSetMigration.Apply(DBConnector.GetDBConnector(DBConnector.CapacityDatabaseSectionName));
+                RouteOperationTimeStore.EnsureSchema(DBConnector.GetDBConnector(DBConnector.CapacityDatabaseSectionName));
+                TractionSchemaMigration.Ensure(DBConnector.GetDBConnector(DBConnector.CapacityDatabaseSectionName));
                 OperationPlanSchemaMigration.MigrateData(DBConnector.GetDBConnector(DBConnector.CapacityDatabaseSectionName));
             }
         }

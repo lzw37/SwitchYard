@@ -30,10 +30,10 @@
                             v-for="tick in ticks"
                             :key="tick.key"
                             class="track-occupancy-gantt-axis-tick"
-                            :class="{ 'is-major': tick.major, 'is-zero': tick.zero }"
+                            :class="[{ 'is-major': tick.major, 'is-zero': tick.zero }, tick.reference && 'is-reference-' + tick.reference]"
                             :style="{ left: `${tick.left * scaleX}px` }"
                         >
-                            <span :class="{ 'is-first': tick.left <= 0, 'is-last': tick.left >= timelineWidth }">{{ tick.label }}</span>
+                            <span :class="{ 'is-first': tick.left <= 0 || tick.align === 'start', 'is-last': tick.left >= timelineWidth || tick.align === 'end' }">{{ tick.label }}</span>
                         </div>
                         <div v-if="playheadLeft != null" class="track-occupancy-gantt-now-line" :style="playheadStyle" />
                     </div>
@@ -54,9 +54,12 @@
                             v-for="tick in ticks"
                             :key="tick.key"
                             class="track-occupancy-gantt-grid-line"
-                            :class="{ 'is-major': tick.major, 'is-zero': tick.zero }"
+                            :class="[{ 'is-major': tick.major, 'is-zero': tick.zero }, tick.reference && 'is-reference-' + tick.reference]"
                             :style="{ left: `${tick.left * scaleX}px` }"
                         />
+                        <div v-for="connector in row.connectors" :key="connector.key" class="track-occupancy-gantt-connector" :class="connector.className"
+                            :title="connector.title" :style="{ left: connector.left * scaleX + 'px', width: connector.width * scaleX + 'px',
+                                top: (connector.top ?? metrics.barInset + metrics.barHeight / 2) * scaleY + 'px', color: connector.color, borderColor: connector.color }" />
                         <div
                             v-for="block in row.blocks"
                             :key="block.key"
@@ -71,8 +74,8 @@
                             @pointerdown="startDrag($event, row.key, block, 'move')"
                         >
                             <span
-                                v-if="editable && block.editable !== false"
-                                class="track-occupancy-gantt-handle is-start"
+                                v-if="editable && block.editable !== false && block.startHandle !== false"
+                                class="track-occupancy-gantt-handle" :class="'is-' + (block.startHandle || 'start')"
                                 role="separator"
                                 aria-orientation="vertical"
                                 :aria-label="startHandleLabel"
@@ -80,14 +83,21 @@
                             />
                             <span class="track-occupancy-gantt-block-label">{{ block.label }}</span>
                             <span
-                                v-if="editable && block.editable !== false"
-                                class="track-occupancy-gantt-handle is-end"
+                                v-if="editable && block.editable !== false && block.endHandle !== false"
+                                class="track-occupancy-gantt-handle" :class="'is-' + (block.endHandle || 'end')"
                                 role="separator"
                                 aria-orientation="vertical"
                                 :aria-label="endHandleLabel"
                                 @pointerdown.stop.prevent="startDrag($event, row.key, block, 'end')"
                             />
                         </div>
+                        <span v-for="anchor in row.anchors" :key="anchor.key"
+                            class="track-occupancy-gantt-anchor" :class="['is-' + anchor.mode, { 'is-outside': anchor.outside }]" :data-anchor-key="anchor.key"
+                            :style="{ left: anchor.left * scaleX + 'px', top: metrics.barInset * scaleY + 'px' }"
+                            role="separator" aria-orientation="vertical" :aria-label="anchor.label" :title="anchor.title"
+                            @pointerdown.stop.prevent="startAnchorDrag($event, row.key, anchor)">
+                            <span v-if="anchor.offsetLabel !== undefined" class="track-occupancy-gantt-anchor-value" aria-hidden="true">{{ anchor.offsetLabel }}</span>
+                        </span>
                         <div v-if="playheadLeft != null" class="track-occupancy-gantt-now-line" :style="playheadStyle" />
                     </div>
                 </div>
@@ -112,6 +122,7 @@ import {
     hitTestTrackOccupancyGanttRow,
     trackOccupancyGanttMetrics as metrics,
     type TrackOccupancyGanttBlock,
+    type TrackOccupancyGanttAnchor,
     type TrackOccupancyGanttRow,
     type TrackOccupancyGanttTick,
     type TrackOccupancyGanttDragMode,
@@ -298,7 +309,7 @@ onBeforeUnmount(() => {
 function getBlockStyle(block: TrackOccupancyGanttBlock) {
     return {
         left: `${block.left * scaleX.value}px`,
-        width: `${Math.max(metrics.minBarWidth, block.width * scaleX.value)}px`,
+        width: `${Math.max(block.minWidth ?? metrics.minBarWidth, block.width * scaleX.value)}px`,
         top: `${(block.top ?? metrics.barInset) * scaleY.value}px`,
         '--occupancy-gantt-block-color': block.color || '#2563eb',
         '--occupancy-gantt-block-text': block.color === '#facc15' ? '#334155' : '#ffffff',
@@ -310,6 +321,11 @@ function rowKindTitle(row: TrackOccupancyGanttRow) {
     const kind = t(row.kind === 'track' ? 'capacityGantt.rowKinds.track' : 'capacityGantt.rowKinds.cell')
     const names = row.trackNames?.filter(name => name !== row.label).join(' / ')
     return `${row.label} · ${kind}${names ? ` · ${names}` : ''}`
+}
+
+function startAnchorDrag(event: PointerEvent, rowKey: string, anchor: TrackOccupancyGanttAnchor) {
+    if (!props.editable || props.disabled) return
+    emit('drag-start', { event, rowKey, blockKey: anchor.key, mode: anchor.mode })
 }
 
 function startDrag(event: PointerEvent, rowKey: string, block: TrackOccupancyGanttBlock, mode: TrackOccupancyGanttDragMode) {
@@ -479,6 +495,9 @@ function startDrag(event: PointerEvent, rowKey: string, block: TrackOccupancyGan
 .track-occupancy-gantt-axis-tick span.is-first { transform: none; }
 .track-occupancy-gantt-axis-tick span.is-last { transform: translateX(-100%); }
 
+.track-occupancy-gantt-connector { position:absolute; height:0; border-top:2px dashed #94a3b8; pointer-events:none; }
+.track-occupancy-gantt-connector.is-offset-guide { z-index: 4; transform: translateY(-50%); }
+.track-occupancy-gantt-lane-track:has(.is-offset-guide) .track-occupancy-gantt-anchor-value { background: var(--occupancy-lane-background, #fff); }
 .track-occupancy-gantt-block {
     position: absolute;
     z-index: 3;
@@ -518,8 +537,38 @@ function startDrag(event: PointerEvent, rowKey: string, block: TrackOccupancyGan
     background: rgba(255, 255, 255, 0.22);
     cursor: ew-resize;
 }
-.track-occupancy-gantt-handle.is-start { border-right: 1px solid rgba(255, 255, 255, 0.38); }
-.track-occupancy-gantt-handle.is-end { border-left: 1px solid rgba(255, 255, 255, 0.38); }
+.track-occupancy-gantt-handle.is-start { order:-1; border-right: 1px solid rgba(255, 255, 255, 0.38); }
+.track-occupancy-gantt-handle.is-end { order:1; border-left: 1px solid rgba(255, 255, 255, 0.38); }
+
+.track-occupancy-gantt-anchor {
+    position: absolute;
+    z-index: 5;
+    width: 8px;
+    height: var(--occupancy-gantt-bar-height);
+    box-sizing: border-box;
+    background: rgba(255, 255, 255, 0.22);
+    cursor: ew-resize;
+    touch-action: none;
+}
+.track-occupancy-gantt-anchor.is-start { color: var(--occupancy-start-color, #22c55e); background: var(--occupancy-start-color, #22c55e); border-right: 1px solid rgba(255, 255, 255, 0.38); border-radius: 5px 0 0 5px; }
+.track-occupancy-gantt-anchor.is-end { color: var(--occupancy-end-color, #ef4444); background: var(--occupancy-end-color, #ef4444); transform: translateX(-100%); border-left: 1px solid rgba(255, 255, 255, 0.38); border-radius: 0 5px 5px 0; }
+/* Keep both handles accessible when the interval is too short to contain them. */
+.track-occupancy-gantt-anchor.is-start.is-outside { transform: translateX(-100%); }
+.track-occupancy-gantt-anchor.is-end.is-outside { transform: none; }
+.is-disabled .track-occupancy-gantt-anchor { cursor: default; }
+.track-occupancy-gantt-anchor-value {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    color: inherit;
+    font-size: calc(11px * var(--occupancy-gantt-font-scale));
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    pointer-events: none;
+}
+.track-occupancy-gantt-anchor.is-start .track-occupancy-gantt-anchor-value { right: calc(100% + 6px); }
+.track-occupancy-gantt-anchor.is-end .track-occupancy-gantt-anchor-value { left: calc(100% + 6px); }
 
 .track-occupancy-gantt-block.is-finished { border-color: #8792a1; background: #a0a8b3; color: #ffffff; }
 .track-occupancy-gantt-block.is-active { box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.22); transform: translateY(-1px); }

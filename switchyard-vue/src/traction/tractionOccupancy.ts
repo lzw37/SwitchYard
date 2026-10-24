@@ -45,11 +45,32 @@ function boundaryTime(result: TractionResult, positionM: number, departure: bool
     return time
 }
 
+/** A null release is usable only when the saved final train still occupies this cell. */
+function arrivalReleaseTime(result: TractionResult, occurrence: RouteProfileCell,
+    occupancy: TractionCellOccupancy): number | null | undefined {
+    const entryKnown = occurrence.entryBoundaryKnown !== false && occupancy.entryBoundaryKnown !== false
+    const exitKnown = occurrence.exitBoundaryKnown !== false && occupancy.exitBoundaryKnown !== false
+    const { entryTimeS, exitTimeS, releaseTimeS } = occupancy
+    const last = result.samples[result.samples.length - 1]!
+    if (entryKnown ? !finite(entryTimeS) || entryTimeS < 0 || entryTimeS > last.timeS : entryTimeS !== null) return undefined
+    if (finite(exitTimeS) && finite(releaseTimeS)) {
+        return exitKnown && exitTimeS >= (entryTimeS ?? 0) && releaseTimeS >= exitTimeS ? releaseTimeS : undefined
+    }
+    if (exitTimeS !== null || releaseTimeS !== null) return undefined
+    // This also covers a final cell clipped at the route end: its covered part is
+    // physically occupied even if its far boundary lies beyond the calculated run.
+    // Other missing boundary/timing data must not become an invented zero offset.
+    return finite(result.trainLengthM) && result.trainLengthM > 0 && last.speedKmh === 0
+        && occupancy.startM < last.positionM - POSITION_EPSILON
+        && occupancy.endM > last.positionM - result.trainLengthM + POSITION_EPSILON ? null : undefined
+}
+
 /**
- * Convert measured physical occupancy to the parameter table's two reference events.
- * Start is relative to head departure from this route's origin; end is relative to
- * first head arrival at its destination. Setting/reaction delay cancels at the origin;
- * releaseTimeS retains the configured clearance delay. Unknown cells are never filled.
+ * Arrival routes reserve traversed cells from route setting (time zero). Their
+ * reference events are first head entry into the station route and first arrival
+ * at its end. A cell still occupied at the final stop gets end offset zero only
+ * in the parameter table; the saved result's unknown release remains unchanged.
+ * Other run modes retain physical entry and origin-departure references.
  */
 export function buildTractionOccupancyUpdates(
     routes: readonly TractionStationRoute[], profile: RouteProfile, result: TractionResult,
@@ -68,7 +89,10 @@ export function buildTractionOccupancyUpdates(
             || (index > 0 && routes[index - 1]!.endNodeID !== route.startNodeID)) fail('Invalid route scope.')
         routeIDs.add(route.id)
     }
-    if (!finite(result.lengthM) || !samePosition(result.lengthM, profile.lengthM)
+    const approach = result.approachDistanceM ?? 0
+    if (!finite(approach) || approach < 0 || (approach > 0 && result.mode !== 'arrival'))
+        fail('Invalid arrival approach.')
+    if (!finite(result.lengthM) || !samePosition(result.lengthM, profile.lengthM + approach)
         || !finite(result.motionStartS) || result.motionStartS < 0
         || !Array.isArray(result.samples) || result.samples.length < 2
         || !Array.isArray(result.cellOccupancies)) fail('Invalid traction result scope.')
@@ -81,7 +105,7 @@ export function buildTractionOccupancyUpdates(
         }
     }
     const firstSample = result.samples[0]!, lastSample = result.samples[result.samples.length - 1]!
-    if (!samePosition(firstSample.positionM, 0) || !samePosition(lastSample.positionM, profile.lengthM)
+    if (!samePosition(firstSample.positionM, 0) || !samePosition(lastSample.positionM, result.lengthM)
         || Math.abs(firstSample.timeS - result.motionStartS) > 1e-6) fail('Missing route boundary time.')
 
     let segmentIndex = 0, previousEnd = 0
@@ -124,7 +148,7 @@ export function buildTractionOccupancyUpdates(
     for (const cell of result.cellOccupancies) {
         const expected = cell && profileByID.get(cell.id)
         if (!expected || occupancyByID.has(cell.id) || !finite(cell.startM) || !finite(cell.endM)
-            || !samePosition(cell.startM, expected.startM) || !samePosition(cell.endM, expected.endM)) {
+            || !samePosition(cell.startM, expected.startM + approach) || !samePosition(cell.endM, expected.endM + approach)) {
             fail('Invalid traction cell scope.')
         }
         occupancyByID.set(cell.id, cell)
@@ -132,16 +156,25 @@ export function buildTractionOccupancyUpdates(
 
     return routes.map((route, index) => {
         const range = ranges[index]!
-        const startTimeS = index === 0 ? result.motionStartS : boundaryTime(result, range.startM, true)
-        const endTimeS = boundaryTime(result, range.endM, false)
+        const arrival = result.mode === 'arrival'
+        const startTimeS = arrival ? boundaryTime(result, range.startM + approach, false)
+            : index === 0 && approach === 0 ? result.motionStartS : boundaryTime(result, range.startM + approach, true)
+        const endTimeS = boundaryTime(result, range.endM + approach, false)
         if (!finite(startTimeS) || !finite(endTimeS) || startTimeS > endTimeS) fail('Invalid route boundary time.')
         const update: RouteOccupancyUpdate = { routeID: route.id, startTimeS, endTimeS, times: [], skippedCellIDs: [] }
         for (const cellID of new Set(parseRouteIds(route.cellList))) {
             const occurrences = (occurrencesBySource.get(cellID) ?? []).filter(cell =>
                 cell.startM < range.endM - POSITION_EPSILON && cell.endM > range.startM + POSITION_EPSILON)
-            let entry = Infinity, release = -Infinity, complete = occurrences.length > 0
+            let entry = arrival ? 0 : Infinity, release = -Infinity, complete = occurrences.length > 0, unreleased = false
             for (const occurrence of occurrences) {
                 const occupancy = occupancyByID.get(occurrence.id)
+                if (arrival) {
+                    const end = occupancy ? arrivalReleaseTime(result, occurrence, occupancy) : undefined
+                    if (end === undefined) complete = false
+                    else if (end === null) unreleased = true
+                    else release = Math.max(release, end)
+                    continue
+                }
                 if (!occupancy || occurrence.entryBoundaryKnown === false || occurrence.exitBoundaryKnown === false
                     || occupancy.entryBoundaryKnown === false || occupancy.exitBoundaryKnown === false
                     || !finite(occupancy.entryTimeS) || !finite(occupancy.exitTimeS) || !finite(occupancy.releaseTimeS)
@@ -154,7 +187,7 @@ export function buildTractionOccupancyUpdates(
                 release = Math.max(release, occupancy.releaseTimeS)
             }
             const startOccupationShift = Math.floor(entry - startTimeS)
-            const endOccupationShift = Math.ceil(release - endTimeS)
+            const endOccupationShift = unreleased ? 0 : Math.ceil(release - endTimeS)
             if (!complete || !int32(startOccupationShift) || !int32(endOccupationShift)) {
                 update.skippedCellIDs.push(cellID)
                 continue

@@ -2644,6 +2644,12 @@
             "saveOccupancyTime": "Save",
             "emptyRouteTimes": "No occupancy time records",
             "directInterrupt": "Direct Interrupt",
+            "operationTime": "Operation time (s)",
+            "operationTimeHint": "Route end time minus route start time",
+            "operationTimeUnset": "Not set",
+            "operationStart": "Operation start",
+            "operationEnd": "Operation end",
+            "invalidOccupancyOrder": "{cell}: the end anchor cannot be earlier than the start anchor in absolute time. Adjust the offsets.",
             "uniformShift": {
                 "title": "Uniform Shift",
                 "apply": "Apply",

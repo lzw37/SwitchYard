@@ -22,10 +22,10 @@ public static class CapacityDataLifecycle
         "operationoccupationtimecell", "operationoccupationtimerow", "operationanalysiscell", "operationanalysismeta"
     };
 
-    public static readonly IReadOnlyList<string> SchemeTables = PlanTables.Concat(new[]
+    public static readonly IReadOnlyList<string> SchemeTables = PlanTables.Concat(TractionRouteSchemaMigration.Tables).Concat(TractionSchemaMigration.Tables).Concat(TractionSchemaMigration.LegacyTables).Concat(new[]
     {
         "operationplan", "operationprocesstemplate", "movementtemplate", "traintemplate",
-        "stationroutetime", "calculationparameterset", "stationroute", "stationrouteend", "switchbranchvector", "switch",
+        "stationroutetime", "stationrouteoperationtime", "calculationparameterset", "stationroute", "stationrouteend", "switchbranchvector", "switch",
         "bufferstop", "insulationjoint", "signal", "platform", "cell", "annotation", "curve", "link", "node",
         "stationlayoutrevision"
     }).ToArray();
@@ -54,11 +54,12 @@ public static class CapacityDataLifecycle
     public static void DeleteRouteParameters(DBConnector db, string instanceID, string stationSchemeID, string routeID)
     {
         var parameters = new { instanceID, stationSchemeID, routeID };
-        foreach (var table in new[] { "stationroutetime", "operationbottlenecksummarycategoryroute" })
+        foreach (var table in new[] { "stationroutetime", "stationrouteoperationtime", "operationbottlenecksummarycategoryroute" })
         {
             if (!TableExists(db, table)) continue;
             DeleteAndVerify(db, table, "InstanceID=@instanceID AND StationSchemeID=@stationSchemeID AND RouteID=@routeID", parameters);
         }
+        TractionWorkspaceStore.DeleteRouteData(db, instanceID, stationSchemeID, routeID);
         InvalidateAnalysis(db, instanceID, stationSchemeID);
     }
 

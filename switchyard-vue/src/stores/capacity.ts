@@ -42,8 +42,10 @@ export const useCapacityStore = defineStore('capacity', {
             const parameterSet = calculationParameterSetId.trim()
             // Empty values emitted during loading must not erase another module's selection.
             if (!instance || !scheme || !parameterSet) return
-            const selections = this.calculationParameterSetIdsByScope[instance] ??= {}
-            selections[scheme] = parameterSet
+            // Publish the first selection atomically for synchronous computed readers.
+            this.calculationParameterSetIdsByScope[instance] = {
+                ...this.calculationParameterSetIdsByScope[instance], [scheme]: parameterSet,
+            }
         },
         clearCalculationParameterSet(instanceId: string | null | undefined, stationSchemeId: string | null | undefined) {
             const instance = instanceId?.trim()

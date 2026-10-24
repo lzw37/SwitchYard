@@ -44,35 +44,80 @@ public sealed class SpeedProfileCalculator
         double[] speed, DistanceGrid grid, ValidatedInput input, CancellationToken cancellationToken)
     {
         // Port of secureBrakingBehavior!: propagate each target's reachable entry speed backwards.
-        // Extension: use section-specific force/gradient/Davis braking rather than constant net deceleration.
-        // Since resistance increases with speed, braking at the lower (exit) speed is conservative.
+        // Use the minimum interpolated net braking across each entire speed interval.
+        // Variable braking may rise or fall, so using only the exit speed is insufficient.
         for (int i = speed.Length - 2; i >= 0; i--)
         {
             if ((i & 1023) == 0) cancellationToken.ThrowIfCancellationRequested();
             double distance = grid.Positions[i + 1] - grid.Positions[i];
             var section = input.Sections[grid.CellSections[i]];
-            double deceleration = BrakeDeceleration(speed[i + 1], section, input);
-            double entrySquared = TrainRunPhysics.NextSpeedSquared(speed[i + 1], deceleration, distance);
-            speed[i] = Math.Min(speed[i], Math.Sqrt(entrySquared));
+            speed[i] = BrakingEntrySpeed(speed[i + 1], speed[i], distance, section, input);
         }
+    }
+
+    /// <summary>
+    /// Reserve a full stop from the train maximum speed, reusing the same reverse
+    /// braking step as Calculate. Conditions are held constant before the route.
+    /// The returned distance is rounded up to the requested spatial grid.
+    /// </summary>
+    public double CalculateBrakingDistance(TrainParameters train, TrackSection conditions,
+        double distanceStepMeters = 5, int maxPointCount = 100_001,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        ArgumentNullException.ThrowIfNull(train);
+        ArgumentNullException.ThrowIfNull(conditions);
+        var section = conditions with { LengthMeters = distanceStepMeters, SpeedLimitMps = train.MaxSpeedMps };
+        var input = Validation.Validate(new SpeedProfileRequest {
+            Train = train, Sections = [section], InitialSpeedMps = train.MaxSpeedMps,
+            FinalSpeedMps = 0, DistanceStepMeters = distanceStepMeters, MaxPointCount = maxPointCount
+        });
+        double exit = 0;
+        for (int cells = 1; cells < maxPointCount; cells++)
+        {
+            if ((cells & 255) == 0) cancellationToken.ThrowIfCancellationRequested();
+            exit = BrakingEntrySpeed(exit, train.MaxSpeedMps, distanceStepMeters, section, input);
+            if (exit >= train.MaxSpeedMps - SpeedTolerance(train.MaxSpeedMps))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var distance = cells * distanceStepMeters;
+                if (!double.IsFinite(distance)) throw new ArgumentException("Braking distance exceeds the numerical range.");
+                return distance;
+            }
+        }
+        throw new ArgumentException("Braking distance exceeds MaxPointCount. Increase the point budget or spatial step.");
+    }
+
+    private static double BrakingEntrySpeed(double exit, double cap, double distance,
+        TrackSection section, ValidatedInput input)
+    {
+        if (cap <= exit) return cap;
+        bool Feasible(double entry) =>
+            (entry * entry - exit * exit) / (2 * distance) <= BrakeDeceleration(exit, entry, section, input);
+        if (Feasible(cap)) return cap;
+        double lower = exit, upper = cap;
+        for (int iteration = 0; iteration < 40; iteration++) {
+            var middle = (lower + upper) / 2;
+            if (Feasible(middle)) lower = middle; else upper = middle;
+        }
+        return lower;
     }
 
     private static double ReachableSpeed(
         double start, double cap, double distance, TrackSection section, ValidatedInput input)
     {
-        double acceleration = TractionAcceleration(start, section, input);
+        double acceleration = TractionAcceleration(start, start, section, input);
         double nextSquared = TrainRunPhysics.NextSpeedSquared(start, acceleration, distance);
         if (nextSquared < 0)
             throw new InfeasibleProfileException("The train stalls within a distance cell. Check traction/gradient or reduce DistanceStepMeters.");
         double upper = Math.Min(cap, Math.Sqrt(nextSquared));
         if (upper <= start || acceleration <= 0) return upper;
 
-        // Use the smallest available traction acceleration across the cell. For the supported
-        // non-increasing effort and nonnegative Davis coefficients this is at its highest speed.
-        // The resulting scalar residual is monotone; fixed-count bisection cannot diverge.
+        // The minimum over an expanding speed interval is non-increasing even when resistance
+        // is non-monotonic. Bisection therefore preserves force bounds across every table knot.
         double startSquared = start * start;
         bool Reachable(double end) =>
-            (end * end - startSquared) / (2 * distance) <= TractionAcceleration(end, section, input);
+            (end * end - startSquared) / (2 * distance) <= TractionAcceleration(start, end, section, input);
         if (Reachable(upper)) return upper;
         double lower = start;
         for (int iteration = 0; iteration < 40; iteration++)
@@ -102,8 +147,8 @@ public sealed class SpeedProfileCalculator
             double dt = TrainRunPhysics.TravelTime(distance, start, end);
             double acceleration = (end - start) * (end + start) / (2 * distance);
             var section = input.Sections[grid.CellSections[i - 1]];
-            double availableTraction = TractionAcceleration(Math.Max(start, end), section, input);
-            double availableBraking = BrakeDeceleration(Math.Min(start, end), section, input);
+            double availableTraction = TractionAcceleration(start, end, section, input);
+            double availableBraking = BrakeDeceleration(start, end, section, input);
             const double forceTolerance = 1e-7; // acceleration tolerance, m/s²
             if (!double.IsFinite(acceleration) ||
                 acceleration > availableTraction + forceTolerance ||
@@ -112,7 +157,7 @@ public sealed class SpeedProfileCalculator
             time += dt;
             runningTime += dt;
             EnsureFiniteTime(time);
-            double effort = acceleration * input.InertialMass + Resistance((start + end) / 2, section, input.Train);
+            double effort = acceleration * input.InertialMass + Resistance((start + end) / 2, section, input);
             var mode = Math.Abs(acceleration) < 1e-9 ? OperatingMode.Cruising :
                 Math.Abs(effort) < 1e-5 ? OperatingMode.Coasting :
                 effort > 0 ? OperatingMode.Traction : OperatingMode.Braking;
@@ -139,20 +184,17 @@ public sealed class SpeedProfileCalculator
         }
     }
 
-    private static double Resistance(double speed, TrackSection section, TrainParameters train) =>
-        train.ResistanceConstantNewtons +
-        train.ResistanceLinearNewtonsPerMps * speed +
-        train.ResistanceQuadraticNewtonsPerMpsSquared * speed * speed +
-        section.AdditionalResistanceNewtons +
-        TrainRunPhysics.ForceFromCoefficient(section.GradientPermille, train.MassKg);
+    private static double ExtraResistance(TrackSection section, TrainParameters train) =>
+        section.AdditionalResistanceNewtons + TrainRunPhysics.ForceFromCoefficient(section.GradientPermille, train.MassKg);
 
-    private static double TractionAcceleration(double speed, TrackSection section, ValidatedInput input) =>
-        TrainRunPhysics.Acceleration(
-            TrainRunPhysics.TractiveEffort(speed, input.Curve),
-            Resistance(speed, section, input.Train), input.InertialMass);
+    private static double Resistance(double speed, TrackSection section, ValidatedInput input) =>
+        TrainRunPhysics.TractiveEffort(speed, input.Resistance) + ExtraResistance(section, input.Train);
 
-    private static double BrakeDeceleration(double speed, TrackSection section, ValidatedInput input) =>
-        (input.Train.MaxBrakeForceNewtons + Resistance(speed, section, input.Train)) / input.InertialMass;
+    private static double TractionAcceleration(double from, double to, TrackSection section, ValidatedInput input) =>
+        (TrainRunPhysics.MinimumEffort(from, to, input.NetTraction) - ExtraResistance(section, input.Train)) / input.InertialMass;
+
+    private static double BrakeDeceleration(double from, double to, TrackSection section, ValidatedInput input) =>
+        (TrainRunPhysics.MinimumEffort(from, to, input.NetBraking) + ExtraResistance(section, input.Train)) / input.InertialMass;
 
     private static double SpeedTolerance(double speed) => 1e-8 * Math.Max(1, speed);
 

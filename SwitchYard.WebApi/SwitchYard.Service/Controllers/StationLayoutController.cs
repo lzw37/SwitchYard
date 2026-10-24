@@ -30,6 +30,7 @@ namespace SwitchYard.Service.Controllers
         {
             "cell",
             "stationroutetime",
+            "stationrouteoperationtime",
             "calculationparameterset",
             "stationroute",
             "stationrouteend",
@@ -515,7 +516,8 @@ namespace SwitchYard.Service.Controllers
             [FromQuery] string? stationSchemeID = null,
             [FromQuery] string? routeID = null,
             [FromQuery] string? trainTypeID = null,
-            [FromQuery] string? calculationParameterSetID = null)
+            [FromQuery] string? calculationParameterSetID = null,
+            [FromQuery] bool includeOperationTime = false)
         {
             try
             {
@@ -548,11 +550,9 @@ namespace SwitchYard.Service.Controllers
                     normalizedStationSchemeID,
                     normalizedRouteID,
                     normalizedTrainTypeID, calculationParameterSetID);
-                return Ok(OrderStationRouteTimesByCellList(
-                    routeTimes,
-                    route?.CellList,
-                    route?.InterruptCellList,
-                    routeTimes.Count > 0));
+                var times = OrderStationRouteTimesByCellList(routeTimes, route?.CellList, route?.InterruptCellList, routeTimes.Count > 0);
+                return StationRouteTimeResponse(dbConnector, normalizedInstanceID, normalizedStationSchemeID, normalizedRouteID,
+                    normalizedTrainTypeID, calculationParameterSetID, times, includeOperationTime);
             }
             catch (ArgumentException ex) { return BadRequest(ex.Message); }
             catch (Exception ex)
@@ -626,7 +626,7 @@ namespace SwitchYard.Service.Controllers
         }
 
         [HttpPut(Name = "SaveStationRouteTimes")]
-        public IActionResult SaveStationRouteTimes([FromBody] StationRouteTimeSaveRequest? request)
+        public IActionResult SaveStationRouteTimes([FromBody] StationRouteTimeSaveRequest? request, [FromQuery] bool includeOperationTime = false)
         {
             try
             {
@@ -687,13 +687,14 @@ namespace SwitchYard.Service.Controllers
                 }
 
                 ApplyStationRouteInterruptCellTimeDefaults(rows, routeTimePlan.InterruptCellIDSet);
-                ReplaceStationRouteTimes(dbConnector, instanceID, stationSchemeID, routeID, trainTypeID, rows, calculationParameterSetID);
+                ReplaceStationRouteTimes(dbConnector, instanceID, stationSchemeID, routeID, trainTypeID, rows, calculationParameterSetID,
+                    request?.HasOperationTime == true, request?.OperationTimeS);
 
-                return Ok(OrderStationRouteTimesByCellList(
+                var times = OrderStationRouteTimesByCellList(
                     LoadStationRouteTimes(dbConnector, instanceID, stationSchemeID, routeID, trainTypeID, calculationParameterSetID),
-                    route.CellList,
-                    route.InterruptCellList,
-                    true));
+                    route.CellList, route.InterruptCellList, true);
+                return StationRouteTimeResponse(dbConnector, instanceID, stationSchemeID, routeID, trainTypeID,
+                    calculationParameterSetID, times, includeOperationTime);
             }
             catch (ArgumentException ex) { return BadRequest(ex.Message); }
             catch (Exception ex)
@@ -2403,14 +2404,17 @@ namespace SwitchYard.Service.Controllers
             string routeID,
             string trainTypeID,
             List<StationRouteTimeRow> rows,
-            string? calculationParameterSetID = null)
+            string? calculationParameterSetID = null,
+            bool updateOperationTime = false, double? operationTimeS = null)
         {
+            if (updateOperationTime) { RouteOperationTimeStore.Validate(operationTimeS); RouteOperationTimeStore.EnsureSchema(dbConnector); }
             dbConnector.BeginTransaction();
             try
             {
                 LockParameterSetScheme(dbConnector, instanceID, stationSchemeID);
                 CalculationParameterSets.EnsureDefault(dbConnector, instanceID, stationSchemeID);
                 var parameterSetID = RequireCalculationParameterSet(dbConnector, instanceID, stationSchemeID, calculationParameterSetID);
+                if (updateOperationTime) RouteOperationTimeStore.Save(dbConnector, instanceID, stationSchemeID, parameterSetID, routeID, trainTypeID, operationTimeS);
                 var tableName = QuoteIdentifier("stationroutetime");
                 dbConnector.ExecuteNonQuery(
                     $@"DELETE FROM {tableName}
@@ -2451,6 +2455,15 @@ namespace SwitchYard.Service.Controllers
                 dbConnector.Commit();
             }
             catch { dbConnector.Rollback(); throw; }
+        }
+
+        private IActionResult StationRouteTimeResponse(DBConnector db, string instanceID, string stationSchemeID, string routeID,
+            string trainTypeID, string? calculationParameterSetID, List<StationRouteTimeRow> times, bool includeOperationTime)
+        {
+            if (!includeOperationTime) return Ok(times);
+            RouteOperationTimeStore.EnsureSchema(db);
+            var setID = RequireCalculationParameterSet(db, instanceID, stationSchemeID, calculationParameterSetID);
+            return Ok(new { times, operationTimeS = RouteOperationTimeStore.Load(db, instanceID, stationSchemeID, setID, routeID, trainTypeID) });
         }
 
         private static List<StationRouteTimeRow> LoadStationRouteTimes(

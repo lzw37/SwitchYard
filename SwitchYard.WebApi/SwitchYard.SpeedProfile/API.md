@@ -3,6 +3,14 @@
 `POST /api/SpeedProfile/calculate` 使用现有 JWT 登录认证：`Authorization: Bearer <token>`。
 请求与响应为 `application/json`、camelCase。此接口为纯计算，不读取或修改数据库。前端仅编辑参数、提交请求和展示响应，数值求解统一由 `SwitchYard.SpeedProfile.SpeedProfileCalculator` 完成。
 
+## 接车入口前制动预留段
+
+options.mode = "arrival" 时，后端先用当前列车 maxSpeedKmh → 0 计算制动距离，再在原进路入口前追加这段长度。预计算复用核心 Calculate 的反向制动包络步进，使用相同的质量、回转质量因子、制动及阻力离散表；入口外坡度和附加阻力沿用原进路首段，预留段限速为列车最高速度。距离按 stepM 向上取整，并受 maxPointCount 限制。
+
+请求仍使用原进路坐标，不预先延长。响应 approachDistanceM 为追加距离（非接车为 0），lengthM 为追加后的全长；原进路入口在响应坐标 approachDistanceM，停车点、设备、绝缘及轨道电路统一平移。追加段不创建虚构的轨道电路。实际曲线仍按请求的 initialSpeedKmh 起步，信号办理及反应时间仍按现有时间偏移处理。
+
+保存快照保留原请求和延长后的结果；重复计算不会累加延长距离。历史结果不自动重算，重新点击“计算”后应用此规则。
+
 ## 请求示例
 
 ```json
@@ -30,6 +38,8 @@
       { "speedKmh": 120, "forceKn": 140 },
       { "speedKmh": 160, "forceKn": 105 }
     ],
+    "brakingCurve": [{ "speedKmh": 0, "forceKn": 310 }, { "speedKmh": 160, "forceKn": 310 }],
+    "resistanceCurve": [{ "speedKmh": 0, "forceKn": 5 }, { "speedKmh": 80, "forceKn": 21.8 }, { "speedKmh": 160, "forceKn": 64.2 }],
     "resistanceA": 5,
     "resistanceB": 0.05,
     "resistanceC": 0.002
@@ -54,11 +64,12 @@
 | --- | --- |
 | `train.lengthM` | 列车长度，0.001～100000 m；用于整列限速和车尾出清时间。 |
 | `train.massT` | 静质量，0.001～10000000 t。 |
-| `train.rotatingMassFactor` | 惯性质量/静质量，1～3。 |
+| `train.rotatingMassFactor` | 惯性质量/静质量倍率 `1 + γ`，1～3。界面直接输入回转质量系数 `γ`（0～2），提交前加 1；例如界面 0.1 对应本字段 1.1。 |
 | `train.maxSpeedKmh` | 车辆最高速度，0.001～1000 km/h。 |
-| `train.maxBrakeForceKn` | 恒定最大常用制动力，0.001～10000000 kN；在坡度和阻力计入前的制动力。 |
+| `train.maxBrakeForceKn` | 生成制动表使用的恒定常用制动力，0.001～10000000 kN；在坡度和阻力计入前的制动力。 |
 | `train.tractionCurve` | 1～128 点，从 0 km/h 起；速度严格递增，力非负且非递增。线性插值；末点后保持末点力，单点代表恒力。无需覆盖车辆最高速度。 |
-| `train.resistanceA/B/C` | Davis 运行阻力 `R(kN)=A+B*v+C*v²`，其中 `v` 为 km/h；系数非负，各不超过 10000000。 |
+| `train.brakingCurve/resistanceCurve` | 速度—力离散表；各 1～128 点，从 0 起且速度严格递增，力可升可降且非负。速度不超过 10000 km/h，力不超过 10000000 kN。线性插值，表尾维持末点力。兼容旧请求：未提供或 null 时按标量生成每 10 km/h 至最高速度的表格，空数组非法。 |
+| `train.resistanceA/B/C` | 生成阻力表的 Davis 公式 `R(kN)=A+B*v+C*v²`，其中 `v` 为 km/h；系数非负，各不超过 10000000。 |
 | `profile.lengthM` | 0.001～10000000 m。 |
 | `profile.segments` | 1～10000 段，按运行方向顺序连续覆盖全进路；从 0 起，最后 `endM` 等于 `lengthM`。 |
 | `segment.speedLimitKmh` | 0.001～1000 km/h。 |
@@ -74,7 +85,7 @@
 | `options.maxPointCount` | 默认及最大 100001，最小 2，限制所有输出采样点（含停时重复点）；超过返回 400，可增大步长或缩短进路。 |
 | `options.stops` | 默认空数组，最多 1000 点；`positionM` 唯一且在进路内，`dwellS` 默认 0、范围 0～86400 s。起点/终点停车要求相应边界速度为 0。 |
 
-`devices+joints+cells` 总数最多 20000；元数据字符串最长 256 字符；HTTP 请求体最大 8 MiB。所有对象拒绝未知 JSON 字段，尤其旧 `brakingCurve` 必须改为 `maxBrakeForceKn`，以免旧输入被静默忽略。数组不能为 null。
+`devices+joints+cells` 总数最多 20000；元数据字符串最长 256 字符；HTTP 请求体最大 8 MiB。所有对象拒绝未知 JSON 字段。提供制动或阻力离散表时，该表优先于恒定制动力或阻力公式，标量只保留为表格生成参数。除上述兼容字段外数组不能为 null。
 
 后端统一换算 SI 单位：质量 `t×1000`、力 `kN×1000`、速度 `km/h÷3.6`；Davis 系数转换为 `A×1000`、`B×3600`、`C×12960`。
 
