@@ -109,8 +109,10 @@
 
         <div ref="simulationBodyRef" class="simulation-body" :style="{ '--simulation-side-width': `${simulationSideWidth}px` }">
             <div ref="simulationLeftPanelRef" class="simulation-left-panel">
+                <el-empty v-if="!hasScheme" class="simulation-scheme-empty"
+                    :description="t('stationLayout.placeholders.createStationScheme')" />
                 <StationLayout3D
-                    v-if="show3D && active"
+                    v-if="hasScheme && show3D && active"
                     v-model:train-model="selectedTrainModel"
                     v-model:display-ratio="displayRatio3D"
                     v-model:show-labels="showLabels3D"
@@ -126,12 +128,12 @@
                     @render-error="pausePlayback"
                 />
                 <div
-                    v-show="!show3D"
+                    v-show="hasScheme && !show3D"
                     ref="layoutViewportRef"
                     class="simulation-layout-view"
                     v-loading="loadingLayout"
                 >
-                    <div v-if="layoutData" class="simulation-layout-stage" :style="simulationLayoutStageStyle">
+                    <div v-if="hasScheme && layoutData" class="simulation-layout-stage" :style="simulationLayoutStageStyle">
                         <StationLayoutEditor
                             ref="layoutEditorRef"
                             class="simulation-station-layer"
@@ -913,7 +915,7 @@ const playbackSummaryText = computed(() => {
     return t('stationLayout3d.playback.singleSummary', { train: formatTrainLabel(train), movementCount: selectedTrainMovements.value.length })
 })
 const layoutEmptyText = computed(() => {
-    if (!hasScheme.value) return t('stationLayout.placeholders.selectStationScheme')
+    if (!hasScheme.value) return t('stationLayout.placeholders.createStationScheme')
     if (loadingLayout.value) return t('operationSimulation.loadingLayout')
     return t('operationSimulation.emptyLayout')
 })
@@ -3056,6 +3058,15 @@ onBeforeUnmount(() => {
     border: 1px solid var(--sy-border);
     border-radius: var(--sy-radius, 6px);
     background: #31363f;
+}
+
+.simulation-scheme-empty {
+    flex: 1 1 0;
+    min-height: 0;
+    overflow: auto;
+    border: 1px solid var(--sy-border);
+    border-radius: var(--sy-radius, 6px);
+    background: var(--el-bg-color);
 }
 
 

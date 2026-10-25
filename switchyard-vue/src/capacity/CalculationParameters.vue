@@ -166,7 +166,7 @@
 
             <main ref="centerPaneRef" class="calc-center-pane" :style="calcCenterStyle">
                 <section class="calc-layout-pane">
-                    <div ref="layoutViewportRef" class="calc-layout-scroll">
+                    <div v-if="currentStationSchemeId" ref="layoutViewportRef" class="calc-layout-scroll">
                         <StationLayoutEditor
                             ref="stationLayoutEditorRef"
                             readonly
@@ -186,6 +186,7 @@
                             :highlighted-route-arrow-visible="highlightedRouteArrowVisible"
                         />
                     </div>
+                    <el-empty v-else class="calc-layout-empty" :description="t('stationLayout.placeholders.createStationScheme')" />
                 </section>
                 <PaneDivider :model-value="layoutPaneHeight || Math.round((centerPaneRef?.clientHeight || 600) * 2 / 3)" direction="vertical" :min="180" :max="Math.max(180, (centerPaneRef?.clientHeight || 600) - 158)" :label="t('calculationParameters.occupancy.title')" @update:model-value="layoutPaneHeight = $event" @dblclick="resetLayoutPaneHeight" />
                 <section class="calc-occupancy-pane">
@@ -2499,6 +2500,11 @@ onBeforeUnmount(() => {
     width: 100%;
     height: 100%;
     overflow: auto;
+}
+
+.calc-layout-empty {
+    height: 100%;
+    background: var(--el-bg-color);
 }
 
 .calc-occupancy-pane {

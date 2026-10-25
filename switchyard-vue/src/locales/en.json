@@ -2101,12 +2101,14 @@
         },
         "placeholders": {
             "selectInstance": "Please select a station",
-            "selectStationScheme": "Select station scheme"
+            "selectStationScheme": "Select station scheme",
+            "createStationScheme": "This project has no station schemes. Please create a station scheme first."
         },
         "schemeManager": {
             "manage": "Manage",
             "title": "Station Scheme Manager",
             "add": "New",
+            "create": "Create station scheme",
             "copy": "Copy",
             "copyName": "{name} copy",
             "pendingSave": "Unsaved",
