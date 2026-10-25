@@ -31,7 +31,7 @@ public static class CapacityDataLifecycle
     }).ToArray();
 
     public static void DeleteInstanceChildren(DBConnector db, string instanceID) =>
-        DeleteRows(db, SchemeTables.Concat(new[] { "stationscheme" }), instanceID);
+        DeleteRows(db, SchemeTables.Concat(TractionProjectTrainSchema.Tables).Concat(new[] { "stationscheme" }), instanceID);
 
     public static void DeleteSchemeChildren(DBConnector db, string instanceID, string stationSchemeID) =>
         DeleteRows(db, SchemeTables, instanceID, stationSchemeID);
@@ -40,7 +40,7 @@ public static class CapacityDataLifecycle
         DeleteRows(db, PlanTables, instanceID, stationSchemeID, operationPlanID);
 
     public static void VerifyInstanceDeleted(DBConnector db, string instanceID) =>
-        DeleteRows(db, SchemeTables.Concat(new[] { "stationscheme" }), instanceID, verifyOnly: true);
+        DeleteRows(db, SchemeTables.Concat(TractionProjectTrainSchema.Tables).Concat(new[] { "stationscheme" }), instanceID, verifyOnly: true);
 
     public static void VerifySchemeDeleted(DBConnector db, string instanceID, string stationSchemeID) =>
         DeleteRows(db, SchemeTables, instanceID, stationSchemeID, verifyOnly: true);

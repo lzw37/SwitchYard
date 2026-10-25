@@ -31,6 +31,10 @@ export function buildTractionApiRequest(
         signal: { routeSettingS: signal.routeSettingS, reactionS: signal.reactionS, clearanceS: signal.clearanceS },
         options: {
             mode: options.mode, initialSpeedKmh: options.initialSpeedKmh, finalSpeedKmh: options.finalSpeedKmh,
+            departureSectionLengthM: options.departureSectionLengthM ?? 0,
+            brakingDistanceM: options.brakingDistanceM ?? null,
+            brakingMaxSpeedKmh: options.brakingMaxSpeedKmh ?? null,
+            departureSectionMaxSpeedKmh: options.departureSectionMaxSpeedKmh ?? null,
             stepM: options.stepM, maxPointCount: options.maxPointCount,
             stops: options.stops.map(s => ({ positionM: s.positionM, dwellS: s.dwellS })),
         },

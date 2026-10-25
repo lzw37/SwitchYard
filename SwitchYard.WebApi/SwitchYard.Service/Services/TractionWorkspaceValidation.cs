@@ -32,21 +32,8 @@ internal static class TractionWorkspaceValidation
     {
         ArgumentNullException.ThrowIfNull(workspace);
         Revision(workspace.Revision);
-        var catalog = workspace.Catalog ?? throw new ArgumentException("Missing train catalog.");
-        if (catalog.Version != 1 || catalog.Presets is null || catalog.Presets.Count is < 1 or > 100) throw new ArgumentException("Invalid train catalog version or count.");
-        ID(catalog.SelectedId);
-        var ids = new HashSet<string>(StringComparer.Ordinal);
-        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var englishNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var preset in catalog.Presets)
-        {
-            if (preset is null) throw new ArgumentException("A train preset cannot be null.");
-            ID(preset.Id); Text(preset.Name, 80);
-            if (!ids.Add(preset.Id) || !names.Add(preset.Name.Trim())) throw new ArgumentException("Duplicate train preset ID or name.");
-            if (preset.NameEn is not null) { Text(preset.NameEn, 80); if (!englishNames.Add(preset.NameEn.Trim())) throw new ArgumentException("Duplicate English train preset name."); }
-            Train(preset.Parameters);
-        }
-        if (!ids.Contains(catalog.SelectedId)) throw new ArgumentException("Selected train preset does not exist.");
+        Revision(workspace.CatalogRevision);
+        Catalog(workspace.Catalog);
         var settings = workspace.Settings ?? throw new ArgumentException("Missing workspace settings.");
         ID(settings.SelectedRouteId, empty: true); ID(settings.ContinuationId, empty: true);
         if (settings.ContinuationId.Length > 0 && (settings.SelectedRouteId.Length == 0 || settings.SelectedRouteId == settings.ContinuationId)) throw new ArgumentException("Invalid continuation route.");
@@ -74,6 +61,24 @@ internal static class TractionWorkspaceValidation
             if (item.GradientPermille is double gradient) Range(gradient, -300, 300, "override gradient");
             if (item.AdditionalResistanceKn is double resistance) Range(resistance, 0, 10_000_000, "override resistance");
         }
+    }
+    internal static void Catalog(TractionTrainPresetCatalog catalog)
+    {
+        ArgumentNullException.ThrowIfNull(catalog);
+        if (catalog.Version != 1 || catalog.Presets is null || catalog.Presets.Count is < 1 or > 1000) throw new ArgumentException("Invalid train catalog version or count.");
+        ID(catalog.SelectedId);
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var englishNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var preset in catalog.Presets)
+        {
+            if (preset is null) throw new ArgumentException("A train preset cannot be null.");
+            ID(preset.Id); Text(preset.Name, 80);
+            if (!ids.Add(preset.Id) || !names.Add(preset.Name.Trim())) throw new ArgumentException("Duplicate train preset ID or name.");
+            if (preset.NameEn is not null) { Text(preset.NameEn, 80); if (!englishNames.Add(preset.NameEn.Trim())) throw new ArgumentException("Duplicate English train preset name."); }
+            Train(preset.Parameters);
+        }
+        if (!ids.Contains(catalog.SelectedId)) throw new ArgumentException("Selected train preset does not exist.");
     }
     internal static void Train(SpeedProfileTrainInput train)
     {
@@ -113,8 +118,12 @@ internal static class TractionWorkspaceValidation
     internal static void Options(SpeedProfileOptionsInput options, double length = 10_000_000)
     {
         if (options is null) throw new ArgumentException("Missing run options.");
-        if (options.Mode is not ("arrival" or "departure" or "through")) throw new ArgumentException("Invalid run mode.");
+        if (options.Mode is not ("arrival" or "departure" or "through" or "shunting")) throw new ArgumentException("Invalid run mode.");
         Range(options.InitialSpeedKmh, 0, 1000, "initial speed"); Range(options.FinalSpeedKmh, 0, 1000, "final speed");
+        Range(options.DepartureSectionLengthM, 0, 100_000, "first departure section length");
+        if (options.BrakingDistanceM is double brakingDistance) Range(brakingDistance, 0, 10_000_000, "braking distance");
+        if (options.BrakingMaxSpeedKmh is double brakingSpeed) Range(brakingSpeed, .001, 1000, "braking maximum speed");
+        if (options.DepartureSectionMaxSpeedKmh is double departureSpeed) Range(departureSpeed, .001, 1000, "departure section maximum speed");
         if ((options.Mode == "arrival" && options.FinalSpeedKmh != 0) || (options.Mode == "departure" && options.InitialSpeedKmh != 0)) throw new ArgumentException("Invalid boundary speed for run mode.");
         Range(options.StepM, .1, 100, "distance step");
         if (options.MaxPointCount is < 2 or > SpeedProfileCalculationService.MaximumPointCount || options.Stops is null || options.Stops.Count > 1000) throw new ArgumentException("Invalid sample or stop count.");
@@ -163,22 +172,33 @@ internal static class TractionWorkspaceValidation
             || !train.BrakingCurve!.SequenceEqual(expected.BrakingCurve!) || !train.ResistanceCurve!.SequenceEqual(expected.ResistanceCurve!)
             || !train.TractionCurve.SequenceEqual(expected.TractionCurve) || request.Signal != workspace.Settings.Signal
             || request.Options.Mode != workspace.Settings.Run.Mode || request.Options.InitialSpeedKmh != workspace.Settings.Run.InitialSpeedKmh || request.Options.FinalSpeedKmh != workspace.Settings.Run.FinalSpeedKmh
+            || request.Options.DepartureSectionLengthM != workspace.Settings.Run.DepartureSectionLengthM
+            || request.Options.BrakingDistanceM != workspace.Settings.Run.BrakingDistanceM
+            || request.Options.BrakingMaxSpeedKmh != workspace.Settings.Run.BrakingMaxSpeedKmh
+            || request.Options.DepartureSectionMaxSpeedKmh != workspace.Settings.Run.DepartureSectionMaxSpeedKmh
             || request.Options.StepM != workspace.Settings.Run.StepM || request.Options.MaxPointCount != workspace.Settings.Run.MaxPointCount || !request.Options.Stops.SequenceEqual(workspace.Settings.Run.Stops))
             throw new ArgumentException("The calculation inputs do not match the saved workspace revision.");
     }
     internal static void Result(SpeedProfileCalculationRequest request, SpeedProfileCalculationResponse result)
     {
-        if (result is null || result.Samples is null || result.JointTimes is null || result.CellOccupancies is null || result.Warnings is null || result.Samples.Count < 2 || result.Samples.Count > request.Options.MaxPointCount || result.JointTimes.Count != request.Profile.Joints.Count || result.CellOccupancies.Count != request.Profile.Cells.Count || result.Warnings.Count > 1000) throw new ArgumentException("Invalid calculation result collections.");
-        if (result.Engine != "SwitchYard.SpeedProfile" || result.Mode != request.Options.Mode || result.LengthM != request.Profile.LengthM + result.ApproachDistanceM || result.TrainLengthM != request.Train.LengthM) throw new ArgumentException("Mismatched calculation result.");
+        var departureLength = request.Options.Mode is "departure" or "through" ? request.Options.DepartureSectionLengthM : 0;
+        var expectedProfile = SpeedProfileCalculationService.AppendDepartureSection(request.Profile, departureLength,
+            Math.Min(request.Train.MaxSpeedKmh, request.Options.DepartureSectionMaxSpeedKmh ?? request.Train.MaxSpeedKmh));
+        if (result is null || result.Samples is null || result.JointTimes is null || result.CellOccupancies is null || result.Warnings is null || result.Samples.Count < 2 || result.Samples.Count > request.Options.MaxPointCount || result.JointTimes.Count != expectedProfile.Joints.Count || result.CellOccupancies.Count != expectedProfile.Cells.Count || result.Warnings.Count > 1000) throw new ArgumentException("Invalid calculation result collections.");
+        if (result.Engine != "SwitchYard.SpeedProfile" || result.Mode != request.Options.Mode || result.DepartureSectionLengthM != departureLength || result.LengthM != expectedProfile.LengthM + result.ApproachDistanceM || result.TrainLengthM != request.Train.LengthM) throw new ArgumentException("Mismatched calculation result.");
         foreach (var value in new[] { result.DurationS, result.MotionStartS, result.TotalTimeS, result.RunningTimeS, result.DwellTimeS, result.MaxSpeedKmh }) Nonnegative(value);
         Nonnegative(result.ApproachDistanceM);
-        if (result.Mode != "arrival" && result.ApproachDistanceM != 0) throw new ArgumentException("Unexpected arrival approach.");
+        if ((result.Mode is "departure" or "shunting") && result.ApproachDistanceM != 0) throw new ArgumentException("Unexpected braking approach for this mode.");
+        if ((result.Mode is "arrival" or "through") && request.Options.BrakingDistanceM is double brakingDistance
+            && result.ApproachDistanceM != brakingDistance) throw new ArgumentException("The result does not use the entered braking distance.");
         double position = -1, time = -1;
         foreach (var sample in result.Samples) {
             if (sample is null || sample.PositionM < position || sample.TimeS < time) throw new ArgumentException("Invalid result samples.");
             Range(sample.PositionM, 0, result.LengthM, "sample position"); Range(sample.SpeedKmh, 0, 1000, "sample speed"); Range(sample.LimitKmh, 0, 1000, "sample limit"); Nonnegative(sample.TimeS); position = sample.PositionM; time = sample.TimeS;
         }
         if (result.Samples[0].PositionM != 0 || result.Samples[^1].PositionM != result.LengthM || result.Samples[0].TimeS != result.MotionStartS || result.Samples[^1].TimeS != result.TotalTimeS) throw new ArgumentException("Invalid calculation endpoints.");
+        if (result.Samples[0].SpeedKmh > request.Options.InitialSpeedKmh + 1e-6 || result.Samples[^1].SpeedKmh > request.Options.FinalSpeedKmh + 1e-6)
+            throw new ArgumentException("Actual boundary speeds exceed the desired upper bounds.");
         for (int i = 0; i < result.JointTimes.Count; i++) {
             var item = result.JointTimes[i]; var expected = request.Profile.Joints[i];
             if (item is null || item.Id != expected.Id || item.Label != expected.Label || item.PositionM != expected.PositionM + result.ApproachDistanceM) throw new ArgumentException("Mismatched joint result.");
@@ -186,7 +206,7 @@ internal static class TractionWorkspaceValidation
             if ((item.TailTimeS is null) != (item.ReleaseTimeS is null) || item.TailTimeS < item.HeadTimeS || item.ReleaseTimeS < item.TailTimeS) throw new ArgumentException("Invalid joint times.");
         }
         for (int i = 0; i < result.CellOccupancies.Count; i++) {
-            var item = result.CellOccupancies[i]; var expected = request.Profile.Cells[i];
+            var item = result.CellOccupancies[i]; var expected = expectedProfile.Cells[i];
             if (item is null || item.Id != expected.Id || item.Label != expected.Label || item.StartM != expected.StartM + result.ApproachDistanceM || item.EndM != expected.EndM + result.ApproachDistanceM || item.EntryBoundaryKnown != expected.EntryBoundaryKnown || item.ExitBoundaryKnown != expected.ExitBoundaryKnown) throw new ArgumentException("Mismatched cell result.");
             NullableTime(item.EntryTimeS); NullableTime(item.ExitTimeS); NullableTime(item.ReleaseTimeS);
             if ((!item.EntryBoundaryKnown && item.EntryTimeS is not null) || (!item.ExitBoundaryKnown && (item.ExitTimeS is not null || item.ReleaseTimeS is not null)) || (item.ExitTimeS is null) != (item.ReleaseTimeS is null) || item.ExitTimeS < item.EntryTimeS || item.ReleaseTimeS < item.ExitTimeS) throw new ArgumentException("Invalid cell times.");

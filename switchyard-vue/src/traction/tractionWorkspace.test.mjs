@@ -20,6 +20,68 @@ test('database load distinguishes an uninitialized scope from persisted data', a
     assert.equal(saved.catalog.presets.length,3)
 })
 
+test('departure length persists per workspace and older records normalize to a zero extension', async t => {
+    const value = content()
+    value.settings.run = { ...value.settings.run, mode: 'departure', initialSpeedKmh: 0, departureSectionLengthM: 850.5 }
+    let stored
+    adapter(t, async config => {
+        const body = JSON.parse(config.data)
+        stored = { ...body.workspace, revision: body.workspace.revision + 1 }
+        return response(config, stored)
+    })
+    const session = new TractionWorkspaceSession(scope, null)
+    await session.save(value)
+    assert.equal(stored.settings.run.departureSectionLengthM, 850.5)
+    adapter(t, async config => response(config, stored))
+    assert.equal((await loadTractionWorkspace(scope)).settings.run.departureSectionLengthM, 850.5)
+    delete stored.settings.run.departureSectionLengthM
+    assert.equal((await loadTractionWorkspace(scope)).settings.run.departureSectionLengthM, 0)
+})
+
+test('optional braking distance saves entered values, preserves zero and returns to automatic when cleared', async t => {
+    let stored
+    adapter(t, async config => {
+        if (config.method === 'get') return response(config, stored)
+        const body = JSON.parse(config.data)
+        stored = { ...body.workspace, revision: body.workspace.revision + 1 }
+        return response(config, stored)
+    })
+    const session = new TractionWorkspaceSession(scope, null), value = content()
+    for (const [entered, expected] of [[123.45, 123.45], [0, 0], [undefined, null]]) {
+        value.settings.run.brakingDistanceM = entered
+        await session.save(value)
+        assert.equal(stored.settings.run.brakingDistanceM, expected)
+        assert.equal((await loadTractionWorkspace(scope)).settings.run.brakingDistanceM, expected)
+    }
+    const fingerprint = workspaceFingerprint(value)
+    delete stored.settings.run.brakingDistanceM
+    assert.equal((await loadTractionWorkspace(scope)).settings.run.brakingDistanceM, null, 'old records stay automatic')
+    assert.equal(workspaceFingerprint(stored), fingerprint, 'an absent field and a cleared field are the same automatic setting')
+})
+
+test('extension speed caps save independently and clearing restores the train maximum defaults', async t => {
+    let stored
+    adapter(t, async config => {
+        if (config.method === 'get') return response(config, stored)
+        const body = JSON.parse(config.data)
+        stored = { ...body.workspace, revision: body.workspace.revision + 1 }
+        return response(config, stored)
+    })
+    const session = new TractionWorkspaceSession(scope, null), value = content()
+    for (const [braking, departure] of [[36, 90], [undefined, 60], [null, undefined]]) {
+        value.settings.run.brakingMaxSpeedKmh = braking
+        value.settings.run.departureSectionMaxSpeedKmh = departure
+        await session.save(value)
+        const loaded = await loadTractionWorkspace(scope)
+        assert.equal(loaded.settings.run.brakingMaxSpeedKmh, braking ?? null)
+        assert.equal(loaded.settings.run.departureSectionMaxSpeedKmh, departure ?? null)
+    }
+    const fingerprint = workspaceFingerprint(value)
+    delete stored.settings.run.brakingMaxSpeedKmh
+    delete stored.settings.run.departureSectionMaxSpeedKmh
+    assert.equal(workspaceFingerprint(await loadTractionWorkspace(scope)), fingerprint, 'legacy missing caps remain unset')
+})
+
 test('rapid saves are serialized by acknowledged revision and own immutable snapshots', async t=>{
     const calls=[]
     let release
@@ -102,6 +164,24 @@ const calculationSnapshot = () => ({
         samples: [{positionM:0,speedKmh:40,limitKmh:80,timeS:18},{positionM:1000,speedKmh:0,limitKmh:80,timeS:118}], jointTimes: [], cellOccupancies: [] },
 })
 
+test('saved shunting results reload their native route and retain edited boundary preferences', async t => {
+    const saved = calculationSnapshot(), calls = []
+    Object.assign(saved.request.options, { mode: 'shunting', initialSpeedKmh: 18, finalSpeedKmh: 24,
+        brakingDistanceM: 125, departureSectionLengthM: 850 })
+    Object.assign(saved.result, { mode: 'shunting', approachDistanceM: 0, departureSectionLengthM: 0 })
+    saved.result.samples[0].speedKmh = 18
+    saved.result.samples.at(-1).speedKmh = 24
+    adapter(t, async config => { calls.push(config.method); return response(config, saved) })
+    const loaded = await loadTractionCalculation(scope)
+    assert.equal(loaded.request.options.mode, 'shunting')
+    assert.equal(loaded.request.options.initialSpeedKmh, 18)
+    assert.equal(loaded.request.options.finalSpeedKmh, 24)
+    assert.equal(loaded.result.lengthM, loaded.request.profile.lengthM)
+    assert.equal(loaded.result.approachDistanceM, 0)
+    assert.equal(loaded.result.departureSectionLengthM, 0)
+    assert.deepEqual(calls, ['get'], 'opening a saved shunting result never recalculates it')
+})
+
 test('loading an older calculation retains its original request and route without submitting calculation', async t => {
     const calls=[], original=calculationSnapshot(); original.currentWorkspaceRevision=5; original.isCurrent=false
     adapter(t,async config=>{calls.push([config.method,config.url]);return response(config,original)})
@@ -109,6 +189,32 @@ test('loading an older calculation retains its original request and route withou
     assert.equal(loaded.isCurrent,false); assert.equal(loaded.revision,2); assert.equal(loaded.selectedRouteId,'R-old')
     assert.deepEqual(loaded.request,original.request); assert.deepEqual(loaded.result,original.result)
     assert.deepEqual(calls,[['get','/api/SpeedProfile/workspace/calculation']])
+})
+
+test('expanded through snapshots preserve desired speeds and original coordinates when actual speeds are lower', async t => {
+    const snapshot = calculationSnapshot(), calls = []
+    snapshot.request.options = { ...snapshot.request.options, mode: 'through', initialSpeedKmh: 80, finalSpeedKmh: 80 }
+    Object.assign(snapshot.result, { mode: 'through', approachDistanceM: 200, lengthM: 1200 })
+    snapshot.result.samples = [
+        { positionM: 0, speedKmh: 40, limitKmh: 160, timeS: 18 },
+        { positionM: 200, speedKmh: 60, limitKmh: 80, timeS: 32 },
+        { positionM: 1200, speedKmh: 40, limitKmh: 80, timeS: 118 },
+    ]
+    adapter(t, async config => {
+        calls.push([config.method, config.url])
+        if (config.method === 'post') assert.deepEqual(JSON.parse(config.data).request, snapshot.request)
+        return response(config, snapshot)
+    })
+    const saved = await calculateStoredTraction(scope, 2, snapshot.request)
+    const loaded = await loadTractionCalculation(scope)
+    assert.equal(saved.request.profile.lengthM, 1000)
+    assert.equal(saved.result.approachDistanceM, 200)
+    assert.equal(saved.request.options.initialSpeedKmh, 80)
+    assert.equal(saved.request.options.finalSpeedKmh, 80)
+    assert.equal(saved.result.samples[0].speedKmh, 40)
+    assert.equal(saved.result.samples.at(-1).speedKmh, 40)
+    assert.deepEqual(loaded, saved)
+    assert.deepEqual(calls, [['post', '/api/SpeedProfile/workspace/calculate'], ['get', '/api/SpeedProfile/workspace/calculation']])
 })
 
 test('missing or unreadable saved results never initiate a calculation fallback', async t => {

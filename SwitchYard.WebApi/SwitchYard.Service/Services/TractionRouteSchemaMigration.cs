@@ -17,7 +17,7 @@ public static class TractionRouteSchemaMigration
         var suffix = mysql ? " ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin" : "";
         string Train(string prefix) => string.Join(",", new[] { "LengthM", "MassT", "RotatingMassFactor", "MaxSpeedKmh", "MaxBrakeForceKn", "ResistanceA", "ResistanceB", "ResistanceC" }.Select(name => $"{prefix}{name} {number} NOT NULL"));
         string Signal(string prefix) => string.Join(",", new[] { "RouteSettingS", "ReactionS", "ClearanceS" }.Select(name => $"{prefix}{name} {number} NOT NULL"));
-        string Options(string prefix) => $"{prefix}Mode {Text(20)} NOT NULL,{prefix}InitialSpeedKmh {number} NOT NULL,{prefix}FinalSpeedKmh {number} NOT NULL,{prefix}StepM {number} NOT NULL,{prefix}MaxPointCount INTEGER NOT NULL";
+        string Options(string prefix) => $"{prefix}Mode {Text(20)} NOT NULL,{prefix}InitialSpeedKmh {number} NOT NULL,{prefix}FinalSpeedKmh {number} NOT NULL,{prefix}StepM {number} NOT NULL,{prefix}MaxPointCount INTEGER NOT NULL,{prefix}DepartureSectionLengthM {number} NOT NULL DEFAULT 0,{prefix}BrakingDistanceM {number} NULL,{prefix}BrakingMaxSpeedKmh {number} NULL,{prefix}DepartureSectionMaxSpeedKmh {number} NULL";
         void Create(string table, string columns, string key, string? parent = null, string parentKey = "InstanceID,StationSchemeID,CalculationSetID,RouteCaseID")
         {
             var foreignKey = parent is null ? "" : $", FOREIGN KEY ({parentKey}) REFERENCES {parent}({parentKey}) ON DELETE CASCADE";
@@ -53,6 +53,7 @@ public static class TractionRouteSchemaMigration
         Index(db, mysql, "ix_tractionrouteworkspaceoverride_continuation", "tractionrouteworkspaceoverride", "InstanceID,StationSchemeID,CalculationSetID,ContinuationID");
         Index(db, mysql, "ix_tractionroutecalculation_route", "tractionroutecalculation", "InstanceID,StationSchemeID,CalculationSetID,SelectedRouteID");
 
+        TractionSchemaMigration.EnsureRunOptionColumns(db, "tractionroute");
         Migrate(db, mysql);
         TractionCharacteristicMigration.Ensure(db, "tractionroute");
     }
@@ -64,12 +65,12 @@ public static class TractionRouteSchemaMigration
             var scopes = db.Query<SetScope>("SELECT InstanceID,StationSchemeID,CalculationSetID FROM tractionsetworkspace") ?? [];
             foreach (var oldScope in scopes) {
                 var scope = new TractionScope(oldScope.InstanceID, oldScope.StationSchemeID, oldScope.CalculationSetID);
-                var workspace = store.ReadWorkspace(scope)!;
+                var workspace = store.ReadWorkspace(scope, legacyCatalog: true)!;
                 var calculation = store.ReadCalculation(scope);
                 var current = scope with { RouteCaseID = Guid.NewGuid().ToString("N") };
                 // Even a draft without a selected route remains recoverable.
                 InsertCase(db, current, workspace.Settings.SelectedRouteId, workspace.Settings.ContinuationId, true);
-                store.WriteWorkspace(current, workspace);
+                store.WriteWorkspace(current, workspace, legacyCatalog: true);
                 if (calculation is not null) {
                     var target = current;
                     if (calculation.SelectedRouteId != workspace.Settings.SelectedRouteId || calculation.ContinuationId != workspace.Settings.ContinuationId) {
@@ -81,7 +82,7 @@ public static class TractionRouteSchemaMigration
                             Catalog = workspace.Catalog with { Presets = workspace.Catalog.Presets.Select(preset => preset.Id == workspace.Catalog.SelectedId ? preset with { Parameters = input.Train } : preset).ToArray() },
                             Settings = workspace.Settings with { SelectedRouteId = calculation.SelectedRouteId, ContinuationId = calculation.ContinuationId, Signal = input.Signal, Run = input.Options },
                         };
-                        store.WriteWorkspace(target, snapshotWorkspace);
+                        store.WriteWorkspace(target, snapshotWorkspace, legacyCatalog: true);
                     }
                     foreach (var table in TractionSchemaMigration.CalculationTables.Reverse()) {
                         var fields = string.Join(",", TractionSchemaMigration.Columns(db, mysql, table).Select(column => ((char)96) + column + ((char)96)));

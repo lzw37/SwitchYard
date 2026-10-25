@@ -38,10 +38,19 @@ public sealed record TractionRouteCase
 public sealed record TractionWorkspace
 {
     [JsonRequired] public long Revision { get; init; }
+    public long CatalogRevision { get; init; }
     [JsonRequired] public TractionTrainPresetCatalog Catalog { get; init; } = null!;
     [JsonRequired] public TractionWorkspaceSettings Settings { get; init; } = null!;
     public IReadOnlyList<TractionSpeedLimitPoint> SpeedLimitPoints { get; init; } = [];
     [JsonRequired] public IReadOnlyList<TractionSegmentOverride> Overrides { get; init; } = [];
+}
+public sealed record TractionProjectTrains(long Revision, TractionTrainPresetCatalog Catalog)
+{
+    public string InstanceID { get; init; } = "";
+}
+public sealed class TractionProjectTrainConflictException(long revision) : Exception("项目列车参数已更新，请重新载入后重试。")
+{
+    public long CurrentRevision { get; } = revision;
 }
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record TractionTrainPresetCatalog

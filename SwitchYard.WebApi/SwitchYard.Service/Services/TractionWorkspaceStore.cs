@@ -1,11 +1,12 @@
 using System.Globalization;
 using Dapper;
+using MySqlConnector;
 using SwitchYard.Service.Models;
 
 namespace SwitchYard.Service.Services;
 
 /// <summary>Transactional, revisioned relational persistence. Never opens an application database by itself.</summary>
-public sealed class TractionWorkspaceStore
+public sealed partial class TractionWorkspaceStore
 {
     private readonly DBConnector db;
     private const string StationFilter = "InstanceID=@InstanceID AND StationSchemeID=@StationSchemeID";
@@ -25,6 +26,9 @@ public sealed class TractionWorkspaceStore
         workspace = workspace with { Catalog = workspace.Catalog with { Presets = workspace.Catalog.Presets.Select(p => p with { Parameters = TrainCharacteristicTables.Normalize(p.Parameters) }).ToArray() } };
         TractionWorkspaceValidation.Workspace(workspace);
         return Transaction(scope, () => {
+            var project = EnsureProjectTrains(scope, workspace.Catalog)!;
+            if ((workspace.CatalogRevision != 0 && workspace.CatalogRevision != project.Revision)
+                || !SamePresets(workspace.Catalog, project.Catalog)) throw new TractionProjectTrainConflictException(project.Revision);
             var current = ReadWorkspace(scope);
             var revision = current?.Revision ?? 0;
             if (workspace.Revision != revision) throw new TractionRevisionConflictException(revision);
@@ -38,13 +42,14 @@ public sealed class TractionWorkspaceStore
         });
     }
 
-    internal void WriteWorkspace(TractionScope scope, TractionWorkspace workspace)
+    internal void WriteWorkspace(TractionScope scope, TractionWorkspace workspace, bool legacyCatalog = false)
     {
         workspace = workspace with { Catalog = workspace.Catalog with { Presets = workspace.Catalog.Presets.Select(p => p with { Parameters = TrainCharacteristicTables.Normalize(p.Parameters) }).ToArray() } };
         var root = WorkspaceData(workspace);
-        if (ReadWorkspace(scope) is null) Insert("tractionsetworkspace", scope, root);
+        if (!Read("tractionsetworkspace", scope).Any()) Insert("tractionsetworkspace", scope, root);
         else Update("tractionsetworkspace", scope, root);
         foreach (var table in TractionSchemaMigration.WorkspaceChildTables) db.ExecuteNonQuery($"DELETE FROM {ScopedTable(table, scope)} WHERE {ScopedFilter(table, scope)}", scope);
+        if (legacyCatalog) {
         InsertMany("tractionsettrainpreset", scope, workspace.Catalog.Presets.Select((preset, index) => {
             var row = Data(("PresetID", preset.Id), ("OrderIndex", index), ("Name", preset.Name), ("NameEn", preset.NameEn));
             AddTrain(row, preset.Parameters); return row;
@@ -54,6 +59,7 @@ public sealed class TractionWorkspaceStore
         foreach (var (table, braking) in new[] { ("tractionsetpresetbrakingpoint", true), ("tractionsetpresetresistancepoint", false) })
             InsertMany(table, scope, workspace.Catalog.Presets.SelectMany(preset => (braking ? preset.Parameters.BrakingCurve! : preset.Parameters.ResistanceCurve!).Select((point, index) =>
                 Data(("PresetID", preset.Id), ("OrderIndex", index), ("SpeedKmh", point.SpeedKmh), ("ForceKn", point.ForceKn)))));
+        }
         InsertMany("tractionsetworkspacelimitpoint", scope, workspace.SpeedLimitPoints.Select((point, index) => Data(("OrderIndex", index), ("PositionM", point.PositionM), ("SpeedLimitKmh", point.SpeedLimitKmh))));
         InsertMany("tractionsetworkspacestop", scope, StopData(workspace.Settings.Run.Stops));
         InsertMany("tractionsetworkspaceoverride", scope, workspace.Overrides.Select((item, index) => Data(
@@ -188,7 +194,7 @@ public sealed class TractionWorkspaceStore
             CASE WHEN c.WorkspaceRevision=w.Revision THEN 1 ELSE 0 END AS IsCurrent
         FROM tractioncalculationset s
         LEFT JOIN tractionsetworkspace w ON w.InstanceID=s.InstanceID AND w.StationSchemeID=s.StationSchemeID AND w.CalculationSetID=s.CalculationSetID
-        LEFT JOIN tractionsettrainpreset p ON p.InstanceID=s.InstanceID AND p.StationSchemeID=s.StationSchemeID AND p.CalculationSetID=s.CalculationSetID AND p.PresetID=w.SelectedPresetID
+        LEFT JOIN tractionprojecttrainpreset p ON p.InstanceID=s.InstanceID AND p.PresetID=w.SelectedPresetID
         LEFT JOIN tractionsetcalculation c ON c.InstanceID=s.InstanceID AND c.StationSchemeID=s.StationSchemeID AND c.CalculationSetID=s.CalculationSetID
         WHERE s.InstanceID=@InstanceID AND s.StationSchemeID=@StationSchemeID ORDER BY s.CreatedAtUtc,s.CalculationSetID", scope) ?? [];
 
@@ -198,11 +204,11 @@ public sealed class TractionWorkspaceStore
             CASE WHEN c.WorkspaceRevision=w.Revision THEN 1 ELSE 0 END AS IsCurrent
         FROM tractionroutecase r
         LEFT JOIN tractionrouteworkspace w ON w.InstanceID=r.InstanceID AND w.StationSchemeID=r.StationSchemeID AND w.CalculationSetID=r.CalculationSetID AND w.RouteCaseID=r.RouteCaseID
-        LEFT JOIN tractionroutetrainpreset p ON p.InstanceID=w.InstanceID AND p.StationSchemeID=w.StationSchemeID AND p.CalculationSetID=w.CalculationSetID AND p.RouteCaseID=w.RouteCaseID AND p.PresetID=w.SelectedPresetID
+        LEFT JOIN tractionprojecttrainpreset p ON p.InstanceID=w.InstanceID AND p.PresetID=w.SelectedPresetID
         LEFT JOIN tractionroutecalculation c ON c.InstanceID=r.InstanceID AND c.StationSchemeID=r.StationSchemeID AND c.CalculationSetID=r.CalculationSetID AND c.RouteCaseID=r.RouteCaseID
         WHERE r.InstanceID=@InstanceID AND r.StationSchemeID=@StationSchemeID AND r.CalculationSetID=@CalculationSetID ORDER BY r.RouteID,r.ContinuationID", scope) ?? [];
 
-    public TractionRouteCase OpenRoute(TractionScope scope, string routeId, string continuationId) => Transaction(scope, () => {
+    public TractionRouteCase OpenRoute(TractionScope scope, string routeId, string continuationId, bool select = true) => Transaction(scope, () => {
         TractionWorkspaceValidation.ID(routeId); TractionWorkspaceValidation.ID(continuationId, empty: true);
         var existing = ReadRoutes(scope).SingleOrDefault(item => item.RouteId == routeId && item.ContinuationId == continuationId);
         var target = scope with { RouteCaseID = existing?.Id ?? Guid.NewGuid().ToString("N") };
@@ -215,8 +221,10 @@ public sealed class TractionWorkspaceStore
             TractionRouteSchemaMigration.InsertCase(db, target, routeId, continuationId, false);
             TouchSet(target);
         }
-        db.ExecuteNonQuery($"UPDATE tractionroutecase SET IsSelected=0 WHERE {Filter}", scope);
-        db.ExecuteNonQuery($"UPDATE tractionroutecase SET IsSelected=1 WHERE {CaseFilter}", target);
+        if (select) {
+            db.ExecuteNonQuery($"UPDATE tractionroutecase SET IsSelected=0 WHERE {Filter}", scope);
+            db.ExecuteNonQuery($"UPDATE tractionroutecase SET IsSelected=1 WHERE {CaseFilter}", target);
+        }
         return ReadRoutes(scope).Single(item => item.Id == target.RouteCaseID);
     });
     public void DeleteRouteCase(TractionScope scope, long revision) => Transaction(scope, () => {
@@ -265,9 +273,32 @@ public sealed class TractionWorkspaceStore
     private T Transaction<T>(TractionScope scope, Func<T> body, bool requireSet = true)
     {
         TractionWorkspaceValidation.Scope(scope);
-        db.BeginTransaction();
-        try { LockScope(db, scope); if (requireSet) { RequireSet(scope); if (scope.RouteCaseID.Length > 0) RequireCase(scope); } var value = body(); db.Commit(); return value; }
-        catch { db.Rollback(); throw; }
+        const int maximumAttempts = 3;
+        for (var attempt = 1; ; attempt++) {
+            db.BeginTransaction();
+            try {
+                LockProjectTrains(scope);
+                LockScope(db, scope);
+                EnsureProjectTrains(scope);
+                if (requireSet) { RequireSet(scope); if (scope.RouteCaseID.Length > 0) RequireCase(scope); }
+                var value = body();
+                db.Commit();
+                return value;
+            }
+            catch (Exception exception) {
+                db.Rollback();
+                // InnoDB rolls back the entire transaction on a deadlock. Retry from
+                // the project lock and recheck optimistic revisions, never just the SQL.
+                if (attempt >= maximumAttempts || !IsDeadlock(exception)) throw;
+                Thread.Sleep(attempt * 20 + Random.Shared.Next(20));
+            }
+        }
+    }
+    private static bool IsDeadlock(Exception exception)
+    {
+        for (Exception? current = exception; current is not null; current = current.InnerException)
+            if (current is MySqlException { Number: 1213 }) return true;
+        return false;
     }
     private static void LockScope(DBConnector db, TractionScope scope)
     {
@@ -323,22 +354,15 @@ public sealed class TractionWorkspaceStore
     }
 
     private sealed class CaseScope { public string CalculationSetID { get; set; } = ""; public string RouteCaseID { get; set; } = ""; }
-    internal TractionWorkspace? ReadWorkspace(TractionScope scope)
+    internal TractionWorkspace? ReadWorkspace(TractionScope scope, bool legacyCatalog = false)
     {
         var root = Read("tractionsetworkspace", scope).SingleOrDefault();
         if (root is null) return null;
-        var points = Read("tractionsetpresetpoint", scope, "PresetID,OrderIndex").GroupBy(row => row.String("PresetID"), StringComparer.Ordinal)
-            .ToDictionary(group => group.Key, group => (IReadOnlyList<SpeedProfileForceInput>)group.Select(Force).ToArray(), StringComparer.Ordinal);
-        Dictionary<string, IReadOnlyList<SpeedProfileForceInput>> Curves(string table) => Read(table, scope, "PresetID,OrderIndex")
-            .GroupBy(row => row.String("PresetID"), StringComparer.Ordinal).ToDictionary(g => g.Key, g => (IReadOnlyList<SpeedProfileForceInput>)g.Select(Force).ToArray(), StringComparer.Ordinal);
-        var brakes = Curves("tractionsetpresetbrakingpoint"); var resistance = Curves("tractionsetpresetresistancepoint");
+        var project = legacyCatalog ? null : ReadProjectTrains(scope.InstanceID);
         return new TractionWorkspace {
             Revision = root.Long("Revision"),
-            Catalog = new TractionTrainPresetCatalog { Version = root.Int("CatalogVersion"), SelectedId = root.String("SelectedPresetID"),
-                Presets = Read("tractionsettrainpreset", scope, "OrderIndex").Select(row => new TractionTrainPreset {
-                    Id = row.String("PresetID"), Name = row.String("Name"), NameEn = row.NullableString("NameEn"),
-                    Parameters = Train(row, points.GetValueOrDefault(row.String("PresetID")) ?? [], brakes.GetValueOrDefault(row.String("PresetID")), resistance.GetValueOrDefault(row.String("PresetID"))),
-                }).ToArray() },
+            CatalogRevision = project?.Revision ?? 0,
+            Catalog = project is null ? ReadLegacyCatalog(scope, root) : project.Catalog with { SelectedId = root.String("SelectedPresetID") },
             Settings = new TractionWorkspaceSettings {
                 SelectedRouteId = root.String("SelectedRouteID"), ContinuationId = root.String("ContinuationID"), DistanceMode = root.String("DistanceMode"),
                 MetersPerUnit = root.Number("MetersPerUnit"), DefaultLimit = root.Number("DefaultLimit"), Signal = Signal(root),
@@ -350,6 +374,20 @@ public sealed class TractionWorkspaceStore
                 SegmentIndex = row.Int("SegmentIndex"), SegmentId = row.String("SegmentID"), SpeedLimitKmh = row.NullableNumber("SpeedLimitKmh"), GradientPermille = row.NullableNumber("GradientPermille"), AdditionalResistanceKn = row.NullableNumber("AdditionalResistanceKn"),
             }).ToArray(),
         };
+    }
+
+    private TractionTrainPresetCatalog ReadLegacyCatalog(TractionScope scope, DbRow root)
+    {
+        var points = Read("tractionsetpresetpoint", scope, "PresetID,OrderIndex").GroupBy(row => row.String("PresetID"), StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => (IReadOnlyList<SpeedProfileForceInput>)group.Select(Force).ToArray(), StringComparer.Ordinal);
+        Dictionary<string, IReadOnlyList<SpeedProfileForceInput>> Curves(string table) => Read(table, scope, "PresetID,OrderIndex")
+            .GroupBy(row => row.String("PresetID"), StringComparer.Ordinal).ToDictionary(g => g.Key, g => (IReadOnlyList<SpeedProfileForceInput>)g.Select(Force).ToArray(), StringComparer.Ordinal);
+        var brakes = Curves("tractionsetpresetbrakingpoint"); var resistance = Curves("tractionsetpresetresistancepoint");
+        return new TractionTrainPresetCatalog { Version = root.Int("CatalogVersion"), SelectedId = root.String("SelectedPresetID"),
+                Presets = Read("tractionsettrainpreset", scope, "OrderIndex").Select(row => new TractionTrainPreset {
+                    Id = row.String("PresetID"), Name = row.String("Name"), NameEn = row.NullableString("NameEn"),
+                    Parameters = Train(row, points.GetValueOrDefault(row.String("PresetID")) ?? [], brakes.GetValueOrDefault(row.String("PresetID")), resistance.GetValueOrDefault(row.String("PresetID"))),
+                }).ToArray() };
     }
 
     internal StoredTractionCalculation? ReadCalculation(TractionScope scope)
@@ -368,15 +406,25 @@ public sealed class TractionWorkspaceStore
                 Cells = Read("tractionsetcalculationcell", scope, "OrderIndex").Select(row => new SpeedProfileCellInput { Id = row.String("ID"), Label = row.String("Label"), StartM = row.Number("StartM"), EndM = row.Number("EndM"), EntryBoundaryKnown = row.Boolean("EntryBoundaryKnown"), ExitBoundaryKnown = row.Boolean("ExitBoundaryKnown") }).ToArray(),
             },
         };
+        var cellTimes = Read("tractionsetcalculationcelltime", scope, "OrderIndex").Select(row => new SpeedProfileCellOccupancy {
+            Id = row.String("ID"), Label = row.String("Label"), StartM = row.Number("StartM"), EndM = row.Number("EndM"),
+            EntryBoundaryKnown = row.Boolean("EntryBoundaryKnown"), ExitBoundaryKnown = row.Boolean("ExitBoundaryKnown"),
+            EntryTimeS = row.NullableNumber("EntryTimeS"), ExitTimeS = row.NullableNumber("ExitTimeS"), ReleaseTimeS = row.NullableNumber("ReleaseTimeS")
+        }).ToArray();
+        // Older through calculations could save an inactive positive departure length.
+        // Restore an extension only when its extra circuit was actually calculated.
+        var departureLength = request.Options.Mode is "departure" or "through"
+            && cellTimes.Length == request.Profile.Cells.Count + 1 ? request.Options.DepartureSectionLengthM : 0;
         return new StoredTractionCalculation {
             SelectedRouteId = root.String("SelectedRouteID"), ContinuationId = root.String("ContinuationID"),
             Revision = root.Long("WorkspaceRevision"), CurrentWorkspaceRevision = current.Long("Revision"), SavedAtUtc = DateTime.Parse(root.String("SavedAtUtc"), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind), Request = request,
             Result = new SpeedProfileCalculationResponse {
-                ApproachDistanceM = Math.Max(0, root.Number("ResultLengthM") - root.Number("ProfileLengthM")),
+                ApproachDistanceM = request.Options.Mode is "arrival" or "through" ? request.Options.BrakingDistanceM ?? Math.Max(0, root.Number("ResultLengthM") - (root.Number("ProfileLengthM") + departureLength)) : 0,
+                DepartureSectionLengthM = departureLength,
                 LengthM = root.Number("ResultLengthM"), TrainLengthM = root.Number("ResultTrainLengthM"), Mode = root.String("ResultMode"), DurationS = root.Number("DurationS"), MotionStartS = root.Number("MotionStartS"), TotalTimeS = root.Number("TotalTimeS"), RunningTimeS = root.Number("RunningTimeS"), DwellTimeS = root.Number("DwellTimeS"), MaxSpeedKmh = root.Number("ResultMaxSpeedKmh"), Engine = root.String("Engine"),
                 Samples = Read("tractionsetcalculationsample", scope, "OrderIndex").Select(row => new SpeedProfileSample(row.Number("PositionM"), row.Number("SpeedKmh"), row.Number("LimitKmh"), row.Number("TimeS"))).ToArray(),
                 JointTimes = Read("tractionsetcalculationjointtime", scope, "OrderIndex").Select(row => new SpeedProfileJointTime { Id = row.String("ID"), Label = row.String("Label"), PositionM = row.Number("PositionM"), HeadTimeS = row.Number("HeadTimeS"), TailTimeS = row.NullableNumber("TailTimeS"), ReleaseTimeS = row.NullableNumber("ReleaseTimeS") }).ToArray(),
-                CellOccupancies = Read("tractionsetcalculationcelltime", scope, "OrderIndex").Select(row => new SpeedProfileCellOccupancy { Id = row.String("ID"), Label = row.String("Label"), StartM = row.Number("StartM"), EndM = row.Number("EndM"), EntryBoundaryKnown = row.Boolean("EntryBoundaryKnown"), ExitBoundaryKnown = row.Boolean("ExitBoundaryKnown"), EntryTimeS = row.NullableNumber("EntryTimeS"), ExitTimeS = row.NullableNumber("ExitTimeS"), ReleaseTimeS = row.NullableNumber("ReleaseTimeS") }).ToArray(),
+                CellOccupancies = cellTimes,
                 Warnings = Read("tractionsetcalculationwarning", scope, "OrderIndex").Select(row => row.String("Warning")).ToArray(),
             },
         };
@@ -417,8 +465,8 @@ public sealed class TractionWorkspaceStore
     });
     private static void AddSignal(Dictionary<string, object?> row, SpeedProfileSignalInput signal) { row["SignalRouteSettingS"] = signal.RouteSettingS; row["SignalReactionS"] = signal.ReactionS; row["SignalClearanceS"] = signal.ClearanceS; }
     private static SpeedProfileSignalInput Signal(DbRow row) => new() { RouteSettingS = row.Number("SignalRouteSettingS"), ReactionS = row.Number("SignalReactionS"), ClearanceS = row.Number("SignalClearanceS") };
-    private static void AddOptions(Dictionary<string, object?> row, SpeedProfileOptionsInput options, string prefix) { row[prefix + "Mode"] = options.Mode; row[prefix + "InitialSpeedKmh"] = options.InitialSpeedKmh; row[prefix + "FinalSpeedKmh"] = options.FinalSpeedKmh; row[prefix + "StepM"] = options.StepM; row[prefix + "MaxPointCount"] = options.MaxPointCount; }
-    private static SpeedProfileOptionsInput Options(DbRow row, string prefix, IReadOnlyList<SpeedProfileStopInput> stops) => new() { Mode = row.String(prefix + "Mode"), InitialSpeedKmh = row.Number(prefix + "InitialSpeedKmh"), FinalSpeedKmh = row.Number(prefix + "FinalSpeedKmh"), StepM = row.Number(prefix + "StepM"), MaxPointCount = row.Int(prefix + "MaxPointCount"), Stops = stops };
+    private static void AddOptions(Dictionary<string, object?> row, SpeedProfileOptionsInput options, string prefix) { row[prefix + "Mode"] = options.Mode; row[prefix + "InitialSpeedKmh"] = options.InitialSpeedKmh; row[prefix + "FinalSpeedKmh"] = options.FinalSpeedKmh; row[prefix + "StepM"] = options.StepM; row[prefix + "MaxPointCount"] = options.MaxPointCount; row[prefix + "DepartureSectionLengthM"] = options.DepartureSectionLengthM; row[prefix + "BrakingDistanceM"] = options.BrakingDistanceM; row[prefix + "BrakingMaxSpeedKmh"] = options.BrakingMaxSpeedKmh; row[prefix + "DepartureSectionMaxSpeedKmh"] = options.DepartureSectionMaxSpeedKmh; }
+    private static SpeedProfileOptionsInput Options(DbRow row, string prefix, IReadOnlyList<SpeedProfileStopInput> stops) => new() { Mode = row.String(prefix + "Mode"), InitialSpeedKmh = row.Number(prefix + "InitialSpeedKmh"), FinalSpeedKmh = row.Number(prefix + "FinalSpeedKmh"), StepM = row.Number(prefix + "StepM"), MaxPointCount = row.Int(prefix + "MaxPointCount"), DepartureSectionLengthM = row.Number(prefix + "DepartureSectionLengthM"), BrakingDistanceM = row.NullableNumber(prefix + "BrakingDistanceM"), BrakingMaxSpeedKmh = row.NullableNumber(prefix + "BrakingMaxSpeedKmh"), DepartureSectionMaxSpeedKmh = row.NullableNumber(prefix + "DepartureSectionMaxSpeedKmh"), Stops = stops };
     private static SpeedProfileForceInput Force(DbRow row) => new() { SpeedKmh = row.Number("SpeedKmh"), ForceKn = row.Number("ForceKn") };
     private static SpeedProfileStopInput Stop(DbRow row) => new() { PositionM = row.Number("PositionM"), DwellS = row.Number("DwellS") };
     private static IEnumerable<Dictionary<string, object?>> StopData(IReadOnlyList<SpeedProfileStopInput> stops) => stops.Select((stop, index) => Data(("OrderIndex", index), ("PositionM", stop.PositionM), ("DwellS", stop.DwellS)));

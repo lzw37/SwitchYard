@@ -6,6 +6,9 @@ import {
     headTimeAt,
     cellApproachingInterval,
     approachPreparationIntervals,
+    cellTotalOccupancyInterval,
+    cellTerminalStopTime,
+    formatTractionDuration as durationLabel,
     type SignalParameters,
     type TractionResult,
     type TractionCellOccupancy,
@@ -21,8 +24,10 @@ const props = defineProps<{
     calculatedSignal: SignalParameters | null;
     limitPoints?: SpeedLimitPoint[];
     limitsEditable?: boolean;
-    /** Automatic approach is fixed; route speed-limit editing starts here. */
+    /** The braking reserve is fixed; route speed-limit editing starts here. */
     editableStartM?: number;
+    /** Original route end; the appended departure section inherits its terminal line conditions. */
+    editableEndM?: number;
     /** Display-only crop in saved result coordinates; never changes calculation inputs. */
     visibleStartM?: number;
     trainLengthM: number;
@@ -96,7 +101,7 @@ const measureCharts = () => {
     speedHeight.value = Math.round(Math.max(144 + speedAxisHeight.value,
         speed.clientHeight - heightOf(speed, ".chart-heading") - heightOf(speed, ".chart-inspector"),
     ));
-    timeHeight.value = Math.round(Math.max(240,
+    timeHeight.value = Math.round(Math.max(240, totalLabelsMinimumHeight.value,
         occupancy.clientHeight - heightOf(occupancy, ".chart-heading"),
     ));
 };
@@ -257,10 +262,12 @@ const cells = computed(() => (props.result?.cellOccupancies ?? []).filter(cell =
     const approaching = cellApproachingInterval(props.result, cell);
     const unknownEntry = cell.entryBoundaryKnown === false || !finite(cell.entryTimeS);
     const unknownExitBoundary = cell.exitBoundaryKnown === false;
+    const stoppedAt = cellTerminalStopTime(props.result, cell);
     // An unknown entry continues from above the visible time window. It is
     // labelled explicitly rather than assigning a fictitious zero entry time.
     const start = unknownEntry ? 0 : cell.entryTimeS!;
-    const end = unknownExitBoundary || !finite(cell.exitTimeS) ? timeMax.value : cell.exitTimeS;
+    const occupancyExitTimeS = stoppedAt ?? (!unknownExitBoundary && finite(cell.exitTimeS) ? cell.exitTimeS : null);
+    const end = occupancyExitTimeS ?? timeMax.value;
     // Physical occupancy ends at tail exit; the saved release delay is a separate phase.
     const release = !unknownExitBoundary && finite(cell.exitTimeS) && finite(cell.releaseTimeS)
         && cell.exitTimeS >= start && cell.releaseTimeS > cell.exitTimeS
@@ -268,10 +275,13 @@ const cells = computed(() => (props.result?.cellOccupancies ?? []).filter(cell =
         : null;
     return {
         ...cell,
+        stoppedAt,
+        occupancyExitTimeS,
         x: x(Math.max(viewStart.value, cell.startM)),
         width: Math.max(0, x(Math.min(length.value, cell.endM)) - x(Math.max(viewStart.value, cell.startM))),
         approaching,
-        preparation: approachPreparationIntervals(approaching, props.calculatedSignal).map(interval => ({
+        totalOccupancy: cellTotalOccupancyInterval(props.result, cell, props.calculatedSignal),
+        preparation: approachPreparationIntervals(approaching, props.calculatedSignal, props.result?.mode).map(interval => ({
             ...interval, y: timeY(interval.startTimeS),
             height: Math.max(0, timeY(interval.endTimeS) - timeY(interval.startTimeS)),
         })),
@@ -282,11 +292,47 @@ const cells = computed(() => (props.result?.cellOccupancies ?? []).filter(cell =
         release,
         releaseY: release ? timeY(release.startTimeS) : 0,
         releaseHeight: release ? Math.max(0, timeY(release.endTimeS) - timeY(release.startTimeS)) : 0,
-        incomplete: unknownExitBoundary || !finite(cell.exitTimeS),
+        incomplete: occupancyExitTimeS === null,
         unknownEntry,
         unknownExitBoundary,
     };
 }));
+// Totals sit near each circuit's release edge. Separate rows keep neighbouring
+// narrow circuits readable; leaders retain the association with their circuit.
+const totalLabelHeight = 22;
+const totalLabelStep = 26;
+const totalLabelCandidates = computed(() => cells.value.map(cell => {
+    const label = durationLabel(cell.totalOccupancy?.durationS);
+    const labelWidth = label.length * 7 + 14;
+    const anchorX = cell.x + cell.width / 2;
+    const centerX = Math.max(left + labelWidth / 2, Math.min(width.value - right - labelWidth / 2, anchorX));
+    return { cell, label, width: labelWidth, x: centerX, left: centerX - labelWidth / 2,
+        anchorX, anchorTimeS: cell.totalOccupancy?.endTimeS ?? cell.releaseTimeS ?? timeMax.value };
+}).sort((a, b) => a.left - b.left || a.cell.id.localeCompare(b.cell.id)));
+const totalLabelsMinimumHeight = computed(() => {
+    const rowEnds: number[] = [];
+    for (const label of totalLabelCandidates.value) {
+        let row = rowEnds.findIndex(end => end + 4 <= label.left);
+        if (row < 0) row = rowEnds.length;
+        rowEnds[row] = label.left + label.width;
+    }
+    return timeTop + 58 + rowEnds.length * totalLabelStep + 8;
+});
+watch(totalLabelsMinimumHeight, scheduleMeasure);
+const totalLabels = computed(() => {
+    const firstY = timeTop + totalLabelHeight / 2;
+    const rowCount = Math.max(1, Math.floor((timeBottom.value - timeTop - totalLabelHeight) / totalLabelStep) + 1);
+    const rowEnds = Array<number>(rowCount).fill(-Infinity);
+    return totalLabelCandidates.value.map(label => {
+        const anchorY = timeY(label.anchorTimeS);
+        const preferred = Math.max(0, Math.min(rowCount - 1, Math.round((anchorY + 14 - firstY) / totalLabelStep)));
+        const rows = Array.from({ length: rowCount }, (_, row) => row)
+            .sort((a, b) => Math.abs(a - preferred) - Math.abs(b - preferred));
+        const row = rows.find(row => rowEnds[row]! + 4 <= label.left) ?? preferred;
+        rowEnds[row] = label.left + label.width;
+        return { ...label, anchorY, y: firstY + row * totalLabelStep };
+    });
+});
 // Circuit ranges and names always share one row on the common position scale.
 // Fit names inside their ranges; the title retains the complete name and mileage.
 const circuitAxis = computed(() => {
@@ -414,9 +460,14 @@ const handleKey = (event: KeyboardEvent) => {
         Math.max(viewStart.value, Math.min(length.value, (hoverPosition.value ?? viewStart.value) + direction * viewLength.value / 100));
 };
 const firstEditableIndex = computed(() => (props.editableStartM ?? 0) > 0 ? 1 : 0);
+const isEditableLimitPoint = (index: number) => {
+    const point = limitPoints.value[index];
+    return !!point && index >= firstEditableIndex.value && point.positionM >= (props.editableStartM ?? 0)
+        && point.positionM < (props.editableEndM ?? length.value);
+};
 const pointBounds = (index: number) => ({
     min: index <= firstEditableIndex.value ? (index === 0 ? 0 : props.editableStartM!) : limitPoints.value[index - 1]!.positionM + .001,
-    max: index <= firstEditableIndex.value ? (index === 0 ? 0 : props.editableStartM!) : (limitPoints.value[index + 1]?.positionM ?? length.value) - .001,
+    max: index <= firstEditableIndex.value ? (index === 0 ? 0 : props.editableStartM!) : (limitPoints.value[index + 1]?.positionM ?? props.editableEndM ?? length.value) - .001,
 });
 function handleSpeedClick() {
     // Pointer capture sends the drag-release click to the SVG.
@@ -439,7 +490,7 @@ function dismissLimitMenu(event: PointerEvent) {
     if (limitMenu.value && !limitMenuElement.value?.contains(event.target as Node)) limitMenu.value = null;
 }
 function openLimitMenu(event: MouseEvent, index: number) {
-    if (!props.limitsEditable || !editingLimits.value) return;
+    if (!props.limitsEditable || !editingLimits.value || !isEditableLimitPoint(index)) return;
     selectedLimitIndex.value = index;
     limitMenu.value = { index, x: Math.max(8, Math.min(event.clientX, window.innerWidth - 168)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 52)) };
 }
@@ -453,7 +504,7 @@ function commitLimitPoints(points: SpeedLimitPoint[], selected = selectedLimitIn
     emit('update:limitPoints', points);
 }
 function updateLimitPoint(index: number, positionM: number, speedLimitKmh: number) {
-    if (!props.limitsEditable || index < firstEditableIndex.value || !finite(positionM) || !finite(speedLimitKmh) || !limitPoints.value[index]) return;
+    if (!props.limitsEditable || !isEditableLimitPoint(index) || !finite(positionM) || !finite(speedLimitKmh)) return;
     const bounds = pointBounds(index), points = limitPoints.value.map(point => ({ ...point }));
     points[index] = { positionM: Math.max(bounds.min, Math.min(bounds.max, positionM)), speedLimitKmh: Math.max(.001, Math.min(1000, speedLimitKmh)) };
     commitLimitPoints(points, index);
@@ -463,10 +514,10 @@ function addLimitPoint(event: MouseEvent) {
     const point = svgPoint(event);
     if (!point || point.x < left || point.x > width.value - right || point.y < speedTop || point.y > speedBottom.value) return;
     const positionM = Math.max(viewStart.value, Math.min(length.value - .001, Math.round(positionAtX(point.x) * 10) / 10));
-    if (positionM < (props.editableStartM ?? 0)) return;
+    if (positionM < (props.editableStartM ?? 0) || positionM >= (props.editableEndM ?? length.value)) return;
     const existing = limitPoints.value.findIndex(item => Math.abs(item.positionM - positionM) < .001);
     if (existing >= 0) { selectedLimitIndex.value = existing; return; }
-    if (limitPoints.value.length - firstEditableIndex.value >= maximumSpeedLimitPoints) return;
+    if (limitPoints.value.filter((_, index) => isEditableLimitPoint(index)).length >= maximumSpeedLimitPoints) return;
     // Inserting on the line keeps the existing limit until the user drags the new point.
     const speedLimitKmh = limitAtPosition(limitPoints.value, positionM);
     const points = [...limitPoints.value.map(item => ({ ...item })), { positionM, speedLimitKmh }].sort((a, b) => a.positionM - b.positionM);
@@ -474,13 +525,13 @@ function addLimitPoint(event: MouseEvent) {
     limitMenu.value = null;
 }
 function removeLimitPoint() {
-    if (selectedLimitIndex.value <= firstEditableIndex.value || !props.limitsEditable || !editingLimits.value) return;
+    if (selectedLimitIndex.value <= firstEditableIndex.value || !isEditableLimitPoint(selectedLimitIndex.value) || !props.limitsEditable || !editingLimits.value) return;
     limitMenu.value = null;
     commitLimitPoints(limitPoints.value.filter((_, index) => index !== selectedLimitIndex.value), selectedLimitIndex.value - 1);
 }
 function startLimitDrag(event: PointerEvent, index: number) {
     selectedLimitIndex.value = index; anchorPointerUp = false;
-    if (!props.limitsEditable || index < firstEditableIndex.value || event.button !== 0) return;
+    if (!props.limitsEditable || !isEditableLimitPoint(index) || event.button !== 0) return;
     (event.currentTarget as SVGElement).focus();
     limitMenu.value = null;
     limitDrag = { index, pointerId: event.pointerId, maximum: speedMax.value, original: limitPoints.value.map(point => ({ ...point })) };
@@ -517,14 +568,19 @@ watch(() => props.limitPoints, () => { stopLimitDrag(false); selectedLimitIndex.
 watch(() => props.limitsEditable, editable => { if (!editable) exitLimitEdit(); });
 watch(viewStart, () => { exitLimitEdit(); hoverPosition.value = null; });
 const inspectedLimit = computed(() => hoverPosition.value === null ? null : limitAtPosition(limitPoints.value, hoverPosition.value));
-const cellTitle = (cell: TractionCellOccupancy) => {
+const cellTitle = (cell: TractionCellOccupancy, total = cellTotalOccupancyInterval(props.result, cell, props.calculatedSignal)) => {
     const entry = cell.entryBoundaryKnown === false || !finite(cell.entryTimeS)
         ? ui("起点前占用（起始时刻未知）", "Occupied before route start (entry time unknown)")
         : timeLabel(cell.entryTimeS);
-    const release = cell.exitBoundaryKnown === false
+    const stoppedAt = cellTerminalStopTime(props.result, cell);
+    const release = stoppedAt !== null ? ui("终点停车结束占用", "Occupancy ends at terminal stop") + " " + timeLabel(stoppedAt)
+        : cell.exitBoundaryKnown === false
         ? ui("边界未覆盖（出清、释放时刻未知）", "Boundary outside route (clearance and release unknown)")
         : finite(cell.releaseTimeS) ? timeLabel(cell.releaseTimeS) : ui("未出清", "Not cleared");
-    return cell.label + " · " + ui("占用", "Occupied") + " " + entry + " → " + release;
+    const totalLabel = total ? " · " + ui("总占用", "Total occupancy") + " " + timeLabel(total.startTimeS)
+        + " → " + timeLabel(total.endTimeS) + " · " + numberLabel(total.durationS) + " s" : "";
+    return cell.label + totalLabel + " · " + ui("车头进入", "Head enters") + " " + entry
+        + " · " + ui("占用结束", "Occupancy end") + " " + release;
 };
 </script>
 
@@ -612,7 +668,7 @@ const cellTitle = (cell: TractionCellOccupancy) => {
                         text-anchor="middle" class="limit-segment-value">{{ numberLabel(segment.speedLimitKmh, 3) }}</text>
                 </g>
                 <g v-if="editingLimits && limitsEditable" class="limit-handles">
-                <circle v-for="(point, index) in limitPoints" v-show="index >= firstEditableIndex && point.positionM >= viewStart && point.positionM <= length" :key="index" :cx="x(point.positionM)" :cy="speedY(point.speedLimitKmh)" r="5" class="limit-anchor" :class="{ selected: index === selectedLimitIndex, readonly: !limitsEditable }"
+                <circle v-for="(point, index) in limitPoints" v-show="isEditableLimitPoint(index) && point.positionM >= viewStart && point.positionM <= length" :key="index" :cx="x(point.positionM)" :cy="speedY(point.speedLimitKmh)" r="5" class="limit-anchor" :class="{ selected: index === selectedLimitIndex, readonly: !limitsEditable }"
                     :data-position="point.positionM" :data-limit="point.speedLimitKmh" role="button" :tabindex="limitsEditable ? 0 : -1" :aria-disabled="!limitsEditable"
                     :aria-label="ui('允许速度点', 'Speed limit point') + ' ' + (index + 1) + ': ' + numberLabel(point.positionM) + ' m, ' + numberLabel(point.speedLimitKmh) + ' km/h'"
                     @pointerdown.stop.prevent="startLimitDrag($event, index)" @click.stop="selectedLimitIndex = index" @dblclick.stop @contextmenu.stop.prevent="openLimitMenu($event, index)" @keydown.stop="limitKey($event, index)">
@@ -658,12 +714,13 @@ const cellTitle = (cell: TractionCellOccupancy) => {
                 <div class="chart-legend">
                     <span><i class="legend-line speed-line"></i>{{ ui("车头", "Train head") }}</span>
                     <span><i class="legend-line tail-line"></i>{{ ui("车尾", "Train tail") }}</span>
-                    <span v-if="result?.mode === 'arrival' && calculatedSignal"><i class="legend-route-setting"></i>{{ ui("进路办理", "Route setting") }}</span>
-                    <span v-if="result?.mode === 'arrival' && calculatedSignal"><i class="legend-reaction"></i>{{ ui("反应时间", "Reaction time") }}</span>
-                    <span v-if="result?.mode === 'arrival'"><i class="legend-approaching"></i>{{ ui("接近时间", "Approaching time") }}</span>
+                    <span v-if="result && calculatedSignal"><i class="legend-route-setting"></i>{{ ui("进路办理", "Route setting") }}</span>
+                    <span v-if="result && calculatedSignal"><i class="legend-reaction"></i>{{ ui("反应时间", "Reaction time") }}</span>
+                    <span v-if="result"><i class="legend-approaching"></i>{{ ui("接近时间", "Approaching time") }}</span>
                     <span><i class="legend-block"></i>{{ ui("区段占用", "Section occupancy") }}</span>
                     <span><i class="legend-release"></i>{{ ui("释放时间", "Release time") }}</span>
                     <span><i class="legend-joint"></i>{{ ui("绝缘占用", "Joint occupancy") }}</span>
+                    <span><i class="legend-total-duration">mm:ss</i>{{ ui("总占用时间", "Total occupancy") }}</span>
                 </div>
             </header>
             <svg
@@ -694,7 +751,9 @@ const cellTitle = (cell: TractionCellOccupancy) => {
                 </g>
                 <text :x="left" y="14" class="axis-unit">{{ ui("分:秒", "min:sec") }}</text>
                 <text :x="width - right" :y="timeHeight - 11" text-anchor="end" class="axis-unit">{{ ui("进路位置", "Route position") }} / m</text>
-                <g v-for="cell in cells" :key="cell.id" :data-cell-id="cell.id">
+                <g v-for="cell in cells" :key="cell.id" :data-cell-id="cell.id"
+                    :data-total-start-time="cell.totalOccupancy?.startTimeS" :data-total-end-time="cell.totalOccupancy?.endTimeS"
+                    :data-total-duration="cell.totalOccupancy?.durationS">
                     <rect v-for="interval in cell.preparation" :key="interval.kind"
                         :x="cell.x" :y="interval.y" :width="cell.width" :height="interval.height"
                         :class="interval.kind + '-cell'" :data-start-time="interval.startTimeS" :data-end-time="interval.endTimeS">
@@ -706,7 +765,7 @@ const cellTitle = (cell: TractionCellOccupancy) => {
                         <title>{{ cell.label }} · {{ ui("接近时间", "Approaching time") }} {{ timeLabel(cell.approaching.startTimeS) }} → {{ timeLabel(cell.approaching.endTimeS) }} · {{ numberLabel(cell.approaching.durationS) }} s</title>
                     </rect>
                     <rect :x="cell.x" :y="cell.y" :width="cell.width" :height="cell.height" :class="['occupancy-cell', { incomplete: cell.incomplete }]"
-                        :data-start-time="cell.unknownEntry ? undefined : cell.entryTimeS" :data-end-time="cell.incomplete ? undefined : cell.exitTimeS" />
+                        :data-start-time="cell.unknownEntry ? undefined : cell.entryTimeS" :data-end-time="cell.occupancyExitTimeS ?? undefined" :data-end-at-stop="cell.stoppedAt !== null ? true : undefined" />
                     <rect v-if="cell.release && cell.releaseHeight > 0"
                         :x="cell.x" :y="cell.releaseY" :width="cell.width" :height="cell.releaseHeight"
                         class="release-cell" :data-start-time="cell.release.startTimeS" :data-end-time="cell.release.endTimeS">
@@ -719,7 +778,7 @@ const cellTitle = (cell: TractionCellOccupancy) => {
                         <text v-if="cell.unknownExitBoundary && cell.height > 66" :x="cell.x + cell.width / 2" :y="timeBottom - 22" text-anchor="middle" class="incomplete-label">{{ ui("边界未覆盖", "Boundary outside route") }}</text>
                         <text :x="cell.x + cell.width / 2" :y="timeBottom - 8" text-anchor="middle" class="incomplete-label">{{ cell.unknownExitBoundary ? ui("出清未知", "Clearance unknown") : ui("未出清", "Not cleared") }}</text>
                     </template>
-                    <title>{{ cellTitle(cell) }}</title>
+                    <title>{{ cellTitle(cell, cell.totalOccupancy) }}</title>
                 </g>
                 <g v-for="joint in joints" :key="joint.id">
                     <line :x1="x(joint.positionM)" :x2="x(joint.positionM)" :y1="timeTop" :y2="timeBottom" class="joint-guide" />
@@ -731,6 +790,14 @@ const cellTitle = (cell: TractionCellOccupancy) => {
                 <text v-if="!result" :x="left + plotWidth / 2" :y="(timeTop + timeBottom) / 2" text-anchor="middle" class="empty-time-label">{{ ui("尚无计算结果", "No saved calculation") }}</text>
                 <path :d="headPath" class="speed-curve" :clip-path="'url(#' + timeClipId + ')'" />
                 <path :d="tailPath" class="tail-curve" :clip-path="'url(#' + timeClipId + ')'" />
+                <g v-for="label in totalLabels" :key="'total-' + label.cell.id"
+                    :data-total-label-cell-id="label.cell.id" :data-duration-s="label.cell.totalOccupancy?.durationS"
+                    :class="['total-duration', { 'total-unknown': !label.cell.totalOccupancy }]" :clip-path="'url(#' + timeClipId + ')'">
+                    <line :x1="label.anchorX" :y1="label.anchorY" :x2="label.x" :y2="label.y" class="total-duration-leader" />
+                    <rect :x="label.left" :y="label.y - totalLabelHeight / 2" :width="label.width" :height="totalLabelHeight" rx="4" class="total-duration-background" />
+                    <text :x="label.x" :y="label.y + 4" text-anchor="middle" class="total-duration-text">{{ label.label }}</text>
+                    <title>{{ cellTitle(label.cell, label.cell.totalOccupancy) }}</title>
+                </g>
                 <g v-if="hoverPosition !== null && nearestSample">
                     <line :x1="x(hoverPosition)" :x2="x(hoverPosition)" :y1="timeTop" :y2="timeBottom" class="cursor-line" />
                     <circle v-if="nearestSample.headTimeS !== null" :cx="x(hoverPosition)" :cy="timeY(nearestSample.headTimeS)" r="5" class="speed-cursor" />
@@ -783,6 +850,11 @@ const cellTitle = (cell: TractionCellOccupancy) => {
 .legend-block { width: 12px; height: 10px; background: #4db6a124; border: 1px solid #4db6a179; }
 .legend-circuit { width: 16px; height: 6px; background: #6ddac933; border: 1px solid #6ddac9; }
 .legend-joint { width: 4px; height: 12px; background: #c4a3ffb3; border-radius: 2px; }
+.legend-total-duration { padding: 2px 4px; border: 1px solid #527d7c; border-radius: 3px; background: #142a33; color: #c3f5e9; font-style: normal; font-variant-numeric: tabular-nums; }
+.total-duration-leader { stroke: #80b7ad; stroke-width: .8; stroke-dasharray: 2 2; }
+.total-duration-background { fill: #142a33; stroke: #527d7c; stroke-width: .8; }
+.total-duration-text { fill: #c3f5e9; font: 600 11px ui-monospace, SFMono-Regular, Consolas, monospace; }
+.total-unknown .total-duration-text { fill: #d9b17b; }
 .plot { display: block; width: 100%; height: auto; outline: none; touch-action: pan-y; }
 .plot:focus-visible { box-shadow: inset 0 0 0 2px #44e2e0; }
 .plot-background { fill: #0c1523; }

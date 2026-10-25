@@ -28,7 +28,7 @@ public sealed class TractionWorkspaceController(
         });
 
     [HttpPut]
-    [RequestSizeLimit(8 * 1024 * 1024)]
+    [RequestSizeLimit(32 * 1024 * 1024)]
     [ProducesResponseType(typeof(TractionWorkspace), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(SpeedProfileApiError), StatusCodes.Status409Conflict)]
     public IActionResult SaveWorkspace([FromBody] TractionWorkspaceSaveRequest body) =>
@@ -74,9 +74,18 @@ public sealed class TractionWorkspaceController(
     [HttpGet("routes")]
     public IActionResult ListRoutes([FromQuery] string? instanceId, [FromQuery] string? stationSchemeId, [FromQuery] string calculationSetId = "default") =>
         InScope(instanceId, stationSchemeId, scope => Ok(store.ListRoutes(scope with { CalculationSetID = calculationSetId })));
+
+    [HttpGet("trains")]
+    public IActionResult GetProjectTrains([FromQuery] string? instanceId, [FromQuery] string? stationSchemeId) =>
+        InScope(instanceId, stationSchemeId, scope => store.GetProjectTrains(scope) is { } trains ? Ok(trains) : NoContent());
+
+    [HttpPut("trains")]
+    [RequestSizeLimit(32 * 1024 * 1024)]
+    public IActionResult SaveProjectTrains([FromBody] TractionProjectTrainSaveRequest body) =>
+        InScope(body.InstanceId, body.StationSchemeId, scope => Ok(store.SaveProjectTrains(scope, body.Revision, body.Catalog)));
     [HttpPost("routes/open")]
     public IActionResult OpenRoute([FromBody] TractionRouteMutation body) =>
-        InScope(body.InstanceId, body.StationSchemeId, scope => Ok(store.OpenRoute(scope with { CalculationSetID = body.CalculationSetId }, body.RouteId, body.ContinuationId)));
+        InScope(body.InstanceId, body.StationSchemeId, scope => Ok(store.OpenRoute(scope with { CalculationSetID = body.CalculationSetId }, body.RouteId, body.ContinuationId, body.Select)));
     [HttpDelete("routes")]
     public IActionResult DeleteRoute([FromBody] TractionRouteMutation body) =>
         InScope(body.InstanceId, body.StationSchemeId, scope => { store.DeleteRouteCase(scope with { CalculationSetID = body.CalculationSetId, RouteCaseID = body.RouteCaseId }, body.Revision); return NoContent(); });
@@ -112,6 +121,11 @@ public sealed class TractionWorkspaceController(
             var scope = new TractionScope(instance, scheme);
             var authorization = AuthorizeScope(scope);
             return authorization ?? action(scope);
+        }
+        catch (TractionProjectTrainConflictException exception)
+        {
+            return Conflict(new SpeedProfileApiError("train-catalog-conflict", exception.Message,
+                new Dictionary<string, string[]> { ["currentRevision"] = [exception.CurrentRevision.ToString(System.Globalization.CultureInfo.InvariantCulture)] }));
         }
         catch (TractionRevisionConflictException exception)
         {
@@ -206,5 +220,15 @@ public sealed record TractionRouteMutation
     public string RouteCaseId { get; init; } = "";
     public string RouteId { get; init; } = "";
     public string ContinuationId { get; init; } = "";
+    public bool Select { get; init; } = true;
     public long Revision { get; init; }
+}
+
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+public sealed record TractionProjectTrainSaveRequest
+{
+    [JsonRequired] public string InstanceId { get; init; } = null!;
+    [JsonRequired] public string StationSchemeId { get; init; } = null!;
+    [JsonRequired] public long Revision { get; init; }
+    [JsonRequired] public TractionTrainPresetCatalog Catalog { get; init; } = null!;
 }

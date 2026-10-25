@@ -626,7 +626,7 @@ namespace SwitchYard.Service.Controllers
         }
 
         [HttpPut(Name = "SaveStationRouteTimes")]
-        public IActionResult SaveStationRouteTimes([FromBody] StationRouteTimeSaveRequest? request, [FromQuery] bool includeOperationTime = false)
+        public IActionResult SaveStationRouteTimes([FromBody] StationRouteTimeSaveRequest? request, [FromQuery] bool includeOperationTime = false, [FromQuery] bool operationTimeOnly = false)
         {
             try
             {
@@ -653,6 +653,16 @@ namespace SwitchYard.Service.Controllers
                 if (route == null)
                 {
                     return NotFound("Station route not found.");
+                }
+
+                if (operationTimeOnly)
+                {
+                    if (request?.HasOperationTime != true) return BadRequest("OperationTimeS is required for an operation-time-only update.");
+                    ReplaceStationRouteTimes(dbConnector, instanceID, stationSchemeID, routeID, trainTypeID, new(), calculationParameterSetID,
+                        updateOperationTime: true, operationTimeS: request.OperationTimeS, replaceTimes: false);
+                    var retained = LoadStationRouteTimes(dbConnector, instanceID, stationSchemeID, routeID, trainTypeID, calculationParameterSetID);
+                    return StationRouteTimeResponse(dbConnector, instanceID, stationSchemeID, routeID, trainTypeID, calculationParameterSetID,
+                        OrderStationRouteTimesByCellList(retained, route.CellList, route.InterruptCellList, retained.Count > 0), includeOperationTime);
                 }
 
                 var routeTimePlan = BuildStationRouteTimeCellPlan(route.CellList, route.InterruptCellList);
@@ -2405,7 +2415,7 @@ namespace SwitchYard.Service.Controllers
             string trainTypeID,
             List<StationRouteTimeRow> rows,
             string? calculationParameterSetID = null,
-            bool updateOperationTime = false, double? operationTimeS = null)
+            bool updateOperationTime = false, double? operationTimeS = null, bool replaceTimes = true)
         {
             if (updateOperationTime) { RouteOperationTimeStore.Validate(operationTimeS); RouteOperationTimeStore.EnsureSchema(dbConnector); }
             dbConnector.BeginTransaction();
@@ -2415,6 +2425,7 @@ namespace SwitchYard.Service.Controllers
                 CalculationParameterSets.EnsureDefault(dbConnector, instanceID, stationSchemeID);
                 var parameterSetID = RequireCalculationParameterSet(dbConnector, instanceID, stationSchemeID, calculationParameterSetID);
                 if (updateOperationTime) RouteOperationTimeStore.Save(dbConnector, instanceID, stationSchemeID, parameterSetID, routeID, trainTypeID, operationTimeS);
+                if (!replaceTimes) { dbConnector.Commit(); return; }
                 var tableName = QuoteIdentifier("stationroutetime");
                 dbConnector.ExecuteNonQuery(
                     $@"DELETE FROM {tableName}

@@ -7,6 +7,8 @@ export const tractionMessages: Record<string, [string, string]> = {
   'point-mass-gradient': ['坡度与线路附加阻力按车头位置进行单质点计算，不进行整列车坡度平均。', 'Gradient and extra line resistance use a single point mass at the train head; gradients are not averaged over train length.'],
   'train-length-speed-limits': ['列车尾部通过限速区段后才解除该段限速。', 'A section speed limit remains in force until the train tail clears the section.'],
   'constant-service-brake': ['采用全速度范围恒定的常用制动力。', 'Constant service braking force is used over the complete speed range.'],
+  'initial-speed-reduced': ['实际起点速度低于期望值，已按限速、制动和停车条件计算。', 'Actual entry speed is below the desired value after applying speed limits, braking and stop constraints.'],
+  'final-speed-reduced': ['实际终点速度低于期望值，已按限速、牵引和停车条件计算。', 'Actual exit speed is below the desired value after applying speed limits, traction and stop constraints.'],
   'invalid-input': ['参数无效。请检查数值、质量、车长和信号时间。', 'Invalid parameters. Check numeric values, mass, length and signal times.'],
   'invalid-curve': ['性能曲线无效。速度节点须从 0 开始严格递增，牵引力须非负且随速度不增。', 'Invalid force curve. Speed points must strictly increase from zero, with nonnegative, nonincreasing traction forces.'],
   'invalid-route': ['线路分段须连续覆盖整个进路，限速必须大于零。', 'Sections must cover the complete route continuously with positive speed limits.'],

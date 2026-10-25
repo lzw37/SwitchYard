@@ -122,7 +122,7 @@ function validateParameters(value: unknown): string {
 export function validateTrainPresetCatalog(value: unknown): string {
     if (!isRecord(value)) return 'invalid-catalog'
     if (value.version !== 1) return 'invalid-version'
-    if (!Array.isArray(value.presets) || value.presets.length < 1 || value.presets.length > 100) return 'invalid-preset-count'
+    if (!Array.isArray(value.presets) || value.presets.length < 1 || value.presets.length > 1000) return 'invalid-preset-count'
     const ids = new Set<string>(), names = new Set<string>(), englishNames = new Set<string>()
     for (const preset of value.presets) {
         if (!isRecord(preset) || !validID(preset.id)) return 'invalid-preset-id'
