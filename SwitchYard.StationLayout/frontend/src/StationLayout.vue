@@ -1583,6 +1583,15 @@ async function startNewStationScheme() {
     stationSchemeDraftInputRef.value?.focus();
 }
 
+async function openNewStationScheme() {
+    if (!props.selectedInstanceId || !ensureWritable()) return;
+    const instanceId = props.selectedInstanceId;
+    await openStationSchemeManager();
+    if (props.selectedInstanceId === instanceId && stationSchemeManagerVisible.value) {
+        await startNewStationScheme();
+    }
+}
+
 async function activateSavedStationScheme(result, instanceId) {
     const option = normalizeStationSchemeOption(result);
     if (!option?.id) throw new Error(t('stationLayout.schemeManager.invalidResponse'));
@@ -3359,7 +3368,7 @@ defineExpose({ exportJson, importJson });
                 @change="updateSelectedAnnotationPosition" />
         </div>
         <div class="station-layout-workspace">
-            <div ref="stationLayoutEditorFrameRef" class="station-layout-editor-frame">
+            <div v-if="currentStationSchemeId" ref="stationLayoutEditorFrameRef" class="station-layout-editor-frame">
                 <StationLayoutEditor :translate="t" ref="stationLayoutEditorRef" :display-scale-x="layoutScaleX"
                     :display-scale-y="layoutScaleY" :show-curve-arc="showCurveArc" :show-nodes="showNodes"
                     :show-grid="showGrid" :object-snap-distance="objectSnapDistance"
@@ -3383,6 +3392,14 @@ defineExpose({ exportJson, importJson });
                     @cell-links-change="handleCellLinksChange"
                     @delete-selection-request="deleteSelection" />
             </div>
+            <el-empty v-else class="station-layout-empty"
+                :description="t('stationLayout.placeholders.createStationScheme')">
+                <el-button v-if="!props.readonly" type="primary"
+                    :disabled="!props.selectedInstanceId || loadingStationSchemes || stationSchemeManagerSaving"
+                    @click="openNewStationScheme">
+                    {{ t('stationLayout.schemeManager.create') }}
+                </el-button>
+            </el-empty>
             <aside v-if="cellPanelVisible" class="cell-side-panel">
                 <div class="cell-side-panel-header">
                     <div>
@@ -4092,6 +4109,12 @@ defineExpose({ exportJson, importJson });
     height: 100%;
     overflow: auto;
     background-color: #31363f;
+}
+
+.station-layout-empty {
+    flex: 1 1 auto;
+    min-width: 0;
+    background: var(--el-bg-color);
 }
 
 .equipment-side-panel {

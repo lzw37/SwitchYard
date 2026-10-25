@@ -2102,12 +2102,14 @@
         },
         "placeholders": {
             "selectInstance": "请先选择车站",
-            "selectStationScheme": "选择车站方案"
+            "selectStationScheme": "选择车站方案",
+            "createStationScheme": "当前项目暂无车站方案，请先新建车站方案。"
         },
         "schemeManager": {
             "manage": "管理",
             "title": "车站方案管理",
             "add": "新建",
+            "create": "新建车站方案",
             "copy": "复制",
             "copyName": "{name} 副本",
             "pendingSave": "待保存",

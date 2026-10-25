@@ -217,11 +217,13 @@ export const stationLayoutMessages = {
       placeholders: {
         selectInstance: "请先选择车站",
         selectStationScheme: "选择车站方案",
+        createStationScheme: "当前项目暂无车站方案，请先新建车站方案。",
       },
       schemeManager: {
         manage: "管理",
         title: "车站方案管理",
         add: "新建",
+        create: "新建车站方案",
         copy: "复制",
         copyName: "{name} 副本",
         pendingSave: "待保存",
@@ -592,11 +594,13 @@ export const stationLayoutMessages = {
       placeholders: {
         selectInstance: "Please select a station",
         selectStationScheme: "Select station scheme",
+        createStationScheme: "This project has no station schemes. Please create a station scheme first.",
       },
       schemeManager: {
         manage: "Manage",
         title: "Station Scheme Manager",
         add: "New",
+        create: "Create station scheme",
         copy: "Copy",
         copyName: "{name} copy",
         pendingSave: "Unsaved",
