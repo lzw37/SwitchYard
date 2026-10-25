@@ -19,13 +19,10 @@ public sealed class SpeedProfileCalculator
         for (int i = 0; i < speed.Length; i++)
             if (grid.StopNodes[i]) speed[i] = 0;
 
-        if (request.FinalSpeedMps > speed[^1])
-            throw new InfeasibleProfileException("Final speed exceeds the terminal speed limit.");
-        speed[^1] = request.FinalSpeedMps;
+        // Boundary inputs are desired upper bounds; line limits and stops take precedence.
+        speed[^1] = Math.Min(speed[^1], request.FinalSpeedMps);
         ApplyBrakingEnvelope(speed, grid, input, cancellationToken);
-        if (request.InitialSpeedMps > speed[0] + SpeedTolerance(speed[0]))
-            throw new InfeasibleProfileException("Initial speed is too high to satisfy downstream limits and stops.");
-        speed[0] = request.InitialSpeedMps;
+        speed[0] = Math.Min(speed[0], request.InitialSpeedMps);
 
         for (int i = 0; i < speed.Length - 1; i++)
         {
@@ -34,9 +31,6 @@ public sealed class SpeedProfileCalculator
             var section = input.Sections[grid.CellSections[i]];
             speed[i + 1] = ReachableSpeed(speed[i], speed[i + 1], distance, section, input);
         }
-        if (Math.Abs(speed[^1] - request.FinalSpeedMps) > SpeedTolerance(request.FinalSpeedMps))
-            throw new InfeasibleProfileException("Requested final speed cannot be reached. Check traction, route length and boundary speeds.");
-        speed[^1] = request.FinalSpeedMps;
         return CreateResult(speed, grid, input, cancellationToken);
     }
 

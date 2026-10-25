@@ -46,9 +46,20 @@ public sealed record SpeedProfileSignalInput
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record SpeedProfileOptionsInput
 {
+    /// <summary>arrival, departure, through or shunting. Shunting uses the original route with editable desired boundary speeds.</summary>
     [JsonRequired] public string Mode { get; init; } = null!;
+    /// <summary>Desired entry-speed upper bound; the calculated speed may be lower.</summary>
     [JsonRequired] public double InitialSpeedKmh { get; init; }
+    /// <summary>Desired exit-speed upper bound; the calculated speed may be lower.</summary>
     [JsonRequired] public double FinalSpeedKmh { get; init; }
+    /// <summary>User-entered first departure circuit after a departure or through route; 0 keeps legacy scope.</summary>
+    public double DepartureSectionLengthM { get; init; }
+    /// <summary>Optional entry braking reserve for arrival/through runs. Null means automatic; an entered zero is used as zero.</summary>
+    public double? BrakingDistanceM { get; init; }
+    /// <summary>Optional speed limit in the entry braking range; null uses the train maximum.</summary>
+    public double? BrakingMaxSpeedKmh { get; init; }
+    /// <summary>Optional speed limit in the first departure circuit; null uses the train maximum.</summary>
+    public double? DepartureSectionMaxSpeedKmh { get; init; }
     public double StepM { get; init; } = 5;
     public int MaxPointCount { get; init; } = 100_001;
     public IReadOnlyList<SpeedProfileStopInput> Stops { get; init; } = [];
@@ -124,8 +135,9 @@ public sealed record SpeedProfileCellOccupancy : SpeedProfileCellInput
 }
 public sealed record SpeedProfileCalculationResponse
 {
-    /// <summary>Automatic approach before an arrival route; all result positions include this offset.</summary>
+    /// <summary>Effective braking reserve before an arrival or through route; all result positions include this offset.</summary>
     public double ApproachDistanceM { get; init; }
+    public double DepartureSectionLengthM { get; init; }
     public required IReadOnlyList<SpeedProfileSample> Samples { get; init; }
     public required IReadOnlyList<SpeedProfileJointTime> JointTimes { get; init; }
     public required IReadOnlyList<SpeedProfileCellOccupancy> CellOccupancies { get; init; }

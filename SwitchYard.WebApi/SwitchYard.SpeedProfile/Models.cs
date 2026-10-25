@@ -39,7 +39,9 @@ public sealed record SpeedProfileRequest
     public TrainParameters Train { get; init; } = new();
     public IReadOnlyList<TrackSection> Sections { get; init; } = [];
     public IReadOnlyList<TrainStop> Stops { get; init; } = [];
+    /// <summary>Desired entry-speed upper bound; limits, braking and stops may lower the actual speed.</summary>
     public double InitialSpeedMps { get; init; }
+    /// <summary>Desired exit-speed upper bound; limits, traction and stops may lower the actual speed.</summary>
     public double FinalSpeedMps { get; init; }
     public double DistanceStepMeters { get; init; } = 5;
     /// <summary>Upper bound on all output points, including dwell points (2..1,000,001).</summary>

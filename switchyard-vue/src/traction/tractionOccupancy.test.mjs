@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { buildTractionOccupancyUpdates as build, mergeTractionOccupancyTimes as merge } from './tractionOccupancy.ts'
+import { cellTotalOccupancyInterval, defaultSignalParameters, departureSectionCell } from './tractionCalculation.ts'
 
 function fixture() {
     const routes = [
@@ -30,35 +31,164 @@ function fixture() {
 const calculate = f => build(f.routes, f.profile, f.result)
 const row = (cellID, startOccupationShift, endOccupationShift) => ({ cellID, startOccupationShift, endOccupationShift })
 
-test('each route uses separate start and end event references, including negative shifts', () => {
-    const output = calculate(fixture())
+function departureFixture() {
+    const f = fixture()
+    f.result.mode = 'departure'
+    f.result.samples[0].speedKmh = 0
+    return f
+}
+
+test('shunting updates use the original route and end a still-occupied terminal circuit at the stop', () => {
+    const f = fixture(), expected = calculate(f)
+    f.result.mode = 'shunting'
+    assert.deepEqual(calculate(f), expected)
+    f.result.samples.at(-1).speedKmh = 0
+    f.result.cellOccupancies.at(-1).exitTimeS = null
+    f.result.cellOccupancies.at(-1).releaseTimeS = null
+    const updates = calculate(f)
+    assert.deepEqual(updates[0], expected[0])
+    assert.deepEqual(updates[1].times, [row('B', -28, -2), row('C', -28, 0)])
+    assert.deepEqual(updates[1].skippedCellIDs, [])
+    f.result.approachDistanceM = 50
+    assert.throws(() => calculate(f), /braking approach/)
+    f.result.approachDistanceM = 0
+    f.result.departureSectionLengthM = 50
+    assert.throws(() => calculate(f), /departure section/)
+})
+
+for (const mode of ['arrival','departure','through','shunting']) test(`${mode} reserves all cells beneath the stopped train until one terminal arrival across route references`, () => {
+    const f=fixture()
+    Object.assign(f.result,{mode,approachDistanceM:0,trainLengthM:120})
+    f.result.samples.at(-1).speedKmh=0
+    f.result.samples.push({...f.result.samples.at(-1),timeS:98})
+    f.result.cellOccupancies.slice(1).forEach(cell=>{cell.exitTimeS=null;cell.releaseTimeS=null})
+    const before=structuredClone(f),updates=calculate(f)
+    assert.deepEqual(updates.map(update=>update.skippedCellIDs),[[],[]])
+    assert.deepEqual(updates[0].times,[row('A',-18,-3),row('B',-18,10)])
+    assert.deepEqual(updates[1].times,[row('B',-28,0),row('C',-28,0)])
+    for (const update of updates) for (const time of update.times.filter(time=>time.cellID!=='A')) {
+        const cell=f.result.cellOccupancies.find(cell=>cell.id===`${time.cellID}@1`)
+        assert.equal(update.endTimeS+time.endOccupationShift,38)
+        assert.equal(cellTotalOccupancyInterval(f.result,cell,defaultSignalParameters()).endTimeS,38)
+    }
+    assert.deepEqual(f,before)
+})
+
+test('a stop in the appended departure circuit ends any still-occupied station circuits at that later stop', () => {
+    const f=departureFixture(),extension=departureSectionCell(f.profile,100)
+    Object.assign(f.result,{lengthM:300,departureSectionLengthM:100,trainLengthM:150})
+    f.result.samples.push({positionM:300,timeS:58,speedKmh:0,limitKmh:60})
+    f.result.samples.push({...f.result.samples.at(-1),timeS:118})
+    Object.assign(f.result.cellOccupancies[2],{exitTimeS:null,releaseTimeS:null})
+    f.result.cellOccupancies.push({...extension,entryTimeS:38,exitTimeS:null,releaseTimeS:null})
+    const updates=calculate(f)
+    assert.deepEqual(updates[1].times.at(-1),row('C',-28,20))
+    assert.equal(updates[1].endTimeS+updates[1].times.at(-1).endOccupationShift,58)
+    assert.equal(cellTotalOccupancyInterval(f.result,f.result.cellOccupancies.at(-1),defaultSignalParameters()).endTimeS,58)
+    assert.ok(updates.every(update=>update.times.every(time=>time.cellID!==extension.id)))
+})
+
+test('appended first departure circuit is validated while original station occupancy updates remain usable', () => {
+    const f = departureFixture(), original = calculate(f), cell = departureSectionCell(f.profile, 100)
+    Object.assign(f.result, { lengthM: 300, departureSectionLengthM: 100 })
+    f.result.samples.push({ positionM: 300, timeS: 48, speedKmh: 36, limitKmh: 80 })
+    f.result.cellOccupancies.push({ ...cell, entryTimeS: 38, exitTimeS: 49, releaseTimeS: 54 })
+    assert.deepEqual(calculate(f), original, 'a calculation-only circuit must not become an invented station CellID parameter')
+    f.result.cellOccupancies.at(-1).endM++
+    assert.throws(() => calculate(f), /cell scope/)
+    f.result.cellOccupancies.at(-1).endM--
+    f.result.mode = 'arrival'
+    assert.throws(() => calculate(f), /departure section/)
+})
+
+test('through occupancy updates keep station route references when both approach and departure sections are added', () => {
+    const f = fixture(), original = calculate(f), approach = 50, departureLength = 100
+    const cell = departureSectionCell(f.profile, departureLength)
+    Object.assign(f.result, { lengthM: 350, approachDistanceM: approach, departureSectionLengthM: departureLength })
+    f.result.samples = [
+        { positionM: 0, timeS: 18, speedKmh: 36, limitKmh: 80 },
+        ...f.result.samples.map(s => ({ ...s, positionM: s.positionM + approach, timeS: s.timeS + 5 })),
+        { positionM: 350, timeS: 53, speedKmh: 36, limitKmh: 80 },
+    ]
+    f.result.cellOccupancies = [...f.result.cellOccupancies, { ...cell, entryTimeS: 38, exitTimeS: 49, releaseTimeS: 54 }]
+        .map(c => ({ ...c, startM: c.startM + approach, endM: c.endM + approach,
+            entryTimeS: c.entryTimeS + 5, exitTimeS: c.exitTimeS + 5, releaseTimeS: c.releaseTimeS + 5 }))
+    const updates = calculate(f)
+    assert.deepEqual(updates, original.map(update => ({ ...update, startTimeS: update.startTimeS + 5, endTimeS: update.endTimeS + 5,
+        times: update.times.map(time => ({ ...time, startOccupationShift: time.startOccupationShift - 5 })) })))
+    const total = cellTotalOccupancyInterval(f.result, f.result.cellOccupancies.at(-1), defaultSignalParameters())
+    assert.equal(total.startTimeS, 0)
+    assert.equal(total.durationS, 59, 'the added circuit shares the braking-range approach and route-setting origin')
+})
+
+test('through routes reserve from setting using separate start and end event references', () => {
+    const f = fixture(), before = structuredClone(f), output = calculate(f)
     assert.deepEqual(output, [
-        { routeID: 'R1', startTimeS: 18, endTimeS: 28, times: [row('A', 0, -3), row('B', 5, 8)], skippedCellIDs: [] },
-        { routeID: 'R2', startTimeS: 28, endTimeS: 38, times: [row('B', -5, -2), row('C', 5, 7)], skippedCellIDs: [] },
+        { routeID: 'R1', startTimeS: 18, endTimeS: 28, times: [row('A', -18, -3), row('B', -18, 8)], skippedCellIDs: [] },
+        { routeID: 'R2', startTimeS: 28, endTimeS: 38, times: [row('B', -28, -2), row('C', -28, 7)], skippedCellIDs: [] },
     ])
-    // Different reference events mean a start shift may exceed an end shift.
-    assert.ok(output[0].times[0].startOccupationShift > output[0].times[0].endOccupationShift)
+    for (const update of output) {
+        for (const time of update.times) {
+            assert.equal(update.startTimeS + time.startOccupationShift, 0)
+            const occupancy = f.result.cellOccupancies.find(cell => cell.id === `${time.cellID}@1`)
+            assert.equal(update.endTimeS + time.endOccupationShift, occupancy.releaseTimeS)
+            const chart = cellTotalOccupancyInterval(f.result, occupancy, defaultSignalParameters())
+            assert.equal(update.startTimeS + time.startOccupationShift, chart.startTimeS)
+            assert.equal(update.endTimeS + time.endOccupationShift, chart.endTimeS)
+        }
+    }
+    assert.deepEqual(f, before, 'preview and conversion preserve the saved physical events')
+})
+
+test('through reservation with zero preparation still starts at route setting', () => {
+    const f = fixture()
+    f.result.motionStartS = 0
+    f.result.samples.forEach(sample => { sample.timeS -= 18 })
+    f.result.cellOccupancies.forEach(cell => {
+        cell.entryTimeS -= 18; cell.exitTimeS -= 18; cell.releaseTimeS -= 18
+    })
+    assert.deepEqual(calculate(f)[0].times, [row('A', 0, -3), row('B', 0, 8)])
+})
+
+test('through can reserve an entrance-clipped circuit and end an occupied circuit at the terminal stop', () => {
+    const f = fixture()
+    f.profile.cells[0].entryBoundaryKnown = false
+    Object.assign(f.result.cellOccupancies[0], { entryBoundaryKnown: false, entryTimeS: null })
+    f.result.samples.at(-1).speedKmh = 0
+    Object.assign(f.result.cellOccupancies[2], { exitTimeS: null, releaseTimeS: null })
+    const output = calculate(f)
+    assert.deepEqual(output[0].times, [row('A', -18, -3), row('B', -18, 8)])
+    assert.deepEqual(output[1].skippedCellIDs, [])
+    assert.deepEqual(merge([row('B', 0, 0), row('C', 5, 7)], output[1]), [row('B', -28, -2), row('C', -28, 0)])
 })
 
 test('start rounds down and release rounds up, including negative fractional seconds', () => {
     const f = fixture()
-    Object.assign(f.result.cellOccupancies[1], { entryTimeS: 22.2, releaseTimeS: 36.2 })
+    f.result.motionStartS += .25
+    f.result.samples.forEach(sample => { sample.timeS += .25 })
+    f.result.cellOccupancies.forEach(cell => {
+        cell.entryTimeS += .25; cell.exitTimeS += .25; cell.releaseTimeS += .25
+    })
+    f.result.cellOccupancies[1].releaseTimeS = 36.5
     const output = calculate(f)
-    assert.deepEqual(output[0].times[1], row('B', 4, 9))
-    assert.deepEqual(output[1].times[0], row('B', -6, -1))
+    assert.deepEqual(output[0].times[1], row('B', -19, 9))
+    assert.deepEqual(output[1].times[0], row('B', -29, -1))
 })
 
-test('setup/reaction origin delay cancels while clearance remains', () => {
-    const f = fixture(), expected = calculate(f).map(value => value.times)
+test('through reservation includes setup and reaction instead of cancelling their delay', () => {
+    const f = fixture()
     f.result.motionStartS += 12
     f.result.samples.forEach(sample => { sample.timeS += 12 })
     f.result.cellOccupancies.forEach(cell => {
         cell.entryTimeS += 12; cell.exitTimeS += 12; cell.releaseTimeS += 12
     })
-    assert.deepEqual(calculate(f).map(value => value.times), expected)
+    assert.deepEqual(calculate(f).map(value => value.times), [
+        [row('A', -30, -3), row('B', -30, 8)],
+        [row('B', -40, -2), row('C', -40, 7)],
+    ])
 })
 
-test('a stop shared by consecutive routes uses first arrival and last departure', () => {
+test('through route boundaries use first arrival like arrival mode, including shared dwell', () => {
     const f = fixture()
     f.result.samples[1].speedKmh = 0
     f.result.samples.splice(2, 0, { positionM: 100, timeS: 58, speedKmh: 0, limitKmh: 80 })
@@ -67,9 +197,12 @@ test('a stop shared by consecutive routes uses first arrival and last departure'
     Object.assign(f.result.cellOccupancies[2], { entryTimeS: 63, exitTimeS: 74, releaseTimeS: 75 })
     const [arrival, departure] = calculate(f)
     assert.equal(arrival.endTimeS, 28)
-    assert.equal(departure.startTimeS, 58)
+    assert.equal(departure.startTimeS, 28)
     assert.equal(departure.endTimeS, 68)
-    assert.deepEqual(departure.times, [row('B', -35, -2), row('C', 5, 7)])
+    assert.deepEqual(departure.times, [row('B', -28, -2), row('C', -28, 7)])
+    const expected = calculate(f)
+    f.result.mode = 'arrival'
+    assert.deepEqual(calculate(f), expected, 'through and arrival use the same reference events')
 })
 
 test('interpolates a route boundary inside a constant-acceleration sample interval', () => {
@@ -85,7 +218,7 @@ test('uses accumulated profile segment count even when persisted links have anot
     const [output] = calculate(f)
     assert.equal(output.startTimeS, 18)
     assert.equal(output.endTimeS, 38)
-    assert.deepEqual(output.times, [row('A', 0, -13), row('B', 5, -2), row('C', 15, 7)])
+    assert.deepEqual(output.times, [row('A', -18, -13), row('B', -18, -2), row('C', -18, 7)])
 })
 
 test('source IDs containing @ are matched only through the known CellList', () => {
@@ -94,7 +227,7 @@ test('source IDs containing @ are matched only through the known CellList', () =
     f.profile.cells[0].id = 'A@7@1'
     f.result.cellOccupancies[0].id = 'A@7@1'
     f.result.cellOccupancies[0].label = 'B'
-    assert.deepEqual(calculate(f)[0].times[0], row('A@7', 0, -3))
+    assert.deepEqual(calculate(f)[0].times[0], row('A@7', -18, -3))
 })
 
 test('an arbitrary result suffix or matching label is not treated as a source CellID', () => {
@@ -109,14 +242,14 @@ test('only positive position overlap contributes to a route', () => {
     const output = calculate(f)
     assert.deepEqual(output[0].skippedCellIDs, [])
     assert.deepEqual(output[1].skippedCellIDs, ['B'])
-    assert.deepEqual(output[1].times, [row('C', 5, 7)])
+    assert.deepEqual(output[1].times, [row('C', -28, 7)])
 })
 
-test('repeated Cell occurrences use the earliest entry and latest release envelope', () => {
+test('repeated Cell occurrences reserve from setting to their latest release', () => {
     const f = fixture()
     f.profile.cells.push({ id: 'A@2', label: 'Again', startM: 70, endM: 90 })
     f.result.cellOccupancies.push({ ...f.profile.cells[3], entryTimeS: 25, exitTimeS: 30, releaseTimeS: 31 })
-    assert.deepEqual(calculate(f)[0].times[0], row('A', 0, 3))
+    assert.deepEqual(calculate(f)[0].times[0], row('A', -18, 3))
 })
 
 test('one unknown repeated occurrence prevents updating the whole Cell', () => {
@@ -125,7 +258,7 @@ test('one unknown repeated occurrence prevents updating the whole Cell', () => {
     f.result.cellOccupancies.push({ ...f.profile.cells[3], entryTimeS: 25, exitTimeS: null, releaseTimeS: null })
     const output = calculate(f)[0]
     assert.deepEqual(output.skippedCellIDs, ['A'])
-    assert.deepEqual(output.times, [row('B', 5, 8)])
+    assert.deepEqual(output.times, [row('B', -18, 8)])
 })
 
 test('unknown profile or server boundaries and stopped tails in other modes are preserved', () => {
@@ -176,6 +309,7 @@ test('invalid routes, stale profile or unexpected result geometry are rejected',
         f => { f.result.samples[1].timeS = 15 },
         f => { f.result.samples[1].speedKmh = -1 },
         f => { f.result.motionStartS = 19 },
+        f => { f.result.mode = 'invalid' },
         f => { f.result.cellOccupancies[0].startM = 1 },
         f => { f.result.cellOccupancies.push({ ...f.result.cellOccupancies[0] }) },
     ]
@@ -190,9 +324,9 @@ test('replacement merge preserves unknown and indirect rows, and does not mutate
     const update = calculate(f)[0]
     const existing = [row('A', -70, 80), row('B', 0, 0), row('interference', null, 90)]
     const snapshot = structuredClone(existing)
-    assert.deepEqual(merge(existing, update), [row('A', -70, 80), row('B', 5, 8), row('interference', null, 90)])
+    assert.deepEqual(merge(existing, update), [row('A', -70, 80), row('B', -18, 8), row('interference', null, 90)])
     assert.deepEqual(existing, snapshot)
-    assert.deepEqual(merge([], update), [row('B', 5, 8)])
+    assert.deepEqual(merge([], update), [row('B', -18, 8)])
 })
 
 test('merge accepts PascalCase responses and appends newly known cells', () => {
@@ -227,9 +361,103 @@ test('backend synthesized rows may omit route scope with null or empty values', 
 })
 
 
-test('arrival reservation starts at route setting and uses station entry and route end references', () => {
+test('departure reserves every circuit from route setting while retaining separate movement references', () => {
+    const f = departureFixture(), before = structuredClone(f)
+    const output = calculate(f)
+    assert.deepEqual(output, [
+        { routeID: 'R1', startTimeS: 18, endTimeS: 28, times: [row('A', -18, -3), row('B', -18, 8)], skippedCellIDs: [] },
+        { routeID: 'R2', startTimeS: 28, endTimeS: 38, times: [row('B', -28, -2), row('C', -28, 7)], skippedCellIDs: [] },
+    ])
+    for (const update of output) {
+        assert.equal(update.endTimeS - update.startTimeS, 10, 'operation time keeps its existing movement basis')
+        for (const time of update.times) {
+            const occupancy = f.result.cellOccupancies.find(cell => cell.id === `${time.cellID}@1`)
+            assert.equal(update.startTimeS + time.startOccupationShift, 0)
+            assert.equal(update.endTimeS + time.endOccupationShift, occupancy.releaseTimeS)
+        }
+    }
+    assert.deepEqual(f, before, 'updating parameters must not alter saved physical entry or release events')
+})
+
+test('departure includes additional setup and reaction time instead of cancelling that delay', () => {
+    const f = departureFixture()
+    f.result.motionStartS += 12
+    f.result.samples.forEach(sample => { sample.timeS += 12 })
+    f.result.cellOccupancies.forEach(cell => {
+        cell.entryTimeS += 12; cell.exitTimeS += 12; cell.releaseTimeS += 12
+    })
+    const output = calculate(f)
+    assert.deepEqual(output.map(update => update.times), [
+        [row('A', -30, -3), row('B', -30, 8)],
+        [row('B', -40, -2), row('C', -40, 7)],
+    ])
+})
+
+test('departure reservation rounds starts down and released ends up using each route reference', () => {
+    const f = departureFixture()
+    f.result.motionStartS += .25
+    f.result.samples.forEach(sample => { sample.timeS += .25 })
+    f.result.cellOccupancies.forEach(cell => {
+        cell.entryTimeS += .25; cell.exitTimeS += .25; cell.releaseTimeS += .25
+    })
+    f.result.cellOccupancies[1].releaseTimeS = 36.5
+    assert.deepEqual(calculate(f).map(update => update.times), [
+        [row('A', -19, -3), row('B', -19, 9)],
+        [row('B', -29, -1), row('C', -29, 7)],
+    ])
+})
+
+test('departure can reserve an entrance-clipped circuit when clearance and release are known', () => {
+    const f = departureFixture()
+    f.profile.cells[0].entryBoundaryKnown = false
+    Object.assign(f.result.cellOccupancies[0], { entryBoundaryKnown: false, entryTimeS: null })
+    const update = calculate(f)[0]
+    assert.deepEqual(update.times, [row('A', -18, -3), row('B', -18, 8)])
+    assert.deepEqual(update.skippedCellIDs, [])
+    assert.deepEqual(merge([row('A', 0, 0), row('B', 5, 8), row('indirect', -5, 9)], update),
+        [row('A', -18, -3), row('B', -18, 8), row('indirect', -5, 9)])
+})
+
+test('departure repeated circuit occurrences reserve from setting through their latest release', () => {
+    const f = departureFixture()
+    f.profile.cells.push({ id: 'A@2', label: 'Again', startM: 70, endM: 90 })
+    f.result.cellOccupancies.push({ ...f.profile.cells.at(-1), entryTimeS: 25, exitTimeS: 30, releaseTimeS: 31 })
+    assert.deepEqual(calculate(f)[0].times[0], row('A', -18, 3))
+    f.result.cellOccupancies.at(-1).releaseTimeS = null
+    assert.deepEqual(calculate(f)[0].skippedCellIDs, ['A'])
+})
+
+test('departure keeps existing parameters for missing, malformed or unknown clearance and release events', () => {
+    const mutations = [
+        f => { f.result.cellOccupancies.shift() },
+        f => { f.result.cellOccupancies[0].entryTimeS = null },
+        f => { f.result.cellOccupancies[0].entryTimeS = 999 },
+        f => { f.result.cellOccupancies[0].exitTimeS = null },
+        f => { f.result.cellOccupancies[0].releaseTimeS = null },
+        f => { f.result.cellOccupancies[0].exitTimeS = NaN },
+        f => { f.result.cellOccupancies[0].releaseTimeS = Infinity },
+        f => { f.result.cellOccupancies[0].exitTimeS = 17 },
+        f => { f.result.cellOccupancies[0].releaseTimeS = 23 },
+        f => { f.profile.cells[0].exitBoundaryKnown = false },
+        f => { f.result.cellOccupancies[0].exitBoundaryKnown = false },
+    ]
+    const existing = [row('A', -77, 88), row('B', 0, 0), row('indirect', -5, 9)]
+    for (const mutation of mutations) {
+        const f = departureFixture(); mutation(f)
+        const update = calculate(f)[0]
+        assert.deepEqual(update.skippedCellIDs, ['A'])
+        assert.deepEqual(merge(existing, update), [row('A', -77, 88), row('B', -18, 8), row('indirect', -5, 9)])
+    }
+    const f = departureFixture()
+    f.result.samples.at(-1).speedKmh = 0
+    Object.assign(f.result.cellOccupancies[2], { exitTimeS: null, releaseTimeS: null })
+    assert.deepEqual(calculate(f)[1].skippedCellIDs, [], 'departure uses the same terminal-stop occupation-end convention')
+    assert.deepEqual(calculate(f)[1].times.at(-1), row('C', -28, 0))
+})
+
+for (const mode of ['arrival', 'through']) test(`${mode} braking reservation starts at route setting and uses station entry and route end references`, () => {
     const f = fixture()
-    f.result.mode = 'arrival'
+    f.result.mode = mode
     f.result.approachDistanceM = 1250
     f.result.lengthM += 1250
     f.result.totalTimeS += 100
@@ -249,6 +477,17 @@ test('arrival reservation starts at route setting and uses station entry and rou
     assert.equal(actual[0].startTimeS, 118)
     assert.equal(actual[0].endTimeS, 128)
     assert.equal(actual[1].endTimeS, 138)
+    if (mode === 'through') {
+        for (const update of actual) for (const time of update.times) {
+            const cell = f.result.cellOccupancies.find(cell => cell.id === `${time.cellID}@1`)
+            const chart = cellTotalOccupancyInterval(f.result, cell, defaultSignalParameters())
+            assert.equal(update.startTimeS + time.startOccupationShift, chart.startTimeS)
+            assert.equal(update.endTimeS + time.endOccupationShift, chart.endTimeS)
+        }
+        f.result.mode = 'departure'
+        assert.throws(() => calculate(f), /approach/)
+        f.result.mode = mode
+    }
     f.result.approachDistanceM = 0
     assert.throws(() => calculate(f), /scope/)
 })

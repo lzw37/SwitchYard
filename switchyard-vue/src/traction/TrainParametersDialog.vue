@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { generateBrakingCurve, generateResistanceCurve, rotatingMassCoefficientFromFactor, rotatingMassFactorFromCoefficient, type ForcePoint, type TrainParameters } from './tractionCalculation'
 import { cloneTrainPresetCatalog, cloneTrainParameters, validateTrainPresetCatalog, type TrainPreset, type TrainPresetCatalog } from './trainPresets'
 
-const props = defineProps<{ modelValue: boolean; catalog: TrainPresetCatalog; saving?: boolean }>()
+const props = defineProps<{ modelValue: boolean; catalog: TrainPresetCatalog; saving?: boolean; error?: string }>()
 const emit = defineEmits<{
     'update:modelValue': [value: boolean]
     save: [value: TrainPresetCatalog]
@@ -80,7 +80,7 @@ const validationMessage = computed(() => {
     if (!code) return ''
     if (code === 'duplicate-preset-name') return ui('列车参数名称不能重复。', 'Train parameter names must be unique.')
     if (code === 'invalid-preset-name') return ui('列车参数名称须为 1–80 个字符。', 'Train parameter names must contain 1–80 characters.')
-    if (code === 'invalid-preset-count') return ui('须保留 1–100 组列车参数。', 'Keep 1–100 train parameter presets.')
+    if (code === 'invalid-preset-count') return ui('须保留 1–1000 组列车参数。', 'Keep 1–1000 train parameter presets.')
     if (code === 'invalid-selected-preset') return ui('请选择一组列车参数。', 'Select a train parameter preset.')
     return ui('列车参数数据无效，请检查预设。', 'Invalid train parameter data. Check the presets.')
 })
@@ -122,7 +122,7 @@ const canGenerate = computed(() => {
         && finiteRange(train.resistanceA + train.resistanceB * train.maxSpeedKmh + train.resistanceC * train.maxSpeedKmh ** 2, 0, 10000000)
 })
 function addPreset() {
-    if (!current.value || draft.value.presets.length >= 100) return
+    if (!current.value || draft.value.presets.length >= 1000) return
     let suffix = 1
     let name = ui('新建列车参数', 'New train parameters')
     while (draft.value.presets.some(preset => preset.name.trim().toLowerCase() === name.toLowerCase() || preset.nameEn?.trim().toLowerCase() === name.toLowerCase())) {
@@ -149,14 +149,16 @@ function save() {
 </script>
 
 <template>
-    <el-dialog :model-value="modelValue" :title="ui('维护列车参数', 'Maintain train parameters')"
+    <el-dialog :model-value="modelValue" :title="ui('项目列车参数', 'Project train parameters')"
         class="train-parameters-dialog" width="min(1080px, 96vw)" top="4vh" append-to-body destroy-on-close :close-on-click-modal="!saving" :close-on-press-escape="!saving" :show-close="!saving"
         @update:model-value="emit('update:modelValue', $event)">
+        <p class="project-train-hint">{{ ui('整个项目共用此列车参数库；修改参数后，使用该列车的结果将标记为待计算。', 'This project shares one train library. Results using changed train parameters become pending.') }}</p>
+        <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
         <div class="train-parameters-content" :inert="saving">
             <aside class="preset-sidebar">
                 <div class="preset-toolbar">
-                    <span>{{ ui('预设', 'Presets') }} {{ draft.presets.length }}/100</span>
-                    <div><el-button size="small" :disabled="draft.presets.length >= 100 || !current" @click="addPreset">{{ ui('新增', 'Add') }}</el-button><el-button size="small" type="danger" plain :disabled="draft.presets.length <= 1" @click="removePreset">{{ ui('删除', 'Delete') }}</el-button></div>
+                    <span>{{ ui('预设', 'Presets') }} {{ draft.presets.length }}/1000</span>
+                    <div><el-button size="small" :disabled="draft.presets.length >= 1000 || !current" @click="addPreset">{{ ui('新增', 'Add') }}</el-button><el-button size="small" type="danger" plain :disabled="draft.presets.length <= 1" @click="removePreset">{{ ui('删除', 'Delete') }}</el-button></div>
                 </div>
                 <div class="preset-list" :aria-label="ui('列车参数预设', 'Train parameter presets')">
                     <button v-for="preset in draft.presets" :key="preset.id" type="button" class="preset-item"
@@ -206,11 +208,12 @@ function save() {
             </section>
         </div>
         <el-alert v-if="validationMessage" :title="validationMessage" type="error" show-icon :closable="false" class="preset-validation" role="alert" />
-        <template #footer><el-button :disabled="saving" @click="emit('update:modelValue', false)">{{ ui('取消', 'Cancel') }}</el-button><el-button type="primary" :disabled="!!validationMessage" :loading="saving" @click="save">{{ ui('保存', 'Save') }}</el-button></template>
+        <template #footer><el-button :disabled="saving" @click="emit('update:modelValue', false)">{{ ui('取消', 'Cancel') }}</el-button><el-button type="primary" :disabled="!!validationMessage" :loading="saving" @click="save">{{ ui('保存到项目', 'Save to project') }}</el-button></template>
     </el-dialog>
 </template>
 
 <style scoped>
+.project-train-hint { margin:0 0 14px; color:var(--el-text-color-secondary); font-size:13px; line-height:1.6; }
 :global(.train-parameters-dialog) { display: flex; flex-direction: column; max-height: 92dvh; }
 :global(.train-parameters-dialog .el-dialog__body) { min-height: 0; overflow: auto; }
 .train-parameters-content { display: grid; grid-template-columns: 225px minmax(0, 1fr); gap: 22px; max-height: calc(92dvh - 170px); overflow: auto; }

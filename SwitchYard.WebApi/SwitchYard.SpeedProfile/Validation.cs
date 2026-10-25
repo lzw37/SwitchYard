@@ -93,9 +93,6 @@ internal static class Validation
         for (int i = 1; i < stops.Length; i++)
             if (stops[i].PositionMeters == stops[i - 1].PositionMeters)
                 throw new ArgumentException("Stop positions must be unique.");
-        if ((stops.Length > 0 && stops[0].PositionMeters == 0 && request.InitialSpeedMps != 0) ||
-            (stops.Length > 0 && stops[^1].PositionMeters == distance && request.FinalSpeedMps != 0))
-            throw new InfeasibleProfileException("A boundary stop requires zero boundary speed.");
         return new(train, curve, resistance, netTraction, netBraking, sections, stops, distance, mass);
     }
 

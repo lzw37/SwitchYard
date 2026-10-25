@@ -18,6 +18,7 @@ public static class TractionSchemaMigration
 
     public static void Ensure(DBConnector db)
     {
+        TractionProjectTrainSchema.Ensure(db);
         var mysql = DBConnector.IsMySql(DBConnector.CapacityDatabaseSectionName);
         var number = mysql ? "DOUBLE" : "REAL";
         var integer = mysql ? "BIGINT" : "INTEGER";
@@ -26,7 +27,7 @@ public static class TractionSchemaMigration
         var suffix = mysql ? " ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin" : "";
         string Train(string prefix) => string.Join(",", new[] { "LengthM", "MassT", "RotatingMassFactor", "MaxSpeedKmh", "MaxBrakeForceKn", "ResistanceA", "ResistanceB", "ResistanceC" }.Select(name => $"{prefix}{name} {number} NOT NULL"));
         string Signal(string prefix) => string.Join(",", new[] { "RouteSettingS", "ReactionS", "ClearanceS" }.Select(name => $"{prefix}{name} {number} NOT NULL"));
-        string Options(string prefix) => $"{prefix}Mode {Text(20)} NOT NULL,{prefix}InitialSpeedKmh {number} NOT NULL,{prefix}FinalSpeedKmh {number} NOT NULL,{prefix}StepM {number} NOT NULL,{prefix}MaxPointCount INTEGER NOT NULL";
+        string Options(string prefix) => $"{prefix}Mode {Text(20)} NOT NULL,{prefix}InitialSpeedKmh {number} NOT NULL,{prefix}FinalSpeedKmh {number} NOT NULL,{prefix}StepM {number} NOT NULL,{prefix}MaxPointCount INTEGER NOT NULL,{prefix}DepartureSectionLengthM {number} NOT NULL DEFAULT 0,{prefix}BrakingDistanceM {number} NULL,{prefix}BrakingMaxSpeedKmh {number} NULL,{prefix}DepartureSectionMaxSpeedKmh {number} NULL";
         void Create(string table, string columns, string key, string? parent = null, string parentKey = "InstanceID,StationSchemeID,CalculationSetID")
         {
             var foreignKey = parent is null ? "" : $", FOREIGN KEY ({parentKey}) REFERENCES {parent}({parentKey}) ON DELETE CASCADE";
@@ -63,10 +64,26 @@ public static class TractionSchemaMigration
         Index(db, mysql, "ix_tractionsetworkspaceoverride_route", "tractionsetworkspaceoverride", "InstanceID,StationSchemeID,CalculationSetID,RouteID");
         Index(db, mysql, "ix_tractionsetworkspaceoverride_continuation", "tractionsetworkspaceoverride", "InstanceID,StationSchemeID,CalculationSetID,ContinuationID");
         Index(db, mysql, "ix_tractionsetcalculation_route", "tractionsetcalculation", "InstanceID,StationSchemeID,CalculationSetID,SelectedRouteID");
+        EnsureRunOptionColumns(db, "tractionset");
         MigrateLegacy(db, mysql);
         TractionCharacteristicMigration.Ensure(db, "tractionset");
         TractionRouteSchemaMigration.Ensure(db);
     }
+    internal static void EnsureRunOptionColumns(DBConnector db, string prefix)
+    {
+        if (prefix is not ("tractionset" or "tractionroute")) throw new ArgumentException("Invalid table scope.");
+        var mysql = DBConnector.IsMySql(DBConnector.CapacityDatabaseSectionName);
+        foreach (var (suffix, optionPrefix) in new[] { ("workspace", "Run"), ("calculation", "Input") }) {
+            var table = prefix + suffix;
+            var columns = Columns(db, mysql, table);
+            foreach (var (option, definition) in new[] { ("DepartureSectionLengthM", "NOT NULL DEFAULT 0"), ("BrakingDistanceM", "NULL"), ("BrakingMaxSpeedKmh", "NULL"), ("DepartureSectionMaxSpeedKmh", "NULL") }) {
+                var column = optionPrefix + option;
+                if (!columns.Contains(column, StringComparer.OrdinalIgnoreCase))
+                    db.ExecuteNonQuery($"ALTER TABLE {table} ADD COLUMN {column} {(mysql ? "DOUBLE" : "REAL")} {definition}");
+            }
+        }
+    }
+
     private static void MigrateLegacy(DBConnector db, bool mysql)
     {
         if (!Exists(db, mysql, "tractionworkspace")) return;

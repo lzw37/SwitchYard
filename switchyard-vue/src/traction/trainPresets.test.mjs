@@ -86,11 +86,11 @@ test('single remaining user preset is valid, including absent English translatio
 test('catalog rejects missing structure, unsupported versions and zero or excessive presets', () => {
     for (const value of [null, undefined, false, 1, '', []]) assert.equal(validate(value), 'invalid-catalog')
     for (const version of [undefined, null, '1', 0, 2]) assert.equal(validate({ ...onePreset(), version }), 'invalid-version')
-    for (const presets of [undefined, null, {}, [], Array(101).fill(onePreset().presets[0])]) {
+    for (const presets of [undefined, null, {}, [], Array(1001).fill(onePreset().presets[0])]) {
         assert.equal(validate({ ...onePreset(), presets }), 'invalid-preset-count')
     }
     const catalog = onePreset()
-    catalog.presets = Array.from({ length: 100 }, (_, index) => ({
+    catalog.presets = Array.from({ length: 1000 }, (_, index) => ({
         id: `id-${index}`, name: `预设 ${index}`, parameters: defaultTrainParameters(),
     }))
     catalog.selectedId = 'id-99'

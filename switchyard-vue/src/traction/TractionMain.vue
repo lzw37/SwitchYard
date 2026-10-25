@@ -11,10 +11,13 @@ import { useCalculationParameterSets } from '@/capacity/calculationParameterSets
 import { buildTractionOccupancyUpdates, mergeTractionOccupancyTimes } from './tractionOccupancy'
 import { switchyardStationLayoutGateway as gateway } from '@/capacity/switchyardStationLayoutGateway'
 import TractionCharts from './TractionCharts.vue'
-import { withArrivalApproach, rotatingMassCoefficientFromFactor } from './tractionCalculation'
+import { withBrakingApproach, withDepartureSection, extensionSpeedLimits, tractionModeForRoute, rotatingMassCoefficientFromFactor, summarizeTractionResult, formatTractionDuration, cellTerminalStopTime, cellOccupancyEndTime } from './tractionCalculation'
 import TrainParametersDialog from './TrainParametersDialog.vue'
 import TractionSetsDialog from './TractionSetsDialog.vue'
 import TractionRouteResultsDialog from './TractionRouteResultsDialog.vue'
+import type { TractionBatchContext, TractionBatchReport } from './tractionBatch'
+import { loadProjectTrains, saveProjectTrains, useProjectTrains, type ProjectTrains } from './projectTrains'
+import { prepareTractionParameterTransfers, writeTractionParameterTransfers, type TractionParameterTransferReport } from './tractionParameterTransfer'
 import { createDefaultTrainPresetCatalog, cloneTrainParameters, cloneTrainPresetCatalog, parseTrainPresetCatalog, validateTrainPresetCatalog, type TrainPreset, type TrainPresetCatalog } from './trainPresets'
 import LineParametersDialog from './LineParametersDialog.vue'
 import { buildRouteProfile, type TractionStationRoute } from './routeProfile'
@@ -38,6 +41,8 @@ const switchingSet = ref(false)
 const routeCases = ref<TractionRouteCase[]>([])
 const selectedCaseId = ref('')
 const routeResultsVisible = ref(false)
+const batchBusy = ref(false)
+const batchScopeKey = computed(() => JSON.stringify([props.selectedInstanceId, schemeId.value, selectedSetId.value, props.active]))
 const routeBusy = ref(false)
 const routeError = ref('')
 const setScope = () => ({ ...stationScope(), calculationSetID: selectedSetId.value })
@@ -65,6 +70,8 @@ let schemeVersion = 0
 let dataVersion = 0
 const train = reactive(defaultTrainParameters())
 const trainCatalog = ref<TrainPresetCatalog>(createDefaultTrainPresetCatalog())
+const projectTrains = shallowRef<ProjectTrains | null>(null)
+const trainSaveError = ref('')
 const trainPresetLabel = (preset: TrainPreset) => locale.value.startsWith('zh') ? preset.name : preset.nameEn || preset.name
 const signal = reactive(defaultSignalParameters())
 const run = reactive<TractionRunOptions>(defaultRunOptions())
@@ -138,21 +145,39 @@ const diagnostic = (code: string) => {
 interface CalculationFailure { code: string; message: string; details: string[]; network: boolean; status?: number }
 const calculation = shallowRef<StoredTractionCalculation | null>(null)
 const result = computed(() => calculation.value?.result ?? null)
+const reducedSpeedMessages = computed(() => (result.value?.warnings ?? [])
+    .filter(code => code === 'initial-speed-reduced').map(diagnostic))
 const resultProfile = computed(() => calculation.value?.request.profile ?? null)
-const approachDistanceM = computed(() => result.value && resultProfile.value
-    ? Math.max(0, result.value.lengthM - resultProfile.value.lengthM) : 0)
+const runSummary = computed(() => calculation.value ? summarizeTractionResult(calculation.value.result,
+    calculation.value.request.profile, calculation.value.request.signal) : null)
+const approachDistanceM = computed(() => runSummary.value?.brakingDistanceM ?? 0)
+const occupancySummaryTitle = computed(() => {
+    const summary = runSummary.value
+    if (!summary) return undefined
+    if (!summary.longestOccupancy) return ui('暂无可确定总占用时间的区段', 'No circuit has a known total occupancy time')
+    const { cell, durationS } = summary.longestOccupancy
+    return `${cell.label} · ${durationS.toFixed(1)} s` + (summary.unknownOccupancyCount
+        ? ui('（仅统计时刻完整的区段）', ' (circuits with complete timing only)') : '')
+})
+const chartExtensionSpeeds = computed(() => extensionSpeedLimits(calculation.value?.request.train ?? train,
+    calculation.value?.request.options ?? run))
+const chartDepartureDistanceM = computed(() => calculation.value ? result.value?.departureSectionLengthM ?? 0
+    : run.mode === 'departure' || run.mode === 'through' ? run.departureSectionLengthM ?? 0 : 0)
 const chartProfile = computed(() => resultProfile.value && calculation.value
-    ? withArrivalApproach(resultProfile.value, approachDistanceM.value, calculation.value.request.train.maxSpeedKmh)
-    : profile.value)
-const chartLimitPoints = computed(() => canEditLimits.value
-    ? (approachDistanceM.value > 0
-        ? [{ positionM: 0, speedLimitKmh: calculation.value!.request.train.maxSpeedKmh },
-            ...effectiveSpeedLimitPoints.value.map(point => ({ ...point, positionM: point.positionM + approachDistanceM.value }))]
-        : effectiveSpeedLimitPoints.value)
-    : undefined)
+    ? withBrakingApproach(withDepartureSection(resultProfile.value, chartDepartureDistanceM.value, chartExtensionSpeeds.value.departureSectionMaxSpeedKmh),
+        approachDistanceM.value, chartExtensionSpeeds.value.brakingMaxSpeedKmh)
+    : profile.value ? withDepartureSection(profile.value, chartDepartureDistanceM.value, chartExtensionSpeeds.value.departureSectionMaxSpeedKmh) : null)
+const chartLimitPoints = computed(() => {
+    if (!canEditLimits.value || !profile.value) return undefined
+    const points = effectiveSpeedLimitPoints.value.map(point => ({ ...point, positionM: point.positionM + approachDistanceM.value }))
+    if (approachDistanceM.value > 0) points.unshift({ positionM: 0, speedLimitKmh: chartExtensionSpeeds.value.brakingMaxSpeedKmh })
+    if (chartDepartureDistanceM.value > 0) points.push({ positionM: approachDistanceM.value + profile.value.lengthM,
+        speedLimitKmh: chartExtensionSpeeds.value.departureSectionMaxSpeedKmh })
+    return points
+})
 function updateChartLimitPoints(points: SpeedLimitPoint[]) {
     const offset = approachDistanceM.value
-    updateSpeedLimitPoints(points.filter(point => point.positionM >= offset)
+    updateSpeedLimitPoints(points.filter(point => point.positionM >= offset && point.positionM < offset + (profile.value?.lengthM ?? 0))
         .map(point => ({ ...point, positionM: point.positionM - offset })))
 }
 const currentRequest = computed(() => profile.value ? buildTractionApiRequest(profile.value, train, signal, run) : null)
@@ -181,7 +206,7 @@ const occupancyDetailRows = computed(() => (result.value?.cellOccupancies ?? [])
         return [{ routeID: update.routeID, startOccupationShift: time?.startOccupationShift ?? null,
             endOccupationShift: time?.endOccupationShift ?? null }]
     })
-    return { ...cell, offsets }
+    return { ...cell, offsets, stoppedAt: cellTerminalStopTime(result.value, cell), occupancyEndTimeS: cellOccupancyEndTime(result.value, cell) }
 }))
 const occupancyUnavailableTitle = computed(() => resultMatchesInputs.value
     ? ui('无法确定占用参数，更新时保留原值。', 'Occupancy parameters cannot be determined; existing values will be retained.')
@@ -189,7 +214,7 @@ const occupancyUnavailableTitle = computed(() => resultMatchesInputs.value
 const calculationLoadError = ref(false)
 let workspaceDataVersion = 0
 const canCalculate = computed(() => workspaceReady.value && !!profile.value && !loadError.value && !workspaceConflict.value
-    && !setBusy.value && !routeBusy.value && !switchingSet.value && !workspaceLoading.value && !loadingData.value && !loadingSchemes.value && !savingTrain.value && !updatingOccupancy.value && props.active !== false)
+    && !batchBusy.value && !setBusy.value && !routeBusy.value && !switchingSet.value && !workspaceLoading.value && !loadingData.value && !loadingSchemes.value && !savingTrain.value && !updatingOccupancy.value && props.active !== false)
 const canEditLimits = computed(() => canCalculate.value && (resultProfile.value ?? profile.value)?.lengthM === profile.value?.lengthM)
 const calculationPending = ref(false)
 const calculationError = shallowRef<CalculationFailure | null>(null)
@@ -220,7 +245,7 @@ function cancelCalculation(clearResult = false) {
     calculationError.value = null
     calculationPending.value = false
 }
-// This is the only calculation entry point; it is called exclusively by the Calculate button.
+// Single-route calculation is explicit; the results dialog has a separate explicit batch action.
 async function calculate() {
     if (disposed || !canCalculate.value || calculationPending.value || !currentRequest.value || !workspaceSession) return
     cancelCalculation()
@@ -281,8 +306,9 @@ function setSegment(id: string, index: number, field: SegmentField, value: numbe
 }
 function setMode(mode: TractionRunOptions['mode']) {
     run.mode = mode
-    run.initialSpeedKmh = mode === 'departure' ? 0 : 40
-    run.finalSpeedKmh = mode === 'arrival' ? 0 : 40
+    const defaults = defaultRunOptions(mode)
+    run.initialSpeedKmh = defaults.initialSpeedKmh
+    run.finalSpeedKmh = defaults.finalSpeedKmh
 }
 function addStop() {
     if (!profile.value || run.stops.length >= 100) return
@@ -298,12 +324,15 @@ function applyTrainCatalog(catalog: TrainPresetCatalog) {
     brakeMigration.value = null
 }
 function captureWorkspace(catalog = trainCatalog.value): TractionWorkspaceContent {
-    return { speedLimitPoints: speedLimitPoints.value.map(point => ({ ...point })), catalog: cloneTrainPresetCatalog(catalog), settings: { selectedRouteId: selectedRouteId.value, continuationId: continuationId.value,
+    return { catalogRevision: projectTrains.value?.revision ?? 0, speedLimitPoints: speedLimitPoints.value.map(point => ({ ...point })), catalog: cloneTrainPresetCatalog(catalog), settings: { selectedRouteId: selectedRouteId.value, continuationId: continuationId.value,
         signal: { ...signal }, run: { ...run, stops: run.stops.map(stop => ({ ...stop })) },
         distanceMode: distanceMode.value, metersPerUnit: metersPerUnit.value, defaultLimit: defaultLimit.value },
         overrides: Object.values(overrides).map(row => ({ ...row })) }
 }
 function applyWorkspace(workspace: TractionWorkspace) {
+    if (workspace.catalogRevision && workspace.catalogRevision > (projectTrains.value?.revision ?? 0)) projectTrains.value = {
+        instanceID: props.selectedInstanceId, revision: workspace.catalogRevision, catalog: cloneTrainPresetCatalog(workspace.catalog),
+    }
     speedLimitPoints.value = (workspace.speedLimitPoints ?? []).map(point => ({ ...point }))
     applyTrainCatalog(workspace.catalog)
     Object.assign(signal, workspace.settings.signal)
@@ -373,13 +402,53 @@ async function persistTrainCatalog(catalog: TrainPresetCatalog) {
     finally { savingTrain.value = false }
 }
 async function selectTrainPreset(id: string) {
-    if (id === trainCatalog.value.selectedId || !trainCatalog.value.presets.some(item => item.id === id)) return
-    await persistTrainCatalog({ ...trainCatalog.value, selectedId: id })
+    if (id === trainCatalog.value.selectedId) return true
+    if (!trainCatalog.value.presets.some(item => item.id === id)) return false
+    return await persistTrainCatalog({ ...trainCatalog.value, selectedId: id })
 }
 async function saveTrainCatalog(catalog: TrainPresetCatalog) {
-    if (!await persistTrainCatalog(catalog)) return
-    trainParametersVisible.value = false
-    ElMessage.success(ui('列车参数已保存到数据库并应用。', 'Train parameters saved to the database and applied.'))
+    trainSaveError.value = ''
+    const key = batchScopeKey.value
+    try {
+        await saveProjectTrainLibrary(catalog)
+        if (disposed || batchScopeKey.value !== key) return
+        if (!await selectTrainPreset(catalog.selectedId)) {
+            trainSaveError.value = ui('项目列车参数已保存，当前进路的列车选择未保存，请重新载入后重试。', 'Project trains were saved, but the route selection was not saved. Reload and retry.')
+            return
+        }
+        trainParametersVisible.value = false
+        ElMessage.success(ui('项目列车参数已保存，各车站和进路共用。', 'Project train parameters saved and shared by all stations and routes.'))
+    } catch (error) {
+        if ((error as { code?: string }).code === 'project-trains-saved-refresh-failed') workspaceError.value = (error as Error).message
+        else reportWorkspaceError(error)
+        trainSaveError.value = workspaceError.value
+    }
+}
+async function saveProjectTrainLibrary(catalog: TrainPresetCatalog): Promise<ProjectTrains> {
+    if (!projectTrains.value || savingTrain.value || batchBusy.value || updatingOccupancy.value) throw new Error(ui('请等待当前操作完成。', 'Wait for the current operation to finish.'))
+    const scope = stationScope(), key = batchScopeKey.value, selected = selectedRouteId.value, continuation = continuationId.value
+    const catalogRevision = projectTrains.value.revision
+    let committed = false
+    savingTrain.value = true; routeBusy.value = true
+    try {
+        await flushCurrentWorkspace()
+        if (disposed || batchScopeKey.value !== key) throw new Error(ui('项目或方案已改变，请重新打开参数。', 'The project or set changed. Reopen parameters.'))
+        const savedProject = await saveProjectTrains(scope, catalogRevision, catalog)
+        committed = true
+        if (disposed || batchScopeKey.value !== key) return savedProject
+        projectTrains.value = savedProject
+        workspaceReady.value = false
+        applyTrainCatalog(useProjectTrains(captureWorkspace(), savedProject).catalog)
+        const [rows, sets] = await Promise.all([loadTractionRoutes(setScope()), loadTractionSets(scope)])
+        if (disposed || batchScopeKey.value !== key) return savedProject
+        routeCases.value = rows; calculationSets.value = sets.sets
+        if (selected) await activateRoute(selected, continuation, undefined, true)
+        else applyTrainCatalog(savedProject.catalog)
+        return savedProject
+    } catch (error) {
+        if (committed) throw Object.assign(new Error(ui('项目列车参数已保存，但工作区刷新失败，请重新载入。', 'Project train parameters were saved, but the workspace could not refresh. Reload it.')), { code: 'project-trains-saved-refresh-failed' })
+        throw error
+    } finally { savingTrain.value = false; routeBusy.value = false }
 }
 function restoreLegacyTrainCatalog(hasLegacyTrain: boolean) {
     const defaults = createDefaultTrainPresetCatalog()
@@ -432,18 +501,21 @@ async function saveParameters() {
     } catch { /* Keep the current inputs available for retry. */ }
 }
 // Opening a route only reads its saved snapshot; calculation is always explicit.
-async function activateRoute(routeId: string, continuation: string, seed?: TractionWorkspaceContent) {
+async function activateRoute(routeId: string, continuation: string, seed?: TractionWorkspaceContent, preserveTrainEditor = false) {
     const scope = setScope(), epoch = ++workspaceEpoch
     const record = await openTractionRoute(scope, routeId, continuation)
     const target = { ...scope, routeCaseID: record.id }
     const [workspace, snapshot] = await Promise.all([loadTractionWorkspace(target), loadTractionCalculation(target)])
+    const library = workspace ? null : await loadProjectTrains(scope)
     if (epoch !== workspaceEpoch || scope.instanceID !== props.selectedInstanceId || scope.stationSchemeID !== schemeId.value || scope.calculationSetID !== selectedSetId.value || disposed) return
     workspaceReady.value = false
+    if (library) projectTrains.value = library
     cancelCalculation(true)
     selectedCaseId.value = record.id
     workspaceSession = new TractionWorkspaceSession(target, workspace)
     workspaceError.value = ''; workspaceConflict.value = false
-    trainParametersVisible.value = false; lineParametersVisible.value = false
+    if (!preserveTrainEditor) trainParametersVisible.value = false
+    lineParametersVisible.value = false
     if (workspace) applyWorkspace(workspace)
     else {
         if (seed) applyWorkspace({ ...seed, revision: 0 })
@@ -455,9 +527,10 @@ async function activateRoute(routeId: string, continuation: string, seed?: Tract
         speedLimitPoints.value = []
         selectedRouteId.value = routeId; continuationId.value = continuation
         const type = selectedRoute.value?.type.trim().toLowerCase() || ''
-        setMode(continuation ? 'through' : ['dep', 'departure', '发车', '发车进路'].includes(type) ? 'departure' : ['arr', 'arrival', '接车', '接车进路'].includes(type) ? 'arrival' : 'through')
+        setMode(tractionModeForRoute(type, !!continuation))
         run.stops = []
         if (legacyRun) Object.assign(run, legacyRun)
+        if (projectTrains.value) applyTrainCatalog(useProjectTrains(captureWorkspace(), projectTrains.value).catalog)
         pendingSelection = null
         importLegacyOverrides()
     }
@@ -501,6 +574,20 @@ async function loadWorkspaceData() {
         if (version !== workspaceDataVersion || station.instanceID !== props.selectedInstanceId || station.stationSchemeID !== schemeId.value || disposed) return
         calculationSets.value = catalog.sets
         if (!catalog.sets.some(item => item.id === selectedSetId.value)) selectedSetId.value = catalog.selectedId
+        let library = await loadProjectTrains(station)
+        if (version !== workspaceDataVersion || disposed) return
+        if (!library) {
+            restoreLegacyParameters()
+            try { library = await saveProjectTrains(station, 0, trainCatalog.value) }
+            catch (error) {
+                if ((error as { response?: { status?: number } }).response?.status !== 409) throw error
+                library = await loadProjectTrains(station)
+                if (!library) throw error
+            }
+        }
+        if (version !== workspaceDataVersion || disposed) return
+        projectTrains.value = library
+        applyTrainCatalog(library.catalog)
         const list = await loadTractionRoutes(setScope())
         if (version !== workspaceDataVersion || disposed) return
         routeCases.value = list
@@ -525,6 +612,63 @@ async function openRouteResults() {
         if (key === scopeKey() && !disposed) routeCases.value = rows
     } catch (error) { if (key === scopeKey()) routeError.value = setFailure(error) }
     finally { routeBusy.value = false }
+}
+async function prepareBatch(): Promise<TractionBatchContext> {
+    if (!document.value || !routes.value.length || !selectedSetId.value || workspaceConflict.value || routeBusy.value || setBusy.value
+        || switchingSet.value || workspaceLoading.value || calculationPending.value || batchBusy.value || props.active === false) throw new Error(ui('请等待站场和参数载入完成。', 'Wait for station data and parameters to load.'))
+    routeBusy.value = true
+    const key = scopeKey()
+    try {
+        await flushCurrentWorkspace()
+        if (key !== scopeKey() || disposed || !document.value) throw new Error(ui('当前方案已改变，请重新打开批量计算。', 'The current set changed. Reopen batch calculation.'))
+        const batchKey = batchScopeKey.value
+        return { scope: { ...setScope() }, document: JSON.parse(JSON.stringify(document.value)), routes: routes.value.map(route => ({ ...route })),
+            cases: routeCases.value.map(row => ({ ...row })), seed: captureWorkspace(), saveTrains: catalog => {
+                if (batchScopeKey.value !== batchKey) throw new Error(ui('项目或方案已改变，请重新打开参数。', 'The project or set changed. Reopen parameters.'))
+                return saveProjectTrainLibrary(catalog)
+            } }
+    } finally { routeBusy.value = false }
+}
+async function completeBatch(report: TractionBatchReport) {
+    const sameScope = () => !disposed && props.active !== false && report.scope.instanceID === props.selectedInstanceId
+        && report.scope.stationSchemeID === schemeId.value && report.scope.calculationSetID === selectedSetId.value
+    if (!sameScope()) return
+    routeBusy.value = true; routeError.value = ''
+    try {
+        const [rows, catalog] = await Promise.all([loadTractionRoutes(report.scope), loadTractionSets(stationScope())])
+        if (!sameScope()) return
+        routeCases.value = rows; calculationSets.value = catalog.sets
+        if (selectedRouteId.value && report.jobs.some(job => job.caseId === selectedCaseId.value)) {
+            await activateRoute(selectedRouteId.value, continuationId.value)
+        }
+    } catch (error) { if (sameScope()) routeError.value = setFailure(error) }
+    finally { routeBusy.value = false }
+}
+async function transferRouteResults(selection: TractionRouteCase[]): Promise<TractionParameterTransferReport> {
+    if (updatingOccupancy.value || batchBusy.value || calculationPending.value || loadingParameterSets.value || parameterSetError.value || !parameterSetId.value)
+        throw new Error(ui('请等待载入完成并选择计算参数集。', 'Wait for loading and select a calculation parameter set.'))
+    const destination = parameterSetId.value
+    const context = await prepareBatch()
+    const target = { instanceID: context.scope.instanceID, stationSchemeID: context.scope.stationSchemeID, calculationParameterSetID: destination, trainTypeID: '' as const }
+    const report: TractionParameterTransferReport = { completedRouteIDs: [], updatedCellCount: 0, skippedCellCount: 0, operationTimeOnlyRouteIDs: [], error: '' }
+    const scopeIsCurrent = () => !disposed && props.active !== false && props.selectedInstanceId === target.instanceID
+        && schemeId.value === target.stationSchemeID && selectedSetId.value === context.scope.calculationSetID && parameterSetId.value === destination
+    updatingOccupancy.value = true; routeBusy.value = true
+    try {
+        const updates = await prepareTractionParameterTransfers(context, selection)
+        report.skippedCellCount = updates.reduce((count, update) => count + update.skippedCellIDs.length, 0)
+        await writeTractionParameterTransfers(target, updates, scopeIsCurrent, update => {
+            report.completedRouteIDs.push(update.routeID); report.updatedCellCount += update.times.length
+            if (!update.times.length) report.operationTimeOnlyRouteIDs.push(update.routeID)
+        })
+    } catch (reason) {
+        const failure = reason as { message?: string; response?: { data?: unknown } }
+        report.error = typeof failure.response?.data === 'string' ? failure.response.data : failure.message || ui('带入计算参数失败。', 'Could not apply calculation parameters.')
+    } finally {
+        if (report.completedRouteIDs.length) capacityStore.notifyRouteOccupancyUpdated({ ...target, routeIDs: report.completedRouteIDs })
+        updatingOccupancy.value = false; routeBusy.value = false
+    }
+    return report
 }
 async function removeRouteResult(row: TractionRouteCase) {
     if (routeBusy.value) return
@@ -638,6 +782,7 @@ function restoreLegacyParameters() {
         }
         copyNumbers(train, value.train)
         copyNumbers(signal, value.signal)
+        if (['arrival', 'departure', 'through', 'shunting'].includes(value.run?.mode)) setMode(value.run.mode)
         copyNumbers(run, value.run)
         const curve = value.train?.tractionCurve
         if (Array.isArray(curve) && curve.length >= 1 && curve.length <= 128 && curve.every(p => p && Number.isFinite(p.speedKmh) && Number.isFinite(p.forceKn))) {
@@ -656,7 +801,6 @@ function restoreLegacyParameters() {
                 ? points.map(p => ({ speedKmh: p.speedKmh, forceKn: p.forceKn }))
                 : key === 'brakingCurve' ? generateBrakingCurve(train) : generateResistanceCurve(train)
         }
-        if (['arrival', 'departure', 'through'].includes(value.run?.mode)) run.mode = value.run.mode
         if (run.mode === 'departure') run.initialSpeedKmh = 0
         if (run.mode === 'arrival') run.finalSpeedKmh = 0
         if (Array.isArray(value.run?.stops) && value.run.stops.length <= 100 && value.run.stops.every((stop: { positionM?: number; dwellS?: number } | null) => stop && Number.isFinite(stop.positionM) && Number.isFinite(stop.dwellS))) {
@@ -703,7 +847,7 @@ function exportCsv() {
     download('traction-speed-position.csv', '\uFEFF' + rows.join('\r\n'), 'text/csv;charset=utf-8')
 }
 async function updateCalculationParameters() {
-    if (updatingOccupancy.value || calculationPending.value || !resultMatchesInputs.value || !result.value || !routeProfile.value || !selectedRoute.value || !parameterSetId.value) return
+    if (!workspaceReady.value || workspaceConflict.value || routeBusy.value || updatingOccupancy.value || calculationPending.value || !resultMatchesInputs.value || !result.value || !routeProfile.value || !selectedRoute.value || !parameterSetId.value) return
     const snapshot = result.value
     const scope = { instanceID: props.selectedInstanceId, stationSchemeID: schemeId.value, calculationParameterSetID: parameterSetId.value, trainTypeID: '' }
     const preview = occupancyPreview.value
@@ -801,7 +945,7 @@ async function loadData() {
     } catch { if (version === dataVersion) loadError.value = true }
     finally { if (version === dataVersion) loadingData.value = false }
 }
-watch(() => props.selectedInstanceId, () => { flushWorkspaceSave(); cancelCalculation(true); workspaceDataVersion++; workspaceEpoch++; workspaceReady.value = false; selectedSetId.value = ''; selectedCaseId.value = ''; routeCases.value = []; routeResultsVisible.value = false; calculationSets.value = []; setsVisible.value = false; selectedRouteId.value = ''; continuationId.value = ''; void loadSchemes() }, { immediate: true })
+watch(() => props.selectedInstanceId, () => { flushWorkspaceSave(); cancelCalculation(true); workspaceDataVersion++; workspaceEpoch++; workspaceReady.value = false; projectTrains.value = null; selectedSetId.value = ''; selectedCaseId.value = ''; routeCases.value = []; routeResultsVisible.value = false; calculationSets.value = []; setsVisible.value = false; selectedRouteId.value = ''; continuationId.value = ''; void loadSchemes() }, { immediate: true })
 watch(schemeId, () => { flushWorkspaceSave(); cancelCalculation(true); workspaceDataVersion++; workspaceEpoch++; workspaceReady.value = false; selectedSetId.value = ''; selectedCaseId.value = ''; routeCases.value = []; routeResultsVisible.value = false; calculationSets.value = []; setsVisible.value = false; selectedRouteId.value = ''; continuationId.value = ''; void loadWorkspaceData() })
 watch(() => props.active, value => { if (value && schemes.value.length) void loadWorkspaceData(); else if (!value) flushWorkspaceSave() })
 watch([trainCatalog, signal, run, metersPerUnit, distanceMode, defaultLimit, speedLimitPoints, overrides, selectedRouteId, continuationId], () => { saved.value = false; scheduleWorkspaceSave() }, { deep: true, flush: 'post' })
@@ -812,7 +956,7 @@ onBeforeUnmount(() => { flushWorkspaceSave(); disposed = true; workspaceDataVers
 
 <template>
     <section class="traction-workspace" v-loading="loadingSchemes || loadingData || workspaceLoading || switchingSet">
-        <header class="traction-toolbar">
+        <header class="traction-toolbar" :inert="batchBusy">
             <div class="route-controls">
                 <label class="route-control"><span>{{ ui('车站', 'Station') }}</span><el-select v-model="schemeId" size="small" class="scheme-select" :aria-label="ui('站场方案', 'Station scheme')" :placeholder="ui('选择站场方案', 'Select scheme')" :disabled="loadingSchemes">
                     <el-option v-for="scheme in schemes" :key="scheme.id" :value="scheme.id" :label="scheme.name" />
@@ -845,29 +989,39 @@ onBeforeUnmount(() => { flushWorkspaceSave(); disposed = true; workspaceDataVers
             <main class="plot-workspace" :aria-busy="calculationPending">
                 <div class="summary-strip" role="region" :aria-label="ui('运行摘要', 'Run summary')" tabindex="0">
                     <div v-if="result && !resultMatchesInputs" class="pending-result" role="status" :title="resultRouteLabel"><span>{{ ui('待计算 · 上次结果', 'Pending · Last result') }} · {{ resultRouteLabel }}</span></div>
-                    <div><span>{{ ui('展开长度', 'Route length') }}</span><strong>{{ chartProfile?.lengthM.toFixed(1) ?? '—' }} <small>m</small></strong></div>
-                    <div v-if="approachDistanceM > 0"><span>{{ ui('入口前制动段', 'Arrival approach') }}</span><strong>{{ approachDistanceM.toFixed(1) }} <small>m</small></strong></div>
-                    <div><span>{{ ui('全程时间（含停时）', 'Journey time incl. stops') }}</span><strong>{{ result?.durationS.toFixed(1) ?? '—' }} <small>s</small></strong></div>
-                    <div><span>{{ ui('最高运行速度', 'Peak speed') }}</span><strong class="cyan">{{ result?.maxSpeedKmh.toFixed(1) ?? '—' }} <small>km/h</small></strong></div>
-                    <div><span>{{ ui('轨道电路区段', 'Track circuits') }}</span><strong>{{ (resultProfile ?? profile)?.cells?.length ?? '—' }}</strong></div>
+                    <div><span>{{ ui('制动距离', 'Braking distance') }}</span><strong>{{ runSummary?.brakingDistanceM.toFixed(1) ?? '—' }} <small>m</small></strong></div>
+                    <div><span>{{ ui('进路长度', 'Route length') }}</span><strong>{{ (runSummary?.routeLengthM ?? profile?.lengthM)?.toFixed(1) ?? '—' }} <small>m</small></strong></div>
+                    <div :title="ui('实际计算速度', 'Actual calculated speeds')"><span>{{ ui('入口速度/出口速度', 'Entry/exit speed') }}</span><strong>{{ runSummary?.entrySpeedKmh?.toFixed(1) ?? '—' }} / {{ runSummary?.exitSpeedKmh?.toFixed(1) ?? '—' }} <small>km/h</small></strong></div>
+                    <div><span>{{ ui('全程时间（含接近）', 'Journey time incl. approach') }}</span><strong>{{ formatTractionDuration(runSummary?.journeyTimeS) }}</strong></div>
+                    <div :title="occupancySummaryTitle"><span>{{ ui('占用时间（最小间隔）', 'Occupancy time (minimum interval)') }}</span><strong class="cyan">{{ formatTractionDuration(runSummary?.longestOccupancy?.durationS) }}</strong></div>
                 </div>
                 <div v-if="calculationLoadError" class="result-notice" role="alert"><span>{{ ui('已保存的计算结果加载失败。', 'Could not load the saved calculation.') }}</span><el-button size="small" @click="loadWorkspaceData">{{ ui('重新载入', 'Reload') }}</el-button></div>
                 <div v-if="calculationError" class="result-notice calculation-error" role="alert"><strong>{{ errorTitle }}</strong><span>{{ errorMessages.join(' · ') }}</span></div>
+                <div v-if="reducedSpeedMessages.length" class="result-notice" role="status"><span v-for="message in reducedSpeedMessages" :key="message">{{ message }}</span></div>
                 <TractionCharts v-if="chartProfile" :key="scopeKey()" v-model:split-ratio="chartSplitRatio" :profile="chartProfile" :result="result" :calculated-signal="calculation?.request.signal ?? null" :train-length-m="result?.trainLengthM ?? train.lengthM"
-                    :visible-start-m="showOutsideStation ? 0 : approachDistanceM" :limit-points="chartLimitPoints" :editable-start-m="approachDistanceM" :limits-editable="canEditLimits" @update:limit-points="updateChartLimitPoints" />
+                    :visible-start-m="showOutsideStation ? 0 : approachDistanceM" :limit-points="chartLimitPoints" :editable-start-m="approachDistanceM" :editable-end-m="approachDistanceM + (profile?.lengthM ?? 0)" :limits-editable="canEditLimits" @update:limit-points="updateChartLimitPoints" />
                 <div v-else-if="loadError" class="empty-panel" role="alert"><strong>{{ ui('站场数据加载失败', 'Could not load station data') }}</strong><p>{{ ui('请检查网络和登录状态，点击刷新重试。', 'Check your connection and sign-in, then refresh.') }}</p><el-button @click="loadSchemes">{{ ui('重试', 'Retry') }}</el-button></div>
                 <div v-else-if="!selectedRoute" class="empty-panel"><div class="empty-graphic">⌁</div><strong>{{ ui('选择一条进路，查看全程运行曲线', 'Select a route to calculate the complete run') }}</strong><p>{{ ui('请先在站场布局和进路设计中保存方案与进路。通过作业可选择首尾相连的接续进路。', 'Save a layout and routes in Station layout and Route design. A through run can join consecutive routes.') }}</p></div>
                 <div v-else-if="routeProfile?.errors.length" class="empty-panel" role="alert"><strong>{{ ui('请完善进路数据', 'Complete the route data') }}</strong><p v-for="(issue, index) in routeProfile.errors" :key="index">{{ diagnostic(issue.code) }} {{ issue.entityId }}</p><el-button v-if="routeProfile.errors.some(issue => issue.code === 'missingDistanceScale')" @click="distanceMode = 'manual'; expanded = [...new Set([...expanded, 'line'])]">{{ ui('启用人工距离标尺', 'Enable manual distance scale') }}</el-button></div>
                 <div v-else class="empty-panel" role="status"><strong>{{ calculationPending ? ui('正在计算运行曲线…', 'Calculating the run profile…') : ui('暂无计算数据，点击“计算”生成曲线', 'No saved calculation. Click Calculate to generate the profile.') }}</strong></div>
             </main>
-            <aside class="parameter-panel" :inert="!workspaceReady || workspaceConflict || workspaceLoading || routeBusy || setBusy || switchingSet">
+            <aside class="parameter-panel" :inert="batchBusy || !workspaceReady || workspaceConflict || workspaceLoading || routeBusy || setBusy || switchingSet">
                 <header class="parameter-heading"><strong>{{ ui('计算参数', 'Parameters') }}</strong><span>{{ ui('后端计算', 'Backend calculation') }}</span></header>
                 <section class="run-parameters">
                     <label class="field-label">{{ ui('作业类型', 'Movement') }}</label>
                     <el-radio-group :model-value="run.mode" @update:model-value="(value: string | number | boolean | undefined) => setMode(value as TractionRunOptions['mode'])" size="small">
-                        <el-radio-button value="arrival">{{ ui('接车', 'Arrival') }}</el-radio-button><el-radio-button value="departure">{{ ui('发车', 'Departure') }}</el-radio-button><el-radio-button value="through">{{ ui('通过', 'Through') }}</el-radio-button>
+                        <el-radio-button value="arrival">{{ ui('接车', 'Arrival') }}</el-radio-button><el-radio-button value="departure">{{ ui('发车', 'Departure') }}</el-radio-button><el-radio-button value="through">{{ ui('通过', 'Through') }}</el-radio-button><el-radio-button value="shunting">{{ ui('调车', 'Shunting') }}</el-radio-button>
                     </el-radio-group>
-                    <div class="field-grid"><label>{{ ui('起点速度 (km/h)', 'Entry speed (km/h)') }}<el-input-number v-model="run.initialSpeedKmh" :min="0" :max="500" :disabled="run.mode === 'departure'" controls-position="right" /></label><label>{{ ui('终点速度 (km/h)', 'Exit speed (km/h)') }}<el-input-number v-model="run.finalSpeedKmh" :min="0" :max="500" :disabled="run.mode === 'arrival'" controls-position="right" /></label></div>
+                    <div class="field-grid"><label>{{ ui('期望起点速度 (km/h)', 'Desired entry speed (km/h)') }}<el-input-number v-model="run.initialSpeedKmh" :min="0" :max="500" :disabled="run.mode === 'departure'" controls-position="right" /></label><label>{{ ui('期望终点速度 (km/h)', 'Desired exit speed (km/h)') }}<el-input-number v-model="run.finalSpeedKmh" :min="0" :max="500" :disabled="run.mode === 'arrival'" controls-position="right" /></label></div>
+                    <div v-if="run.mode === 'arrival' || run.mode === 'through'" class="field-grid">
+                        <label>{{ ui('制动距离 (m)', 'Braking distance (m)') }}<el-input-number v-model="run.brakingDistanceM" :min="0" :max="10000000" :precision="2" :step="100" :value-on-clear="null" :placeholder="ui('留空自动计算', 'Automatic when blank')" controls-position="right" /></label>
+                        <label>{{ ui('制动段最高速度 (km/h)', 'Braking range max speed (km/h)') }}<el-input-number v-model="run.brakingMaxSpeedKmh" :min="0.1" :max="1000" :precision="1" :step="10" :value-on-clear="null" :placeholder="ui('列车最高速度', 'Train maximum')" :title="ui('留空时使用列车最高速度', 'Use the train maximum when blank')" controls-position="right" /></label>
+                    </div>
+                    <div v-if="run.mode === 'departure' || run.mode === 'through'" class="field-grid">
+                        <label>{{ ui('一离去长度 (m)', 'First departure circuit length (m)') }}<el-input-number v-model="run.departureSectionLengthM" :min="0" :max="100000" :precision="1" :step="100" controls-position="right" /></label>
+                        <label>{{ ui('一离去最高速度 (km/h)', 'First departure max speed (km/h)') }}<el-input-number v-model="run.departureSectionMaxSpeedKmh" :min="0.1" :max="1000" :precision="1" :step="10" :value-on-clear="null" :placeholder="ui('列车最高速度', 'Train maximum')" :title="ui('留空时使用列车最高速度', 'Use the train maximum when blank')" controls-position="right" /></label>
+                    </div>
+                    <p class="help-text">{{ ui('期望速度作为上限，实际起终点速度可因限速、停车和动力条件降低。', 'Desired speeds are upper bounds. Limits, stops and train performance may lower the actual entry and exit speeds.') }}</p>
                 </section>
                 <el-collapse v-model="expanded">
                     <el-collapse-item name="train" :title="ui('01  列车参数', '01  Train')">
@@ -882,7 +1036,7 @@ onBeforeUnmount(() => { flushWorkspaceSave(); disposed = true; workspaceDataVers
                             <div><dt>{{ ui('回转质量系数 γ', 'Rotating mass coefficient γ') }}</dt><dd>{{ rotatingMassCoefficientFromFactor(train.rotatingMassFactor) }}</dd></div>
                         </dl>
                         <p class="parameter-summary">{{ ui('牵引', 'Traction') }} {{ train.tractionCurve.length }} {{ ui('点', 'points') }} · {{ ui('制动', 'Braking') }} {{ train.brakingCurve.length }} {{ ui('点', 'points') }} · {{ ui('阻力', 'Resistance') }} {{ train.resistanceCurve.length }} {{ ui('点', 'points') }}</p>
-                        <el-button class="parameter-dialog-button" :disabled="!workspaceReady || savingTrain" @click="trainParametersVisible = true">{{ ui('维护列车参数', 'Manage train parameters') }}</el-button>
+                        <el-button class="parameter-dialog-button" :disabled="!workspaceReady || savingTrain" @click="trainSaveError = ''; trainParametersVisible = true">{{ ui('维护项目列车参数', 'Manage project train parameters') }}</el-button>
                     </el-collapse-item>
                     <el-collapse-item name="signal" :title="ui('02  信号系统', '02  Signalling')">
                         <div class="field-grid"><label>{{ ui('进路办理 (s)', 'Route setting (s)') }}<el-input-number v-model="signal.routeSettingS" :min="0" :max="3600" controls-position="right" /></label><label>{{ ui('反应时间 (s)', 'Reaction (s)') }}<el-input-number v-model="signal.reactionS" :min="0" :max="600" controls-position="right" /></label><label>{{ ui('出清延时 (s)', 'Release delay (s)') }}<el-input-number v-model="signal.clearanceS" :min="0" :max="600" controls-position="right" /></label></div>
@@ -926,14 +1080,14 @@ onBeforeUnmount(() => { flushWorkspaceSave(); disposed = true; workspaceDataVers
             <div v-if="result" class="timing-scroll" tabindex="0">
                 <table><thead><tr>
                     <th>{{ ui('轨道电路', 'Track circuit') }}</th><th>{{ ui('位置 (m)', 'Position (m)') }}</th>
-                    <th>{{ ui('车头进入 (s)', 'Head enters (s)') }}</th><th>{{ ui('车尾出清 (s)', 'Tail clears (s)') }}</th><th>{{ ui('释放 (s)', 'Release (s)') }}</th>
+                    <th>{{ ui('车头进入 (s)', 'Head enters (s)') }}</th><th>{{ ui('车尾出清 (s)', 'Tail clears (s)') }}</th><th>{{ ui('占用结束 (s)', 'Occupancy ends (s)') }}</th>
                     <th v-for="column in occupancyOffsetColumns" :key="column.key">{{ ui(column.zh, column.en) }}</th>
                 </tr></thead><tbody>
                     <tr v-for="cell in occupancyDetailRows" :key="cell.id" :data-cell-id="cell.id">
                         <td>{{ cell.label }}</td><td>{{ cell.startM.toFixed(1) }}–{{ cell.endM.toFixed(1) }}</td>
                         <td>{{ cell.entryTimeS?.toFixed(1) ?? ui('起始时刻未知', 'Entry time unknown') }}</td>
                         <td>{{ cell.exitTimeS?.toFixed(1) ?? (cell.exitBoundaryKnown === false ? ui('边界未覆盖', 'Boundary outside route') : ui('未出清', 'Not cleared')) }}</td>
-                        <td>{{ cell.releaseTimeS?.toFixed(1) ?? (cell.exitBoundaryKnown === false ? ui('未知', 'Unknown') : '—') }}</td>
+                        <td :title="cell.stoppedAt !== null ? ui('以终点首次停车时刻结束占用', 'Occupancy ends at first terminal arrival') : undefined">{{ cell.occupancyEndTimeS?.toFixed(1) ?? (cell.exitBoundaryKnown === false ? ui('未知', 'Unknown') : '—') }}<small v-if="cell.stoppedAt !== null"> · {{ ui('停车', 'Stop') }}</small></td>
                         <td v-for="column in occupancyOffsetColumns" :key="column.key" :data-offset="column.key">
                             <div v-for="offset in cell.offsets" :key="offset.routeID" class="occupancy-offset" :data-route-id="offset.routeID">
                                 <span v-if="occupancyPreview.updates.length > 1" class="occupancy-offset-route">{{ offset.routeID }}</span>
@@ -947,12 +1101,14 @@ onBeforeUnmount(() => { flushWorkspaceSave(); disposed = true; workspaceDataVers
             <template #footer>
                 <el-button @click="timingDetailsVisible = false" :disabled="updatingOccupancy">{{ ui('关闭', 'Close') }}</el-button>
                 <el-button type="primary" class="update-occupancy-button" :loading="updatingOccupancy"
-                    :disabled="!resultMatchesInputs || calculationPending || !parameterSetId || loadingParameterSets || !!parameterSetError" @click="updateCalculationParameters">{{ ui('更新计算参数', 'Update calculation parameters') }}</el-button>
+                    :disabled="!workspaceReady || workspaceConflict || routeBusy || !resultMatchesInputs || calculationPending || !parameterSetId || loadingParameterSets || !!parameterSetError" @click="updateCalculationParameters">{{ ui('更新计算参数', 'Update calculation parameters') }}</el-button>
             </template>
         </el-dialog>
-        <TractionRouteResultsDialog v-model="routeResultsVisible" :rows="routeCases" :selected-id="selectedCaseId" :set-name="selectedSetName" :routes="routes" :busy="routeBusy" :error="routeError" @open="row => switchRoute(row.routeId, row.continuationId)" @remove="removeRouteResult" @refresh="openRouteResults" />
+        <TractionRouteResultsDialog v-model="routeResultsVisible" :rows="routeCases" :selected-id="selectedCaseId" :set-name="selectedSetName" :routes="routes" :busy="routeBusy" :error="routeError" :batch-scope-key="batchScopeKey" :prepare-batch="prepareBatch"
+            v-model:parameter-set-id="parameterSetId" :parameter-sets="parameterSets" :parameter-sets-loading="loadingParameterSets" :parameter-set-error="parameterSetError" :transfer-results="transferRouteResults" @reload-parameter-sets="reloadParameterSets"
+            @open="row => switchRoute(row.routeId, row.continuationId)" @remove="removeRouteResult" @refresh="openRouteResults" @batch-busy="batchBusy = $event" @batch-complete="completeBatch" />
         <TractionSetsDialog v-model="setsVisible" :sets="calculationSets" :selected-id="selectedSetId" :busy="setBusy" :error="setError" @action="applySetAction" @refresh="openSetManager" />
-        <TrainParametersDialog v-model="trainParametersVisible" :catalog="trainCatalog" :saving="savingTrain" @save="saveTrainCatalog" />
+        <TrainParametersDialog v-model="trainParametersVisible" :catalog="trainCatalog" :saving="savingTrain" :error="trainSaveError" @save="saveTrainCatalog" />
         <LineParametersDialog v-model="lineParametersVisible" :segments="lineParameterRows" v-model:default-limit="defaultLimit" :route-label="selectedRouteLabel" @change="setSegment" @limit-change="setLineSpeedLimit" />
     </section>
 </template>

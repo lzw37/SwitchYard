@@ -12,6 +12,7 @@ export interface TractionSegmentOverride {
 }
 export interface TractionWorkspaceContent {
     catalog: TrainPresetCatalog
+    catalogRevision?: number
     settings: { selectedRouteId: string; continuationId: string; signal: SignalParameters; run: TractionRunOptions
         distanceMode: 'auto' | 'manual'; metersPerUnit: number; defaultLimit: number }
     speedLimitPoints?: SpeedLimitPoint[]
@@ -59,8 +60,8 @@ export async function loadTractionRoutes(scope: TractionScope): Promise<Traction
     if (!Array.isArray(data) || data.some(row => !row.id || typeof row.routeId !== 'string' || typeof row.continuationId !== 'string' || !Number.isSafeInteger(row.revision))) throw new Error('Invalid route result list.')
     return data
 }
-export async function openTractionRoute(scope: TractionScope, routeId: string, continuationId: string): Promise<TractionRouteCase> {
-    const { data } = await axios.post<TractionRouteCase>(endpoint + '/routes/open', { ...scope, routeId, continuationId }, { timeout: 30_000 })
+export async function openTractionRoute(scope: TractionScope, routeId: string, continuationId: string, select = true): Promise<TractionRouteCase> {
+    const { data } = await axios.post<TractionRouteCase>(endpoint + '/routes/open', { ...scope, routeId, continuationId, ...(select ? {} : { select: false }) }, { timeout: 30_000 })
     if (!data?.id || data.routeId !== routeId || data.continuationId !== continuationId) throw new Error('Invalid route record.')
     return data
 }
@@ -73,11 +74,16 @@ export const overrideKey = (row: Pick<TractionSegmentOverride, 'routeId' | 'rout
 export function copyWorkspaceContent(value: TractionWorkspaceContent): TractionWorkspaceContent {
     const settings = value.settings
     return {
+        ...(value.catalogRevision !== undefined ? { catalogRevision: value.catalogRevision } : {}),
         catalog: cloneTrainPresetCatalog(value.catalog),
         speedLimitPoints: (value.speedLimitPoints ?? []).map(point => ({ positionM: point.positionM, speedLimitKmh: point.speedLimitKmh })),
         settings: { selectedRouteId: settings.selectedRouteId, continuationId: settings.continuationId,
             signal: { routeSettingS: settings.signal.routeSettingS, reactionS: settings.signal.reactionS, clearanceS: settings.signal.clearanceS },
             run: { mode: settings.run.mode, initialSpeedKmh: settings.run.initialSpeedKmh, finalSpeedKmh: settings.run.finalSpeedKmh,
+                departureSectionLengthM: settings.run.departureSectionLengthM ?? 0,
+                brakingDistanceM: settings.run.brakingDistanceM ?? null,
+                brakingMaxSpeedKmh: settings.run.brakingMaxSpeedKmh ?? null,
+                departureSectionMaxSpeedKmh: settings.run.departureSectionMaxSpeedKmh ?? null,
                 stepM: settings.run.stepM, maxPointCount: settings.run.maxPointCount, stops: settings.run.stops.map(stop => ({ positionM: stop.positionM, dwellS: stop.dwellS })) },
             distanceMode: settings.distanceMode, metersPerUnit: settings.metersPerUnit, defaultLimit: settings.defaultLimit },
         overrides: value.overrides.map(row => ({ routeId: row.routeId, routeStartNodeId: row.routeStartNodeId, routeEndNodeId: row.routeEndNodeId,
@@ -89,6 +95,7 @@ export function copyWorkspaceContent(value: TractionWorkspaceContent): TractionW
 export const workspaceFingerprint = (value: TractionWorkspaceContent) => JSON.stringify(copyWorkspaceContent(value))
 function normalizeWorkspace(value: TractionWorkspace): TractionWorkspace {
     if (!value || !Number.isSafeInteger(value.revision) || value.revision < 1 || !value.catalog || !value.settings || !Array.isArray(value.overrides)) throw new Error('Invalid traction workspace response.')
+    if (value.catalogRevision !== undefined && (!Number.isSafeInteger(value.catalogRevision) || value.catalogRevision < 0)) throw new Error('Invalid project train revision.')
     if (!Array.isArray(value.speedLimitPoints ?? []) || !validateSpeedLimitPoints(value.speedLimitPoints ?? [])) throw new Error('Invalid speed limit points in database response.')
     const catalog = { ...value.catalog, presets: value.catalog.presets?.map(preset => ({ ...preset, nameEn: preset.nameEn ?? undefined })) }
     if (validateTrainPresetCatalog(catalog)) throw new Error('Invalid train catalog in database response.')

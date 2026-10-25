@@ -31,15 +31,19 @@ public sealed class SpeedProfileCalculationService
             TractionCurve = train.TractionCurve.Select(p => new TractionPoint(p.SpeedKmh / 3.6, p.ForceKn * 1000)).ToArray()
         };
         var calculator = new SpeedProfileCalculator();
+        var brakingMaxSpeed = Math.Min(train.MaxSpeedKmh, options.BrakingMaxSpeedKmh ?? train.MaxSpeedKmh);
+        var departureMaxSpeed = Math.Min(train.MaxSpeedKmh, options.DepartureSectionMaxSpeedKmh ?? train.MaxSpeedKmh);
+        var departureSectionLength = options.Mode is "departure" or "through" ? options.DepartureSectionLengthM : 0;
+        profile = AppendDepartureSection(profile, departureSectionLength, departureMaxSpeed);
         double approachDistance = 0;
-        if (options.Mode == "arrival")
+        if (options.Mode is "arrival" or "through")
         {
             var entry = profile.Segments[0];
-            approachDistance = calculator.CalculateBrakingDistance(coreTrain, new TrackSection {
+            approachDistance = options.BrakingDistanceM ?? calculator.CalculateBrakingDistance(coreTrain with { MaxSpeedMps = brakingMaxSpeed / 3.6 }, new TrackSection {
                 GradientPermille = entry.GradientPermille,
                 AdditionalResistanceNewtons = entry.AdditionalResistanceKn * 1000
             }, options.StepM, options.MaxPointCount, cancellationToken);
-            profile = PrependArrivalApproach(profile, approachDistance, train.MaxSpeedKmh);
+            profile = PrependBrakingApproach(profile, approachDistance, brakingMaxSpeed);
         }
         var sections = BuildSections(profile, train, cancellationToken);
         var coreRequest = new SpeedProfileRequest
@@ -83,6 +87,8 @@ public sealed class SpeedProfileCalculationService
             });
         }
         var warnings = new List<string>();
+        if (samples[0].SpeedKmh < options.InitialSpeedKmh - 1e-6) warnings.Add("initial-speed-reduced");
+        if (samples[^1].SpeedKmh < options.FinalSpeedKmh - 1e-6) warnings.Add("final-speed-reduced");
         if (cells.Any(c => !c.EntryBoundaryKnown || !c.ExitBoundaryKnown)) warnings.Add("cell-boundary-unknown");
         if (joints.Any(j => j.TailTimeS is null) || cells.Any(c => c.ExitBoundaryKnown && c.ExitTimeS is null))
             warnings.Add("uncleared-after-stop");
@@ -94,7 +100,8 @@ public sealed class SpeedProfileCalculationService
         return new SpeedProfileCalculationResponse
         {
             Samples = samples, JointTimes = joints, CellOccupancies = cells,
-            LengthM = profile.LengthM, ApproachDistanceM = approachDistance, TrainLengthM = train.LengthM, Mode = options.Mode,
+            LengthM = profile.LengthM, ApproachDistanceM = approachDistance, DepartureSectionLengthM = departureSectionLength,
+            TrainLengthM = train.LengthM, Mode = options.Mode,
             DurationS = calculated.TotalTimeSeconds, MotionStartS = motionStart,
             TotalTimeS = motionStart + calculated.TotalTimeSeconds,
             RunningTimeS = calculated.RunningTimeSeconds,
@@ -103,9 +110,30 @@ public sealed class SpeedProfileCalculationService
         };
     }
 
-    private static SpeedProfileRouteInput PrependArrivalApproach(
+    /// <summary>Add a calculation-only circuit without changing the station's route or topology.</summary>
+    internal static SpeedProfileRouteInput AppendDepartureSection(SpeedProfileRouteInput route, double distance, double maximumSpeedKmh)
+    {
+        if (distance == 0) return route;
+        var end = route.LengthM + distance;
+        if (!double.IsFinite(distance) || distance < 0 || end <= route.LengthM || end > 10_000_000)
+            Invalid("invalid-route", "一离去区段长度无效或超出全程长度范围。");
+        var id = "__first-departure__";
+        var ids = route.Cells.Select(c => c.Id).ToHashSet(StringComparer.Ordinal);
+        while (ids.Contains(id)) id += "_";
+        return route with {
+            LengthM = end,
+            Segments = route.Segments.Append(route.Segments[^1] with { StartM = route.LengthM, EndM = end, SpeedLimitKmh = maximumSpeedKmh }).ToArray(),
+            Cells = route.Cells.Append(new SpeedProfileCellInput {
+                Id = id, Label = "一离去", StartM = route.LengthM, EndM = end,
+                EntryBoundaryKnown = true, ExitBoundaryKnown = true
+            }).ToArray()
+        };
+    }
+
+    private static SpeedProfileRouteInput PrependBrakingApproach(
         SpeedProfileRouteInput route, double distance, double maximumSpeedKmh)
     {
+        if (distance == 0) return route;
         var entry = route.Segments[0];
         return route with {
             LengthM = route.LengthM + distance,
@@ -205,9 +233,13 @@ public sealed class SpeedProfileCalculationService
         Range(signal.ClearanceS, "出清时间 (s)", 0, 86_400);
         Range(options.InitialSpeedKmh, "初速度 (km/h)", 0, 1000);
         Range(options.FinalSpeedKmh, "末速度 (km/h)", 0, 1000);
+        Range(options.DepartureSectionLengthM, "一离去长度 (m)", 0, 100_000);
+        if (options.BrakingDistanceM is double brakingDistance) Range(brakingDistance, "制动距离 (m)", 0, 10_000_000);
+        if (options.BrakingMaxSpeedKmh is double brakingSpeed) Range(brakingSpeed, "制动段最高速度 (km/h)", .001, 1000);
+        if (options.DepartureSectionMaxSpeedKmh is double departureSpeed) Range(departureSpeed, "一离去最高速度 (km/h)", .001, 1000);
         Range(options.StepM, "计算步长 (m)", 0.1, 100);
-        if (options.Mode is not ("arrival" or "departure" or "through"))
-            Invalid("invalid-input", "运行方式必须为 arrival、departure 或 through。");
+        if (options.Mode is not ("arrival" or "departure" or "through" or "shunting"))
+            Invalid("invalid-input", "运行方式必须为 arrival、departure、through 或 shunting。");
         if (options.Mode == "departure" && options.InitialSpeedKmh != 0)
             Invalid("invalid-input", "出发模式的初速度必须为 0 km/h。");
         if (options.Mode == "arrival" && options.FinalSpeedKmh != 0)
@@ -285,9 +317,6 @@ public sealed class SpeedProfileCalculationService
             Range(stop!.PositionM, "停车位置 (m)", 0, profile.LengthM);
             Range(stop.DwellS, "停站时间 (s)", 0, 86_400);
             if (!stopPositions.Add(stop.PositionM)) Invalid("invalid-input", "停车位置不可重复。");
-            if ((stop.PositionM == 0 && options.InitialSpeedKmh != 0) ||
-                (stop.PositionM == profile.LengthM && options.FinalSpeedKmh != 0))
-                Invalid("invalid-input", "起终点停车要求对应边界速度为 0 km/h。");
         }
     }
     private static void Range(double value, string label, double minimum, double maximum, string code = "invalid-input")
