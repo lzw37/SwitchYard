@@ -32,6 +32,7 @@ const props = defineProps({
     showCellNames: { type: Boolean, default: false },
     routePickTarget: { type: String, default: "" },
     highlightedRoutes: { type: Array, default: () => [] },
+    highlightRouteEquipment: { type: Boolean, default: true },
     highlightedRouteLinkIds: { type: Array, default: () => [] },
     highlightedRouteNodeIds: { type: Array, default: () => [] },
     highlightedRouteArrowNodeIds: { type: Array, default: () => [] },
@@ -201,6 +202,7 @@ const highlightedRouteEquipmentColors = computed(() => {
     // Keep the legacy single-route interface unchanged. In multi-route mode,
     // the last route also owns a shared device, matching the SVG layer order.
     const colors = new Map();
+    if (!props.highlightRouteEquipment) return colors;
     if (!Array.isArray(props.highlightedRoutes) || props.highlightedRoutes.length === 0) return colors;
     const nodeColors = new Map();
     for (const route of highlightedRouteGroups.value) {
