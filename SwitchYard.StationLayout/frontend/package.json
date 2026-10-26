@@ -30,7 +30,8 @@
     "test:free-zoom": "node --test tests/layout-free-zoom.mjs",
     "test:contract": "tsc -p tsconfig.contract.json --noEmit",
     "test:runtime": "node tests/layout-runtime.mjs && node --test tests/layout-full-view.mjs && node tests/layout-inline-rename.mjs && node tests/layout-json-codec.mjs && node tests/layout-json-editor.mjs && node tests/layout-json-integration.mjs && node tests/layout-topology.mjs && node tests/layout-repair.mjs && node tests/layout-identity.mjs",
-    "pack:offline": "npm pack"
+    "pack:offline": "npm pack",
+    "test:coordinates": "node --test tests/layout-actual-coordinates.mjs && node tests/layout-coordinate-panel.mjs && node tests/layout-json-codec.mjs"
   },
   "peerDependencies": {
     "@element-plus/icons-vue": ">=2.3.0 <3",

@@ -153,6 +153,9 @@ function validateEntityGeometry(entity: JsonObject, collection: StationLayoutCol
     for (const key of ['x1', 'y1', 'x2', 'y2']) numberField(entity, key, path, archive);
   } else if (collection === 'nodes' || collection === 'platforms') {
     for (const key of ['x', 'y']) numberField(entity, key, path, archive);
+    if (collection === 'nodes' && entity.actualX !== null) {
+      numberField(entity, 'actualX', path);
+    }
     if (collection === 'platforms') {
       for (const key of ['width', 'height']) numberField(entity, key, path, archive);
     }

@@ -2,6 +2,12 @@
 
 运行曲线由后端 `SwitchYard.SpeedProfile` 计算。前端保留站场拓扑展开、参数编辑、图形渲染及服务端采样点的光标插值；不再生成牵引/制动速度曲线或绝缘、轨道电路占用结果，服务不可用时不回退到浏览器求解。
 
+## 节点实际坐标
+
+单条与批量计算展开进路时，优先使用节点的 `actualX` 作为横坐标；未填写或清空时继续使用图面横坐标，Y 坐标保持原有值。零、负数和小数均有效。实际坐标沿用当前距离标尺与单位换算；已明确填写的线路实测长度 `lengthM` 仍优先于坐标推导长度。曲线按修正后的相邻线路及原半径重新计算切线和弧长，设备、绝缘及轨道电路里程同步更新，原布置图数据不被修改。若原半径无法适配修正后的线路，提示曲线几何无效。
+
+在布置图中保存坐标后，重新进入牵引计算或点击刷新可读取最新数值；点击“计算”或“批量计算”生成新结果，已有计算快照不会自动重算。
+
 ## 接口
 
 `GET/PUT /api/SpeedProfile/workspace` 按实例、站场方案、计算方案和进路记录读写关系化牵引参数；`POST /api/SpeedProfile/workspace/calculate` 校验已保存版本，计算并原子保存输入及结果；`GET /api/SpeedProfile/workspace/calculation` 读取最近结果。沿用应用 JWT 与实例 Owner/Admin 权限。原 `/api/SpeedProfile/calculate` 保留为兼容的无状态计算接口，牵引页面已不再使用。完整契约、单位、错误格式及示例见 [后端 API 文档](../../../SwitchYard.WebApi/SwitchYard.SpeedProfile/API.md)。

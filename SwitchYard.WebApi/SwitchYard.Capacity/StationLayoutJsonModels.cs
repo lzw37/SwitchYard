@@ -158,6 +158,10 @@ namespace SwitchYard.Capacity
         [JsonPropertyName("x")]
         public double X { get; set; }
 
+        [JsonPropertyName("actualX")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public double? ActualX { get; set; }
+
         [JsonPropertyName("y")]
         public double Y { get; set; }
     }

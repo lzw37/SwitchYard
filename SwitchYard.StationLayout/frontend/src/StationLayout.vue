@@ -101,9 +101,9 @@ function getHttpErrorMessage(error, fallback) {
 }
 
 function ensureWritable(options = {}) {
-    if (!props.readonly) return true;
+    if (!props.readonly && (!actualCoordinatePreview.value || options.allowPreview)) return true;
     if (options?.silent !== true) {
-        ElMessage.warning(t("stationLayout.messages.readonly"));
+        ElMessage.warning(t(props.readonly ? "stationLayout.messages.readonly" : "stationLayout.coordinates.previewHint"));
     }
     return false;
 }
@@ -137,6 +137,16 @@ const editingStationSchemeOriginalId = ref("");
 const editingStationSchemeForm = ref({ name: "" });
 const layoutScaleX = ref(1);
 const layoutScaleY = ref(1);
+const coordinatePanelVisible = ref(false);
+const focusedCoordinateNodeId = ref("");
+const nodeCoordinateInputs = new Map();
+let coordinateFocusVersion = 0;
+let pendingNodeCoordinateFocus = null;
+const actualCoordinatePreview = ref(false);
+const layoutReadonly = computed(() => props.readonly || actualCoordinatePreview.value);
+const nodeCoordinateRows = computed(() => stationLayoutEditorRef.value?.nodeCoordinateRows || layoutSnapshot.value.nodes);
+const calibratedNodeCount = computed(() => nodeCoordinateRows.value.filter(node =>
+    typeof node.actualX === "number" && Number.isFinite(node.actualX)).length);
 const showCurveArc = ref(true);
 const showNodes = ref(true);
 const showCellNames = ref(true);
@@ -951,6 +961,83 @@ function toggleCellPanel() {
     }
 }
 
+function openCoordinatePanel() {
+    coordinatePanelVisible.value = true;
+    refreshLayoutSnapshot();
+    cellPanelVisible.value = false;
+    cellLinkPickMode.value = false;
+    equipmentDrawerVisible.value = false;
+    routeTesterVisible.value = false;
+}
+
+function toggleCoordinatePanel() {
+    coordinateFocusVersion += 1;
+    if (coordinatePanelVisible.value) {
+        coordinatePanelVisible.value = false;
+    } else {
+        openCoordinatePanel();
+    }
+}
+
+function setNodeCoordinateInputRef(nodeId, input) {
+    const key = String(nodeId);
+    if (input) {
+        nodeCoordinateInputs.set(key, input);
+        // Element Plus may mount table cells after the panel's first render.
+        if (pendingNodeCoordinateFocus?.key === key) void focusPendingNodeCoordinateInput(pendingNodeCoordinateFocus);
+    } else {
+        nodeCoordinateInputs.delete(key);
+    }
+}
+
+async function focusNodeActualX(nodeId) {
+    if (loadingData.value || savingData.value || importingData.value || cellLinkPickMode.value) return;
+    const key = String(nodeId ?? "").trim();
+    const row = nodeCoordinateRows.value.find(node => String(node.id) === key);
+    if (!row) return;
+    const request = { key, focusVersion: ++coordinateFocusVersion, loadVersion: layoutLoadVersion };
+    pendingNodeCoordinateFocus = request;
+    openCoordinatePanel();
+    focusedCoordinateNodeId.value = row.id;
+    await focusPendingNodeCoordinateInput(request);
+}
+
+async function focusPendingNodeCoordinateInput(request) {
+    await nextTick();
+    if (pendingNodeCoordinateFocus !== request) return;
+    if (!coordinatePanelVisible.value || request.focusVersion !== coordinateFocusVersion || request.loadVersion !== layoutLoadVersion) {
+        pendingNodeCoordinateFocus = null;
+        return;
+    }
+    const input = nodeCoordinateInputs.get(request.key)?.$el?.querySelector("input");
+    if (!input) return;
+    pendingNodeCoordinateFocus = null;
+    input.scrollIntoView({ block: "nearest", inline: "nearest" });
+    if (input.disabled) return;
+    input.focus({ preventScroll: true });
+    input.select();
+}
+
+function updateNodeActualX(nodeId, value) {
+    if (!ensureWritable({ allowPreview: true }) || loadingData.value || savingData.value || importingData.value) return;
+    const actualX = value == null || value === "" ? null : value;
+    if (actualX !== null && (typeof actualX !== "number" || !Number.isFinite(actualX))) {
+        ElMessage.warning(t("stationLayout.coordinates.invalid"));
+        return;
+    }
+    stationLayoutEditorRef.value?.updateNodeActualX?.(nodeId, actualX);
+    refreshLayoutSnapshot();
+}
+
+async function toggleActualCoordinatePreview() {
+    if (!currentStationSchemeId.value || loadingData.value || savingData.value || importingData.value) return;
+    setSelectMode();
+    cellLinkPickMode.value = false;
+    actualCoordinatePreview.value = !actualCoordinatePreview.value;
+    await nextTick();
+    fitFullLayout();
+}
+
 function snapshotText(value) {
     return typeof value === "string" || typeof value === "number" ? String(value).trim() : "";
 }
@@ -1411,11 +1498,11 @@ async function deleteSelection() {
     pruneCellLinksToExistingTracks();
 }
 function revoke() {
-    if (!ensureWritable()) return;
+    if (!ensureWritable({ allowPreview: true })) return;
     stationLayoutEditorRef.value?.revoke();
 }
 function redo() {
-    if (!ensureWritable()) return;
+    if (!ensureWritable({ allowPreview: true })) return;
     stationLayoutEditorRef.value?.redo();
 }
 const mouseSnap = ref(true);
@@ -1748,7 +1835,7 @@ async function deleteStationScheme(row) {
 function saveData(options = {}) {
     const silent = options?.silent === true;
     if (loadingData.value || savingData.value || importingData.value) return Promise.resolve(false);
-    if (!ensureWritable({ silent })) {
+    if (!ensureWritable({ silent, allowPreview: true })) {
         return Promise.resolve(false);
     }
     if (!props.selectedInstanceId) {
@@ -1861,6 +1948,8 @@ function saveData(options = {}) {
 }
 function getData(options = {}) {
     const loadVersion = ++layoutLoadVersion;
+    focusedCoordinateNodeId.value = "";
+    actualCoordinatePreview.value = false;
     cancelLoadedLayoutFit();
     if (!props.selectedInstanceId) {
         loadingData.value = false;
@@ -2800,6 +2889,9 @@ watch(
 );
 
 watch(currentStationSchemeId, (stationSchemeId) => {
+    actualCoordinatePreview.value = false;
+    focusedCoordinateNodeId.value = "";
+    coordinateFocusVersion += 1;
     emit('update:stationSchemeId', stationSchemeId);
 }, { flush: 'sync' });
 
@@ -2862,7 +2954,7 @@ defineExpose({ exportJson, importJson });
             </template>
 
             <template #primary>
-                <el-radio-group v-model="activeEditMode" class="mode-toggle" size="small" :disabled="props.readonly"
+                <el-radio-group v-model="activeEditMode" class="mode-toggle" size="small" :disabled="layoutReadonly"
                     @change="handleEditModeChange">
                     <el-radio-button :value="0">
                         <el-icon><Pointer /></el-icon>
@@ -2901,9 +2993,9 @@ defineExpose({ exportJson, importJson });
                     <template #dropdown>
                         <el-dropdown-menu>
                             <el-dropdown-item command="load">{{ t('stationLayout.menu.loadData') }}</el-dropdown-item>
-                            <el-dropdown-item command="importJson" :disabled="props.readonly">{{ t('stationLayout.menu.importJson') }}</el-dropdown-item>
+                            <el-dropdown-item command="importJson" :disabled="layoutReadonly">{{ t('stationLayout.menu.importJson') }}</el-dropdown-item>
                             <el-dropdown-item command="exportJson">{{ t('stationLayout.menu.exportJson') }}</el-dropdown-item>
-                            <el-dropdown-item command="extractDwg" :disabled="props.readonly">{{ t('stationLayout.menu.extractDwg') }}</el-dropdown-item>
+                            <el-dropdown-item command="extractDwg" :disabled="layoutReadonly">{{ t('stationLayout.menu.extractDwg') }}</el-dropdown-item>
                         </el-dropdown-menu>
                     </template>
                 </el-dropdown>
@@ -2917,13 +3009,13 @@ defineExpose({ exportJson, importJson });
                 <div class="station-toolbar-group">
                     <span class="station-toolbar-group__label">{{ t('stationLayout.group.drawingObject') }}</span>
                     <el-button-group>
-                        <el-button size="small" :icon="Minus" :disabled="props.readonly || isSelectMode" :type="getDrawingButtonType('l')"
+                        <el-button size="small" :icon="Minus" :disabled="layoutReadonly || isSelectMode" :type="getDrawingButtonType('l')"
                             @click="setDrawingObject('l')">{{ t('stationLayout.draw.line') }}</el-button>
-                        <el-button size="small" :icon="Location" :disabled="props.readonly || isSelectMode" :type="getDrawingButtonType('n')"
+                        <el-button size="small" :icon="Location" :disabled="layoutReadonly || isSelectMode" :type="getDrawingButtonType('n')"
                             @click="setDrawingObject('n')">{{ t('stationLayout.draw.node') }}</el-button>
-                        <el-dropdown ref="signalDropdownRef" trigger="click" :disabled="props.readonly || isSelectMode"
+                        <el-dropdown ref="signalDropdownRef" trigger="click" :disabled="layoutReadonly || isSelectMode"
                             @command="setDrawingSignalType">
-                            <el-button size="small" :icon="Bell" :disabled="props.readonly || isSelectMode" :type="getDrawingButtonType('s')"
+                            <el-button size="small" :icon="Bell" :disabled="layoutReadonly || isSelectMode" :type="getDrawingButtonType('s')"
                                 @click="setDrawingObject('s')">
                                 <span class="drawing-object-button-label">{{ drawingSignalButtonLabel }}</span>
                                 <el-icon class="el-icon--right"><ArrowDown /></el-icon>
@@ -2939,14 +3031,14 @@ defineExpose({ exportJson, importJson });
                                 </el-dropdown-menu>
                             </template>
                         </el-dropdown>
-                        <el-button size="small" :icon="Switch" :disabled="props.readonly || isSelectMode" :type="getDrawingButtonType('w')"
+                        <el-button size="small" :icon="Switch" :disabled="layoutReadonly || isSelectMode" :type="getDrawingButtonType('w')"
                             @click="setDrawingObject('w')">{{ t('stationLayout.draw.switch') }}</el-button>
-                        <el-button size="small" :icon="Filter" :disabled="props.readonly || isSelectMode" :type="getDrawingButtonType('i')"
+                        <el-button size="small" :icon="Filter" :disabled="layoutReadonly || isSelectMode" :type="getDrawingButtonType('i')"
                             @click="setDrawingObject('i')">{{ t('stationLayout.draw.insulation') }}</el-button>
-                        <el-button size="small" :icon="Guide" :disabled="props.readonly || isSelectMode" :type="getDrawingButtonType('r')"
+                        <el-button size="small" :icon="Guide" :disabled="layoutReadonly || isSelectMode" :type="getDrawingButtonType('r')"
                             @click="setDrawingObject('r')">{{ t('stationLayout.draw.route') }}</el-button>
-                        <el-dropdown trigger="click" :disabled="props.readonly || isSelectMode" @command="setDrawingBufferStopOption">
-                            <el-button size="small" :icon="Stopwatch" :disabled="props.readonly || isSelectMode" :type="getDrawingButtonType('e')"
+                        <el-dropdown trigger="click" :disabled="layoutReadonly || isSelectMode" @command="setDrawingBufferStopOption">
+                            <el-button size="small" :icon="Stopwatch" :disabled="layoutReadonly || isSelectMode" :type="getDrawingButtonType('e')"
                                 @click="setDrawingObject('e')">
                                 <span class="drawing-object-button-label">{{ drawingBufferStopButtonLabel }}</span>
                                 <el-icon class="el-icon--right"><ArrowDown /></el-icon>
@@ -2966,9 +3058,9 @@ defineExpose({ exportJson, importJson });
                                 </el-dropdown-menu>
                             </template>
                         </el-dropdown>
-                        <el-button size="small" :icon="Platform" :disabled="props.readonly || isSelectMode" :type="getDrawingButtonType('p')"
+                        <el-button size="small" :icon="Platform" :disabled="layoutReadonly || isSelectMode" :type="getDrawingButtonType('p')"
                             @click="setDrawingObject('p')">{{ t('stationLayout.draw.platform') }}</el-button>
-                        <el-button size="small" :icon="EditPen" :disabled="props.readonly || isSelectMode" :type="getDrawingButtonType('a')"
+                        <el-button size="small" :icon="EditPen" :disabled="layoutReadonly || isSelectMode" :type="getDrawingButtonType('a')"
                             @click="setDrawingObject('a')">{{ t('stationLayout.draw.annotation') }}</el-button>
                     </el-button-group>
                 </div>
@@ -2978,7 +3070,7 @@ defineExpose({ exportJson, importJson });
                         <el-button size="small" :icon="CircleClose" @click="clearSelection">
                             {{ t('stationLayout.menu.clearSelection') }}
                         </el-button>
-                        <el-button size="small" :icon="Delete" type="danger" plain :disabled="props.readonly"
+                        <el-button size="small" :icon="Delete" type="danger" plain :disabled="layoutReadonly"
                             @click="deleteSelection">
                             {{ t('stationLayout.menu.deleteSelection') }}
                         </el-button>
@@ -2986,6 +3078,11 @@ defineExpose({ exportJson, importJson });
                 </div>
                 <div class="station-toolbar-group">
                     <span class="station-toolbar-group__label">{{ t('stationLayout.group.display') }}</span>
+                    <el-button size="small" :icon="Aim" :type="actualCoordinatePreview ? 'primary' : 'default'"
+                        :aria-pressed="actualCoordinatePreview" :disabled="!currentStationSchemeId"
+                        @click="toggleActualCoordinatePreview">
+                        {{ t(actualCoordinatePreview ? 'stationLayout.coordinates.restore' : 'stationLayout.coordinates.preview') }}
+                    </el-button>
                     <div class="station-toolbar-switch-control">
                         <span class="station-toolbar-switch-control__label">{{ t('stationLayout.menu.showGrid') }}</span>
                         <el-switch v-model="showGrid" size="small" />
@@ -2997,6 +3094,11 @@ defineExpose({ exportJson, importJson });
                 </div>
                 <div class="station-toolbar-group">
                     <span class="station-toolbar-group__label">{{ t('stationLayout.group.panels') }}</span>
+                    <el-button size="small" :icon="Location" :type="coordinatePanelVisible ? 'primary' : 'default'"
+                        :aria-pressed="coordinatePanelVisible" :disabled="!currentStationSchemeId"
+                        @click="toggleCoordinatePanel">
+                        {{ t('stationLayout.coordinates.title') }}
+                    </el-button>
                     <el-button size="small" :icon="Magnet" :type="cellPanelVisible ? 'primary' : 'default'"
                         :aria-pressed="cellPanelVisible" @click="toggleCellPanel">
                         {{ t('stationLayout.panels.trackCircuits') }}
@@ -3026,10 +3128,10 @@ defineExpose({ exportJson, importJson });
                     <span class="station-toolbar-group__label">{{ t('stationLayout.menu.file') }}</span>
                     <el-button-group>
                         <el-button size="small" :icon="Download" @click="getData">{{ t('stationLayout.menu.loadData') }}</el-button>
-                        <el-button size="small" :icon="Upload" :disabled="props.readonly"
+                        <el-button size="small" :icon="Upload" :disabled="layoutReadonly"
                             @click="openImportJsonFile">{{ t('stationLayout.menu.importJson') }}</el-button>
                         <el-button size="small" :icon="Download" @click="exportJsonFile">{{ t('stationLayout.menu.exportJson') }}</el-button>
-                        <el-button size="small" :icon="Download" :disabled="props.readonly"
+                        <el-button size="small" :icon="Download" :disabled="layoutReadonly"
                             @click="openExtractDwgDialog">{{ t('stationLayout.menu.extractDwg') }}</el-button>
                     </el-button-group>
                 </div>
@@ -3056,20 +3158,20 @@ defineExpose({ exportJson, importJson });
                 </div>
                 <div class="station-toolbar-group">
                     <span class="station-toolbar-group__label">{{ t('stationLayout.group.topology') }}</span>
-                    <el-radio-group v-model="topologyGenerationMode" size="small" :disabled="props.readonly">
+                    <el-radio-group v-model="topologyGenerationMode" size="small" :disabled="layoutReadonly">
                         <el-radio-button value="auto">{{ t('stationLayout.topology.auto') }}</el-radio-button>
                         <el-radio-button value="manual">{{ t('stationLayout.topology.manual') }}</el-radio-button>
                     </el-radio-group>
                     <el-button-group>
-                        <el-button size="small" :icon="Aim" :disabled="props.readonly" @click="showCrossPoint">{{ t('stationLayout.tools.showCrossPoint') }}</el-button>
-                        <el-button size="small" :icon="Hide" :disabled="props.readonly" @click="hideCrossPoint">{{ t('stationLayout.tools.hideCrossPoint') }}</el-button>
-                        <el-button size="small" :icon="Connection" :disabled="props.readonly" @click="snapLine">{{ t('stationLayout.tools.snapLine') }}</el-button>
-                        <el-button size="small" :icon="Scissor" :disabled="props.readonly" @click="autoSeparateLine">{{ t('stationLayout.tools.separateLine') }}</el-button>
-                        <el-button size="small" :icon="Share" :disabled="props.readonly" @click="autoGenerateNode">{{ t('stationLayout.tools.generateNode') }}</el-button>
-                        <el-button size="small" :icon="Share" :disabled="props.readonly" @click="autoMergeNode">{{ t('stationLayout.tools.mergeNodes') }}</el-button>
-                        <el-button size="small" :icon="SetUp" :disabled="props.readonly" @click="autoGenerateSwitch">{{ t('stationLayout.tools.generateSwitch') }}</el-button>
-                        <el-button size="small" :icon="Connection" :disabled="props.readonly" @click="autoGenerateCurve">{{ t('stationLayout.tools.generateCurve') }}</el-button>
-                        <el-button size="small" :icon="Connection" :disabled="props.readonly"
+                        <el-button size="small" :icon="Aim" :disabled="layoutReadonly" @click="showCrossPoint">{{ t('stationLayout.tools.showCrossPoint') }}</el-button>
+                        <el-button size="small" :icon="Hide" :disabled="layoutReadonly" @click="hideCrossPoint">{{ t('stationLayout.tools.hideCrossPoint') }}</el-button>
+                        <el-button size="small" :icon="Connection" :disabled="layoutReadonly" @click="snapLine">{{ t('stationLayout.tools.snapLine') }}</el-button>
+                        <el-button size="small" :icon="Scissor" :disabled="layoutReadonly" @click="autoSeparateLine">{{ t('stationLayout.tools.separateLine') }}</el-button>
+                        <el-button size="small" :icon="Share" :disabled="layoutReadonly" @click="autoGenerateNode">{{ t('stationLayout.tools.generateNode') }}</el-button>
+                        <el-button size="small" :icon="Share" :disabled="layoutReadonly" @click="autoMergeNode">{{ t('stationLayout.tools.mergeNodes') }}</el-button>
+                        <el-button size="small" :icon="SetUp" :disabled="layoutReadonly" @click="autoGenerateSwitch">{{ t('stationLayout.tools.generateSwitch') }}</el-button>
+                        <el-button size="small" :icon="Connection" :disabled="layoutReadonly" @click="autoGenerateCurve">{{ t('stationLayout.tools.generateCurve') }}</el-button>
+                        <el-button size="small" :icon="Connection" :disabled="layoutReadonly"
                             @click="openEquipmentBindingCorrectionDialog">{{ t('stationLayout.tools.correctBindings') }}</el-button>
                     </el-button-group>
                 </div>
@@ -3095,7 +3197,7 @@ defineExpose({ exportJson, importJson });
             </template>
         </StationLayoutEditToolbar>
         <input ref="importJsonFileInputRef" type="file" accept=".json,application/json" class="hidden-file-input"
-            :disabled="props.readonly"
+            :disabled="layoutReadonly"
             @change="handleImportJsonFileChange" />
 
         <el-dialog v-model="stationSchemeManagerVisible" :title="t('stationLayout.schemeManager.title')" width="760px"
@@ -3104,7 +3206,7 @@ defineExpose({ exportJson, importJson });
             <div class="station-scheme-manager">
                 <div class="station-scheme-create-row">
                     <el-button type="primary" size="small"
-                        :disabled="props.readonly || loadingStationSchemes || stationSchemeManagerSaving || !!stationSchemeDraft || !!editingStationSchemeOriginalId"
+                        :disabled="layoutReadonly || loadingStationSchemes || stationSchemeManagerSaving || !!stationSchemeDraft || !!editingStationSchemeOriginalId"
                         @click="startNewStationScheme">
                         {{ t('stationLayout.schemeManager.add') }}
                     </el-button>
@@ -3121,24 +3223,24 @@ defineExpose({ exportJson, importJson });
                         <template #default="{ row }">
                             <el-input v-if="row.isDraft" ref="stationSchemeDraftInputRef"
                                 v-model="row.name" size="small" maxlength="100"
-                                :disabled="props.readonly || stationSchemeManagerSaving"
+                                :disabled="layoutReadonly || stationSchemeManagerSaving"
                                 :placeholder="t('stationLayout.schemeManager.namePlaceholder')" @keyup.enter="createStationScheme" />
                             <el-input v-else-if="editingStationSchemeOriginalId === row.id"
                                 v-model="editingStationSchemeForm.name" size="small" maxlength="100"
-                                :disabled="props.readonly || stationSchemeManagerSaving" @keyup.enter="saveStationSchemeEdit" />
+                                :disabled="layoutReadonly || stationSchemeManagerSaving" @keyup.enter="saveStationSchemeEdit" />
                             <span v-else>{{ row.name || row.id }}</span>
                         </template>
                     </el-table-column>
                     <el-table-column :label="t('stationLayout.schemeManager.operation')" width="240">
                         <template #default="{ row }">
                             <div v-if="row.isDraft" class="station-scheme-actions">
-                                <el-button type="success" size="small" :disabled="props.readonly || stationSchemeManagerSaving"
+                                <el-button type="success" size="small" :disabled="layoutReadonly || stationSchemeManagerSaving"
                                     @click="createStationScheme">{{ t('stationLayout.schemeManager.save') }}</el-button>
                                 <el-button size="small" :disabled="stationSchemeManagerSaving"
                                     @click="resetStationSchemeDraft">{{ t('stationLayout.schemeManager.cancel') }}</el-button>
                             </div>
                             <div v-else-if="editingStationSchemeOriginalId === row.id" class="station-scheme-actions">
-                                <el-button type="success" size="small" :disabled="props.readonly || stationSchemeManagerSaving"
+                                <el-button type="success" size="small" :disabled="layoutReadonly || stationSchemeManagerSaving"
                                     @click="saveStationSchemeEdit">
                                     {{ t('stationLayout.schemeManager.save') }}
                                 </el-button>
@@ -3147,13 +3249,13 @@ defineExpose({ exportJson, importJson });
                                 </el-button>
                             </div>
                             <div v-else class="station-scheme-actions">
-                                <el-button type="primary" size="small" :disabled="props.readonly || stationSchemeManagerSaving || !!stationSchemeDraft || !!editingStationSchemeOriginalId"
+                                <el-button type="primary" size="small" :disabled="layoutReadonly || stationSchemeManagerSaving || !!stationSchemeDraft || !!editingStationSchemeOriginalId"
                                     @click="startEditStationScheme(row)">
                                     {{ t('stationLayout.schemeManager.edit') }}
                                 </el-button>
-                                <el-button size="small" :disabled="props.readonly || stationSchemeManagerSaving || !!stationSchemeDraft || !!editingStationSchemeOriginalId"
+                                <el-button size="small" :disabled="layoutReadonly || stationSchemeManagerSaving || !!stationSchemeDraft || !!editingStationSchemeOriginalId"
                                     @click="copyStationScheme(row)">{{ t('stationLayout.schemeManager.copy') }}</el-button>
-                                <el-button type="danger" size="small" :disabled="props.readonly || stationSchemeManagerSaving || !!stationSchemeDraft || !!editingStationSchemeOriginalId"
+                                <el-button type="danger" size="small" :disabled="layoutReadonly || stationSchemeManagerSaving || !!stationSchemeDraft || !!editingStationSchemeOriginalId"
                                     @click="deleteStationScheme(row)">
                                     {{ t('stationLayout.schemeManager.delete') }}
                                 </el-button>
@@ -3203,7 +3305,7 @@ defineExpose({ exportJson, importJson });
                     <span>{{ t('stationLayout.editor.binding.selected', { selected: selectedBindingCorrectionRows.length, total: bindingCorrectionRows.length }) }}</span>
                     <div class="binding-correction-actions">
                         <el-button @click="closeBindingCorrectionDialog">{{ t('stationLayout.editor.common.cancel') }}</el-button>
-                        <el-button type="primary" :disabled="props.readonly || selectedBindingCorrectionRows.length === 0"
+                        <el-button type="primary" :disabled="layoutReadonly || selectedBindingCorrectionRows.length === 0"
                             @click="applySelectedBindingCorrections">
                             {{ t('stationLayout.editor.binding.confirm') }}
                         </el-button>
@@ -3214,7 +3316,7 @@ defineExpose({ exportJson, importJson });
 
         <el-dialog v-model="layoutStyleDialogVisible" :title="t('stationLayout.editor.styles.title')" width="920px" class="layout-style-dialog"
             :close-on-click-modal="false">
-            <el-form :disabled="props.readonly">
+            <el-form :disabled="layoutReadonly">
             <el-tabs>
                 <el-tab-pane :label="t('stationLayout.editor.styles.text')">
                     <div class="layout-style-table">
@@ -3320,9 +3422,9 @@ defineExpose({ exportJson, importJson });
             </el-tabs>
             </el-form>
             <template #footer>
-                <el-button :disabled="props.readonly"
+                <el-button :disabled="layoutReadonly"
                     @click="ensureWritable() && resetLayoutDisplayStyles()">{{ t('stationLayout.editor.styles.reset') }}</el-button>
-                <el-button type="primary" :loading="savingData" :disabled="props.readonly"
+                <el-button type="primary" :loading="savingData" :disabled="layoutReadonly"
                     @click="saveLayoutDisplayStyles">{{ t('stationLayout.editor.common.save') }}</el-button>
                 <el-button @click="layoutStyleDialogVisible = false">{{ t('stationLayout.schemeManager.close') }}</el-button>
             </template>
@@ -3331,48 +3433,51 @@ defineExpose({ exportJson, importJson });
         <div v-if="selectedAnnotation" class="annotation-editor-row">
             <span class="toolbar-group-label">{{ t('stationLayout.editor.annotation.title') }}</span>
             <el-input v-model="selectedAnnotation.text" size="small" class="annotation-text-input"
-                :disabled="props.readonly"
+                :disabled="layoutReadonly"
                 @input="updateSelectedAnnotation({ text: selectedAnnotation.text })" />
             <el-select v-model="selectedAnnotation.fontFamily" size="small" class="annotation-font-select"
-                :disabled="props.readonly"
+                :disabled="layoutReadonly"
                 @change="updateSelectedAnnotation({ fontFamily: selectedAnnotation.fontFamily })">
                 <el-option v-for="fontFamily in annotationFontFamilyOptions" :key="fontFamily" :label="fontFamily"
                     :value="fontFamily" />
             </el-select>
             <el-input-number v-model="selectedAnnotation.fontSize" size="small" :min="8" :max="96" :step="1"
-                controls-position="right" :disabled="props.readonly"
+                controls-position="right" :disabled="layoutReadonly"
                 @change="updateSelectedAnnotation({ fontSize: selectedAnnotation.fontSize })" />
             <el-select v-model="selectedAnnotation.fontWeight" size="small" class="annotation-small-select"
-                :disabled="props.readonly"
+                :disabled="layoutReadonly"
                 @change="updateSelectedAnnotation({ fontWeight: selectedAnnotation.fontWeight })">
                 <el-option v-for="item in annotationFontWeightOptions" :key="item.value" :label="item.label"
                     :value="item.value" />
             </el-select>
             <el-select v-model="selectedAnnotation.fontStyle" size="small" class="annotation-small-select"
-                :disabled="props.readonly"
+                :disabled="layoutReadonly"
                 @change="updateSelectedAnnotation({ fontStyle: selectedAnnotation.fontStyle })">
                 <el-option v-for="item in annotationFontStyleOptions" :key="item.value" :label="item.label"
                     :value="item.value" />
             </el-select>
             <span class="annotation-field-label">{{ t('stationLayout.editor.annotation.angle') }}</span>
             <el-input-number v-model="selectedAnnotation.angle" size="small" :min="-180" :max="180" :step="5"
-                controls-position="right" :disabled="props.readonly"
+                controls-position="right" :disabled="layoutReadonly"
                 @change="updateSelectedAnnotation({ angle: selectedAnnotation.angle })" />
             <span class="annotation-field-label">X</span>
             <el-input-number v-model="selectedAnnotation.position.x" size="small" :step="10" controls-position="right"
-                :disabled="props.readonly"
+                :disabled="layoutReadonly"
                 @change="updateSelectedAnnotationPosition" />
             <span class="annotation-field-label">Y</span>
             <el-input-number v-model="selectedAnnotation.position.y" size="small" :step="10" controls-position="right"
-                :disabled="props.readonly"
+                :disabled="layoutReadonly"
                 @change="updateSelectedAnnotationPosition" />
         </div>
+        <el-alert v-if="actualCoordinatePreview" class="coordinate-preview-hint"
+            :title="t('stationLayout.coordinates.previewHint')" type="info" :closable="false" show-icon />
         <div class="station-layout-workspace">
             <div v-if="currentStationSchemeId" ref="stationLayoutEditorFrameRef" class="station-layout-editor-frame">
                 <StationLayoutEditor :translate="t" ref="stationLayoutEditorRef" :display-scale-x="layoutScaleX"
                     :display-scale-y="layoutScaleY" :show-curve-arc="showCurveArc" :show-nodes="showNodes"
                     :show-grid="showGrid" :object-snap-distance="objectSnapDistance"
                     :readonly="props.readonly"
+                    :actual-coordinate-preview="actualCoordinatePreview"
                     :auto-generate-topology="topologyGenerationMode === 'auto'"
                     :grid-spacing="gridSpacing"
                     :display-styles="layoutDisplayStyles"
@@ -3385,6 +3490,7 @@ defineExpose({ exportJson, importJson });
                     :highlighted-route-node-ids="highlightedRouteNodeIds"
                     @selected-annotation-change="handleSelectedAnnotationChange"
                     @selected-equipment-change="handleSelectedEquipmentChange"
+                    @node-coordinate-focus="focusNodeActualX"
                     @route-node-pick="handleRouteNodePick"
                     @cell-name-click="handleCellNameClick"
                     @cell-rename="handleCellRename"
@@ -3400,6 +3506,60 @@ defineExpose({ exportJson, importJson });
                     {{ t('stationLayout.schemeManager.create') }}
                 </el-button>
             </el-empty>
+            <aside v-if="coordinatePanelVisible" class="equipment-side-panel coordinate-side-panel">
+                <div class="equipment-side-panel-header">
+                    <div>
+                        <div class="equipment-side-panel-title">{{ t('stationLayout.coordinates.title') }}</div>
+                        <div class="equipment-side-panel-subtitle">{{ t('stationLayout.coordinates.count', {
+                            filled: calibratedNodeCount, total: nodeCoordinateRows.length,
+                        }) }}</div>
+                    </div>
+                    <el-button text size="small" @click="toggleCoordinatePanel">{{ t('stationLayout.schemeManager.close') }}</el-button>
+                </div>
+                <div class="coordinate-panel-body">
+                    <div class="coordinate-panel-hint">{{ t('stationLayout.coordinates.hint') }}</div>
+                    <el-table :data="nodeCoordinateRows" row-key="id" size="small" class="coordinate-table"
+                        highlight-current-row :current-row-key="focusedCoordinateNodeId"
+                        :empty-text="t('stationLayout.coordinates.empty')">
+                        <el-table-column prop="id" :label="t('stationLayout.coordinates.node')" min-width="80">
+                            <template #default="{ row }">
+                                <span>{{ row.id }}</span>
+                                <div v-if="row.name" class="equipment-side-panel-subtitle">{{ row.name }}</div>
+                            </template>
+                        </el-table-column>
+                        <el-table-column :label="t('stationLayout.coordinates.equipment')" min-width="130">
+                            <template #default="{ row }">
+                                <div v-if="row.boundEquipmentNames?.length" class="coordinate-equipment-tags">
+                                    <el-tag v-for="(name, index) in row.boundEquipmentNames" :key="index"
+                                        size="small" effect="light">{{ name }}</el-tag>
+                                </div>
+                                <span v-else>—</span>
+                            </template>
+                        </el-table-column>
+                        <el-table-column prop="x" :label="t('stationLayout.coordinates.drawingX')" min-width="90" show-overflow-tooltip />
+                        <el-table-column :label="t('stationLayout.coordinates.actualX')" min-width="165">
+                            <template #default="{ row }">
+                                <el-input-number :model-value="row.actualX ?? null" :controls="false" size="small"
+                                    :ref="input => setNodeCoordinateInputRef(row.id, input)"
+                                    :aria-label="t('stationLayout.coordinates.inputLabel', { id: row.id })"
+                                    :placeholder="t('stationLayout.coordinates.unset')"
+                                    :disabled="props.readonly || loadingData || savingData || importingData"
+                                    @focus="focusedCoordinateNodeId = row.id"
+                                    @change="value => updateNodeActualX(row.id, value)" />
+                            </template>
+                        </el-table-column>
+                    </el-table>
+                    <div class="coordinate-panel-hint">{{ t('stationLayout.coordinates.saveHint') }}</div>
+                </div>
+                <div class="equipment-side-panel-footer">
+                    <el-button size="small" :type="actualCoordinatePreview ? 'primary' : 'default'"
+                        :aria-pressed="actualCoordinatePreview" @click="toggleActualCoordinatePreview">
+                        {{ t(actualCoordinatePreview ? 'stationLayout.coordinates.restore' : 'stationLayout.coordinates.preview') }}
+                    </el-button>
+                    <el-button size="small" type="primary" :loading="savingData" :disabled="props.readonly"
+                        @click="saveData">{{ t('stationLayout.menu.saveData') }}</el-button>
+                </div>
+            </aside>
             <aside v-if="cellPanelVisible" class="cell-side-panel">
                 <div class="cell-side-panel-header">
                     <div>
@@ -3413,11 +3573,11 @@ defineExpose({ exportJson, importJson });
                         <div class="cell-panel-section-header">
                             <span>{{ t('stationLayout.editor.cells.list') }}</span>
                             <div class="cell-panel-actions">
-                                <el-button size="small" :icon="Magnet" :disabled="props.readonly"
+                                <el-button size="small" :icon="Magnet" :disabled="layoutReadonly"
                                     @click="autoGenerateCells">{{ t('stationLayout.editor.cells.autoGenerate') }}</el-button>
-                                <el-button size="small" type="primary" :disabled="props.readonly"
+                                <el-button size="small" type="primary" :disabled="layoutReadonly"
                                     @click="createCell">{{ t('stationLayout.editor.common.add') }}</el-button>
-                                <el-button size="small" type="danger" :disabled="props.readonly || !selectedCellId"
+                                <el-button size="small" type="danger" :disabled="layoutReadonly || !selectedCellId"
                                     @click="deleteSelectedCell">
                                     {{ t('stationLayout.editor.common.delete') }}
                                 </el-button>
@@ -3442,14 +3602,14 @@ defineExpose({ exportJson, importJson });
                     <section class="cell-panel-section cell-detail-section">
                         <div class="cell-panel-section-header">
                             <span>{{ t('stationLayout.editor.cells.info') }}</span>
-                            <el-button size="small" type="primary" :disabled="props.readonly || !selectedCellId"
+                            <el-button size="small" type="primary" :disabled="layoutReadonly || !selectedCellId"
                                 :loading="savingData"
                                 @click="saveCellForm">
                                 {{ t('stationLayout.editor.common.save') }}
                             </el-button>
                         </div>
                         <div v-if="selectedCellId" class="cell-detail-content">
-                            <el-form class="cell-form" label-width="116px" size="small" :disabled="props.readonly">
+                            <el-form class="cell-form" label-width="116px" size="small" :disabled="layoutReadonly">
                                 <el-form-item :label="t('stationLayout.editor.cells.instance')">
                                     <el-input v-model="cellForm.instanceID" disabled />
                                 </el-form-item>
@@ -3472,15 +3632,15 @@ defineExpose({ exportJson, importJson });
                                 <span class="cell-link-toolbar-title">{{ t('stationLayout.editor.cells.links') }}</span>
                                 <div class="cell-link-toolbar-actions">
                                     <el-button size="small" :type="cellLinkPickMode ? 'primary' : 'default'"
-                                        :disabled="props.readonly"
+                                        :disabled="layoutReadonly"
                                         @click="toggleCellLinkPickMode">
                                         {{ t('stationLayout.editor.cells.pickAdd') }}
                                     </el-button>
-                                    <el-button size="small" :disabled="props.readonly || !selectedCellLinkId"
+                                    <el-button size="small" :disabled="layoutReadonly || !selectedCellLinkId"
                                         @click="removeSelectedCellLink">
                                         {{ t('stationLayout.editor.cells.removeCurrent') }}
                                     </el-button>
-                                    <el-button size="small" :disabled="props.readonly || cellFormLinkIds.length === 0"
+                                    <el-button size="small" :disabled="layoutReadonly || cellFormLinkIds.length === 0"
                                         @click="clearCellLinks">
                                         {{ t('stationLayout.editor.common.clear') }}
                                     </el-button>
@@ -3519,7 +3679,7 @@ defineExpose({ exportJson, importJson });
                 </div>
                 <div class="equipment-side-panel-body">
                     <el-form v-if="selectedEquipment" label-position="top" class="equipment-form"
-                        :disabled="props.readonly">
+                        :disabled="layoutReadonly">
                         <el-form-item :label="t('stationLayout.equipment.type')">
                             <el-tag type="info">{{ equipmentKindLabels[equipmentForm.kind] || t('stationLayout.equipment.generic') }}</el-tag>
                         </el-form-item>
@@ -3647,7 +3807,7 @@ defineExpose({ exportJson, importJson });
                 </div>
                 <div class="equipment-side-panel-footer">
                     <el-button @click="equipmentDrawerVisible = false">{{ t('stationLayout.schemeManager.close') }}</el-button>
-                    <el-button type="primary" :disabled="props.readonly || !selectedEquipment"
+                    <el-button type="primary" :disabled="layoutReadonly || !selectedEquipment"
                         :loading="equipmentSaving || savingData"
                         @click="saveEquipmentForm">
                         {{ t('stationLayout.schemeManager.save') }}
@@ -3715,14 +3875,14 @@ defineExpose({ exportJson, importJson });
         <el-dialog v-model="extractDwgDialogVisible" :title="t('stationLayout.editor.dwg.title')" width="420px" :close-on-click-modal="false">
             <div class="dwg-extract-form">
                 <label class="dwg-extract-label">{{ t('stationLayout.editor.dwg.file') }}</label>
-                <input ref="dwgFileInputRef" type="file" accept=".dwg" :disabled="props.readonly"
+                <input ref="dwgFileInputRef" type="file" accept=".dwg" :disabled="layoutReadonly"
                     @change="handleDwgFileChange" />
                 <label class="dwg-extract-label">{{ t('stationLayout.editor.dwg.layer') }}</label>
-                <el-input v-model="dwgLayerName" :disabled="props.readonly" :placeholder="t('stationLayout.editor.dwg.layerPlaceholder')" />
+                <el-input v-model="dwgLayerName" :disabled="layoutReadonly" :placeholder="t('stationLayout.editor.dwg.layerPlaceholder')" />
             </div>
             <template #footer>
                 <el-button @click="extractDwgDialogVisible = false">{{ t('stationLayout.editor.common.cancel') }}</el-button>
-                <el-button type="primary" :loading="extractingDwg" :disabled="props.readonly"
+                <el-button type="primary" :loading="extractingDwg" :disabled="layoutReadonly"
                     @click="extractDwgFile">
                     {{ t('stationLayout.editor.dwg.upload') }}
                 </el-button>
@@ -4164,6 +4324,53 @@ defineExpose({ exportJson, importJson });
     padding: 12px 16px;
     border-top: 1px solid var(--el-border-color-lighter);
     background-color: #fff;
+}
+
+.coordinate-side-panel {
+    flex-basis: 520px;
+    width: 520px;
+    max-width: 50%;
+}
+
+.coordinate-panel-hint {
+    padding: 10px 16px;
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--el-text-color-secondary);
+}
+
+.coordinate-preview-hint {
+    flex: 0 0 auto;
+    border-radius: 0;
+}
+
+.coordinate-panel-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+}
+
+.coordinate-table :deep(.el-input-number) {
+    width: 100%;
+}
+
+.coordinate-equipment-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.coordinate-equipment-tags :deep(.el-tag) {
+    max-width: 100%;
+    height: auto;
+    min-height: 20px;
+    padding: 1px 6px;
+}
+
+.coordinate-equipment-tags :deep(.el-tag__content) {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 18px;
 }
 
 .equipment-form {

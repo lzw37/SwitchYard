@@ -39,11 +39,13 @@ const props = defineProps({
     highlightedRouteColor: { type: String, default: "#ffd600" },
     highlightedRouteArrowVisible: { type: Boolean, default: true },
     autoGenerateTopology: { type: Boolean, default: true },
+    actualCoordinatePreview: { type: Boolean, default: false },
     readonly: { type: Boolean, default: false },
 });
 const emit = defineEmits([
     "selected-annotation-change",
     "selected-equipment-change",
+    "node-coordinate-focus",
     "route-node-pick",
     "cell-name-click",
     "cell-rename",
@@ -85,7 +87,7 @@ const defaultEditorDisplayStyles = {
 
 const editModeCode = ref(0);
 const drawingObject = ref("l");
-const isDrawingMode = computed(() => editModeCode.value === 1 && !props.readonly && !freeZoomActive.value);
+const isDrawingMode = computed(() => editModeCode.value === 1 && !canvasReadonly.value && !freeZoomActive.value);
 const mouseGridSnapModeCode = ref(1);
 const mouseObjectSnapModeCode = ref(1);
 const snapDistance = computed(() => Math.max(0, toFiniteNumber(props.objectSnapDistance)));
@@ -286,6 +288,106 @@ const platforms = ref([]);
 const switches = ref([]);
 const annotations = ref([]);
 
+// Actual coordinates belong to nodes; projected geometry is never used by
+// history, topology editing, or JSON serialization.
+const canvasReadonly = computed(() => props.readonly || props.actualCoordinatePreview);
+const nodeCoordinateRows = computed(() => {
+    const equipmentNamesByNode = new Map();
+    for (const [type, equipmentList] of [
+        [t("stationLayout.draw.signal"), signals.value],
+        [t("stationLayout.draw.buffer"), bufferStops.value],
+        [t("stationLayout.draw.switch"), switches.value],
+    ]) {
+        for (const equipment of equipmentList) {
+            const nodeId = getEquipmentBindingNodeId(equipment);
+            const name = getEquipmentDisplayName(equipment, "");
+            if (!nodeId || !name) continue;
+            const label = name.startsWith(type) ? name
+                : t("stationLayout.coordinates.equipmentName", { type, name });
+            if (!equipmentNamesByNode.has(nodeId)) equipmentNamesByNode.set(nodeId, []);
+            equipmentNamesByNode.get(nodeId).push(label);
+        }
+    }
+    return nodes.value.map(node => ({
+        id: node.id, name: node.name || "", x: node.x,
+        actualX: typeof node.actualX === "number" && Number.isFinite(node.actualX) ? node.actualX : null,
+        boundEquipmentNames: equipmentNamesByNode.get(String(node.id)) || [],
+    }));
+});
+const displayNodes = computed(() => props.actualCoordinatePreview
+    ? nodes.value.map(node => ({ ...node, x: actualNodeX(node) }))
+    : nodes.value);
+const displayNodeById = computed(() => new Map(displayNodes.value.map(node => [String(node.id), node])));
+const displayTracks = computed(() => {
+    if (!props.actualCoordinatePreview) return tracks.value;
+    const sourceNodes = new Map(nodes.value.map(node => [String(node.id), node]));
+    const nodesByPosition = new Map(nodes.value.map(node => [`${node.x},${node.y}`, node]));
+    return tracks.value.map(line => {
+        const start = sourceNodes.get(String(line.fromNodeID)) || nodesByPosition.get(`${line.x1},${line.y1}`);
+        const end = sourceNodes.get(String(line.toNodeID)) || nodesByPosition.get(`${line.x2},${line.y2}`);
+        return { ...line, x1: start ? actualNodeX(start) : line.x1, x2: end ? actualNodeX(end) : line.x2 };
+    });
+});
+const displayCurves = computed(() => {
+    if (!props.actualCoordinatePreview) return curves.value;
+    const lineById = new Map(displayTracks.value.map(line => [String(line.id), line]));
+    const sourceLineById = new Map(tracks.value.map(line => [String(line.id), line]));
+    return curves.value.flatMap(curve => {
+        const node = displayNodeById.value.get(String(curve.nodeID ?? curve.vertexNodeID));
+        const first = lineById.get(String(curve.tangentLinkID1 ?? curve.linkID1));
+        const second = lineById.get(String(curve.tangentLinkID2 ?? curve.linkID2));
+        if (!node || !first || !second) return [curve];
+        const changed = [first, second].some(line => {
+            const source = sourceLineById.get(String(line.id));
+            return line.x1 !== source?.x1 || line.x2 !== source?.x2;
+        });
+        if (!changed) return [curve];
+        const projected = buildCurveForCorner(node, first, second, curve.radius, curve.id ?? "");
+        return projected ? [{ ...curve, ...projected }] : [];
+    });
+});
+const displaySignals = computed(() => projectBoundEquipment(signals.value));
+const displayInsulationJoints = computed(() => projectBoundEquipment(insulationJoints.value));
+const displayBufferStops = computed(() => projectBoundEquipment(bufferStops.value));
+const displaySwitches = computed(() => projectBoundEquipment(switches.value).map(sw => {
+    if (!props.actualCoordinatePreview) return sw;
+    const node = displayNodeById.value.get(getEquipmentBindingNodeId(sw));
+    if (!node) return sw;
+    return { ...sw, branchVectorList: (sw.branchVectorList || []).map(branch => {
+        const line = displayTracks.value.find(item => String(item.id) === String(branch.lineID));
+        const vector = line && getOutgoingLineVector(line, node);
+        return vector ? { ...branch, ...vector } : branch;
+    }) };
+}));
+
+function actualNodeX(node) {
+    return typeof node.actualX === "number" && Number.isFinite(node.actualX) ? node.actualX : node.x;
+}
+
+function projectBoundEquipment(items) {
+    if (!props.actualCoordinatePreview) return items;
+    const sourceNodes = new Map(nodes.value.map(node => [String(node.id), node]));
+    return items.map(item => {
+        const node = sourceNodes.get(getEquipmentBindingNodeId(item));
+        if (!node) return item;
+        const delta = actualNodeX(node) - toFiniteNumber(node.x);
+        return { ...item, position: { ...item.position, x: toFiniteNumber(item.position?.x ?? node.x) + delta } };
+    });
+}
+
+function updateNodeActualX(nodeId, value) {
+    if (props.readonly) return false;
+    const node = getNodeById(nodeId);
+    if (!node) return false;
+    const cleared = value == null || (typeof value === "string" && value.trim() === "");
+    if (!cleared && typeof value !== "number" && typeof value !== "string") return false;
+    const actualX = cleared ? null : Number(value);
+    if (actualX !== null && !Number.isFinite(actualX)) return false;
+    if ((node.actualX ?? null) === actualX) return true;
+    executeMutation(() => { node.actualX = actualX; }, { allowPreview: true });
+    return true;
+}
+
 const selectedLineIds = ref(new Set());
 const selectedNodeIds = ref(new Set());
 const selectedSignalIds = ref(new Set());
@@ -313,6 +415,7 @@ const annotationTextAnchorRadius = 5;
 
 const movingAnchor = ref(null);
 const nodeInteraction = ref(null);
+let pendingNodeCoordinateFocus = null;
 const annotationInteraction = ref(null);
 
 const finishedCmdList = ref([]);
@@ -1106,7 +1209,7 @@ function setSelectedAnnotationIds(ids) {
 }
 
 function updateSelectedAnnotation(patch) {
-    if (props.readonly) return;
+    if (canvasReadonly.value) return;
 
     const selected = getSelectedAnnotation();
     if (!selected) return;
@@ -1135,7 +1238,7 @@ function roundLayoutNumber(value) {
 }
 
 function shouldShowAnnotationControls(annotation) {
-    return selectedAnnotationIds.value.size === 1 && isAnnotationSelected(annotation.id);
+    return !canvasReadonly.value && selectedAnnotationIds.value.size === 1 && isAnnotationSelected(annotation.id);
 }
 
 function normalizeSelectionBox(box) {
@@ -1155,7 +1258,7 @@ function isSelectionBoxLarge(box) {
 }
 
 const anchorRects = computed(() => {
-    if (props.readonly) return [];
+    if (canvasReadonly.value) return [];
 
     const list = [];
     for (const line of tracks.value) {
@@ -1225,13 +1328,13 @@ function includePositionInCanvasContentRect(rect, item, screenMargin = canvasEle
     includePointInCanvasContentRect(rect, item?.position, screenMargin);
 }
 
-function buildCanvasContentRect(screenMargin = canvasElementScreenMargin) {
+function buildCanvasContentRect(screenMargin = canvasElementScreenMargin, preview = props.actualCoordinatePreview) {
     const rect = createEmptyCanvasContentRect();
 
-    for (const line of tracks.value) {
+    for (const line of (preview ? displayTracks.value : tracks.value)) {
         includeDataRectInCanvasContentRect(rect, line.x1, line.y1, line.x2, line.y2, screenMargin);
     }
-    for (const curve of curves.value) {
+    for (const curve of (preview ? displayCurves.value : curves.value)) {
         includePointInCanvasContentRect(rect, curve.start, screenMargin);
         includePointInCanvasContentRect(rect, curve.end, screenMargin);
         if (curve.center) {
@@ -1246,16 +1349,16 @@ function buildCanvasContentRect(screenMargin = canvasElementScreenMargin) {
             );
         }
     }
-    for (const node of nodes.value) {
+    for (const node of (preview ? displayNodes.value : nodes.value)) {
         includePointInCanvasContentRect(rect, node, screenMargin);
     }
-    for (const signal of signals.value) {
+    for (const signal of (preview ? displaySignals.value : signals.value)) {
         includePositionInCanvasContentRect(rect, signal, screenMargin);
     }
-    for (const insulationJoint of insulationJoints.value) {
+    for (const insulationJoint of (preview ? displayInsulationJoints.value : insulationJoints.value)) {
         includePositionInCanvasContentRect(rect, insulationJoint, screenMargin);
     }
-    for (const bufferStop of bufferStops.value) {
+    for (const bufferStop of (preview ? displayBufferStops.value : bufferStops.value)) {
         includePositionInCanvasContentRect(rect, bufferStop, screenMargin);
     }
     for (const platform of platforms.value) {
@@ -1268,7 +1371,7 @@ function buildCanvasContentRect(screenMargin = canvasElementScreenMargin) {
             screenMargin
         );
     }
-    for (const sw of switches.value) {
+    for (const sw of (preview ? displaySwitches.value : switches.value)) {
         includePositionInCanvasContentRect(rect, sw, screenMargin);
     }
     for (const annotation of annotations.value) {
@@ -1279,7 +1382,7 @@ function buildCanvasContentRect(screenMargin = canvasElementScreenMargin) {
 }
 
 function alignGridOriginToCurrentContent() {
-    const rect = buildCanvasContentRect(0);
+    const rect = buildCanvasContentRect(0, false);
     if (isCanvasContentRectEmpty(rect)) {
         resetGridOrigin();
         return false;
@@ -1378,19 +1481,19 @@ function addCurveHiddenRange(hiddenRangesByLineID, lineByID, nodeByID, curve, ta
 }
 
 const renderedTrackSegments = computed(() => {
-    const lineByID = new Map(tracks.value.map((line) => [line.id, line]));
-    const nodeByID = new Map(nodes.value.map((node) => [node.id, node]));
+    const lineByID = new Map(displayTracks.value.map((line) => [line.id, line]));
+    const nodeByID = new Map(displayNodes.value.map((node) => [node.id, node]));
     const hiddenRangesByLineID = new Map();
 
     if (props.showCurveArc) {
-        for (const curve of curves.value) {
+        for (const curve of displayCurves.value) {
             addCurveHiddenRange(hiddenRangesByLineID, lineByID, nodeByID, curve, "tangentLinkID1", "start");
             addCurveHiddenRange(hiddenRangesByLineID, lineByID, nodeByID, curve, "tangentLinkID2", "end");
         }
     }
 
     const segments = [];
-    for (const line of tracks.value) {
+    for (const line of displayTracks.value) {
         const visibleRanges = buildVisibleRateRanges(hiddenRangesByLineID.get(line.id) || []);
         visibleRanges.forEach((range, index) => {
             const start = getLinePointAtRate(line, range.start);
@@ -1411,14 +1514,14 @@ const renderedTrackSegments = computed(() => {
     return segments;
 });
 
-const displayedCurves = computed(() => props.showCurveArc ? curves.value : []);
+const displayedCurves = computed(() => props.showCurveArc ? displayCurves.value : []);
 
 const linkArrowViews = computed(() => {
-    return tracks.value.flatMap((line) => buildLinkArrowViews(line));
+    return displayTracks.value.flatMap((line) => buildLinkArrowViews(line));
 });
 
 const lineNameViews = computed(() => {
-    return tracks.value
+    return displayTracks.value
         .filter((line) => getLineName(line))
         .map((line) => {
             const visibleSegments = renderedTrackSegments.value.filter((segment) => segment.line.id === line.id);
@@ -1538,7 +1641,7 @@ function inlineRenameValue(kind, target) {
 }
 
 function canInlineRename() {
-    return !props.readonly && editModeCode.value === 0 && !props.routePickTarget;
+    return !canvasReadonly.value && editModeCode.value === 0 && !props.routePickTarget;
 }
 
 function beginInlineRename(event, kind, id) {
@@ -1658,6 +1761,7 @@ function applyState(state) {
     // it would silently modify imported geometry and discard extension fields.
     state = JSON.parse(JSON.stringify(state));
     cancelInlineRename();
+    finishNodeInteraction();
     latestElementID.value = state.latestElementID;
     layoutMetadata.value = state.layoutMetadata || {};
     layoutRootExtras.value = state.layoutRootExtras || {};
@@ -1730,6 +1834,7 @@ function captureHistoryState(target) {
 
 function executeMutation(mutator, options = {}) {
     if (props.readonly && options?.allowReadonly !== true) return;
+    if (props.actualCoordinatePreview && options?.allowReadonly !== true && options?.allowPreview !== true) return;
 
     const isRootMutation = mutationDepth === 0;
     if (isRootMutation) {
@@ -1760,6 +1865,7 @@ function executeMutation(mutator, options = {}) {
 
 function revoke() {
     if (props.readonly) return;
+    finishNodeInteraction();
 
     if (finishedCmdList.value.length === 0) return;
     const prev = finishedCmdList.value.pop();
@@ -1769,6 +1875,7 @@ function revoke() {
 
 function redo() {
     if (props.readonly) return;
+    finishNodeInteraction();
 
     if (revokedCmdList.value.length === 0) return;
     const next = revokedCmdList.value.pop();
@@ -1949,7 +2056,7 @@ function setEditMode(code) {
     cancelFreeZoom();
     cancelInlineRename();
     clearHoveredElement();
-    const nextEditModeCode = props.readonly ? 0 : Number(code);
+    const nextEditModeCode = canvasReadonly.value ? 0 : Number(code);
     if (nextEditModeCode !== 1 || editModeCode.value !== 1) {
         clearTemporaryDrawingState();
     }
@@ -1970,7 +2077,7 @@ function setDrawingBufferStopType(type) {
 
 function setDrawingObject(obj) {
     cancelFreeZoom();
-    if (props.readonly) return;
+    if (canvasReadonly.value) return;
 
     const nextDrawingObject = String(obj || "");
     if (drawingObject.value !== nextDrawingObject) {
@@ -2237,22 +2344,22 @@ function selectElementsInBox(box) {
     const nextPlatformIds = new Set(selectedPlatformIds.value);
     const nextAnnotationIds = new Set(selectedAnnotationIds.value);
 
-    for (const line of tracks.value) {
+    for (const line of displayTracks.value) {
         if (doesLineIntersectRect(line, rect)) nextLineIds.add(line.id);
     }
-    for (const node of nodes.value) {
+    for (const node of displayNodes.value) {
         if (isPointInRect(node, rect)) nextNodeIds.add(node.id);
     }
-    for (const signal of signals.value) {
+    for (const signal of displaySignals.value) {
         if (isPointInRect(signal.position || {}, rect)) nextSignalIds.add(signal.id);
     }
-    for (const insulationJoint of insulationJoints.value) {
+    for (const insulationJoint of displayInsulationJoints.value) {
         if (isPointInRect(insulationJoint.position || {}, rect)) nextInsulationJointIds.add(insulationJoint.id);
     }
-    for (const bufferStop of bufferStops.value) {
+    for (const bufferStop of displayBufferStops.value) {
         if (isPointInRect(bufferStop.position || {}, rect)) nextBufferStopIds.add(bufferStop.id);
     }
-    for (const sw of switches.value) {
+    for (const sw of displaySwitches.value) {
         if (isPointInRect(sw.position || {}, rect)) nextSwitchIds.add(sw.id);
     }
     for (const platform of platforms.value) {
@@ -2398,7 +2505,7 @@ function selectElement(kind, id, event) {
 }
 
 function deleteLine() {
-    if (props.readonly) return;
+    if (canvasReadonly.value) return;
 
     if (selectedLineIds.value.size === 0) return;
     const topologyBefore = captureTopologyState();
@@ -2574,7 +2681,7 @@ function deleteBoundEquipment(boundEquipment) {
 }
 
 function deleteNode(options = {}) {
-    if (props.readonly) return;
+    if (canvasReadonly.value) return;
 
     if (selectedNodeIds.value.size === 0) return;
     const selectedIds = new Set(selectedNodeIds.value);
@@ -2611,7 +2718,7 @@ function deleteNode(options = {}) {
 }
 
 function deleteEquipment() {
-    if (props.readonly) return;
+    if (canvasReadonly.value) return;
 
     executeMutation(() => {
         signals.value = signals.value.filter((s) => !selectedSignalIds.value.has(s.id));
@@ -3971,7 +4078,36 @@ function shouldHandleElementMouseDown(event) {
     return true;
 }
 
+function prepareNodeCoordinateFocus(event, nodeId) {
+    pendingNodeCoordinateFocus = null;
+    if (editModeCode.value !== 0 || freeZoomActive.value || props.routePickTarget
+        || (event.button != null && event.button !== 0) || event.ctrlKey || event.metaKey || event.shiftKey) return;
+    const node = getNodeById(nodeId);
+    if (!node) return;
+    pendingNodeCoordinateFocus = {
+        nodeId: String(node.id), clientX: event.clientX, clientY: event.clientY,
+        actualCoordinates: props.actualCoordinatePreview,
+    };
+}
+
+function handleNodeCoordinateClick(event, nodeId) {
+    const pending = pendingNodeCoordinateFocus;
+    pendingNodeCoordinateFocus = null;
+    if (!pending || pending.nodeId !== String(nodeId) || !getNodeById(nodeId)
+        || editModeCode.value !== 0 || freeZoomActive.value || props.routePickTarget
+        || pending.actualCoordinates !== props.actualCoordinatePreview
+        || (event.button != null && event.button !== 0) || event.ctrlKey || event.metaKey || event.shiftKey
+        || event.detail > 1
+        || Math.hypot(event.clientX - pending.clientX, event.clientY - pending.clientY) > selectionBoxDragThreshold) return;
+    event.stopPropagation();
+    emit("node-coordinate-focus", pending.nodeId);
+}
+
 function handleNodeClick(event, nodeId) {
+    // Keep navigation until click so opening the sidebar cannot interrupt a drag.
+    // Capture the mode before route picking emits and the parent clears its target.
+    prepareNodeCoordinateFocus(event, nodeId);
+    if (freeZoomActive.value || (event.button != null && event.button !== 0)) return;
     if (props.routePickTarget) {
         event.preventDefault();
         event.stopPropagation();
@@ -3991,7 +4127,7 @@ function handleNodeClick(event, nodeId) {
     event.preventDefault();
     cancelSelectionBox();
     selectElement("node", nodeId, event);
-    if (!props.readonly) beginNodeMove(event, nodeId);
+    beginNodeMove(event, nodeId);
 }
 
 function emitRouteNodePick(nodeId) {
@@ -4017,25 +4153,33 @@ function handleRouteEquipmentPick(event, equipment) {
 }
 
 function handleSignalClick(event, signalId) {
-    if (handleRouteEquipmentPick(event, signals.value.find((signal) => signal.id === signalId))) return;
+    const signal = signals.value.find((signal) => signal.id === signalId);
+    prepareNodeCoordinateFocus(event, getEquipmentBindingNodeId(signal));
+    if (handleRouteEquipmentPick(event, signal)) return;
     if (!shouldHandleElementMouseDown(event)) return;
     selectElement("signal", signalId, event);
 }
 
 function handleInsulationJointClick(event, id) {
-    if (handleRouteEquipmentPick(event, insulationJoints.value.find((ij) => ij.id === id))) return;
+    const insulationJoint = insulationJoints.value.find((ij) => ij.id === id);
+    prepareNodeCoordinateFocus(event, getEquipmentBindingNodeId(insulationJoint));
+    if (handleRouteEquipmentPick(event, insulationJoint)) return;
     if (!shouldHandleElementMouseDown(event)) return;
     selectElement("insulationJoint", id, event);
 }
 
 function handleBufferStopClick(event, id) {
-    if (handleRouteEquipmentPick(event, bufferStops.value.find((bufferStop) => bufferStop.id === id))) return;
+    const bufferStop = bufferStops.value.find((bufferStop) => bufferStop.id === id);
+    prepareNodeCoordinateFocus(event, getEquipmentBindingNodeId(bufferStop));
+    if (handleRouteEquipmentPick(event, bufferStop)) return;
     if (!shouldHandleElementMouseDown(event)) return;
     selectElement("bufferStop", id, event);
 }
 
 function handleSwitchClick(event, id) {
-    if (handleRouteEquipmentPick(event, switches.value.find((sw) => sw.id === id))) return;
+    const sw = switches.value.find((sw) => sw.id === id);
+    prepareNodeCoordinateFocus(event, getEquipmentBindingNodeId(sw));
+    if (handleRouteEquipmentPick(event, sw)) return;
     if (!shouldHandleElementMouseDown(event)) return;
     selectElement("switch", id, event);
 }
@@ -4056,7 +4200,7 @@ function getAnnotationById(id) {
 }
 
 function updateSelectedEquipment(kind, id, patch) {
-    if (props.readonly) return;
+    if (canvasReadonly.value) return;
 
     const collection = getEquipmentCollection(kind);
     const target = collection.find((item) => item.id === id);
@@ -4070,7 +4214,7 @@ function updateSelectedEquipment(kind, id, patch) {
 }
 
 function updateSelectedEquipmentBatch(kind, ids, patch) {
-    if (props.readonly) return;
+    if (canvasReadonly.value) return;
 
     const selectedIds = new Set((Array.isArray(ids) ? ids : []).map((id) => String(id ?? "")));
     if (selectedIds.size === 0) return;
@@ -4242,7 +4386,7 @@ function getBindingCorrectionKindLabel(kind) {
 }
 
 function getEquipmentBindingNodeCorrectionPlan() {
-    if (props.readonly) {
+    if (canvasReadonly.value) {
         return { totalCount: 0, items: [], alreadyCorrectCount: 0, unmatchedCount: 0 };
     }
 
@@ -4305,7 +4449,7 @@ function getEquipmentBindingNodeCorrectionPlan() {
 }
 
 function applyEquipmentBindingNodeCorrections(items = []) {
-    if (props.readonly) {
+    if (canvasReadonly.value) {
         return { requestedCount: 0, fixedCount: 0, alreadyCorrectCount: 0, unmatchedCount: 0 };
     }
 
@@ -4459,15 +4603,18 @@ function pushNodeInteractionUndoSnapshot() {
 function addNodeInteractionWindowListeners() {
     window.addEventListener("mousemove", onNodeInteractionWindowMouseMove);
     window.addEventListener("mouseup", onNodeInteractionWindowMouseUp);
+    window.addEventListener("blur", finishNodeInteraction);
 }
 
 function removeNodeInteractionWindowListeners() {
     window.removeEventListener("mousemove", onNodeInteractionWindowMouseMove);
     window.removeEventListener("mouseup", onNodeInteractionWindowMouseUp);
+    window.removeEventListener("blur", finishNodeInteraction);
 }
 
 function beginNodeMove(event, nodeId) {
-    if (props.readonly) return;
+    if (props.readonly || freeZoomActive.value || props.routePickTarget || editModeCode.value !== 0
+        || (event.button != null && event.button !== 0)) return;
 
     finishNodeInteraction();
 
@@ -4479,8 +4626,9 @@ function beginNodeMove(event, nodeId) {
 
     nodeInteraction.value = {
         nodeId,
+        actualCoordinates: props.actualCoordinatePreview,
         startNode: {
-            x: toFiniteNumber(node.x),
+            x: toFiniteNumber(props.actualCoordinatePreview ? actualNodeX(node) : node.x),
             y: toFiniteNumber(node.y),
         },
         startPointer,
@@ -4492,6 +4640,13 @@ function beginNodeMove(event, nodeId) {
 function updateNodeInteraction(event) {
     const interaction = nodeInteraction.value;
     if (!interaction) return;
+    // Never let an in-flight drag cross into a different coordinate system,
+    // including events delivered before Vue's watchers have run.
+    if (props.readonly || freeZoomActive.value || props.routePickTarget || editModeCode.value !== 0
+        || interaction.actualCoordinates !== props.actualCoordinatePreview) {
+        finishNodeInteraction();
+        return;
+    }
 
     const node = getNodeById(interaction.nodeId);
     if (!node) {
@@ -4503,6 +4658,18 @@ function updateNodeInteraction(event) {
     if (!currentPointer) return;
 
     const dx = currentPointer.x - interaction.startPointer.x;
+    if (interaction.actualCoordinates) {
+        // Actual Y is not a separate field. Preview dragging is horizontal,
+        // and selection alone must not initialize or snap an actual coordinate.
+        if (dx === 0 && !interaction.undoCaptured) return;
+        const nextPosition = applyGridSnapWhenEnabled({ x: interaction.startNode.x + dx, y: interaction.startNode.y });
+        const nextX = roundLayoutNumber(nextPosition.x);
+        if (!Number.isFinite(nextX) || nextX === toFiniteNumber(actualNodeX(node))) return;
+        pushNodeInteractionUndoSnapshot();
+        node.actualX = nextX;
+        expandCanvasToIncludePoint({ x: nextX, y: node.y }, { triggerMargin: canvasEdgeTriggerMargin });
+        return;
+    }
     const dy = currentPointer.y - interaction.startPointer.y;
     const nextPosition = applyGridSnapWhenEnabled({
         x: interaction.startNode.x + dx,
@@ -4528,6 +4695,10 @@ function finishNodeInteraction() {
 
 function onNodeInteractionWindowMouseMove(event) {
     event.preventDefault();
+    if (pendingNodeCoordinateFocus && Math.hypot(
+        event.clientX - pendingNodeCoordinateFocus.clientX,
+        event.clientY - pendingNodeCoordinateFocus.clientY,
+    ) > selectionBoxDragThreshold) pendingNodeCoordinateFocus = null;
     updateNodeInteraction(event);
 }
 
@@ -4625,7 +4796,7 @@ function removeAnnotationInteractionWindowListeners() {
 }
 
 function beginAnnotationTextMove(event, annotationId) {
-    if (props.readonly) return;
+    if (canvasReadonly.value) return;
 
     if (!shouldHandleElementMouseDown(event)) return;
     event.preventDefault();
@@ -4729,7 +4900,7 @@ function removeAnchorInteractionWindowListeners() {
 }
 
 function handleAnchorDown(event, anchor) {
-    if (props.readonly) return;
+    if (canvasReadonly.value) return;
 
     if (!shouldHandleElementMouseDown(event)) return;
     event.preventDefault();
@@ -4835,11 +5006,19 @@ function onAnchorInteractionWindowMouseUp(event) {
     finishAnchorInteraction();
 }
 
+function isEditableShortcutTarget(target) {
+    return Boolean(target?.isContentEditable || target?.closest?.("input, textarea, select, [contenteditable='true'], [contenteditable='']"));
+}
+
+function focusCanvasForPointer(event) {
+    if (!isEditableShortcutTarget(event.target)) svgRef.value?.focus({ preventScroll: true });
+}
+
 function onMouseMove(event) {
     if (freeZoomActive.value) return;
     if (inlineRename.value) return;
     updateCursorPosition(event.clientX, event.clientY);
-    svgRef.value?.focus({ preventScroll: true });
+    if (!isEditableShortcutTarget(document.activeElement)) svgRef.value?.focus({ preventScroll: true });
     const x = cursorParam.value.x;
     const y = cursorParam.value.y;
 
@@ -4909,8 +5088,8 @@ function onMouseUp(event) {
 
 function onKeydown(event) {
     if (freeZoomActive.value) return;
-    if (inlineRename.value || event.target?.closest?.("input, textarea, [contenteditable='true']")) return;
-    if (event.key === "Delete") {
+    if (inlineRename.value || isEditableShortcutTarget(event.target)) return;
+    if (event.key === "Delete" && !canvasReadonly.value) {
         event.preventDefault();
         emit("delete-selection-request");
     }
@@ -4989,7 +5168,7 @@ function buildRouteTransitionKey(firstLinkID, secondLinkID) {
 }
 
 function mapRouteNodesByIds(nodeIds) {
-    const nodeByID = new Map(nodes.value.map((node) => [String(node.id ?? ""), node]));
+    const nodeByID = new Map(displayNodes.value.map((node) => [String(node.id ?? ""), node]));
     return (Array.isArray(nodeIds) ? nodeIds : [])
         .map((id) => nodeByID.get(String(id)))
         .filter((node) => node != null);
@@ -5693,11 +5872,17 @@ onMounted(() => {
     svgRef.value?.focus({ preventScroll: true });
 });
 
-watch(() => props.readonly, (readonly) => {
-    if (readonly) {
+watch([() => props.readonly, () => props.actualCoordinatePreview], () => {
+    if (canvasReadonly.value) {
         setEditMode(0);
+        finishAnchorInteraction();
+        finishAnnotationInteraction();
     }
-});
+    finishNodeInteraction();
+    cancelInlineRename();
+    clearTemporaryDrawingState();
+    ensureCanvasForAllElements();
+}, { flush: "sync" });
 
 watch(() => [props.routePickTarget, props.editorState, props.displayScaleX, props.displayScaleY], cancelInlineRename);
 watch(() => [props.routePickTarget, props.editorState, props.displayScaleX, props.displayScaleY], () => {
@@ -5714,6 +5899,8 @@ onBeforeUnmount(() => {
 });
 
 defineExpose({
+    nodeCoordinateRows,
+    updateNodeActualX,
     applySavedLayout,
     applyPersistedIds,
     editModeCode,
@@ -5770,7 +5957,7 @@ defineExpose({
 
 <template>
     <svg id="layout-editor-svg" ref="svgRef" tabindex="0" :width="svgScreenWidth" :height="svgScreenHeight"
-        @mousedown.capture="handleInlineRenameOutside"
+        @mousedown.capture="handleInlineRenameOutside($event); focusCanvasForPointer($event)"
         :style="svgStyle" @mousemove="onMouseMove" @mousedown="onMouseDown" @mouseup="onMouseUp"
         @mouseleave="clearHoveredElement()" @keydown="onKeydown" @selectstart.prevent @dragstart.prevent>
         <g id="grid">
@@ -5820,7 +6007,7 @@ defineExpose({
                 :x="anchorScreenX(anchor)" :y="anchorScreenY(anchor)" :width="anchorParam.size" :height="anchorParam.size"
                 @mousedown="handleAnchorDown($event, anchor)" />
 
-            <circle v-for="(cp, idx) in crossPoints" :key="`cp-${idx}`" class="crosspoint" :class="`rela${cp.code}`"
+            <circle v-for="(cp, idx) in (props.actualCoordinatePreview ? [] : crossPoints)" :key="`cp-${idx}`" class="crosspoint" :class="`rela${cp.code}`"
                 :cx="screenX(cp.x)" :cy="screenY(cp.y)" r="4" />
 
             <circle v-if="isDrawingMode && perpendicularPoint" class="perpendicular" :cx="screenX(perpendicularPoint.x)"
@@ -5828,12 +6015,14 @@ defineExpose({
         </g>
 
         <g v-if="props.showNodes" id="nodegroup">
-            <circle v-for="node in nodes" :id="node.id" :key="`node-${node.id}`" class="node snapobj"
-                :class="{ 'node-selected': isNodeHighlighted(node.id) }" :cx="screenX(node.x)" :cy="screenY(node.y)"
+            <circle v-for="node in displayNodes" :id="node.id" :key="`node-${node.id}`" class="node snapobj"
+                :class="{ 'node-selected': isNodeHighlighted(node.id), 'node-actual-coordinate': props.actualCoordinatePreview && !props.readonly }"
+                :cx="screenX(node.x)" :cy="screenY(node.y)"
                 :r="editorDisplayStyles.node.radius" :style="nodeDisplayStyle(node.id)"
                 @mouseenter="setHoveredElement('node', node.id)"
                 @mouseleave="clearHoveredElement('node', node.id)"
-                @mousedown="handleNodeClick($event, node.id)" />
+                @mousedown="handleNodeClick($event, node.id)"
+                @click="handleNodeCoordinateClick($event, node.id)" />
 
             <circle v-if="isDrawingMode && drawingObject === 'n' && tempNode.visible" class="node node-temp" :cx="screenX(tempNode.x)" :cy="screenY(tempNode.y)"
                 :r="editorDisplayStyles.node.radius" />
@@ -5868,17 +6057,18 @@ defineExpose({
         </g>
 
         <g id="signalgroup">
-            <g v-for="signal in signals" :id="String(signal.id)" :key="`signal-${signal.id}`"
+            <g v-for="signal in displaySignals" :id="String(signal.id)" :key="`signal-${signal.id}`"
                 :class="['signal', signalStyleClass(signal), { 'signal-selected': isSignalHighlighted(signal.id) }]"
                 :transform="signalTransform(signal)" :style="elementHighlightStyle('signal', signal.id)"
                 @mouseenter="setHoveredElement('signal', signal.id)"
                 @mouseleave="clearHoveredElement('signal', signal.id)"
                 @mousedown="handleSignalClick($event, signal.id)"
+                @click="handleNodeCoordinateClick($event, getEquipmentBindingNodeId(signal))"
                 @dblclick.stop.prevent="beginInlineRename($event, 'signal', signal.id)">
                 <component :is="element.tag" v-for="(element, index) in signalStyleElements(signal)"
                     :key="`signal-element-${signal.id}-${index}`" v-bind="element.attrs" />
             </g>
-            <text v-for="signal in signals" v-show="getEquipmentDisplayName(signal, 'SIGNAL')"
+            <text v-for="signal in displaySignals" v-show="getEquipmentDisplayName(signal, 'SIGNAL')"
                 :key="`signal-name-${signal.id}`" class="signalname"
                 :class="{ 'name-selected': isSignalHighlighted(signal.id) }"
                 :style="textDisplayStyle('signalName', isSignalHighlighted(signal.id), elementHighlightColor('signal', signal.id))"
@@ -5887,6 +6077,7 @@ defineExpose({
                 @mouseenter="setHoveredElement('signal', signal.id)"
                 @mouseleave="clearHoveredElement('signal', signal.id)"
                 @mousedown="handleSignalClick($event, signal.id)"
+                @click="handleNodeCoordinateClick($event, getEquipmentBindingNodeId(signal))"
                 @dblclick.stop.prevent="beginInlineRename($event, 'signal', signal.id)">
                 {{ getEquipmentDisplayName(signal, "SIGNAL") }}
             </text>
@@ -5900,14 +6091,15 @@ defineExpose({
         </g>
 
         <g id="insulationjointgroup">
-            <g v-for="ij in insulationJoints" :id="String(ij.id)" :key="`ij-${ij.id}`"
+            <g v-for="ij in displayInsulationJoints" :id="String(ij.id)" :key="`ij-${ij.id}`"
                 class="insulationjoint insulationjoint-normal"
                 :class="{ 'insulationjoint-selected': isInsulationJointHighlighted(ij.id) }"
                 :transform="`translate(${screenX(ij.position?.x)},${screenY(ij.position?.y)})`"
                 :style="elementHighlightStyle('insulationJoint', ij.id)"
                 @mouseenter="setHoveredElement('insulationJoint', ij.id)"
                 @mouseleave="clearHoveredElement('insulationJoint', ij.id)"
-                @mousedown="handleInsulationJointClick($event, ij.id)">
+                @mousedown="handleInsulationJointClick($event, ij.id)"
+                @click="handleNodeCoordinateClick($event, getEquipmentBindingNodeId(ij))">
                 <line x1="0" y1="-5" x2="0" y2="5" />
             </g>
 
@@ -5918,12 +6110,13 @@ defineExpose({
         </g>
 
         <g id="bufferstopgroup">
-            <g v-for="bufferStop in bufferStops" :id="String(bufferStop.id)" :key="`buffer-stop-${bufferStop.id}`"
+            <g v-for="bufferStop in displayBufferStops" :id="String(bufferStop.id)" :key="`buffer-stop-${bufferStop.id}`"
                 :class="['bufferstop', bufferStopStyleClass(bufferStop), { 'bufferstop-selected': isBufferStopHighlighted(bufferStop.id) }]"
                 :transform="bufferStopTransform(bufferStop)"
                 @mouseenter="setHoveredElement('bufferStop', bufferStop.id)"
                 @mouseleave="clearHoveredElement('bufferStop', bufferStop.id)"
-                @mousedown="handleBufferStopClick($event, bufferStop.id)">
+                @mousedown="handleBufferStopClick($event, bufferStop.id)"
+                @click="handleNodeCoordinateClick($event, getEquipmentBindingNodeId(bufferStop))">
                 <g class="bufferstop-shape" :style="bufferStopLineStyle(bufferStop)"
                     :transform="bufferStopShapeTransform(bufferStop)">
                     <component :is="element.tag" v-for="(element, index) in bufferStopStyleElements(bufferStop)"
@@ -5947,11 +6140,12 @@ defineExpose({
         </g>
 
         <g id="switchgroup">
-            <g v-for="sw in switches" :id="String(sw.id)" :key="`sw-${sw.id}`" class="switch"
+            <g v-for="sw in displaySwitches" :id="String(sw.id)" :key="`sw-${sw.id}`" class="switch"
                 :class="{ 'switch-selected': isSwitchHighlighted(sw.id) }" :transform="switchTransform(sw)"
                 @mouseenter="setHoveredElement('switch', sw.id)"
                 @mouseleave="clearHoveredElement('switch', sw.id)"
                 @mousedown="handleSwitchClick($event, sw.id)"
+                @click="handleNodeCoordinateClick($event, getEquipmentBindingNodeId(sw))"
                 @dblclick.stop.prevent="beginInlineRename($event, 'switch', sw.id)">
                 <line v-for="(lineVec, idx) in sw.branchVectorList" :key="`sw-line-${sw.id}-${idx}`"
                     class="switchbranch" :x1="switchBranch(sw, lineVec).x1" :y1="switchBranch(sw, lineVec).y1"
@@ -6004,6 +6198,13 @@ defineExpose({
                     :cy="Math.max(8, toFiniteNumber(annotation.fontSize)) / 2 + annotationTextAnchorRadius + 4"
                     :r="annotationTextAnchorRadius" @mousedown="beginAnnotationTextMove($event, annotation.id)" />
             </g>
+        </g>
+
+        <g v-if="props.actualCoordinatePreview && props.showNodes" class="node-coordinate-labels">
+            <text v-for="node in displayNodes" :key="`node-coordinate-${node.id}`" class="node-coordinate-label"
+                :x="screenX(node.x)" :y="screenY(node.y) + editorDisplayStyles.node.radius + 11">
+                {{ node.x }}
+            </text>
         </g>
 
         <g id="cursor">

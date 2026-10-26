@@ -17,6 +17,8 @@ namespace SwitchYard.Capacity
 
         public double X { get; set; }
 
+        public double? ActualX { get; set; }
+
         public double Y { get; set; }
     }
 

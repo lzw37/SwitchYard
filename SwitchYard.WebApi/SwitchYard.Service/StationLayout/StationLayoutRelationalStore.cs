@@ -13,7 +13,7 @@ public static class StationLayoutRelationalStore
 
     public static readonly Entity[] Entities =
     [
-        new("nodes", "node", [F("ID", "id"), F("X", "x", "real"), F("Y", "y", "real")]),
+        new("nodes", "node", [F("ID", "id"), F("X", "x", "real"), F("ActualX", "actualX", "real"), F("Y", "y", "real")]),
         new("tracks", "link", [F("ID", "id"), F("Name", "name"), F("FromNodeID", "fromNodeID"), F("ToNodeID", "toNodeID"),
             F("X1", "x1", "real"), F("Y1", "y1", "real"), F("X2", "x2", "real"), F("Y2", "y2", "real"),
             F("ArrowDirection", "arrowDirection"), F("ArrowType", "arrowType")]),

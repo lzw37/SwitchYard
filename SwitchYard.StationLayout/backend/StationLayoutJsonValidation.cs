@@ -74,6 +74,8 @@ internal static class StationLayoutJsonValidation
         {
             Number(item, "x", archive);
             Number(item, "y", archive);
+            if (collection == "nodes" && item.TryGetProperty("actualX", out var actualX) && actualX.ValueKind != JsonValueKind.Null)
+                Number(item, "actualX", false);
             if (collection == "platforms") { Number(item, "width", archive); Number(item, "height", archive); }
         }
         else if (collection == "curves")

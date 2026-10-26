@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS `node` (
     `StationSchemeID` VARCHAR(50) COLLATE utf8mb4_bin NULL,
     `ID` VARCHAR(255) COLLATE utf8mb4_bin NULL,
     `X` DOUBLE NULL,
+    `ActualX` DOUBLE NULL,
     `Y` DOUBLE NULL,
     `ExtraProperties` LONGTEXT NULL,
     `LayoutOrder` INT NULL

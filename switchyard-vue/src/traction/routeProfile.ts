@@ -38,6 +38,7 @@ interface Point { x: number; y: number }
 interface PathLink {
     track: LayoutEntity; id: string; from: string; to: string; reverse: boolean
     start: Point | null; end: Point | null; geometryLength: number; measuredLength?: number
+    sourceStart: Point | null; sourceEnd: Point | null; sourceGeometryLength: number
     trimStart: number; trimEnd: number; arcStart: number; arcEnd: number
 }
 interface PathCurve { entity: LayoutEntity; index: number; arcLength: number; measured: boolean }
@@ -59,6 +60,28 @@ const point = (value: unknown): Point | null => {
 }
 const distance = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y)
 const label = (entity: LayoutEntity) => key(entity.name) || key(entity.id)
+const calculationPoint = (source: Point | null, node: LayoutEntity | undefined): Point | null => {
+    // Zero and negative values are valid; an unset actualX must never become zero.
+    const actualX = node?.actualX
+    return source && typeof actualX === 'number' && Number.isFinite(actualX)
+        ? { ...source, x: actualX } : source
+}
+
+/** Keep a stored circular corner tangent to the corrected adjoining links. */
+function correctedCorner(before: PathLink, after: PathLink, radius: number) {
+    if (!before.start || !before.end || !after.start || !after.end
+        || distance(before.end, after.start) > 1e-6) return null
+    const ux = (before.start.x - before.end.x) / before.geometryLength
+    const uy = (before.start.y - before.end.y) / before.geometryLength
+    const vx = (after.end.x - after.start.x) / after.geometryLength
+    const vy = (after.end.y - after.start.y) / after.geometryLength
+    const angle = Math.acos(Math.max(-1, Math.min(1, ux * vx + uy * vy)))
+    if (angle <= 1e-9) return null
+    const trim = radius / Math.tan(angle / 2)
+    const arcLength = radius * (Math.PI - angle)
+    if (!Number.isFinite(trim) || trim > Math.min(before.geometryLength, after.geometryLength) + 1e-6) return null
+    return { trim, arcLength }
+}
 
 export function parseRouteIds(value: unknown): string[] {
     if (Array.isArray(value)) return value.map(key).filter(Boolean)
@@ -75,7 +98,8 @@ export function parseRouteIds(value: unknown): string[] {
  * Unfold topology into physical chainage. Coordinates have no implied SI unit.
  * Manual scale refers to current document coordinates; metadata.coordinateUnit
  * refers to source coordinates before metadata.coordinateTransform. Measured
- * track.lengthM takes precedence. Never infer limits from switch types/radii.
+ * Node actualX overrides drawing X before the same coordinate-unit conversion;
+ * measured track.lengthM takes precedence. Never infer limits from switch types/radii.
  */
 export function buildRouteProfile(
     document: StationLayoutDocument,
@@ -142,8 +166,10 @@ export function buildRouteProfile(
             const reverse = key(track.toNodeID) === current
             const next = key(reverse ? track.fromNodeID : track.toNodeID)
             if (!nodes.has(current) || !nodes.has(next)) issue('errors', 'missingRouteNode', !nodes.has(current) ? current : next)
-            const fromPoint = point({ x: track.x1, y: track.y1 }) ?? point(nodes.get(key(track.fromNodeID)))
-            const toPoint = point({ x: track.x2, y: track.y2 }) ?? point(nodes.get(key(track.toNodeID)))
+            const fromNode = nodes.get(key(track.fromNodeID)), toNode = nodes.get(key(track.toNodeID))
+            const sourceFrom = point({ x: track.x1, y: track.y1 }) ?? point(fromNode)
+            const sourceTo = point({ x: track.x2, y: track.y2 }) ?? point(toNode)
+            const fromPoint = calculationPoint(sourceFrom, fromNode), toPoint = calculationPoint(sourceTo, toNode)
             const geometryLength = fromPoint && toPoint ? distance(fromPoint, toPoint) : 0
             const measuredLength = positive(track.lengthM)
             if (track.lengthM !== undefined && measuredLength === undefined) issue('errors', 'invalidMeasuredLength', id)
@@ -151,6 +177,8 @@ export function buildRouteProfile(
             path.push({
                 track, id, from: current, to: next, reverse,
                 start: reverse ? toPoint : fromPoint, end: reverse ? fromPoint : toPoint,
+                sourceStart: reverse ? sourceTo : sourceFrom, sourceEnd: reverse ? sourceFrom : sourceTo,
+                sourceGeometryLength: sourceFrom && sourceTo ? distance(sourceFrom, sourceTo) : 0,
                 geometryLength, measuredLength, trimStart: 0, trimEnd: 0, arcStart: 0, arcEnd: 0,
             })
             current = next
@@ -206,12 +234,12 @@ export function buildRouteProfile(
         }
         const a = point(entity.start), b = point(entity.end), center = point(entity.center)
         const radius = positive(entity.radius)
-        if (!a || !b || !center || !radius || !before.start || !before.end || !after.start || !after.end) {
+        if (!a || !b || !center || !radius || !before.sourceStart || !before.sourceEnd || !after.sourceStart || !after.sourceEnd) {
             issue('errors', 'invalidCurveGeometry', key(entity.id)); continue
         }
         const tolerance = Math.max(.01, radius * .001)
         const liesOn = (p: Point, segment: PathLink) =>
-            Math.abs(distance(segment.start!, p) + distance(p, segment.end!) - segment.geometryLength) <= tolerance
+            Math.abs(distance(segment.sourceStart!, p) + distance(p, segment.sourceEnd!) - segment.sourceGeometryLength) <= tolerance
         let entry: Point, exit: Point
         if (liesOn(a, before) && liesOn(b, after)) { entry = a; exit = b }
         else if (liesOn(b, before) && liesOn(a, after)) { entry = b; exit = a }
@@ -224,11 +252,25 @@ export function buildRouteProfile(
         if (Number(entity.largeArcFlag) === 1) angle = Math.PI * 2 - angle
         const arcLength = radius * angle
         if (!(arcLength > 0)) { issue('errors', 'invalidCurveGeometry', key(entity.id)); continue }
-        before.trimEnd = distance(entry, before.end)
-        after.trimStart = distance(after.start, exit)
-        before.arcEnd = arcLength / 2
-        after.arcStart = arcLength / 2
-        curves.push({ entity, index, arcLength: arcLength * scale!, measured: false })
+        const changed = [before, after].some(link => link.start?.x !== link.sourceStart?.x || link.end?.x !== link.sourceEnd?.x)
+        if (changed) {
+            // Stored tangent points describe the drawing. Recompute the
+            // circular corner using actual endpoints without mutating that drawing.
+            const corner = correctedCorner(before, after, radius)
+            if (!corner) { issue('errors', 'invalidCurveGeometry', key(entity.id)); continue }
+            const correctedArcLength = Number(entity.largeArcFlag) === 1 ? 2 * Math.PI * radius - corner.arcLength : corner.arcLength
+            before.trimEnd = corner.trim
+            after.trimStart = corner.trim
+            before.arcEnd = correctedArcLength / 2
+            after.arcStart = correctedArcLength / 2
+            if (correctedArcLength > 1e-9) curves.push({ entity, index, arcLength: correctedArcLength * scale!, measured: false })
+        } else {
+            before.trimEnd = distance(entry, before.sourceEnd)
+            after.trimStart = distance(after.sourceStart, exit)
+            before.arcEnd = arcLength / 2
+            after.arcStart = arcLength / 2
+            curves.push({ entity, index, arcLength: arcLength * scale!, measured: false })
+        }
     }
     if (result.errors.length) return result
 

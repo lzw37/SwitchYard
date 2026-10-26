@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS "node" (
     "StationSchemeID" TEXT NULL,
     "ID" TEXT NULL,
     "X" REAL NULL,
+    "ActualX" REAL NULL,
     "Y" REAL NULL,
     "ExtraProperties" TEXT NULL,
     "LayoutOrder" INTEGER NULL

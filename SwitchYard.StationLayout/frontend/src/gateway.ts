@@ -1,5 +1,10 @@
 export type LayoutEntity = Record<string, unknown>;
 
+export interface StationLayoutNode extends LayoutEntity {
+  /** Surveyed horizontal coordinate, stored independently of the drawing's x coordinate. */
+  actualX?: number | null;
+}
+
 export interface StationLayoutMetadata {
   instanceID?: string;
   stationSchemeID?: string;
@@ -14,7 +19,7 @@ export interface StationLayoutDocument {
   metadata?: StationLayoutMetadata | null;
   tracks?: LayoutEntity[];
   curves?: LayoutEntity[];
-  nodes?: LayoutEntity[];
+  nodes?: StationLayoutNode[];
   signals?: LayoutEntity[];
   insulationJoints?: LayoutEntity[];
   bufferStops?: LayoutEntity[];

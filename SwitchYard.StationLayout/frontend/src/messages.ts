@@ -3,6 +3,24 @@ import type { StationLayoutTranslate } from "./gateway";
 export const stationLayoutMessages = {
   zh: {
     stationLayout: {
+      coordinates: {
+        title: "精准坐标校正",
+        preview: "实际坐标预览",
+        restore: "恢复图面坐标",
+        node: "节点",
+        equipment: "绑定设备",
+        equipmentName: "{type}{name}",
+        drawingX: "图面 X",
+        actualX: "实际横坐标",
+        inputLabel: "节点 {id} 的实际横坐标",
+        unset: "未填写",
+        empty: "当前布置图没有节点",
+        count: "已填写 {filled} / {total} 个节点",
+        hint: "实际横坐标独立保存，不改变图面 X。未填写的节点在预览时使用图面 X。点击图中的节点或绑定设备，可直接定位到填写框。",
+        saveHint: "输入后点击“保存数据”保存。清空输入可移除该节点的实际横坐标。",
+        previewHint: "正在按实际横坐标预览，可横向拖动节点或在表格中校正实际横坐标，图面 X/Y 不变；其他图形编辑请先恢复图面坐标。",
+        invalid: "请输入有效的实际横坐标，或清空输入。",
+      },
       editor: {
         "common": {
           "normal": "常规",
@@ -380,6 +398,24 @@ export const stationLayoutMessages = {
   },
   en: {
     stationLayout: {
+      coordinates: {
+        title: "Precise coordinate correction",
+        preview: "Preview actual coordinates",
+        restore: "Restore drawing coordinates",
+        node: "Node",
+        equipment: "Bound equipment",
+        equipmentName: "{type} {name}",
+        drawingX: "Drawing X",
+        actualX: "Actual X",
+        inputLabel: "Actual X for node {id}",
+        unset: "Not set",
+        empty: "No nodes in this layout",
+        count: "{filled} of {total} nodes calibrated",
+        hint: "Actual X is stored separately and never changes drawing X. Nodes without an actual X use drawing X in the preview. Click a node or its bound equipment to focus the corresponding input.",
+        saveHint: "Click Save data to persist your changes. Clear an input to remove that node's actual X.",
+        previewHint: "Previewing actual coordinates. Drag nodes horizontally or edit the table to correct actual X; drawing X/Y remain unchanged. Restore drawing coordinates for other geometry edits.",
+        invalid: "Enter a finite actual X coordinate, or clear the input.",
+      },
       editor: {
         "common": {
           "normal": "Normal",

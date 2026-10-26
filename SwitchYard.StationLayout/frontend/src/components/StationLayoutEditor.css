@@ -346,6 +346,22 @@
     cursor: move;
 }
 
+.node-actual-coordinate {
+    cursor: ew-resize;
+}
+
+.node-coordinate-label {
+    font: 9px Arial, sans-serif;
+    text-anchor: middle;
+    fill: #cbd5e1;
+    stroke: #31363f;
+    stroke-width: 2px;
+    stroke-linejoin: round;
+    paint-order: stroke fill;
+    pointer-events: none;
+    user-select: none;
+}
+
 .node-temp {
     fill: yellow;
     opacity: 0.6;
