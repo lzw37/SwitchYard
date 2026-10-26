@@ -3,14 +3,14 @@ import { RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ArrowRight, Check, Connection, DataAnalysis, Film, MapLocation, Operation, SetUp } from '@element-plus/icons-vue'
 import CapacityPreviewMedia from '@/components/CapacityPreviewMedia.vue'
-import overviewImage from '@/assets/capacity_fig/2.png'
-import stationLayoutImage from '@/assets/capacity_fig/Station_layout_and_route_design.png'
-import operationProcessImage from '@/assets/capacity_fig/Operation_process_editor.png'
-import operationPlanImage from '@/assets/capacity_fig/Train_operation_plan.png'
-import sectionOccupancyImage from '@/assets/capacity_fig/Operation_chart_and_section_occupancy.png'
-import capacitySummaryImage from '@/assets/capacity_fig/Bottleneck_analysis_and_capacity summaries.png'
-import playback2DImage from '@/assets/capacity_fig/2D_operation_playback.gif'
-import playback3DImage from '@/assets/capacity_fig/3D_operation_playback.gif'
+
+// A checkout may omit these optional screenshots, including the entire directory.
+const capacityImages = import.meta.glob<string>('/src/assets/capacity_fig/*', {
+    eager: true,
+    query: '?url',
+    import: 'default',
+})
+const imageUrl = (filename: string) => capacityImages[`/src/assets/capacity_fig/${filename}`]
 
 const { t, locale } = useI18n({ useScope: 'global' })
 const features = [
@@ -22,13 +22,13 @@ const features = [
     { key: 'playback', icon: Film },
 ]
 
-const overviewMedia = { src: overviewImage }
+const overviewMedia = { src: imageUrl('2.png') }
 const showcases = [
-    { key: 'layout', images: [{ key: 'station', src: stationLayoutImage }] },
-    { key: 'planning', images: [{ key: 'process', src: operationProcessImage }, { key: 'plan', src: operationPlanImage }] },
-    { key: 'analysis', images: [{ key: 'occupancy', src: sectionOccupancyImage }, { key: 'capacity', src: capacitySummaryImage }] },
-    { key: 'playback', images: [{ key: 'twoDimensional', src: playback2DImage }, { key: 'threeDimensional', src: playback3DImage }] },
-] as const
+    { key: 'layout', images: [{ key: 'station', src: imageUrl('Station_layout_and_route_design.png') }] },
+    { key: 'planning', images: [{ key: 'process', src: imageUrl('Operation_process_editor.png') }, { key: 'plan', src: imageUrl('Train_operation_plan.png') }] },
+    { key: 'analysis', images: [{ key: 'occupancy', src: imageUrl('Operation_chart_and_section_occupancy.png') }, { key: 'capacity', src: imageUrl('Bottleneck_analysis_and_capacity summaries.png') }] },
+    { key: 'playback', images: [{ key: 'twoDimensional', src: imageUrl('2D_operation_playback.gif') }, { key: 'threeDimensional', src: imageUrl('3D_operation_playback.gif') }] },
+].map(item => ({ ...item, images: item.images.filter(image => image.src) }))
 
 function toggleLocale() {
     locale.value = locale.value === 'zh' ? 'en' : 'zh'
@@ -64,7 +64,7 @@ function toggleLocale() {
 
         <main id="capacity-content">
             <section class="preview-hero" aria-labelledby="capacity-title">
-                <div class="container hero-grid">
+                <div class="container hero-grid" :class="{ 'without-media': !overviewMedia.src }">
                     <div class="hero-copy">
                         <p class="eyebrow">{{ t('capacityPreview.hero.eyebrow') }}</p>
                         <p class="product-label">{{ t('capacityPreview.hero.label') }}</p>
@@ -78,7 +78,7 @@ function toggleLocale() {
                             <li v-for="index in 3" :key="index"><Check aria-hidden="true" />{{ t(`capacityPreview.hero.tag${index}`) }}</li>
                         </ul>
                     </div>
-                    <CapacityPreviewMedia class="hero-media" kind="image" v-bind="overviewMedia"
+                    <CapacityPreviewMedia v-if="overviewMedia.src" class="hero-media" kind="image" v-bind="overviewMedia"
                         :title="t('capacityPreview.hero.mediaTitle')" :caption="t('capacityPreview.hero.mediaCaption')" />
                 </div>
             </section>
@@ -125,7 +125,7 @@ function toggleLocale() {
                         <p>{{ t('capacityPreview.showcase.description') }}</p>
                     </div>
                     <article v-for="item in showcases" :key="item.key" :id="`capacity-${item.key}`" class="showcase-row"
-                        :class="{ 'has-image-pair': item.images.length > 1 }">
+                        :class="{ 'has-image-pair': item.images.length > 1, 'without-media': !item.images.length }">
                         <div class="showcase-copy">
                             <p class="eyebrow">{{ t(`capacityPreview.showcase.${item.key}.label`) }}</p>
                             <h3>{{ t(`capacityPreview.showcase.${item.key}.title`) }}</h3>
@@ -136,7 +136,7 @@ function toggleLocale() {
                                 </li>
                             </ul>
                         </div>
-                        <div class="showcase-images">
+                        <div v-if="item.images.length" class="showcase-images">
                             <CapacityPreviewMedia v-for="image in item.images" :key="image.key" kind="image" :src="image.src"
                                 :title="t(`capacityPreview.showcase.${item.key}.images.${image.key}.title`)"
                                 :caption="t(`capacityPreview.showcase.${item.key}.images.${image.key}.caption`)" />
@@ -288,6 +288,7 @@ h2 { color: var(--preview-blue); font-size: clamp(25px, 2.7vw, 36px); font-weigh
 .showcase-row + .showcase-row { margin-top: 88px; }
 .showcase-images { display: grid; min-width: 0; gap: 24px; }
 .showcase-row.has-image-pair { display: block; }
+.hero-grid.without-media, .showcase-row.without-media { grid-template-columns: 1fr; }
 .has-image-pair .showcase-copy { max-width: 760px; margin-bottom: 28px; }
 .has-image-pair .showcase-images { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .showcase-copy h3 { margin: 12px 0 18px; color: var(--preview-blue); font-size: 28px; font-weight: 700; line-height: 1.5; }
