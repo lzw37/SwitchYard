@@ -991,13 +991,12 @@ function setNodeCoordinateInputRef(nodeId, input) {
 }
 
 async function focusNodeActualX(nodeId) {
-    if (loadingData.value || savingData.value || importingData.value || cellLinkPickMode.value) return;
+    if (!coordinatePanelVisible.value || loadingData.value || savingData.value || importingData.value || cellLinkPickMode.value) return;
     const key = String(nodeId ?? "").trim();
     const row = nodeCoordinateRows.value.find(node => String(node.id) === key);
     if (!row) return;
     const request = { key, focusVersion: ++coordinateFocusVersion, loadVersion: layoutLoadVersion };
     pendingNodeCoordinateFocus = request;
-    openCoordinatePanel();
     focusedCoordinateNodeId.value = row.id;
     await focusPendingNodeCoordinateInput(request);
 }
@@ -1508,6 +1507,7 @@ function redo() {
 const mouseSnap = ref(true);
 const objectSnap = ref(true);
 const objectSnapDistance = ref(10);
+const nodeMergeTolerance = ref(10);
 function mouseGridSnapChange(e) {
     if (mouseSnap.value === false) {
         stationLayoutEditorRef.value?.setMouseGridSnapModeCode(0);
@@ -3162,6 +3162,13 @@ defineExpose({ exportJson, importJson });
                         <el-radio-button value="auto">{{ t('stationLayout.topology.auto') }}</el-radio-button>
                         <el-radio-button value="manual">{{ t('stationLayout.topology.manual') }}</el-radio-button>
                     </el-radio-group>
+                    <div class="toolbar-field-item" :title="t('stationLayout.menu.nodeMergeToleranceHint')">
+                        <span class="toolbar-group-label">{{ t('stationLayout.menu.nodeMergeTolerance') }}</span>
+                        <el-input-number v-model="nodeMergeTolerance" size="small" :min="0" :step="1"
+                            :aria-label="t('stationLayout.menu.nodeMergeTolerance')"
+                            controls-position="right" :disabled="layoutReadonly"
+                            @change="nodeMergeTolerance = $event ?? 10" />
+                    </div>
                     <el-button-group>
                         <el-button size="small" :icon="Aim" :disabled="layoutReadonly" @click="showCrossPoint">{{ t('stationLayout.tools.showCrossPoint') }}</el-button>
                         <el-button size="small" :icon="Hide" :disabled="layoutReadonly" @click="hideCrossPoint">{{ t('stationLayout.tools.hideCrossPoint') }}</el-button>
@@ -3476,6 +3483,7 @@ defineExpose({ exportJson, importJson });
                 <StationLayoutEditor :translate="t" ref="stationLayoutEditorRef" :display-scale-x="layoutScaleX"
                     :display-scale-y="layoutScaleY" :show-curve-arc="showCurveArc" :show-nodes="showNodes"
                     :show-grid="showGrid" :object-snap-distance="objectSnapDistance"
+                    :node-merge-tolerance="nodeMergeTolerance"
                     :readonly="props.readonly"
                     :actual-coordinate-preview="actualCoordinatePreview"
                     :auto-generate-topology="topologyGenerationMode === 'auto'"

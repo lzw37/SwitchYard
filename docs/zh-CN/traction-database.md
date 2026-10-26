@@ -46,6 +46,7 @@ MySQL 事务先用 `INSERT ... ON DUPLICATE KEY UPDATE Revision=Revision` 一次
 
 - `GET /api/SpeedProfile/workspace/trains?instanceID=...&stationSchemeID=...`：按项目读取 `{ instanceID, revision, catalog }`，站场用于权限/归属检查，无库时返回 204。
 - `PUT /api/SpeedProfile/workspace/trains`：提交 `{ instanceID, stationSchemeID, revision, catalog }`，在项目锁内验证版本并保存共享定义、节点及受影响的进路版本。旧版本返回 409，禁止旧工作区或批量草稿覆盖新库。
+- `POST /api/SpeedProfile/train-characteristics/import`：登录后以 `multipart/form-data` 的 `file` 字段上传不超过 2 MB 的 `.xlsx`，解析模板中的“牵引特性”“制动特性”“阻力特性”三个 Sheet。全部通过校验才返回 `{ tractionCurve, brakingCurve, resistanceCurve }`；错误返回 400、`invalid-train-characteristics-excel` 及 Sheet、行号提示。该接口仅解析文件，不读取或写入项目库；前端将结果填入当前列车草稿，再通过上述项目保存接口提交。模板为前端静态资源 `templates/train-characteristics-template.xlsx`。
 
 ## 保存与读取
 

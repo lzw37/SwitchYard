@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { generateBrakingCurve, generateResistanceCurve, rotatingMassCoefficientFromFactor, rotatingMassFactorFromCoefficient, type ForcePoint, type TrainParameters } from './tractionCalculation'
 import { cloneTrainPresetCatalog, cloneTrainParameters, validateTrainPresetCatalog, type TrainPreset, type TrainPresetCatalog } from './trainPresets'
+import { importTrainCharacteristics, MAX_CHARACTERISTICS_FILE_BYTES } from './trainCharacteristicsExcel'
 
 const props = defineProps<{ modelValue: boolean; catalog: TrainPresetCatalog; saving?: boolean; error?: string }>()
 const emit = defineEmits<{
@@ -10,15 +11,35 @@ const emit = defineEmits<{
     save: [value: TrainPresetCatalog]
 }>()
 const { locale } = useI18n()
+const trainCharacteristicsTemplateUrl = `${import.meta.env.BASE_URL}templates/train-characteristics-template.xlsx`
 const ui = (zh: string, en: string) => locale.value.startsWith('zh') ? zh : en
 const draft = ref<TrainPresetCatalog>(cloneTrainPresetCatalog(props.catalog))
 const activeTab = ref('tractionCurve')
+const excelInput = ref<HTMLInputElement | null>(null)
+const importing = ref(false)
+const importError = ref('')
+const importSuccess = ref('')
+let importController: AbortController | null = null
+function cancelImport() {
+    importController?.abort()
+    importController = null
+    importing.value = false
+}
 watch(() => props.modelValue, open => {
+    cancelImport()
+    importError.value = ''
+    importSuccess.value = ''
     if (open) {
         draft.value = cloneTrainPresetCatalog(props.catalog)
         activeTab.value = 'tractionCurve'
     }
 }, { immediate: true })
+watch(() => draft.value.selectedId, () => {
+    cancelImport()
+    importError.value = ''
+    importSuccess.value = ''
+})
+onBeforeUnmount(cancelImport)
 const current = computed(() => draft.value.presets.find(preset => preset.id === draft.value.selectedId))
 const presetName = (preset: TrainPreset) => !locale.value.startsWith('zh') && preset.nameEn ? preset.nameEn : preset.name
 
@@ -142,8 +163,42 @@ function removePreset() {
     draft.value.presets.splice(index, 1)
     draft.value.selectedId = draft.value.presets[Math.min(index, draft.value.presets.length - 1)]!.id
 }
+async function importExcel(event: Event) {
+    const input = event.target as HTMLInputElement
+    const file = input.files?.[0]
+    input.value = ''
+    if (!file || !props.modelValue || props.saving || importing.value || !current.value) return
+    importError.value = ''
+    importSuccess.value = ''
+    if (!file.name.toLowerCase().endsWith('.xlsx') || file.size === 0 || file.size > MAX_CHARACTERISTICS_FILE_BYTES) {
+        importError.value = ui('请选择不超过 2 MB 的 .xlsx 文件。', 'Choose a nonempty .xlsx file up to 2 MB.')
+        return
+    }
+    const target = current.value
+    const controller = new AbortController()
+    importController = controller
+    importing.value = true
+    try {
+        const curves = await importTrainCharacteristics(file, controller.signal)
+        if (controller.signal.aborted || !props.modelValue || current.value !== target || props.saving) return
+        Object.assign(target.parameters, curves)
+        importSuccess.value = ui(
+            `已导入：牵引 ${curves.tractionCurve.length} 点、制动 ${curves.brakingCurve.length} 点、阻力 ${curves.resistanceCurve.length} 点。点击“保存到项目”生效。`,
+            `Imported ${curves.tractionCurve.length} traction, ${curves.brakingCurve.length} braking and ${curves.resistanceCurve.length} resistance points. Save to project to apply.`,
+        )
+    } catch (error) {
+        if (controller.signal.aborted) return
+        const detail = (error as { response?: { data?: { message?: string } } }).response?.data?.message
+        importError.value = typeof detail === 'string' ? detail : ui('Excel 导入失败，请检查文件或连接后重试。', 'Excel import failed. Check the file or connection and retry.')
+    } finally {
+        if (importController === controller) {
+            importController = null
+            importing.value = false
+        }
+    }
+}
 function save() {
-    if (props.saving || validationMessage.value || validateTrainPresetCatalog(draft.value)) return
+    if (props.saving || importing.value || validationMessage.value || validateTrainPresetCatalog(draft.value)) return
     emit('save', cloneTrainPresetCatalog(draft.value))
 }
 </script>
@@ -154,7 +209,7 @@ function save() {
         @update:model-value="emit('update:modelValue', $event)">
         <p class="project-train-hint">{{ ui('整个项目共用此列车参数库；修改参数后，使用该列车的结果将标记为待计算。', 'This project shares one train library. Results using changed train parameters become pending.') }}</p>
         <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
-        <div class="train-parameters-content" :inert="saving">
+        <div class="train-parameters-content" :inert="saving || importing">
             <aside class="preset-sidebar">
                 <div class="preset-toolbar">
                     <span>{{ ui('预设', 'Presets') }} {{ draft.presets.length }}/1000</span>
@@ -175,6 +230,14 @@ function save() {
                         <small v-if="field.key === 'rotatingMassFactor'" class="parameter-hint">{{ ui('有效惯性质量 = 列车质量 × (1 + γ)', 'Effective inertial mass = train mass × (1 + γ)') }}</small>
                     </label>
                 </div>
+                <div class="excel-toolbar">
+                    <el-button tag="a" :href="trainCharacteristicsTemplateUrl" download="列车特性输入模板.xlsx" size="small">{{ ui('下载 Excel 模板', 'Download Excel template') }}</el-button>
+                    <el-button size="small" :loading="importing" @click="excelInput?.click()">{{ ui('导入 Excel', 'Import Excel') }}</el-button>
+                    <input ref="excelInput" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden @change="importExcel" />
+                    <small>{{ ui('按模板填写三个 Sheet；选择文件后自动替换当前列车的三类特性表，保存到项目后生效。', 'Fill all three sheets. Selecting a file replaces this train’s three characteristic tables; save to project to apply.') }}</small>
+                </div>
+                <el-alert v-if="importError" :title="importError" type="error" :closable="false" show-icon role="alert" />
+                <el-alert v-if="importSuccess" :title="importSuccess" type="success" :closable="false" show-icon />
                 <el-tabs v-model="activeTab" class="characteristics-tabs">
                     <el-tab-pane v-for="tab in curveTabs" :key="tab.key" :name="tab.key" :label="ui(tab.zh, tab.en)">
                         <div v-if="tab.key !== 'tractionCurve'" class="curve-generator">
@@ -208,7 +271,7 @@ function save() {
             </section>
         </div>
         <el-alert v-if="validationMessage" :title="validationMessage" type="error" show-icon :closable="false" class="preset-validation" role="alert" />
-        <template #footer><el-button :disabled="saving" @click="emit('update:modelValue', false)">{{ ui('取消', 'Cancel') }}</el-button><el-button type="primary" :disabled="!!validationMessage" :loading="saving" @click="save">{{ ui('保存到项目', 'Save to project') }}</el-button></template>
+        <template #footer><el-button :disabled="saving" @click="emit('update:modelValue', false)">{{ ui('取消', 'Cancel') }}</el-button><el-button type="primary" :disabled="!!validationMessage || importing" :loading="saving" @click="save">{{ ui('保存到项目', 'Save to project') }}</el-button></template>
     </el-dialog>
 </template>
 
@@ -237,6 +300,8 @@ function save() {
 .generator-field :deep(.el-input-number) { width: 125px; }
 .generator-formula, .curve-generator small { flex-basis: 100%; color: var(--el-text-color-secondary); font-size: 12px; }
 .characteristics-tabs { margin-top: 14px; }
+.excel-toolbar { display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin-top:16px; }
+.excel-toolbar small { flex-basis:100%; color:var(--el-text-color-secondary); font-size:12px; line-height:1.5; }
 .table-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
 .table-toolbar > span { font-size: 12px; color: var(--el-text-color-secondary); }
 .characteristic-table { width: 100%; }

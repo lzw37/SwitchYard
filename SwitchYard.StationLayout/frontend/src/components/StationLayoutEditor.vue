@@ -25,6 +25,7 @@ const props = defineProps({
     showGrid: { type: Boolean, default: true },
     gridSpacing: { type: Number, default: 20 },
     objectSnapDistance: { type: Number, default: 10 },
+    nodeMergeTolerance: { type: Number, default: 10 },
     displayStyles: { type: Object, default: () => ({}) },
     editorState: { type: String, default: "" },
     cellLinkMembershipCounts: { type: Object, default: () => ({}) },
@@ -92,7 +93,6 @@ const mouseGridSnapModeCode = ref(1);
 const mouseObjectSnapModeCode = ref(1);
 const snapDistance = computed(() => Math.max(0, toFiniteNumber(props.objectSnapDistance)));
 const autoSeparateLineTolerance = ref(10);
-const autoMergeNodeTolerance = ref(10);
 const defaultCurveRadius = 100;
 const curveCornerMinAngle = 90;
 const curveCornerMaxAngle = 175;
@@ -3031,7 +3031,7 @@ function snapLine() {
 function autoMergeNode() {
     const isRootMutation = mutationDepth === 0;
     const topologyBefore = isRootMutation ? captureTopologyState() : null;
-    const tolerance = Number(autoMergeNodeTolerance.value);
+    const tolerance = Number(props.nodeMergeTolerance);
     if (!Number.isFinite(tolerance) || tolerance < 0 || nodes.value.length < 2) return;
 
     const sourceNodes = getNodeList();
@@ -4104,7 +4104,7 @@ function handleNodeCoordinateClick(event, nodeId) {
 }
 
 function handleNodeClick(event, nodeId) {
-    // Keep navigation until click so opening the sidebar cannot interrupt a drag.
+    // Keep input focus until click so it cannot interrupt a drag.
     // Capture the mode before route picking emits and the parent clears its target.
     prepareNodeCoordinateFocus(event, nodeId);
     if (freeZoomActive.value || (event.button != null && event.button !== 0)) return;
