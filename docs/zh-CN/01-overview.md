@@ -68,12 +68,13 @@ flowchart LR
     API --> CapacityDB[(CapacityDatabase 能力分析)]
     API --> SketchDB[(SketchLayoutDatabase 布置图分析)]
     API <-->|SignalR| Agent[CapacityAgent]
-    Agent --> Worker[隔离求解 Worker 与 OR-Tools]
+    Agent --> Worker[隔离 Worker 子进程]
+    Worker --> Solver[CapacitySolver 类库与 OR-Tools]
     Module[独立 StationLayout 模块] -. 集成 .-> Browser
     Module -. 服务适配 .-> API
 ```
 
-浏览器编辑并提交业务数据，API 负责认证、范围校验、持久化及计算协调。驼峰计算在服务调用的核心库中执行；通过能力优化由单独的 CapacityAgent 接收任务，并在 Worker 子进程中计算。三维界面负责呈现和播放，不负责替代求解。
+浏览器编辑并提交业务数据，API 负责认证、范围校验、持久化及计算协调。驼峰计算在服务调用的核心库中执行；通过能力优化由 CapacityAgent 接收和调度任务，Worker 子进程调用 `SwitchYard.CapacitySolver` 类库求解。三维界面负责呈现和播放，不负责替代求解。
 
 数据库使用 Dapper 访问，支持 SQLite 和 MySQL。三个配置节分别选择数据库类型与连接，账号仅存放在 HumpDatabase。不要让三个业务配置节指向同一个数据库来“简化”部署，它们包含名称相同而结构不同的表，例如 `switch`。
 
@@ -87,7 +88,9 @@ flowchart LR
 | `SwitchYard.WebApi/SwitchYard.Service/` | .NET 8 API、认证、数据访问、课程资源接口及求解调度 |
 | `SwitchYard.WebApi/SwitchYard.Hump/` | 驼峰几何、阻力、能量高度、速度及间隔计算 |
 | `SwitchYard.WebApi/SwitchYard.Capacity/` | 站场、进路、占用与代理共享契约 |
-| `SwitchYard.WebApi/SwitchYard.CapacityAgent/` | .NET 10 计算代理、模型和 Worker |
+| `SwitchYard.WebApi/SwitchYard.CapacityAgent/` | .NET 10 通信代理、任务调度和 Worker 资源管理 |
+| `SwitchYard.WebApi/SwitchYard.CapacitySolver/` | .NET 10 求解类库、模型注册、OR-Tools 与 Worker 求解入口，随 Agent 发布 |
+| `SwitchYard.WebApi/SwitchYard.CapacitySolver.Tests/` | 共享领域对象、过程约束和求解模型回归 |
 | `SwitchYard.WebApi/SwitchYard.SketchLayout/` | 布置图几何、校验、冲突与排队计算 |
 | `SwitchYard.StationLayout/` | 可复用前端控件及同时面向 .NET 8 和 .NET 10 的后端模块 |
 | `scripts/deploy/` | systemd 服务、环境变量示例和配置脚本 |
@@ -106,8 +109,8 @@ flowchart LR
 | 能力主导航的独立结果分析 | 占位页面 | 使用作业计划内已实现的分析功能 |
 | 牵引计算 | 前端样例 | 不作为已接入的正式计算功能 |
 | 初始过程计划 | 检查单列车事件与资源衔接，不做跨列车冲突优化 | 生成后检查占用并运行求解 |
-| 模型兼容性 | 当前站场模型为 `2.3.0`；严格次序、真实停留进路和占用偏移有版本要求 | 优先同时部署当前 API 和当前代理 |
-| 最低模型版本字段 | 某些小数秒偏移会使输入字段显示 `2.1.0`，派发层仍按过程内容重新要求至少 `2.2.0` 或 `2.3.0` | 不仅凭 `minimumModelVersion` 字段判断兼容性，详见能力章节 |
+| 模型兼容性 | 当前站场模型为 `2.5.0`；普通列车输入要求至少 `2.4.0`，含过程引用时要求 `2.5.0` | 同时部署当前 API 和携带 Solver 类库的当前 Agent |
+| 最低模型版本字段 | 服务端检查 `minimumModelVersion`，并根据参数集与过程引用提高最低版本要求 | 不仅凭模型 ID 中的 `v1` 判断兼容性，详见能力章节 |
 | 新用户与教学模板 | 注册流程依赖驼峰模板 `001` | 建表后还需准备有效模板与账号数据 |
 | 完整解决方案构建 | `.sln` 包含未随仓库提供的测试项目 | 首次构建使用安装章节中的业务项目命令 |
 | 历史验证记录 | 旧说明中的通过数量属于当时运行结果 | 不能当成当前部署已验证的结果 |

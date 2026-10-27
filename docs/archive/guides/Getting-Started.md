@@ -154,6 +154,8 @@ dotnet run --project SwitchYard.WebApi/SwitchYard.CapacityAgent/SwitchYard.Capac
 
 程序从输出目录的 `capacity-agent.json` 读取资源配置，也可传入 `-- --config <绝对路径>`。离线求解自检不需要连接 API：
 
+> 2026-10-27 迁移说明：以下 `--self-test` 命令为历史入口，当前 Agent 不再执行该自检。当前命令为 `dotnet run --project SwitchYard.WebApi/SwitchYard.CapacitySolver.Tests`，见[现行安装手册](../../zh-CN/07-installation.md#72-可选自检与安装验收)。
+
 ```powershell
 dotnet run --project SwitchYard.WebApi/SwitchYard.CapacityAgent/SwitchYard.CapacityAgent.csproj -- --self-test
 ```

@@ -22,14 +22,17 @@ public sealed class OperationProcessController : ControllerBase
     public OperationProcessController(ILogger<OperationProcessController> logger) => _logger = logger;
 
     [HttpGet("GetTemplates")]
-    public IActionResult GetTemplates([FromQuery] ProcessScope scope) => Execute(scope, (db, normalized) =>
+    public IActionResult GetTemplates([FromQuery] ProcessScope scope) =>
+        Execute(scope, (db, normalized) => Ok(LoadTemplates(db, normalized)));
+
+    internal static List<OperationProcessTemplate> LoadTemplates(DBConnector db, ProcessScope scope)
     {
-        var catalog = LoadCatalog(db, normalized);
-        var templates = (db.Query<TemplateRow>($"SELECT InstanceID, StationSchemeID, OperationPlanID, TemplateID, Revision, Document FROM operationprocesstemplate WHERE {ScopeFilter} ORDER BY UpdatedAtUtc DESC, TemplateID", normalized) ?? new())
+        var catalog = LoadCatalog(db, scope);
+        var templates = (db.Query<TemplateRow>($"SELECT InstanceID, StationSchemeID, OperationPlanID, TemplateID, Revision, Document FROM operationprocesstemplate WHERE {ScopeFilter} ORDER BY UpdatedAtUtc DESC, TemplateID", scope) ?? new())
             .Select(ReadDocument).ToList();
         foreach (var template in templates) OperationProcessEventNodes.Refresh(template, catalog);
-        return Ok(templates);
-    });
+        return templates;
+    }
 
     [HttpGet("GetTemplate")]
     public IActionResult GetTemplate([FromQuery] ProcessScope scope, [FromQuery] string templateID) =>

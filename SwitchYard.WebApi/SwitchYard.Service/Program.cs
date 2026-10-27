@@ -266,6 +266,7 @@ try
     builder.Services.AddSingleton<CapacityAgentRegistry>();
     builder.Services.AddSingleton<CapacitySolvePresetService>();
     builder.Services.AddSingleton<SaturatedOperationPlanService>();
+    builder.Services.AddSingleton<CapacitySolveJobStore>();
     builder.Services.AddSingleton<CapacitySolveJobService>();
     builder.Services.AddScoped<StationCapacityInputBuilder>();
     builder.Services.AddSignalR()

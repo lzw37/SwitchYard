@@ -136,7 +136,7 @@ C2551,2,Dep,1G,02:30:00,02:33:00
 
 ## 求解与饱和计划
 
-启动独立 CapacityAgent 并连接当前服务。浏览器负责提交和展示；实际混合整数模型由 Agent 的 OR-Tools 执行，优先使用 SCIP，不可用时尝试 CBC。
+启动独立 CapacityAgent 并连接当前服务。浏览器负责提交和展示，Agent 负责通信、调度和资源监控；Worker 子进程调用 `SwitchYard.CapacitySolver` 中的混合整数模型与 OR-Tools，优先使用 SCIP，不可用时尝试 CBC。
 
 1. 在“模型求解”选择站场方案与计划，点击“生成输入”，核对 JSON 的计划范围、列车、候选进路及偏移。
 2. 选择在线、有权限且有空闲任务槽的 Agent，选择 `station-capacity-v1`。
@@ -237,4 +237,4 @@ K(Cell) = 非固定作业占用总秒数 / [(1 − α) × (T − 固定作业占
 - [保留的作业过程说明](../archive/guides/operation-process.md)：详细图形操作、Cell 保存与接口规则。
 - [CapacityAgent 使用说明](../archive/development/capacity-agent.md)：安装、认证、资源配置和求解运行。
 - [站场模块说明](../archive/development/station-layout.md)：布置图复用与编辑器接入。
-- 实现入口：[作业计划页面](../../switchyard-vue/src/capacity/OperationPlan.vue)、[输入构建器](../../SwitchYard.WebApi/SwitchYard.Service/Services/StationCapacityInputBuilder.cs)、[求解模型](../../SwitchYard.WebApi/SwitchYard.CapacityAgent/StationCapacityModel.cs)。
+- 实现入口：[作业计划页面](../../switchyard-vue/src/capacity/OperationPlan.vue)、[输入构建器](../../SwitchYard.WebApi/SwitchYard.Service/Services/StationCapacityInputBuilder.cs)、[求解模型](../../SwitchYard.WebApi/SwitchYard.CapacitySolver/StationCapacityModel.cs)。

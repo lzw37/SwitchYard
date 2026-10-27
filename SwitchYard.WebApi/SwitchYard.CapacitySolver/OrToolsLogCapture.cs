@@ -2,7 +2,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using Serilog;
 
-namespace SwitchYard.CapacityAgent;
+namespace SwitchYard.CapacitySolver;
 
 /// <summary>
 /// Captures the native stdout/stderr used by OR-Tools backends and replays it through Serilog.

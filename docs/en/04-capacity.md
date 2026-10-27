@@ -136,7 +136,7 @@ A batch adjustment is one save and one undo action. Ctrl+Z/Ctrl+Y retain up to 2
 
 ## Solving and saturated plans
 
-Start the separate CapacityAgent and connect it to the current service. The browser submits and displays jobs; the Agent runs the mixed-integer model with OR-Tools, preferring SCIP and falling back to CBC if unavailable.
+Start the separate CapacityAgent and connect it to the current service. The browser submits and displays jobs; the Agent handles communication, scheduling, and resource monitoring. Worker subprocesses invoke the mixed-integer model and OR-Tools in `SwitchYard.CapacitySolver`, preferring SCIP and falling back to CBC if unavailable.
 
 1. Select a scheme and plan in Model solving, generate input, and check its scope, trains, route candidates, and offsets.
 2. Select an online authorized Agent with available job slots and model `station-capacity-v1`.
@@ -237,4 +237,4 @@ For arrival results, yellow rectangles in the track circuit occupancy plot show 
 - [Preserved operation-process guide](../archive/guides/operation-process.md): detailed graphical operations, Cell persistence, and API behavior.
 - [CapacityAgent guide](../archive/development/capacity-agent.md): installation, authentication, resources, and execution.
 - [Station layout module](../archive/development/station-layout.md): reusable editor integration.
-- Implementation: [Operation plan page](../../switchyard-vue/src/capacity/OperationPlan.vue), [input builder](../../SwitchYard.WebApi/SwitchYard.Service/Services/StationCapacityInputBuilder.cs), and [solver model](../../SwitchYard.WebApi/SwitchYard.CapacityAgent/StationCapacityModel.cs).
+- Implementation: [Operation plan page](../../switchyard-vue/src/capacity/OperationPlan.vue), [input builder](../../SwitchYard.WebApi/SwitchYard.Service/Services/StationCapacityInputBuilder.cs), and [solver model](../../SwitchYard.WebApi/SwitchYard.CapacitySolver/StationCapacityModel.cs).

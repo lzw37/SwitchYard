@@ -97,6 +97,8 @@ CapacityAgent 使用 Serilog 同时输出控制台日志和本地文件日志。
 
 ## 自检
 
+> 2026-10-27 迁移说明：下面的 Agent 自检命令仅保留历史记录，当前版本会提示新入口并退出。现在请运行 `dotnet run --project SwitchYard.WebApi/SwitchYard.CapacitySolver.Tests`，说明见[当前安装手册](../../zh-CN/07-installation.md#72-可选自检与安装验收)。
+
 在仓库根目录执行以下命令，并发运行最多两个包含两列车、单进路和共享轨道电路的最小求解案例：
 
 ```powershell

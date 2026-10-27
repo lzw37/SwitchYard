@@ -60,11 +60,11 @@ Authorization: Bearer <token>
 | --- | --- | --- |
 | Auth / Admin | 登录、刷新、注册、资料、用户导入及管理 | [认证模型](../../SwitchYard.WebApi/SwitchYard.Service/Models)、[AuthController](../../SwitchYard.WebApi/SwitchYard.Service/Controllers/AuthController.cs)、[AdminController](../../SwitchYard.WebApi/SwitchYard.Service/Controllers/AdminController.cs) |
 | Hump | 实例、溜放线、平纵断面、车辆、条件、计算、间隔检验 | [驼峰核心模型](../../SwitchYard.WebApi/SwitchYard.Hump)、[HumpController](../../SwitchYard.WebApi/SwitchYard.Service/Controllers/HumpController.cs) |
-| Capacity | 能力实例增删改查和复制 | [CapacityInstance](../../SwitchYard.WebApi/SwitchYard.Capacity/CapacityInstance.cs) |
-| StationLayout | 方案、JSON、修复、DWG、进路、停留进路与时间参数 | [布局请求](../../SwitchYard.WebApi/SwitchYard.Capacity/StationLayoutRequests.cs)、[模块契约](../../SwitchYard.StationLayout/backend) |
+| Capacity | 能力实例增删改查和复制 | [CapacityInstance](../../SwitchYard.WebApi/SwitchYard.Capacity/Database/CapacityInstance.cs) |
+| StationLayout | 方案、JSON、修复、DWG、进路、停留进路与时间参数 | [布局请求](../../SwitchYard.WebApi/SwitchYard.Capacity/StationLayout/StationLayoutRequests.cs)、[模块契约](../../SwitchYard.StationLayout/backend) |
 | OperationPlan | 计划、列车、移动、批量修改、占用导入和重算、图表与分析保存 | [控制器](../../SwitchYard.WebApi/SwitchYard.Service/Controllers/OperationPlanController.cs)、[占用导入模型](../../SwitchYard.WebApi/SwitchYard.Service/Models/CellOccupancyImportModels.cs) |
 | OperationProcess | 模板、目录、活动和事件等子对象、版本控制 | [过程模型](../../SwitchYard.WebApi/SwitchYard.Service/Models/OperationProcessModels.cs)、[过程控制器](../../SwitchYard.WebApi/SwitchYard.Service/Controllers/OperationProcessController.cs) |
-| CapacityAgents | 在线代理、预设、求解输入、任务与饱和计划 | [代理共享契约](../../SwitchYard.WebApi/SwitchYard.Capacity/CapacityAgentContracts.cs) |
+| CapacityAgents | 在线代理、预设、求解输入、任务与饱和计划 | [代理共享契约](../../SwitchYard.WebApi/SwitchYard.Capacity/Contracts/CapacityAgentContracts.cs) |
 | SketchLayout | 方案文档增删改查与保存版本分析 | [布置图模型](../../SwitchYard.WebApi/SwitchYard.SketchLayout/Models.cs)、[校验规则](../../SwitchYard.WebApi/SwitchYard.SketchLayout/Validation.cs) |
 | Course | 资源清单及支持范围读取的文件流 | [CourseController](../../SwitchYard.WebApi/SwitchYard.Service/Controllers/CourseController.cs) |
 
@@ -129,7 +129,66 @@ Content-Type: application/json
 }
 ```
 
+返回的输入包含 `stationLayout` 基础数据快照，覆盖当前实例、当前站场方案的全部记录，不按作业计划裁剪：
+
+| 字段 | 数据内容 |
+| --- | --- |
+| `stationSchemeId` | 布局所属站场方案，布局内各集合的记录不再重复携带此字段 |
+| `cells` | Cell 数据，省略 `instanceId`、`stationSchemeId` 和 `extraProperties` |
+| `routes` | Route 数据，包括车种、节点与线路列表、干扰 Cell、标签和起终点；省略 `instanceId`、`stationSchemeId` |
+| `calculationParameterSets.sets` | 参数集标识、名称、默认标记；省略 `instanceId`、`stationSchemeId` |
+| `calculationParameterSets.routeOccupations` | 以 `calculationParameterSetId` 为 key、占用行数组为 value 的字典；占用行省略 `instanceId`、`stationSchemeId` 和重复的 `calculationParameterSetId` |
+| `routeOperationTimes` | 各参数集、进路和车种的作业时长 `operationTimeS`；省略 `instanceId`、`stationSchemeId` |
+| `links`、`nodes` | 拓扑 Link、Node 数据，省略 `instanceId`、`stationSchemeId` 和 `extraProperties` |
+
+占用参数的读取路径为 `stationLayout.calculationParameterSets.routeOccupations[参数集ID]`，不再使用布局层的平铺 `routeOccupations`。参数集 ID 仅由字典 key 表达，行内不重复传递。没有占用行的参数集对应空数组。旧占用行的参数集 ID 为 `null` 时归入 `default` key。若方案尚未保存任何参数集，`sets` 包含系统提供的有效默认集 `default`。
+
+快照字段名使用 camelCase；保留字段的数据库值不变，包括 `null` 和原始列表字符串。输入顶层原有 `routes`、`routeOccupations` 仍是供算法使用的投影，求解占用参数的参数集 ID 从字典 key 获取；快照只传递基础数据，不增加求解约束。Agent 也能读取旧版参数集数组，兼容旧任务输入。旧任务按原始输入重试时不会补入当前布局。
+
+输入顶层还包含与 `stationLayout` 同级的 `operationProcesses` 数组，传递当前实例、站场方案的全部已保存作业过程模板（模板库的 `OperationPlanID = ''`），包括未用于当前计划的模板和尚未编排完整的草稿；浏览器中未保存的修改不包含在内。模板内不重复传递实例、方案和计划标识。
+
+| `operationProcesses` 中的字段 | 数据内容 |
+| --- | --- |
+| `id`、`name`、`description`、`revision` | 模板标识、名称、说明和版本 |
+| `activities`、`events` | 完整活动与事件，包括候选进路、选定资源、持续时间及编排坐标 |
+| `precedences`、`anchors`、`routeAnchors` | 事件次序、锚及进路端点与锚的关联 |
+
+子字段统一使用 camelCase，例如 `nodeId`、`automaticAnchorIds`、`dwellingActivityId`、`routeIds`、`routeId`。模板中的时间、持续时间和次序间隔保留分钟单位，活动 `x`、`y` 保留编排图坐标；事件 `nodeList` 与编排页面 API 一样，在读取时按当前进路刷新。旧输入缺少 `operationProcesses` 时按空数组读取。
+
+由作业过程生成的列车通过 `trains[].operationProcessId` 引用该数组中的当前已保存模板；持续时间、固定时刻、次序和锚约束使用模板的最新版本。列车附带执行基准 `processOriginSeconds`（秒），各移动通过 `movements[].activityId` 对应模板活动，原计划事件时刻从移动的 `originalStartSeconds`、`originalEndSeconds` 及起止事件 ID 恢复，不再传递 `processEventTimes` 字典。独立固定事件使用执行基准加模板时刻；独立且无固定时刻的事件由过程约束确定。原计划时刻不必满足后来编辑的约束，由求解器重新调整。普通列车不附带过程引用；模板被删除或活动与已有移动不再一一对应时，需重新生成作业计划。
+
+新输入不再输出 `trains[].processConstraints`，Solver 调用共享领域构图逻辑从引用重建求解约束；旧任务的该字段仍可读取，旧输入中的 `processEventTimes` 会被忽略。求解结果中的 `eventTimes` 保持不变。含过程引用的输入要求模型版本至少为 `2.5.0`，使用前需更新 CapacityAgent 及随包 Solver；普通列车输入仍要求 `2.4.0`。
+
+移动的 `startLocationsByRoute`、`endLocationsByRoute` 以候选进路 ID 为 key，列表中的每个地点是对象：`nodeId` 是节点，`anchorId` 是锚，`dwellingRouteId` 是该锚对应的停留进路；不存在的字段显式为 `null`。例如：
+
+```json
+{
+  "startLocationsByRoute": {
+    "R1": [{ "nodeId": "N1", "anchorId": null, "dwellingRouteId": null }]
+  },
+  "endLocationsByRoute": {
+    "R1": [{ "nodeId": "N2", "anchorId": "A1", "dwellingRouteId": "D1" }]
+  }
+}
+```
+
+旧字段名 `startLocationIdsByRoute`、`endLocationIdsByRoute` 仍可读取，输出只使用新字段名。Agent 仍接受旧版列表中的编码数组字符串（如 `"[\"N1\",null,null]"`）和纯节点字符串；重新输出时统一使用对象，畸形编码数组会被拒绝。包含地点对象的输入也要求模型版本至少为 `2.5.0`，即使没有作业过程引用。
+
 通用任务由 `POST /api/capacity-agents/jobs` 提交 `{ "agentId": "...", "modelId": "...", "input": { ... } }`，成功接收返回 202 和任务对象。通过 `GET /api/capacity-agents/jobs/{jobId}` 查询状态及结果。专用 `saturated-plan-jobs` 接口使用范围和 `presetId` 构建输入并关联新计划保存流程；通用任务不自动等同于这个流程。
+
+### 共享能力领域模型
+
+当前领域模型位于 `SwitchYard.Capacity/Domain`，命名空间为 `SwitchYard.Capacity`，类型为公开 API。`SwitchYard.CapacitySolver` 引用共享库，通过 `CapacityProblem.Build(input)` 将传输 DTO 装配为当前任务的对象图。Agent 负责通信和调度，在 Worker 子进程中调用 Solver 类库。进路、Cell、Link、Node 和参数集复用同一个实体实例；参数占用行直接引用其 `Route`、`Cell`、`ParameterSet`。原始字段保留在实体的 `Input`／`Layout` 中，构图不会改变传输 JSON。
+
+`Train.OperationProcess` 指向共享编排模板，`Train.Process` 保存本列车的执行图。`Movement.Activity`、`StartEvent`、`EndEvent`、`CandidateRoutes` 与 `RouteOptions` 均为对象引用；地点通过 `Node`、`Anchor`、`DwellingRoute` 关联实际实体。模板内活动、事件和锚按模板作用域解析；执行事件、锚和地点按列车作用域隔离，候选地点进一步按事件隔离。求解约束使用这些对象关系，ID 仅在输入解析、求解变量键和结果输出边界使用。
+
+未引用的草稿及缺失布局元数据记录在 `problem.Issues`，包含来源路径、目标类型和 ID。旧输入可从求解投影建立基础实体；缺失实际需要的活动、事件、锚或占用参数仍报错。当前 JSON 没有道岔、信号机实体定义，其 ID 保留并记为未解析引用；车种代码和标签保留为值。
+
+与 CapacityAgent 通信的类型集中在 `SwitchYard.Capacity/Contracts`，包括认证、注册、资源状态、求解命令、进度、结果，以及布置图、参数集、作业过程和地点输入 DTO。配套 JSON 转换器也位于该目录。类型名、命名空间 `SwitchYard.Capacity` 和 JSON 格式保持不变。
+
+直接映射数据库查询结果的类型集中在 `SwitchYard.Capacity/Database`，包括能力实例、计算参数集、布置图、作业计划及分析结果行。Service 先查询数据库行，再转换为 `Contracts` 中的 Agent 输入 DTO；领域对象及构图逻辑位于 `Domain`。
+
+其他共享类型按功能分类：`SwitchYard.Capacity/StationLayout` 包含布置图 JSON、读写请求、坐标转换、DWG 导入、进路搜索及计算参数集请求；`SwitchYard.Capacity/OperationPlans` 包含作业计划接口、占用数据读写与校验、车站作业计划图和资源占用图设置。所有类型仍使用 `SwitchYard.Capacity` 命名空间，项目根目录只保留项目文件。
 
 ### 保存并分析布置图
 
@@ -200,4 +259,4 @@ Sketch 控制器请求大小上限为 8 MiB；DWG 导入上限为 20 MiB。代�
 
 代理连接 `/hubs/capacity-agent`，调用 `RegisterAgent`、`ReportStatus`、`ReportProgress` 和 `CompleteJob`；服务端通过 `Solve` 分发任务。注册内容含模型、访问策略、资源容量和仍在执行的任务 ID。接口及 Hub 当前没有浏览器取消任务的标准操作；停止代理会影响其正在执行的 Worker。
 
-代理注册、任务、结果和各模型输入结构见 [CapacityAgentContracts.cs](../../SwitchYard.WebApi/SwitchYard.Capacity/CapacityAgentContracts.cs)，运行方式见[安装与首次启动](07-installation.md)。不要把 API 进程内存中的任务状态作为可备份、可恢复的数据库任务队列。
+代理注册、任务、结果和各模型输入结构见 [CapacityAgentContracts.cs](../../SwitchYard.WebApi/SwitchYard.Capacity/Contracts/CapacityAgentContracts.cs)，运行方式见[安装与首次启动](07-installation.md)。不要把 API 进程内存中的任务状态作为可备份、可恢复的数据库任务队列。

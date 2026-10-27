@@ -5,26 +5,20 @@ using Google.OrTools.LinearSolver;
 using Serilog;
 using SwitchYard.Capacity;
 
-namespace SwitchYard.CapacityAgent;
+namespace SwitchYard.CapacitySolver;
 
-internal sealed class StationCapacityModel : ICapacityModel
+public sealed class StationCapacityModel : ICapacityModel
 {
     private const double DaySeconds = 86_400;
     private const double MaximumHorizonSeconds = 7 * DaySeconds;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private static readonly ILogger Logger = Log.ForContext<StationCapacityModel>();
-    private readonly bool _runInProcess;
-
-    public StationCapacityModel(bool runInProcess = false)
-    {
-        _runInProcess = runInProcess;
-    }
 
     public CapacityModelDescriptor Descriptor { get; } = new()
     {
         Id = CapacityAgentProtocol.StationCapacityModelId,
         Name = "铁路车站通过能力模型",
-        Version = "2.4.0",
+        Version = "2.5.0",
         Description = "支持原列车作业与完整作业过程事件图、资源地点、持续时间和轨道电路占用约束。"
     };
 
@@ -34,18 +28,10 @@ internal sealed class StationCapacityModel : ICapacityModel
         Func<int, string, Task> reportProgress,
         CancellationToken cancellationToken)
     {
-        if (!_runInProcess)
-        {
-            return await CapacitySolveWorkerProcess.SolveAsync(
-                input,
-                executionContext,
-                reportProgress,
-                cancellationToken);
-        }
-
         var modelInput = input.Deserialize<StationCapacitySolveInput>(JsonOptions)
             ?? throw new InvalidOperationException("求解输入为空或格式不正确。");
 
+        var problem = CapacityProblem.Build(modelInput);
         Validate(modelInput);
         Logger.Information(
             "能力计算输入校验完成：{TrainCount} 列列车、{RouteCount} 条进路、{OccupationCount} 项占用参数",
@@ -56,14 +42,14 @@ internal sealed class StationCapacityModel : ICapacityModel
 
         return await Task.Run(async () =>
         {
-            var result = Solve(modelInput, executionContext.Resources, reportProgress, cancellationToken);
+            var result = Solve(problem, executionContext.Resources, reportProgress, cancellationToken);
             await reportProgress(100, "求解结果已生成");
             return JsonSerializer.SerializeToElement(result, JsonOptions);
         }, cancellationToken);
     }
 
     private static StationCapacitySolveResult Solve(
-        StationCapacitySolveInput input,
+        CapacityProblem problem,
         CapacityTaskResourceLimits resources,
         Func<int, string, Task> reportProgress,
         CancellationToken cancellationToken)
@@ -72,7 +58,8 @@ internal sealed class StationCapacityModel : ICapacityModel
 
         using var solver = CreateSolver(out var solverBackend);
 
-        var settings = input.Settings ?? new StationCapacitySolveSettings();
+        var input = problem.Input;
+        var settings = problem.Settings ?? new StationCapacitySolveSettings();
         var horizon = EffectiveHorizon(input);
         var occupations = input.RouteOccupations.Concat(input.Trains.SelectMany(train => train.Movements)
             .SelectMany(movement => movement.CellOccupationOverrides)).ToList();
@@ -97,8 +84,7 @@ internal sealed class StationCapacityModel : ICapacityModel
             }
         }
 
-        var routeMap = input.Routes.ToDictionary(route => route.Id, StringComparer.OrdinalIgnoreCase);
-        var movements = BuildMovementContexts(input, routeMap);
+        var movements = BuildMovementContexts(problem);
         var startVariables = new Dictionary<string, Variable>(StringComparer.OrdinalIgnoreCase);
         var endVariables = new Dictionary<string, Variable>(StringComparer.OrdinalIgnoreCase);
         var routeVariables = new Dictionary<(string MovementKey, string RouteId), Variable>();
@@ -107,7 +93,7 @@ internal sealed class StationCapacityModel : ICapacityModel
 
         foreach (var movement in movements)
         {
-            var movementHorizon = movement.Train.ProcessConstraints is null ? Math.Min(DaySeconds, horizon) : horizon;
+            var movementHorizon = movement.Train.Process is null ? Math.Min(DaySeconds, horizon) : horizon;
             startVariables[movement.Key] = solver.MakeNumVar(0, movementHorizon, $"a_{movement.VariableId}");
             endVariables[movement.Key] = solver.MakeNumVar(0, movementHorizon, $"d_{movement.VariableId}");
 
@@ -117,8 +103,9 @@ internal sealed class StationCapacityModel : ICapacityModel
                     solver.MakeBoolVar($"x_{movement.VariableId}_{Sanitize(route.Id)}");
             }
 
-            foreach (var cellId in movement.CandidateCellIds)
+            foreach (var cell in movement.CandidateCells)
             {
+                var cellId = cell.Id;
                 occupationStarts[(movement.Key, cellId)] =
                     solver.MakeNumVar(occupationLower, occupationUpper, $"s_{movement.VariableId}_{Sanitize(cellId)}");
                 occupationEnds[(movement.Key, cellId)] =
@@ -128,12 +115,11 @@ internal sealed class StationCapacityModel : ICapacityModel
 
         reportProgress(30, "决策变量创建完成").GetAwaiter().GetResult();
 
-        BuildMovementConstraints(input, solver, movements, startVariables, endVariables, routeVariables, horizon);
-        var eventVariables = BuildProcessConstraints(input, solver, movements, startVariables, endVariables, routeVariables, horizon);
+        BuildMovementConstraints(settings, solver, movements, startVariables, endVariables, routeVariables, horizon);
+        var eventVariables = BuildProcessConstraints(settings, solver, movements, startVariables, endVariables, routeVariables, horizon);
         BuildTrainConservationConstraints(solver, movements, startVariables, endVariables);
         BuildRouteConnectionConstraints(solver, movements, routeVariables);
         BuildOccupationConstraints(
-            input,
             solver,
             movements,
             startVariables,
@@ -205,14 +191,14 @@ internal sealed class StationCapacityModel : ICapacityModel
             var trainResult = new StationCapacityTrainResult
             {
                 Id = firstContext.Train.Id,
-                TrainType = firstContext.Train.TrainType,
-                CalculationParameterSetId = firstContext.Train.CalculationParameterSetId,
-                EventTimes = firstContext.Train.ProcessConstraints?.Events.ToDictionary(ev => ev.Id,
+                TrainType = firstContext.Train.Input.TrainType,
+                CalculationParameterSetId = firstContext.Train.Input.CalculationParameterSetId,
+                EventTimes = firstContext.Train.Process?.Events.ToDictionary(ev => ev.Id,
                     ev => CleanSecond(eventVariables[(firstContext.TrainIndex, ev.Id)].SolutionValue(), 0, horizon),
                     StringComparer.Ordinal) ?? new(StringComparer.Ordinal)
             };
 
-            foreach (var movement in trainGroup.OrderBy(item => item.Movement.Sequence))
+            foreach (var movement in trainGroup.OrderBy(item => item.Movement.Input.Sequence))
             {
                 var selectedRoute = movement.CandidateRoutes
                     .OrderBy(route => route.Id, StringComparer.OrdinalIgnoreCase)
@@ -222,7 +208,7 @@ internal sealed class StationCapacityModel : ICapacityModel
                 var movementResult = new StationCapacityMovementResult
                 {
                     Id = movement.Movement.Id,
-                    Name = movement.Movement.Name,
+                    Name = movement.Movement.Input.Name,
                     RouteId = selectedRoute.Id,
                     StartSeconds = start,
                     EndSeconds = end,
@@ -230,8 +216,9 @@ internal sealed class StationCapacityModel : ICapacityModel
                     EndTime = FormatTime(end)
                 };
 
-                foreach (var cellId in selectedRoute.CellIds)
+                foreach (var cell in selectedRoute.Cells)
                 {
+                    var cellId = cell.Id;
                     var occupationStart = CleanSecond(
                         occupationStarts[(movement.Key, cellId)].SolutionValue(), occupationLower, occupationUpper);
                     var occupationEnd = CleanSecond(
@@ -286,19 +273,17 @@ internal sealed class StationCapacityModel : ICapacityModel
         throw new InvalidOperationException("当前 OR-Tools 运行环境不包含可用的混合整数规划求解器。");
     }
 
-    private static List<MovementContext> BuildMovementContexts(
-        StationCapacitySolveInput input,
-        IReadOnlyDictionary<string, StationCapacityRouteInput> routeMap)
+    private static List<MovementContext> BuildMovementContexts(CapacityProblem problem)
     {
         var result = new List<MovementContext>();
-        for (var trainIndex = 0; trainIndex < input.Trains.Count; trainIndex++)
+        foreach (var train in problem.Trains)
         {
-            var train = input.Trains[trainIndex];
-            var orderedMovements = train.Movements.OrderBy(item => item.Sequence).ToList();
+            var trainIndex = train.Index;
+            var orderedMovements = train.Movements.OrderBy(item => item.Input.Sequence).ToList();
             for (var movementIndex = 0; movementIndex < orderedMovements.Count; movementIndex++)
             {
                 var movement = orderedMovements[movementIndex];
-                var candidates = ResolveCandidateRoutes(movement, routeMap);
+                var candidates = movement.CandidateRoutes;
                 if (candidates.Count == 0)
                 {
                     throw new InvalidOperationException($"列车 {train.Id} 的作业 {movement.Id} 没有可行进路。");
@@ -312,34 +297,15 @@ internal sealed class StationCapacityModel : ICapacityModel
                     train,
                     movement,
                     candidates,
-                    candidates.SelectMany(route => route.CellIds).Distinct(StringComparer.OrdinalIgnoreCase).ToList()));
+                    movement.CandidateCells));
             }
         }
 
         return result;
     }
 
-    private static List<StationCapacityRouteInput> ResolveCandidateRoutes(
-        StationCapacityMovementInput movement,
-        IReadOnlyDictionary<string, StationCapacityRouteInput> routeMap)
-    {
-        if (movement.CandidateRouteIds.Count > 0)
-        {
-            return movement.CandidateRouteIds
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .Where(routeMap.ContainsKey)
-                .Select(routeId => routeMap[routeId])
-                .ToList();
-        }
-
-        return routeMap.Values
-            .Where(route => movement.RequiredRouteTags.All(requiredTag =>
-                route.Tags.Contains(requiredTag, StringComparer.OrdinalIgnoreCase)))
-            .ToList();
-    }
-
     private static void BuildMovementConstraints(
-        StationCapacitySolveInput input,
+        StationCapacitySolveSettings settings,
         Solver solver,
         IEnumerable<MovementContext> movements,
         IReadOnlyDictionary<string, Variable> starts,
@@ -347,13 +313,12 @@ internal sealed class StationCapacityModel : ICapacityModel
         IReadOnlyDictionary<(string MovementKey, string RouteId), Variable> routeVariables,
         double horizon)
     {
-        var settings = input.Settings ?? new StationCapacitySolveSettings();
         foreach (var context in movements)
         {
-            var movement = context.Movement;
+            var movement = context.Movement.Input;
             var start = starts[context.Key];
             var end = ends[context.Key];
-            var movementHorizon = context.Train.ProcessConstraints is null ? Math.Min(DaySeconds, horizon) : horizon;
+            var movementHorizon = context.Train.Process is null ? Math.Min(DaySeconds, horizon) : horizon;
             solver.Add(end - start >= movement.MinDurationSeconds);
             solver.Add(end - start <= movement.MaxDurationSeconds);
             solver.Add(start >= Math.Max(0, movement.OriginalStartSeconds - settings.LeftShiftToleranceSeconds));
@@ -372,30 +337,30 @@ internal sealed class StationCapacityModel : ICapacityModel
     }
 
     private static Dictionary<(int TrainIndex, string EventId), Variable> BuildProcessConstraints(
-        StationCapacitySolveInput input, Solver solver, IReadOnlyList<MovementContext> movements,
+        StationCapacitySolveSettings settings, Solver solver, IReadOnlyList<MovementContext> movements,
         IReadOnlyDictionary<string, Variable> starts, IReadOnlyDictionary<string, Variable> ends,
         IReadOnlyDictionary<(string MovementKey, string RouteId), Variable> routeVariables, double horizon)
     {
         var result = new Dictionary<(int TrainIndex, string EventId), Variable>();
-        var settings = input.Settings ?? new StationCapacitySolveSettings();
         foreach (var group in movements.GroupBy(item => item.TrainIndex))
         {
-            var process = group.First().Train.ProcessConstraints;
+            var process = group.First().Train.Process;
             if (process is null) continue;
-            var events = process.Events.ToDictionary(ev => ev.Id, StringComparer.Ordinal);
+            var contextsByMovement = group.ToDictionary(context => context.Movement);
             var locations = new Dictionary<(string EventId, string LocationId), Variable>();
             var anchorRoutes = new Dictionary<(string AnchorId, string RouteId), Variable>();
             foreach (var anchor in process.Anchors)
             {
                 LinearExpr sum = new LinearExpr();
-                foreach (var routeId in anchor.RouteIds)
+                foreach (var route in anchor.Routes)
                 {
+                    var routeId = route.Id;
                     var variable = solver.MakeBoolVar($"anchor_{group.Key}_{Sanitize(anchor.Id)}_{Sanitize(routeId)}");
                     anchorRoutes[(anchor.Id, routeId)] = variable;
                     sum += variable;
-                    if (anchor.MovementId is { } movementId)
+                    if (anchor.Movement is { } ownerMovement)
                     {
-                        var owner = group.Single(m => m.Movement.Id == movementId);
+                        var owner = contextsByMovement[ownerMovement];
                         if (routeVariables.TryGetValue((owner.Key, routeId), out var selected)) solver.Add(variable == selected);
                         else solver.Add(variable == 0);
                     }
@@ -406,43 +371,48 @@ internal sealed class StationCapacityModel : ICapacityModel
             {
                 var variable = solver.MakeNumVar(process.OriginSeconds, horizon, $"event_{group.Key}_{Sanitize(ev.Id)}");
                 result[(group.Key, ev.Id)] = variable;
-                solver.Add(variable >= Math.Max(process.OriginSeconds, ev.OriginalTimeSeconds - settings.LeftShiftToleranceSeconds));
-                solver.Add(variable <= Math.Min(horizon, ev.OriginalTimeSeconds + settings.RightShiftToleranceSeconds));
+                if (ev.OriginalTimeSeconds is double originalTime)
+                {
+                    solver.Add(variable >= Math.Max(process.OriginSeconds, originalTime - settings.LeftShiftToleranceSeconds));
+                    solver.Add(variable <= Math.Min(horizon, originalTime + settings.RightShiftToleranceSeconds));
+                }
                 if (ev.FixedTimeSeconds is double fixedTime) solver.Add(variable == fixedTime);
-                if (ev.LocationIds.Count == 0) continue;
-                for (var index = 0; index < ev.LocationIds.Count; index++)
-                    locations[(ev.Id, ev.LocationIds[index])] = solver.MakeBoolVar($"location_{group.Key}_{Sanitize(ev.Id)}_{index}");
-                LinearExpr sum = locations[(ev.Id, ev.LocationIds[0])];
-                foreach (var location in ev.LocationIds.Skip(1)) sum += locations[(ev.Id, location)];
+                if (ev.Locations.Count == 0) continue;
+                for (var index = 0; index < ev.Locations.Count; index++)
+                    locations[(ev.Id, ev.Locations[index].Key)] = solver.MakeBoolVar($"location_{group.Key}_{Sanitize(ev.Id)}_{index}");
+                LinearExpr sum = locations[(ev.Id, ev.Locations[0].Key)];
+                foreach (var location in ev.Locations.Skip(1)) sum += locations[(ev.Id, location.Key)];
                 solver.Add(sum == 1);
-                foreach (var (location, choice) in ev.AnchorChoicesByLocation)
-                    solver.Add(locations[(ev.Id, location)] <= anchorRoutes[(choice.AnchorId, choice.RouteId)]);
+                foreach (var location in ev.Locations)
+                    if (location.Anchor is { } anchor && location.DwellingRoute is { } dwellingRoute)
+                        solver.Add(locations[(ev.Id, location.Key)] <= anchorRoutes[(anchor.Id, dwellingRoute.Id)]);
             }
             foreach (var movement in group)
             {
-                solver.Add(starts[movement.Key] == result[(group.Key, movement.Movement.StartEventId!)]);
-                solver.Add(ends[movement.Key] == result[(group.Key, movement.Movement.EndEventId!)]);
-                BindLocations(movement, movement.Movement.StartEventId!, movement.Movement.StartLocationIdsByRoute);
-                BindLocations(movement, movement.Movement.EndEventId!, movement.Movement.EndLocationIdsByRoute);
+                var startEvent = movement.Movement.StartEvent!;
+                var endEvent = movement.Movement.EndEvent!;
+                solver.Add(starts[movement.Key] == result[(group.Key, startEvent.Id)]);
+                solver.Add(ends[movement.Key] == result[(group.Key, endEvent.Id)]);
+                BindLocations(movement, startEvent, atStart: true);
+                BindLocations(movement, endEvent, atStart: false);
             }
             foreach (var precedence in process.Precedences)
             {
-                var elapsed = result[(group.Key, precedence.FollowingEventId)] - result[(group.Key, precedence.LeadingEventId)];
+                var elapsed = result[(group.Key, precedence.FollowingEvent.Id)] - result[(group.Key, precedence.LeadingEvent.Id)];
                 solver.Add(elapsed >= precedence.IntervalSeconds);
                 if (precedence.IsExact) solver.Add(elapsed <= precedence.IntervalSeconds);
             }
 
-            void BindLocations(MovementContext movement, string eventId, Dictionary<string, List<string>> candidates)
+            void BindLocations(MovementContext movement, CapacityTrainEvent ev, bool atStart)
             {
-                var ev = events[eventId];
-                if (ev.LocationIds.Count == 0) return;
-                foreach (var route in movement.CandidateRoutes)
+                if (ev.Locations.Count == 0) return;
+                foreach (var option in movement.Movement.RouteOptions)
                 {
-                    var permitted = candidates[route.Id].Intersect(ev.LocationIds, StringComparer.Ordinal).ToList();
-                    var selected = routeVariables[(movement.Key, route.Id)];
+                    var permitted = atStart ? option.StartLocations : option.EndLocations;
+                    var selected = routeVariables[(movement.Key, option.Route.Id)];
                     if (permitted.Count == 0) { solver.Add(selected == 0); continue; }
-                    LinearExpr sum = locations[(eventId, permitted[0])];
-                    foreach (var location in permitted.Skip(1)) sum += locations[(eventId, location)];
+                    LinearExpr sum = locations[(ev.Id, permitted[0].Key)];
+                    foreach (var location in permitted.Skip(1)) sum += locations[(ev.Id, location.Key)];
                     solver.Add(selected <= sum);
                 }
             }
@@ -458,8 +428,8 @@ internal sealed class StationCapacityModel : ICapacityModel
     {
         foreach (var trainMovements in movements.GroupBy(item => item.TrainIndex))
         {
-            if (trainMovements.First().Train.ProcessConstraints is not null) continue;
-            var ordered = trainMovements.OrderBy(item => item.Movement.Sequence).ToList();
+            if (trainMovements.First().Train.Process is not null) continue;
+            var ordered = trainMovements.OrderBy(item => item.Movement.Input.Sequence).ToList();
             for (var index = 1; index < ordered.Count; index++)
             {
                 solver.Add(ends[ordered[index - 1].Key] == starts[ordered[index].Key]);
@@ -474,8 +444,8 @@ internal sealed class StationCapacityModel : ICapacityModel
     {
         foreach (var trainMovements in movements.GroupBy(item => item.TrainIndex))
         {
-            if (trainMovements.First().Train.ProcessConstraints is not null) continue;
-            var ordered = trainMovements.OrderBy(item => item.Movement.Sequence).ToList();
+            if (trainMovements.First().Train.Process is not null) continue;
+            var ordered = trainMovements.OrderBy(item => item.Movement.Input.Sequence).ToList();
             for (var index = 1; index < ordered.Count; index++)
             {
                 var previous = ordered[index - 1];
@@ -497,7 +467,6 @@ internal sealed class StationCapacityModel : ICapacityModel
     }
 
     private static void BuildOccupationConstraints(
-        StationCapacitySolveInput input,
         Solver solver,
         IEnumerable<MovementContext> movements,
         IReadOnlyDictionary<string, Variable> starts,
@@ -509,14 +478,12 @@ internal sealed class StationCapacityModel : ICapacityModel
     {
         foreach (var context in movements)
         {
-            foreach (var route in context.CandidateRoutes)
+            foreach (var option in context.Movement.RouteOptions)
             {
-                var routeSelected = routeVariables[(context.Key, route.Id)];
-                foreach (var cellId in route.CellIds)
+                var routeSelected = routeVariables[(context.Key, option.Route.Id)];
+                foreach (var window in option.Occupations)
                 {
-                    var window = context.Movement.CellOccupationOverrides.FirstOrDefault(occupation =>
-                        occupation.RouteId == route.Id && occupation.CellId == cellId)
-                        ?? ResolveOccupationWindow(input.RouteOccupations, route.Id, context.Train.TrainType, cellId, context.Train.CalculationParameterSetId);
+                    var cellId = window.Cell.Id;
                     var occupationStart = occupationStarts[(context.Key, cellId)];
                     var occupationEnd = occupationEnds[(context.Key, cellId)];
                     solver.Add(occupationStart + bigM * (1 - routeSelected) >=
@@ -551,11 +518,12 @@ internal sealed class StationCapacityModel : ICapacityModel
                     continue;
                 }
 
-                var sharedCells = first.CandidateCellIds.Intersect(second.CandidateCellIds, StringComparer.OrdinalIgnoreCase);
-                foreach (var cellId in sharedCells)
+                var sharedCells = first.CandidateCells.Intersect(second.CandidateCells);
+                foreach (var cell in sharedCells)
                 {
+                    var cellId = cell.Id;
                     var firstCellRoutes = first.CandidateRoutes
-                        .Where(route => route.CellIds.Contains(cellId, StringComparer.OrdinalIgnoreCase))
+                        .Where(route => route.Cells.Contains(cell))
                         .ToList();
                     LinearExpr firstUsesCell = routeVariables[(first.Key, firstCellRoutes[0].Id)];
                     foreach (var route in firstCellRoutes.Skip(1))
@@ -564,7 +532,7 @@ internal sealed class StationCapacityModel : ICapacityModel
                     }
 
                     var secondCellRoutes = second.CandidateRoutes
-                        .Where(route => route.CellIds.Contains(cellId, StringComparer.OrdinalIgnoreCase))
+                        .Where(route => route.Cells.Contains(cell))
                         .ToList();
                     LinearExpr secondUsesCell = routeVariables[(second.Key, secondCellRoutes[0].Id)];
                     foreach (var route in secondCellRoutes.Skip(1))
@@ -612,24 +580,6 @@ internal sealed class StationCapacityModel : ICapacityModel
             "min-start-and-end" => ends[movement.Key] + starts[movement.Key],
             _ => ends[movement.Key]
         };
-
-    private static StationCapacityRouteOccupationInput ResolveOccupationWindow(
-        IEnumerable<StationCapacityRouteOccupationInput> windows,
-        string routeId,
-        string trainType,
-        string cellId,
-        string calculationParameterSetId)
-    {
-        var candidates = windows.Where(item =>
-            string.Equals(item.CalculationParameterSetId, calculationParameterSetId, StringComparison.Ordinal) &&
-            string.Equals(item.RouteId, routeId, StringComparison.OrdinalIgnoreCase) &&
-            string.Equals(item.CellId, cellId, StringComparison.OrdinalIgnoreCase)).ToList();
-        var exact = candidates.FirstOrDefault(item =>
-            string.Equals(item.TrainTypeId, trainType, StringComparison.OrdinalIgnoreCase));
-        var fallback = candidates.FirstOrDefault(item => string.IsNullOrWhiteSpace(item.TrainTypeId));
-        return exact ?? fallback ?? throw new InvalidOperationException(
-            $"进路 {routeId}、车型 {trainType}、轨道电路 {cellId} 缺少占用时间参数。");
-    }
 
     private static void Validate(StationCapacitySolveInput input)
     {
@@ -696,7 +646,7 @@ internal sealed class StationCapacityModel : ICapacityModel
             var anchors = process.Anchors.ToDictionary(a => a.Id, StringComparer.Ordinal);
             foreach (var ev in events.Values)
             {
-                if (!double.IsFinite(ev.OriginalTimeSeconds) || ev.OriginalTimeSeconds < process.OriginSeconds || ev.OriginalTimeSeconds > horizon ||
+                if (ev.OriginalTimeSeconds is double originalTime && (!double.IsFinite(originalTime) || originalTime < process.OriginSeconds || originalTime > horizon) ||
                     ev.FixedTimeSeconds is double fixedTime && (!double.IsFinite(fixedTime) || fixedTime < process.OriginSeconds || fixedTime > horizon) ||
                     ev.LocationIds is null || ev.LocationIds.Any(location => location is null) || ev.AnchorChoicesByLocation is null ||
                     ev.LocationIds.Distinct(StringComparer.Ordinal).Count() != ev.LocationIds.Count)
@@ -713,12 +663,14 @@ internal sealed class StationCapacityModel : ICapacityModel
                     movement.StartEventId == movement.EndEventId || movement.CandidateRouteIds.Count == 0 ||
                     movement.CandidateRouteIds.Any(id => !routeIds.Contains(id)))
                     throw new InvalidOperationException($"列车 {train.Id} 的过程移动 {movement.Id} 缺少有效事件或候选进路。");
-                ValidateLocations(movement.StartEventId, movement.StartLocationIdsByRoute);
-                ValidateLocations(movement.EndEventId, movement.EndLocationIdsByRoute);
-                void ValidateLocations(string eventId, Dictionary<string, List<string>> choices)
+                ValidateLocations(movement.StartEventId, movement.StartLocationsByRoute);
+                ValidateLocations(movement.EndEventId, movement.EndLocationsByRoute);
+                void ValidateLocations(string eventId, Dictionary<string, List<StationCapacityLocationInput>> choices)
                 {
+                    if (choices is null || choices.Values.Any(values => values is null || values.Any(location => location is null)))
+                        throw new InvalidOperationException($"列车 {train.Id} 的过程移动 {movement.Id} 包含空地点候选。");
                     if (events[eventId].LocationIds.Count == 0) return;
-                    if (choices is null || movement.CandidateRouteIds.Any(id =>
+                    if (movement.CandidateRouteIds.Any(id =>
                             !choices.TryGetValue(id, out var values) || values is null || values.Count == 0))
                         throw new InvalidOperationException($"列车 {train.Id} 的过程移动 {movement.Id} 地点候选不完整。");
                 }
@@ -730,15 +682,16 @@ internal sealed class StationCapacityModel : ICapacityModel
         }
     }
 
-    private static bool RoutesConnect(StationCapacityRouteInput first, StationCapacityRouteInput second) =>
-        first.CellIds.Count > 0 && second.CellIds.Count > 0 &&
-        string.Equals(first.CellIds[^1], second.CellIds[0], StringComparison.OrdinalIgnoreCase);
+    private static bool RoutesConnect(CapacityRoute first, CapacityRoute second) =>
+        first.Cells.Count > 0 && second.Cells.Count > 0 &&
+        ReferenceEquals(first.Cells[^1], second.Cells[0]);
 
     private static double EffectiveHorizon(StationCapacitySolveInput input)
     {
         var referenceEnd = input.Trains.Where(train => train.ProcessConstraints is not null)
             .SelectMany(train => train.ProcessConstraints!.Events ?? new())
-            .Where(ev => ev is not null).Select(ev => ev.OriginalTimeSeconds)
+            .Where(ev => ev is not null).SelectMany(ev => new[] { ev.OriginalTimeSeconds, ev.FixedTimeSeconds })
+            .Where(time => time.HasValue).Select(time => time.GetValueOrDefault())
             .DefaultIfEmpty(0).Max();
         return Math.Max(input.HorizonSeconds, Math.Min(MaximumHorizonSeconds,
             referenceEnd + Math.Max(0, input.Settings?.RightShiftToleranceSeconds ?? 50_400)));
@@ -777,8 +730,8 @@ internal sealed class StationCapacityModel : ICapacityModel
         string Key,
         string VariableId,
         int TrainIndex,
-        StationCapacityTrainInput Train,
-        StationCapacityMovementInput Movement,
-        List<StationCapacityRouteInput> CandidateRoutes,
-        List<string> CandidateCellIds);
+        CapacityTrain Train,
+        CapacityMovement Movement,
+        IReadOnlyList<CapacityRoute> CandidateRoutes,
+        IReadOnlyList<CapacityCell> CandidateCells);
 }

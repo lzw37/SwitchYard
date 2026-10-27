@@ -1,10 +1,10 @@
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.Json;
 using Serilog;
 using Serilog.Events;
 using SwitchYard.Capacity;
 using SwitchYard.CapacityAgent;
+using SwitchYard.CapacitySolver;
 
 Console.OutputEncoding = Encoding.UTF8;
 var workerMode = CapacitySolveWorkerHost.IsWorker(args);
@@ -53,8 +53,7 @@ try
 
     if (args.Contains("--self-test", StringComparer.OrdinalIgnoreCase))
     {
-        await RunSelfTestAsync(options);
-        return;
+        throw new ArgumentException("求解自检已迁至 SwitchYard.CapacitySolver.Tests，请运行该测试项目。");
     }
 
     Console.WriteLine("SwitchYard CapacityAgent");
@@ -67,7 +66,8 @@ try
         ? Environment.UserName
         : options.AgentName.Trim();
     var agentId = CreateAgentId(agentName, username);
-    var models = new CapacityModelRegistry(new ICapacityModel[] { new StationCapacityModel() });
+    var models = new CapacityModelRegistry(CapacitySolverModels.CreateRegistry().Descriptors
+        .Select(descriptor => new WorkerCapacityModel(descriptor)));
 
     Console.WriteLine();
     Console.WriteLine($"Agent 名称：{agentName}");
@@ -185,108 +185,4 @@ static string CreateAgentId(string machineName, string username)
 {
     var bytes = SHA256.HashData(Encoding.UTF8.GetBytes($"{machineName}\n{username}"));
     return $"agent-{Convert.ToHexString(bytes)[..16].ToLowerInvariant()}";
-}
-
-static async Task RunSelfTestAsync(CapacityAgentOptions options)
-{
-    await RouteContinuitySelfTests.RunAsync();
-    var input = new StationCapacitySolveInput
-    {
-        Settings = new StationCapacitySolveSettings
-        {
-            LeftShiftToleranceSeconds = 0,
-            RightShiftToleranceSeconds = 600,
-            TimeLimitSeconds = 30,
-            ThreadCount = 1
-        },
-        Routes =
-        {
-            new StationCapacityRouteInput { Id = "R1", CellIds = { "C1" } }
-        },
-        RouteOccupations =
-        {
-            new StationCapacityRouteOccupationInput
-            {
-                RouteId = "R1",
-                CellId = "C1",
-                StartOccupationShiftSeconds = 0,
-                EndOccupationShiftSeconds = 0
-            }
-        },
-        Trains =
-        {
-            new StationCapacityTrainInput
-            {
-                Id = "T1",
-                Movements =
-                {
-                    new StationCapacityMovementInput
-                    {
-                        Id = "M1",
-                        CandidateRouteIds = { "R1" },
-                        OriginalStartSeconds = 0,
-                        OriginalEndSeconds = 60,
-                        MinDurationSeconds = 60,
-                        MaxDurationSeconds = 60
-                    }
-                }
-            },
-            new StationCapacityTrainInput
-            {
-                Id = "T2",
-                Movements =
-                {
-                    new StationCapacityMovementInput
-                    {
-                        Id = "M1",
-                        CandidateRouteIds = { "R1" },
-                        OriginalStartSeconds = 0,
-                        OriginalEndSeconds = 60,
-                        MinDurationSeconds = 60,
-                        MaxDurationSeconds = 60
-                    }
-                }
-            }
-        }
-    };
-
-    var model = new StationCapacityModel();
-    var serializerOptions = new JsonSerializerOptions(JsonSerializerDefaults.Web);
-    var parallelTaskCount = Math.Min(2, options.MaxConcurrentJobs);
-    var solveTasks = Enumerable.Range(1, parallelTaskCount)
-        .Select(taskIndex => model.SolveAsync(
-            JsonSerializer.SerializeToElement(input, serializerOptions),
-            new CapacityModelExecutionContext(
-                $"self-test-{taskIndex}",
-                new CapacityTaskResourceLimits
-                {
-                    CpuCoreCount = options.CpuCoresPerJob,
-                    MemoryLimitBytes = options.MemoryLimitBytesPerJob
-                }),
-            (percent, message) =>
-            {
-                Log.Information(
-                    "并发自检任务 {TaskIndex}/{TaskCount} 进度 {Percent}%：{ProgressMessage}",
-                    taskIndex,
-                    parallelTaskCount,
-                    percent,
-                    message);
-                return Task.CompletedTask;
-            },
-            CancellationToken.None))
-        .ToArray();
-    var results = await Task.WhenAll(solveTasks);
-    var resultModels = results
-        .Select(result => result.Deserialize<StationCapacitySolveResult>(serializerOptions))
-        .ToList();
-    if (resultModels.Any(result => result?.HasSolution != true || result.Trains.Count != 2))
-    {
-        throw new InvalidOperationException("CapacityAgent 自检失败：求解器未返回预期结果。");
-    }
-
-    Console.WriteLine(JsonSerializer.Serialize(resultModels[0], new JsonSerializerOptions(JsonSerializerDefaults.Web)
-    {
-        WriteIndented = true
-    }));
-    Log.Information("CapacityAgent 并发自检通过：{ParallelTaskCount} 个 Worker 任务", parallelTaskCount);
 }

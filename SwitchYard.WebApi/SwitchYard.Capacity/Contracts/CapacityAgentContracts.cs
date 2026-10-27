@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace SwitchYard.Capacity;
 
@@ -189,6 +190,8 @@ public sealed class StationCapacitySolveInput
     public double HorizonSeconds { get; set; } = 86_400;
     public string MinimumModelVersion { get; set; } = string.Empty;
     public StationCapacitySolveSettings Settings { get; set; } = new();
+    public StationCapacityLayoutInput StationLayout { get; set; } = new();
+    public List<StationCapacityOperationProcessInput> OperationProcesses { get; set; } = new();
     public List<StationCapacityRouteInput> Routes { get; set; } = new();
     public List<StationCapacityRouteOccupationInput> RouteOccupations { get; set; } = new();
     public List<StationCapacityTrainInput> Trains { get; set; } = new();
@@ -227,8 +230,24 @@ public sealed class StationCapacityTrainInput
 
     public string Id { get; set; } = string.Empty;
     public string TrainType { get; set; } = string.Empty;
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? OperationProcessId { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double? ProcessOriginSeconds { get; set; }
     public List<StationCapacityMovementInput> Movements { get; set; } = new();
+
+    // Runtime solver projection, rebuilt from OperationProcessId for new inputs.
+    [JsonIgnore]
     public StationCapacityProcessInput? ProcessConstraints { get; set; }
+
+    // Read persisted jobs from the old protocol without writing the nested graph again.
+    [JsonPropertyName("processConstraints")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public StationCapacityProcessInput? LegacyProcessConstraints
+    {
+        get => null;
+        set => ProcessConstraints = value;
+    }
 }
 
 public sealed class StationCapacityProcessInput
@@ -256,7 +275,8 @@ public sealed class StationCapacityEventInput
 {
     public string Id { get; set; } = string.Empty;
     public double? FixedTimeSeconds { get; set; }
-    public double OriginalTimeSeconds { get; set; }
+    // Standalone events without a fixed time have no original movement time window.
+    public double? OriginalTimeSeconds { get; set; }
     public List<string> LocationIds { get; set; } = new();
     public Dictionary<string, StationCapacityAnchorChoiceInput> AnchorChoicesByLocation { get; set; } = new(StringComparer.Ordinal);
 }
@@ -272,6 +292,8 @@ public sealed class StationCapacityPrecedenceInput
 public sealed class StationCapacityMovementInput
 {
     public string Id { get; set; } = string.Empty;
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ActivityId { get; set; }
     public string Name { get; set; } = string.Empty;
     public int Sequence { get; set; }
     public List<string> CandidateRouteIds { get; set; } = new();
@@ -283,8 +305,25 @@ public sealed class StationCapacityMovementInput
     public double MaxDurationSeconds { get; set; } = 86_400;
     public string? StartEventId { get; set; }
     public string? EndEventId { get; set; }
-    public Dictionary<string, List<string>> StartLocationIdsByRoute { get; set; } = new(StringComparer.Ordinal);
-    public Dictionary<string, List<string>> EndLocationIdsByRoute { get; set; } = new(StringComparer.Ordinal);
+    public Dictionary<string, List<StationCapacityLocationInput>> StartLocationsByRoute { get; set; } = new(StringComparer.Ordinal);
+    public Dictionary<string, List<StationCapacityLocationInput>> EndLocationsByRoute { get; set; } = new(StringComparer.Ordinal);
+
+    // Read saved jobs using the previous names; new JSON only emits the object-based names.
+    [JsonPropertyName("startLocationIdsByRoute")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Dictionary<string, List<StationCapacityLocationInput>>? LegacyStartLocationIdsByRoute
+    {
+        get => null;
+        set { if (value is not null) StartLocationsByRoute = value; }
+    }
+
+    [JsonPropertyName("endLocationIdsByRoute")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Dictionary<string, List<StationCapacityLocationInput>>? LegacyEndLocationIdsByRoute
+    {
+        get => null;
+        set { if (value is not null) EndLocationsByRoute = value; }
+    }
 }
 
 public sealed class StationCapacitySolveResult

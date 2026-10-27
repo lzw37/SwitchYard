@@ -31,6 +31,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SwitchYard.SpeedProfile.Tes
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SwitchYard.SpeedProfile.ApiTests", "SwitchYard.SpeedProfile.ApiTests\SwitchYard.SpeedProfile.ApiTests.csproj", "{85716A3D-6054-4646-856A-EF975C3B26CF}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SwitchYard.CapacitySolver", "SwitchYard.CapacitySolver\SwitchYard.CapacitySolver.csproj", "{2805C8B6-5B2E-414D-8D4F-5B2FDF6B880D}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SwitchYard.CapacitySolver.Tests", "SwitchYard.CapacitySolver.Tests\SwitchYard.CapacitySolver.Tests.csproj", "{EF6768E7-79C3-432C-950D-B763C3EBBBB8}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -93,6 +97,14 @@ Global
 		{D6897112-3E78-4E4B-96AF-A43EE8E21D24}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{D6897112-3E78-4E4B-96AF-A43EE8E21D24}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{D6897112-3E78-4E4B-96AF-A43EE8E21D24}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2805C8B6-5B2E-414D-8D4F-5B2FDF6B880D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2805C8B6-5B2E-414D-8D4F-5B2FDF6B880D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2805C8B6-5B2E-414D-8D4F-5B2FDF6B880D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2805C8B6-5B2E-414D-8D4F-5B2FDF6B880D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{EF6768E7-79C3-432C-950D-B763C3EBBBB8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EF6768E7-79C3-432C-950D-B763C3EBBBB8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EF6768E7-79C3-432C-950D-B763C3EBBBB8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EF6768E7-79C3-432C-950D-B763C3EBBBB8}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

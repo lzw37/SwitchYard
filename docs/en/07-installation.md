@@ -13,7 +13,8 @@ This chapter covers the environment, configuration, data preparation, and Capaci
 | `HumpDatabase` | Users, Refresh Tokens, hump instances and calculation data | API startup |
 | `CapacityDatabase` | Capacity instances, layouts, plans, processes, analysis, solve presets | Capacity features |
 | `SketchLayoutDatabase` | Independent SketchLayout schemes | SketchLayout features |
-| `SwitchYard.CapacityAgent` | Capacity optimization in a separate process | Model solving and saturated-plan generation |
+| `SwitchYard.CapacityAgent` | Service communication, job scheduling, Worker cancellation, and resource monitoring | Model solving and saturated-plan generation |
+| `SwitchYard.CapacitySolver` | .NET 10 class library for solver models, OR-Tools, and the Worker execution entry point | Published with the Agent and invoked by Workers |
 | Course asset directories | Local videos, PDF, and Word materials | Course content |
 
 A complete current deployment has three database sections. References to “two databases” in older documents describe an earlier state. Hump and capacity schemas contain identically named tables with different structures, so they must not share a database or SQLite file. Configure, back up, and restore SketchLayout as an independent database too.
@@ -40,9 +41,9 @@ node --version
 npm.cmd --version
 ```
 
-Key declared dependencies include Vue `^3.5.25`, Vite `^7.2.4`, TypeScript `~5.9.0`, API MySqlConnector `2.6.1`, Microsoft.Data.Sqlite `10.0.1`, and Agent Google.OrTools `9.15.6755`. These describe the current project declarations, not recommended latest upstream versions. `package-lock.json` and `npm ci` determine the installed frontend versions.
+Key declared dependencies include Vue `^3.5.25`, Vite `^7.2.4`, TypeScript `~5.9.0`, API MySqlConnector `2.6.1`, Microsoft.Data.Sqlite `10.0.1`, and the Solver library's Google.OrTools `9.15.6755`. The Agent's project reference includes the Solver and its runtime dependencies. These describe the current project declarations, not recommended latest upstream versions. `package-lock.json` and `npm ci` determine the installed frontend versions.
 
-OR-Tools includes native components. Run the Agent self-test on the target operating system and architecture after publishing; output built for another system is not a verified deployment package.
+The Solver uses OR-Tools native components. Run the tests in section 7.2 on the target operating system and architecture, then execute representative jobs through the published Agent. Output built for another system is not a verified deployment package.
 
 The tracked solution references a missing `SwitchYard.SketchLayout.Tests` project, and other local test projects are ignored by Git. A full solution build may fail before compiling application code. For installation, use the explicit Service and Agent project commands in this chapter rather than assuming every solution entry is present.
 
@@ -198,7 +199,7 @@ For direct source builds, the API URL is read when the development server starts
 
 ## 7. Install CapacityAgent
 
-The API dispatches jobs; the separate Agent runs optimization. Editing layouts and other independent features remain usable without an Agent, but model-dependent solve actions cannot complete.
+The API dispatches jobs; the Agent handles communication, scheduling, and resource monitoring, while independent Worker subprocesses invoke the `SwitchYard.CapacitySolver` class library. Publishing the Agent includes the Solver and OR-Tools runtime dependencies; there is no separate Solver executable to deploy. Editing layouts and other independent features remain usable without an Agent, but model-dependent solve actions cannot complete. This description of project responsibilities and test entry points was updated on 2026-10-27.
 
 ```powershell
 dotnet publish SwitchYard.WebApi/SwitchYard.CapacityAgent/SwitchYard.CapacityAgent.csproj -c Release -o ./publish/capacity-agent
@@ -241,13 +242,11 @@ The Agent ID derives from the Agent name and login username. Reusing that pair o
 
 ### 7.1 Models, Workers, and job lifecycle
 
-The current model is `station-capacity-v1`, version **2.3.0**, using OR-Tools / SCIP mixed-integer programming. The `v1` in the ID is not the current feature version. Ordinary trains retain sequential activities and track-circuit occupation constraints; process-generated trains also retain event graphs, durations, exact/minimum ordering, resource locations, and anchor constraints.
+The current model is `station-capacity-v1`, version **2.5.0**, using OR-Tools / SCIP mixed-integer programming in `SwitchYard.CapacitySolver`. The `v1` in the ID is not the current feature version. Ordinary trains retain sequential activities and track-circuit occupation constraints; process-generated trains also retain event graphs, durations, exact/minimum ordering, resource locations, and anchor constraints.
 
-Process-constrained inputs require at least model 2.2.0; exact ordering requires at least 2.3.0. The service also checks input `minimumModelVersion`. An older Agent can appear online yet be unable to accept the input; upgrade and register it again.
+Current ordinary-train inputs require at least model 2.4.0; process references require at least 2.5.0. The service checks `minimumModelVersion` and raises the minimum for parameter sets and process references. An older Agent can appear online yet be unable to accept the input; update the Agent and its bundled Solver, then register again.
 
-The current input builder can overwrite output `minimumModelVersion` with `2.1.0` when occupation offsets contain fractional seconds. Dispatch independently inspects process/exact-order constraints and restores the effective minimum to 2.2.0 / 2.3.0. Do not infer compatibility solely from the preview JSON version field.
-
-Each job runs in an independent Worker process. CPU settings limit solver threads. The Agent periodically monitors the Worker working set and terminates a Worker exceeding its memory allowance. These controls are not equivalent to complete operating-system container isolation.
+Each job runs in an independent Worker process. The Agent launches its own internal `--solve-worker` entry point, which invokes the Solver library's Worker Host; the main process's model adapter forwards jobs without executing solver algorithms. CPU settings limit solver threads. The Agent periodically monitors the Worker working set and terminates a Worker exceeding its memory allowance. These controls are not equivalent to complete operating-system container isolation.
 
 The service reserves an available slot before dispatch. Jobs progress through `queued`, `running`, and finally `completed` or `failed`. `queued` is not a durable queue waiting for future resources. A `completed` job does not guarantee a feasible solution: inspect result `hasSolution` and solver `status`.
 
@@ -265,13 +264,13 @@ Download raw results that must be retained before restarting, and let jobs finis
 
 ### 7.2 Optional self-test and acceptance checks
 
-From the repository root:
+Run the separate solver test project from the repository root:
 
 ```powershell
-dotnet run --project SwitchYard.WebApi/SwitchYard.CapacityAgent -- --self-test
+dotnet run --project SwitchYard.WebApi/SwitchYard.CapacitySolver.Tests
 ```
 
-This checks route continuity and basic concurrent solving with in-memory input and Workers. It requires no API login and writes no business database, but generates application logs. It does not validate database, proxy, or business-data integration.
+Business self-tests have moved from the Agent to this project. The Agent's `--self-test` option reports the new entry point and exits without running solver examples. Tests cover shared domain objects, route continuity, process references, concurrent Worker solving, unknown-model rejection, and cancellation of running Workers. They require no API login and write no business database. They do not validate database, proxy, or business-data integration; after publishing, submit a representative job through the Service to verify Worker startup, progress, and result delivery.
 
 Some `*.Tests` projects and `switchyard-vue/checks` are excluded by ignore rules in the current workspace. Test files referenced by older documents may be absent from a fresh clone; confirm delivery before running them. Missing files are not successful tests.
 

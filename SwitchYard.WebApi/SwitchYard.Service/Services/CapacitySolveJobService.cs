@@ -127,6 +127,8 @@ public sealed class CapacitySolveJobService
         var containsProcess = false;
         var containsExactPrecedence = false;
         var containsParameterSets = false;
+        var containsProcessReference = false;
+        var containsLocationObjects = false;
         foreach (var property in request.Input.EnumerateObject())
         {
             if (string.Equals(property.Name, "minimumModelVersion", StringComparison.OrdinalIgnoreCase) && property.Value.ValueKind == JsonValueKind.String)
@@ -138,6 +140,21 @@ public sealed class CapacitySolveJobService
                         field.Value.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(field.Value.GetString())));
             if (string.Equals(property.Name, "trains", StringComparison.OrdinalIgnoreCase) && property.Value.ValueKind == JsonValueKind.Array)
                 foreach (var train in property.Value.EnumerateArray().Where(train => train.ValueKind == JsonValueKind.Object))
+                {
+                    containsProcessReference |= train.EnumerateObject().Any(field =>
+                        string.Equals(field.Name, "operationProcessId", StringComparison.OrdinalIgnoreCase) &&
+                        field.Value.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(field.Value.GetString()));
+                    containsLocationObjects |= train.EnumerateObject().Any(field =>
+                        string.Equals(field.Name, "movements", StringComparison.OrdinalIgnoreCase) && field.Value.ValueKind == JsonValueKind.Array &&
+                        field.Value.EnumerateArray().Any(movement => movement.ValueKind == JsonValueKind.Object &&
+                            movement.EnumerateObject().Any(locations =>
+                                (string.Equals(locations.Name, "startLocationsByRoute", StringComparison.OrdinalIgnoreCase) ||
+                                 string.Equals(locations.Name, "endLocationsByRoute", StringComparison.OrdinalIgnoreCase) ||
+                                 string.Equals(locations.Name, "startLocationIdsByRoute", StringComparison.OrdinalIgnoreCase) ||
+                                 string.Equals(locations.Name, "endLocationIdsByRoute", StringComparison.OrdinalIgnoreCase)) &&
+                                locations.Value.ValueKind == JsonValueKind.Object &&
+                                locations.Value.EnumerateObject().Any(route => route.Value.ValueKind == JsonValueKind.Array &&
+                                    route.Value.EnumerateArray().Any(location => location.ValueKind == JsonValueKind.Object)))));
                     foreach (var field in train.EnumerateObject().Where(field => string.Equals(field.Name, "processConstraints", StringComparison.OrdinalIgnoreCase)))
                     {
                         containsProcess |= field.Value.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined);
@@ -147,9 +164,10 @@ public sealed class CapacitySolveJobService
                             value.Value.EnumerateArray().Any(precedence => precedence.ValueKind == JsonValueKind.Object &&
                                 precedence.EnumerateObject().Any(flag => string.Equals(flag.Name, "isExact", StringComparison.OrdinalIgnoreCase) && flag.Value.ValueKind == JsonValueKind.True)));
                     }
+                }
         }
-        var required = containsParameterSets ? new Version(2, 4, 0) : containsExactPrecedence ? new Version(2, 3, 0) : new Version(2, 2, 0);
-        if ((containsProcess || containsParameterSets) && (!Version.TryParse(requestedMinimum, out var version) || version < required)) return required.ToString();
+        var required = containsProcessReference || containsLocationObjects ? new Version(2, 5, 0) : containsParameterSets ? new Version(2, 4, 0) : containsExactPrecedence ? new Version(2, 3, 0) : new Version(2, 2, 0);
+        if ((containsProcess || containsParameterSets || containsProcessReference || containsLocationObjects) && (!Version.TryParse(requestedMinimum, out var version) || version < required)) return required.ToString();
         return requestedMinimum;
     }
 

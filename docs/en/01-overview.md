@@ -68,12 +68,13 @@ flowchart LR
     API --> CapacityDB[(CapacityDatabase station capacity)]
     API --> SketchDB[(SketchLayoutDatabase facility layouts)]
     API <-->|SignalR| Agent[CapacityAgent]
-    Agent --> Worker[Isolated solver Worker and OR-Tools]
+    Agent --> Worker[Isolated Worker subprocess]
+    Worker --> Solver[CapacitySolver library and OR-Tools]
     Module[Standalone StationLayout module] -. integration .-> Browser
     Module -. service adapters .-> API
 ```
 
-The browser edits and submits business data. The API authenticates requests, validates their scope, persists data, and coordinates calculations. Hump calculations run in the core library called by the service. Station capacity optimization runs in a separate CapacityAgent, which launches Worker subprocesses. The 3D interface displays and plays results; it does not replace the solver.
+The browser edits and submits business data. The API authenticates requests, validates their scope, persists data, and coordinates calculations. Hump calculations run in the core library called by the service. CapacityAgent receives and schedules station capacity jobs; Worker subprocesses invoke the `SwitchYard.CapacitySolver` class library. The 3D interface displays and plays results; it does not replace the solver.
 
 Dapper provides database access, with SQLite and MySQL supported. Each of the three database configuration sections selects its database type and connection. Accounts live only in HumpDatabase. Keep these databases separate: they contain identically named tables with different structures, such as `switch`.
 
@@ -87,7 +88,9 @@ Agent presence and solve jobs are held in API process memory. After an API resta
 | `SwitchYard.WebApi/SwitchYard.Service/` | .NET 8 API, authentication, persistence, course resources, and solve coordination |
 | `SwitchYard.WebApi/SwitchYard.Hump/` | Hump geometry, resistance, energy height, speed, and headway calculations |
 | `SwitchYard.WebApi/SwitchYard.Capacity/` | Shared station, route, occupancy, and agent contracts |
-| `SwitchYard.WebApi/SwitchYard.CapacityAgent/` | .NET 10 agent, models, and Worker |
+| `SwitchYard.WebApi/SwitchYard.CapacityAgent/` | .NET 10 communication agent, job scheduling, and Worker resource management |
+| `SwitchYard.WebApi/SwitchYard.CapacitySolver/` | .NET 10 solver library, model registration, OR-Tools, and Worker execution entry point; published with the Agent |
+| `SwitchYard.WebApi/SwitchYard.CapacitySolver.Tests/` | Regression tests for shared domain objects, process constraints, and solver models |
 | `SwitchYard.WebApi/SwitchYard.SketchLayout/` | Sketch geometry, validation, conflict, and queue calculations |
 | `SwitchYard.StationLayout/` | Reusable frontend component and backend module targeting both .NET 8 and .NET 10 |
 | `scripts/deploy/` | systemd service, example environment file, and setup scripts |
@@ -106,8 +109,8 @@ A local workspace may also contain `CellOccupancy/`, `PyStationCapacity/`, cache
 | Separate capacity results tab | Placeholder | Use the implemented analysis within the operation plan workspace |
 | Traction calculation | Frontend example | Do not treat it as an integrated production calculation |
 | Initial process plan | Validates each train's events and resource continuity, without cross-train conflict optimization | Inspect occupancy and run solving after generation |
-| Model compatibility | Current station model is `2.3.0`; exact precedence, real dwelling routes, and occupancy offsets have version requirements | Deploy the current API and agent together |
-| Minimum model version field | Certain fractional-second offsets make the input field show `2.1.0`, but dispatch still requires at least `2.2.0` or `2.3.0` based on process content | Do not judge compatibility solely from `minimumModelVersion`; see the capacity chapter |
+| Model compatibility | Current station model is `2.5.0`; ordinary-train input requires at least `2.4.0`, and process references require `2.5.0` | Deploy the current API together with the current Agent and its Solver library |
+| Minimum model version field | The service checks `minimumModelVersion` and raises the minimum for parameter sets and process references | The `v1` in the model ID is not a compatibility version; see the capacity chapter |
 | Registration and teaching template | Registration requires hump template `001` | Prepare valid template and account data after schema creation |
 | Full solution build | The `.sln` includes test projects not supplied in the repository | Use the application project build commands in the installation chapter |
 | Historical test reports | Counts in older documents describe earlier runs | They do not establish validation of a current deployment |

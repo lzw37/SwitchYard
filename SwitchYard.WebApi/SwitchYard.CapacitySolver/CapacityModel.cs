@@ -1,9 +1,9 @@
 using System.Text.Json;
 using SwitchYard.Capacity;
 
-namespace SwitchYard.CapacityAgent;
+namespace SwitchYard.CapacitySolver;
 
-internal interface ICapacityModel
+public interface ICapacityModel
 {
     CapacityModelDescriptor Descriptor { get; }
 
@@ -14,11 +14,11 @@ internal interface ICapacityModel
         CancellationToken cancellationToken);
 }
 
-internal sealed record CapacityModelExecutionContext(
+public sealed record CapacityModelExecutionContext(
     string JobId,
     CapacityTaskResourceLimits Resources);
 
-internal sealed class CapacityModelRegistry
+public sealed class CapacityModelRegistry
 {
     private readonly IReadOnlyDictionary<string, ICapacityModel> _models;
 

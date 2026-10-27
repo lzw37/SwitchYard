@@ -153,7 +153,7 @@ i 从 0 开始
 
 实际计划生成停留活动时，选中股道写入快照的 `SelectedTrackIDs`，该移动的 `Route` 和 `RouteIDList` 保持为空。它不依赖进路设计页面中自动生成的停留进路。后续能力输入按 Link 与 Cell 的关联创建临时停留资源，该资源仅存在于求解输入中，不写入站场进路表；找不到关联轨道电路时无法求解。
 
-依据：[候选筛选](../../../SwitchYard.WebApi/SwitchYard.Service/Services/OperationProcessPlanScheduler.cs#L174)、[资源轮换和共享事件搜索](../../../SwitchYard.WebApi/SwitchYard.Service/Services/OperationProcessPlanScheduler.cs#L94)、[共同物理位置](../../../SwitchYard.WebApi/SwitchYard.Service/Services/OperationProcessResourceLocations.cs#L10)、[求解内部停留资源](../../../SwitchYard.WebApi/SwitchYard.Service/Services/StationCapacityProcessInputBuilder.cs#L141)。
+依据：[候选筛选](../../../SwitchYard.WebApi/SwitchYard.Service/Services/OperationProcessPlanScheduler.cs#L174)、[资源轮换和共享事件搜索](../../../SwitchYard.WebApi/SwitchYard.Service/Services/OperationProcessPlanScheduler.cs#L94)、[共同物理位置](../../../SwitchYard.WebApi/SwitchYard.Service/Services/OperationProcessResourceLocations.cs#L10)、[求解内部停留资源（实现已更新，旧行号不再适用）](../../../SwitchYard.WebApi/SwitchYard.Service/Services/StationCapacityProcessInputBuilder.cs)。
 
 ## 生成结果如何保存
 
@@ -179,7 +179,7 @@ i 从 0 开始
 
 保存求解结果为饱和计划时，会校验完整事件时刻、活动映射和资源衔接，并将求解后的事件时刻、停留股道写入新计划快照。因此初始生成、能力求解、保存饱和计划是三个不同处理阶段。
 
-依据：[过程输入恢复](../../../SwitchYard.WebApi/SwitchYard.Service/Services/StationCapacityProcessInputBuilder.cs#L13)、[代理版本检查](../../../SwitchYard.WebApi/SwitchYard.Service/Services/CapacityAgentRegistry.cs#L138)、[代理中的事件约束](../../../SwitchYard.WebApi/SwitchYard.CapacityAgent/StationCapacityModel.cs#L374)、[求解快照保存](../../../SwitchYard.WebApi/SwitchYard.Service/Services/SaturatedOperationPlanService.cs#L155)。
+依据：[过程输入恢复](../../../SwitchYard.WebApi/SwitchYard.Service/Services/StationCapacityProcessInputBuilder.cs#L13)、[代理版本检查](../../../SwitchYard.WebApi/SwitchYard.Service/Services/CapacityAgentRegistry.cs#L138)、[代理中的事件约束（实现现已移至 Solver）](../../../SwitchYard.WebApi/SwitchYard.CapacitySolver/StationCapacityModel.cs)、[求解快照保存](../../../SwitchYard.WebApi/SwitchYard.Service/Services/SaturatedOperationPlanService.cs#L155)。
 
 ## 取消拖动限制后的当前行为
 
@@ -207,7 +207,7 @@ endOccupationShift   = round((方块新终点分钟 - 移动终点分钟) × 60)
 
 当前前后端仍限制过程列车单独新增、删除移动及调整移动顺序。允许编辑现有移动，并不等同于解除所有结构限制。
 
-依据：[图表拖动](../../../switchyard-vue/src/capacity/OperationPlan.vue#L4899)、[拖动保存](../../../switchyard-vue/src/capacity/OperationPlan.vue#L4987)、[后端编辑](../../../SwitchYard.WebApi/SwitchYard.Service/Controllers/OperationPlanController.cs#L1199)、[快照覆盖移动输入](../../../SwitchYard.WebApi/SwitchYard.Service/Services/StationCapacityProcessInputBuilder.cs#L65)、[占用偏移参与求解](../../../SwitchYard.WebApi/SwitchYard.CapacityAgent/StationCapacityModel.cs#L475)、[抽屉读取事件快照](../../../switchyard-vue/src/capacity/OperationPlan.vue#L318)。
+依据：[图表拖动](../../../switchyard-vue/src/capacity/OperationPlan.vue#L4899)、[拖动保存](../../../switchyard-vue/src/capacity/OperationPlan.vue#L4987)、[后端编辑](../../../SwitchYard.WebApi/SwitchYard.Service/Controllers/OperationPlanController.cs#L1199)、[快照覆盖移动输入](../../../SwitchYard.WebApi/SwitchYard.Service/Services/StationCapacityProcessInputBuilder.cs#L65)、[占用偏移参与求解（实现现已移至 Solver）](../../../SwitchYard.WebApi/SwitchYard.CapacitySolver/StationCapacityModel.cs)、[抽屉读取事件快照](../../../switchyard-vue/src/capacity/OperationPlan.vue#L318)。
 
 ## 实现边界和审阅事项
 

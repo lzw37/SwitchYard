@@ -60,11 +60,11 @@ Authorization is not identical across modules. Sketch checks current account sta
 | --- | --- | --- |
 | Auth / Admin | Login, refresh, registration, profile, user import, and administration | [Authentication models](../../SwitchYard.WebApi/SwitchYard.Service/Models), [AuthController](../../SwitchYard.WebApi/SwitchYard.Service/Controllers/AuthController.cs), [AdminController](../../SwitchYard.WebApi/SwitchYard.Service/Controllers/AdminController.cs) |
 | Hump | Instances, rolling lines, planar and vertical layouts, wagons, conditions, calculations, and headway checks | [Hump models](../../SwitchYard.WebApi/SwitchYard.Hump), [HumpController](../../SwitchYard.WebApi/SwitchYard.Service/Controllers/HumpController.cs) |
-| Capacity | Create, read, update, delete, and copy capacity instances | [CapacityInstance](../../SwitchYard.WebApi/SwitchYard.Capacity/CapacityInstance.cs) |
-| StationLayout | Schemes, JSON, repair, DWG, routes, dwelling routes, and timing | [Layout requests](../../SwitchYard.WebApi/SwitchYard.Capacity/StationLayoutRequests.cs), [module contracts](../../SwitchYard.StationLayout/backend) |
+| Capacity | Create, read, update, delete, and copy capacity instances | [CapacityInstance](../../SwitchYard.WebApi/SwitchYard.Capacity/Database/CapacityInstance.cs) |
+| StationLayout | Schemes, JSON, repair, DWG, routes, dwelling routes, and timing | [Layout requests](../../SwitchYard.WebApi/SwitchYard.Capacity/StationLayout/StationLayoutRequests.cs), [module contracts](../../SwitchYard.StationLayout/backend) |
 | OperationPlan | Plans, trains, movements, batch edits, occupancy import/recalculation, charts, and analysis persistence | [Controller](../../SwitchYard.WebApi/SwitchYard.Service/Controllers/OperationPlanController.cs), [occupancy import models](../../SwitchYard.WebApi/SwitchYard.Service/Models/CellOccupancyImportModels.cs) |
 | OperationProcess | Templates, catalog, activity/event entities, and revision control | [Process models](../../SwitchYard.WebApi/SwitchYard.Service/Models/OperationProcessModels.cs), [process controller](../../SwitchYard.WebApi/SwitchYard.Service/Controllers/OperationProcessController.cs) |
-| CapacityAgents | Available agents, presets, solve inputs, jobs, and saturated plans | [Shared agent contracts](../../SwitchYard.WebApi/SwitchYard.Capacity/CapacityAgentContracts.cs) |
+| CapacityAgents | Available agents, presets, solve inputs, jobs, and saturated plans | [Shared agent contracts](../../SwitchYard.WebApi/SwitchYard.Capacity/Contracts/CapacityAgentContracts.cs) |
 | SketchLayout | Scheme document CRUD and analysis of the saved revision | [Sketch models](../../SwitchYard.WebApi/SwitchYard.SketchLayout/Models.cs), [validation rules](../../SwitchYard.WebApi/SwitchYard.SketchLayout/Validation.cs) |
 | Course | Resource manifests and file streaming with range support | [CourseController](../../SwitchYard.WebApi/SwitchYard.Service/Controllers/CourseController.cs) |
 
@@ -129,7 +129,66 @@ Content-Type: application/json
 }
 ```
 
+The returned input includes a `stationLayout` base-data snapshot containing every record in the current instance and station scheme, without filtering by operation plan:
+
+| Field | Contents |
+| --- | --- |
+| `stationSchemeId` | The layout's station scheme; records in the layout collections no longer repeat this field |
+| `cells` | Cell data, excluding `instanceId`, `stationSchemeId`, and `extraProperties` |
+| `routes` | Route data, including train types, node and link lists, interrupt Cells, tags, and endpoints; excludes `instanceId` and `stationSchemeId` |
+| `calculationParameterSets.sets` | Parameter set IDs, names, and default flags; excludes `instanceId` and `stationSchemeId` |
+| `calculationParameterSets.routeOccupations` | A dictionary keyed by `calculationParameterSetId`, with occupation-row arrays as values; rows exclude `instanceId`, `stationSchemeId`, and the repeated `calculationParameterSetId` |
+| `routeOperationTimes` | Operation duration `operationTimeS` for each parameter set, route, and train type; excludes `instanceId` and `stationSchemeId` |
+| `links`, `nodes` | Topology Link and Node data, excluding `instanceId`, `stationSchemeId`, and `extraProperties` |
+
+Read occupation parameters from `stationLayout.calculationParameterSets.routeOccupations[parameterSetId]`; the layout no longer has a flat `routeOccupations` array. The dictionary key supplies the parameter set ID, which is not repeated in each row. Sets with no occupation rows have empty arrays. Legacy rows whose parameter set ID is `null` are grouped under the `default` key. If the scheme has no saved parameter sets yet, `sets` includes the effective `default` set supplied by the system.
+
+Snapshot field names use camelCase. Retained fields preserve their database values, including `null` and original list strings. The existing top-level `routes` and `routeOccupations` remain the projections used by the solver, with occupation parameter set IDs taken from the dictionary keys. The snapshot supplies base data without adding solver constraints. The Agent also accepts the former parameter-set array for compatibility with saved job inputs. Retrying an older job with its original input does not add the current layout.
+
+The top-level input also includes an `operationProcesses` array alongside `stationLayout`. It contains every saved operation process template in the current instance and station scheme (the template library uses `OperationPlanID = ''`), including templates unused by the current plan and incomplete drafts. Unsaved browser edits are not included. Templates do not repeat the instance, scheme, or plan identifiers.
+
+| Fields within `operationProcesses` | Contents |
+| --- | --- |
+| `id`, `name`, `description`, `revision` | Template identity, name, description, and revision |
+| `activities`, `events` | Complete activities and events, including candidate routes, selected resources, durations, and diagram positions |
+| `precedences`, `anchors`, `routeAnchors` | Event ordering, anchors, and route-endpoint anchor associations |
+
+Nested fields use camelCase, including `nodeId`, `automaticAnchorIds`, `dwellingActivityId`, `routeIds`, and `routeId`. Template times, durations, and precedence intervals remain in minutes; activity `x` and `y` retain their diagram coordinates. Event `nodeList` values are refreshed from current routes when read, matching the editor API. Older inputs without `operationProcesses` are read with an empty array.
+
+Generated trains reference the current saved template in that array through `trains[].operationProcessId`. Duration bounds, fixed times, precedences, and anchor constraints use the latest template version. Each train carries the execution origin `processOriginSeconds` in seconds; `movements[].activityId` maps each movement to its template activity. Original event times are recovered from each movement's `originalStartSeconds`, `originalEndSeconds`, and start/end event IDs, without a `processEventTimes` dictionary. Standalone fixed events use the execution origin plus the template time; standalone events without a fixed time are determined by process constraints. Original times may violate subsequently edited constraints and are adjusted by the solver. Ordinary trains have no process reference. A deleted template or activities that no longer correspond one-to-one with existing movements require regenerating the operation plan.
+
+New inputs omit `trains[].processConstraints`; the Solver invokes shared domain graph construction to reconstruct constraints from the reference. Legacy jobs containing that field remain readable, and older inputs' `processEventTimes` fields are ignored. Solver results retain `eventTimes`. Inputs with process references require model version `2.5.0` or later, so update CapacityAgent and its bundled Solver before using them. Inputs containing only ordinary trains continue to require `2.4.0`.
+
+Movement fields `startLocationsByRoute` and `endLocationsByRoute` are keyed by candidate route ID, with each location in their lists represented as an object. `nodeId` identifies the node, `anchorId` the anchor, and `dwellingRouteId` the dwelling route selected for that anchor. Absent values are explicitly `null`. For example:
+
+```json
+{
+  "startLocationsByRoute": {
+    "R1": [{ "nodeId": "N1", "anchorId": null, "dwellingRouteId": null }]
+  },
+  "endLocationsByRoute": {
+    "R1": [{ "nodeId": "N2", "anchorId": "A1", "dwellingRouteId": "D1" }]
+  }
+}
+```
+
+The former names `startLocationIdsByRoute` and `endLocationIdsByRoute` remain readable; output uses only the new names. Agent still accepts legacy encoded-array strings (such as `"[\"N1\",null,null]"`) and plain node strings in these lists. Serialization always writes objects; malformed encoded arrays are rejected. Inputs containing location objects also require model version `2.5.0` or later, even without a process reference.
+
 Submit a generic job to `POST /api/capacity-agents/jobs` with `{ "agentId": "...", "modelId": "...", "input": { ... } }`. Successful acceptance returns 202 and a job object. Read status and results from `GET /api/capacity-agents/jobs/{jobId}`. The dedicated `saturated-plan-jobs` endpoint builds input from the scope and `presetId` and associates it with the new-plan persistence workflow; a generic job does not automatically perform that workflow.
+
+### Shared capacity domain model
+
+The current domain model lives in `SwitchYard.Capacity/Domain`, with public types in the `SwitchYard.Capacity` namespace. `SwitchYard.CapacitySolver` references that shared library and builds a per-job object graph with `CapacityProblem.Build(input)`. The Agent handles communication and scheduling, invoking the Solver library in Worker subprocesses. Routes, cells, links, nodes, and parameter sets share canonical entity instances; occupation records directly reference their `Route`, `Cell`, and `ParameterSet`. Original fields remain available through each entity's `Input` or `Layout`, and graph construction does not change the transport JSON.
+
+`Train.OperationProcess` references the shared template, while `Train.Process` contains that train's execution graph. `Movement.Activity`, `StartEvent`, `EndEvent`, `CandidateRoutes`, and `RouteOptions` are object references. Locations link their `Node`, `Anchor`, and `DwellingRoute`. Template activities, events, and anchors resolve within their template; execution events, anchors, and locations remain isolated per train, with candidate locations additionally scoped by event. Solver constraints use these relationships; IDs remain at input resolution, solver variable keys, and result output boundaries.
+
+Unreferenced drafts and missing layout metadata produce `problem.Issues` entries containing the source path, target type, and ID. Legacy inputs can supply basic entities through their solver projections. Missing required activities, events, anchors, or occupation parameters still fail explicitly. The payload contains no switch or signal definitions, so their IDs remain unresolved and are reported; train-type codes and tags remain values.
+
+Types used to communicate with CapacityAgent are grouped in `SwitchYard.Capacity/Contracts`, including authentication, registration, resource status, solve commands, progress, results, and layout, parameter-set, process, and location input DTOs. Their JSON converters live in the same directory. Public names, the `SwitchYard.Capacity` namespace, and JSON formats remain unchanged.
+
+Types mapped directly from database queries are grouped in `SwitchYard.Capacity/Database`, covering capacity instances, calculation parameter sets, layout rows, operation plans, and analysis results. The Service queries database rows and maps them to Agent input DTOs in `Contracts`; domain objects and graph-building logic live in `Domain`.
+
+Other shared types are grouped by feature: `SwitchYard.Capacity/StationLayout` contains layout JSON, read/write requests, coordinate transforms, DWG import, route search, and calculation parameter-set requests. `SwitchYard.Capacity/OperationPlans` contains operation-plan API types, occupation data serialization and validation, and station-plan and resource-occupancy chart settings. All types retain the `SwitchYard.Capacity` namespace; the project file is the only file at the project root.
 
 ### Save and analyze a sketch scheme
 
@@ -200,4 +259,4 @@ Implementation: [CapacityDataLifecycle](../../SwitchYard.WebApi/SwitchYard.Servi
 
 Agents connect to `/hubs/capacity-agent` and call `RegisterAgent`, `ReportStatus`, `ReportProgress`, and `CompleteJob`. The server dispatches work with `Solve`. Registration includes models, access policy, resource capacity, and IDs of still-running jobs. The current HTTP API and Hub do not provide a standard browser cancellation operation. Stopping an agent affects its active Workers.
 
-See [CapacityAgentContracts.cs](../../SwitchYard.WebApi/SwitchYard.Capacity/CapacityAgentContracts.cs) for registration, job, result, and model input structures, and [installation](07-installation.md) for execution. API in-memory job state is not a database queue that can be backed up and resumed.
+See [CapacityAgentContracts.cs](../../SwitchYard.WebApi/SwitchYard.Capacity/Contracts/CapacityAgentContracts.cs) for registration, job, result, and model input structures, and [installation](07-installation.md) for execution. API in-memory job state is not a database queue that can be backed up and resumed.

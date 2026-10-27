@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.SignalR.Client;
 using Serilog;
 using Serilog.Context;
 using SwitchYard.Capacity;
+using SwitchYard.CapacitySolver;
 
 namespace SwitchYard.CapacityAgent;
 

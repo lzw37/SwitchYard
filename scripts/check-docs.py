@@ -20,6 +20,7 @@ ENTRIES = (
     "SwitchYard.StationLayout/README.md",
     "SwitchYard.StationLayout/frontend/README.md",
     "SwitchYard.WebApi/SwitchYard.CapacityAgent/README.md",
+    "SwitchYard.WebApi/SwitchYard.CapacitySolver/README.md",
 )
 FENCE = re.compile(r"^\s*(`{3,}|~{3,})(.*)$")
 CODE = re.compile(r"(?<!`)(`+)(?!`)[\s\S]*?(?<!`)\1(?!`)")

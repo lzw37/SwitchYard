@@ -15,24 +15,13 @@ public sealed class StationCapacityInputBuilder
         var operationPlanId = request.OperationPlanId.Trim();
         var dbConnector = DBConnector.GetDBConnector(DBConnector.CapacityDatabaseSectionName);
 
-        var routeRows = dbConnector.Query<StationRouteRow>(
-            @"SELECT InstanceID, StationSchemeID, ID, `Type` AS `Type`, Description,
-                     NodeList, LinkList, SwitchList, CellList, InterruptCellList, SignalList,
-                     AllowanceTags, ForbiddenTags, StartNodeID, EndNodeID
-              FROM stationroute
-              WHERE InstanceID = @instanceId AND StationSchemeID = @stationSchemeId
-              ORDER BY ID",
-            new { instanceId, stationSchemeId }) ?? new List<StationRouteRow>();
-
-        var occupationRows = dbConnector.Query<StationRouteTimeRow>(
-            @"SELECT InstanceID, StationSchemeID, CalculationParameterSetID, RouteID, TrainTypeID, CellID,
-                     StartOccupationShift, EndOccupationShift
-              FROM stationroutetime
-              WHERE InstanceID = @instanceId AND StationSchemeID = @stationSchemeId
-              ORDER BY RouteID, TrainTypeID, CellID",
-            new { instanceId, stationSchemeId }) ?? new List<StationRouteTimeRow>();
-
         var parameterSets = new CalculationParameterSets(dbConnector, instanceId, stationSchemeId);
+        var stationLayout = StationCapacityLayoutInputBuilder.Build(dbConnector, instanceId, stationSchemeId, parameterSets);
+        var operationProcesses = OperationProcessController.LoadTemplates(dbConnector, new ProcessScope
+        {
+            InstanceID = instanceId,
+            StationSchemeID = stationSchemeId
+        });
         var trainRows = dbConnector.Query<TrainRow>(
             @"SELECT InstanceID, StationSchemeID, OperationPlanID, ID, TrainTemplateID,
                      TrainNumber, Name, TrainType, CalculationParameterSetID, IsFixedOperation
@@ -65,27 +54,30 @@ public sealed class StationCapacityInputBuilder
             InstanceId = instanceId,
             StationSchemeId = stationSchemeId,
             OperationPlanId = operationPlanId,
-            Routes = routeRows
-                .Where(route => !string.IsNullOrWhiteSpace(route.ID))
+            StationLayout = stationLayout,
+            OperationProcesses = StationCapacityOperationProcessInputBuilder.Build(operationProcesses),
+            Routes = stationLayout.Routes
+                .Where(route => !string.IsNullOrWhiteSpace(route.Id))
                 .Select(route => new StationCapacityRouteInput
                 {
-                    Id = route.ID!.Trim(),
+                    Id = route.Id!.Trim(),
                     CellIds = ParseList(route.CellList),
                     Tags = ParseList(route.AllowanceTags)
                 })
                 .Where(route => route.CellIds.Count > 0)
                 .ToList(),
-            RouteOccupations = occupationRows
-                .Where(row => !string.IsNullOrWhiteSpace(row.RouteID) && !string.IsNullOrWhiteSpace(row.CellID))
-                .Select(row => new StationCapacityRouteOccupationInput
-                {
-                    RouteId = row.RouteID!.Trim(),
-                    TrainTypeId = row.TrainTypeID?.Trim() ?? string.Empty,
-                    CalculationParameterSetId = row.CalculationParameterSetID ?? CalculationParameterSets.InitialDefaultID,
-                    CellId = row.CellID!.Trim(),
-                    StartOccupationShiftSeconds = row.StartOccupationShift ?? 0,
-                    EndOccupationShiftSeconds = row.EndOccupationShift ?? 0
-                })
+            RouteOccupations = stationLayout.CalculationParameterSets.RouteOccupations
+                .SelectMany(group => group.Value
+                    .Where(row => !string.IsNullOrWhiteSpace(row.RouteId) && !string.IsNullOrWhiteSpace(row.CellId))
+                    .Select(row => new StationCapacityRouteOccupationInput
+                    {
+                        RouteId = row.RouteId!.Trim(),
+                        TrainTypeId = row.TrainTypeId?.Trim() ?? string.Empty,
+                        CalculationParameterSetId = group.Key,
+                        CellId = row.CellId!.Trim(),
+                        StartOccupationShiftSeconds = row.StartOccupationShift ?? 0,
+                        EndOccupationShiftSeconds = row.EndOccupationShift ?? 0
+                    }))
                 .ToList()
         };
 
@@ -157,9 +149,9 @@ public sealed class StationCapacityInputBuilder
             InstanceID = instanceId,
             StationSchemeID = stationSchemeId,
             OperationPlanID = operationPlanId
-        }, input);
-        // Older agents ignore set IDs and can silently mix windows from different sets.
-        input.MinimumModelVersion = "2.4.0";
+        }, input, operationProcesses);
+        // Old agents cannot resolve process references; earlier versions also ignore parameter-set IDs.
+        input.MinimumModelVersion = input.Trains.Any(train => train.OperationProcessId is not null) ? "2.5.0" : "2.4.0";
         return input;
     }
 
