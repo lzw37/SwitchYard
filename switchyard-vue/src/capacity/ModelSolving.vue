@@ -1,5 +1,6 @@
 <template>
     <section class="model-solving">
+        <SolveJobManager ref="jobManager" :selected-job-id="selectedJobId" @select="selectJob" />
         <div class="toolbar">
             <div class="toolbar-field">
                 <span class="field-label">{{ t('modelSolving.fields.stationScheme') }}</span>
@@ -195,6 +196,9 @@
                         <span>{{ currentJob.agentName }}</span>
                         <span>{{ formatDateTime(currentJob.submittedAt) }}</span>
                     </div>
+                    <div v-if="currentJob.completedAt" class="job-message">{{ t('modelSolving.manager.completedAt') }}: {{ formatDateTime(currentJob.completedAt) }}</div>
+                    <div v-if="currentJob.sourceOperationPlanId" class="job-message">{{ t('modelSolving.manager.sourcePlan') }}: {{ currentJob.instanceId }} / {{ currentJob.stationSchemeId }} / {{ currentJob.sourceOperationPlanId }}</div>
+                    <div v-if="currentJob.resultOperationPlanId" class="job-message">{{ t('modelSolving.manager.resultPlan') }}: {{ currentJob.resultOperationPlanName || currentJob.resultOperationPlanId }}</div>
                 </div>
                 <el-empty v-else :description="t('modelSolving.empty.noJob')" :image-size="62" />
 
@@ -217,6 +221,17 @@
                         :disabled="!currentJob?.result"
                         @click="downloadResult"
                      :icon="Download" :label="t('modelSolving.actions.downloadResult')" />
+                </div>
+                <div v-if="currentJob" class="job-actions">
+                    <el-button :disabled="managementBusy" @click="viewJobInput">{{ t('modelSolving.manager.viewInput') }}</el-button>
+                    <el-button v-if="isSolveJobActive(currentJob.status)" type="danger" plain
+                        :disabled="managementBusy || currentJob.status === 'cancelling'" @click="manageJob('cancel')">
+                        {{ t('modelSolving.manager.cancel') }}
+                    </el-button>
+                    <template v-else>
+                        <el-button :disabled="managementBusy" @click="manageJob('retry')">{{ t('modelSolving.manager.retry') }}</el-button>
+                        <el-button type="danger" plain :disabled="managementBusy" @click="manageJob('delete')">{{ t('modelSolving.manager.delete') }}</el-button>
+                    </template>
                 </div>
             </el-card>
 
@@ -252,6 +267,10 @@
                 />
             </el-card>
         </div>
+
+        <el-dialog v-model="jobInputVisible" :title="t('modelSolving.manager.viewInput')" width="min(900px, 92vw)">
+            <el-input :model-value="jobInputJson" type="textarea" :rows="22" readonly />
+        </el-dialog>
 
         <el-dialog
             v-model="presetManagerVisible"
@@ -364,6 +383,8 @@ const jobPaneWidth = ref(380)
 const connectionsPaneHeight = ref(340)
 import ActionButton from '@/components/ui/ActionButton.vue'
 import PaneDivider from '@/components/ui/PaneDivider.vue'
+import SolveJobManager from './components/SolveJobManager.vue'
+import { isSolveJobActive, type SolveJob } from './solveJobs'
 import { Check, Close, Delete, Download, MagicStick, Plus, Refresh, Setting, VideoPlay } from '@element-plus/icons-vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useCapacityStore } from '@/stores/capacity'
@@ -420,22 +441,6 @@ interface CapacityAgentResources {
     collectedAt: string
 }
 
-interface SolveJob {
-    jobId: string
-    agentId: string
-    agentName: string
-    modelId: string
-    requestedBy: string
-    status: 'queued' | 'running' | 'completed' | 'failed'
-    progress: number
-    progressMessage: string
-    submittedAt: string
-    startedAt?: string
-    completedAt?: string
-    error?: string
-    result?: Record<string, unknown>
-}
-
 interface SolveSettings {
     leftShiftToleranceSeconds: number
     rightShiftToleranceSeconds: number
@@ -481,6 +486,13 @@ const presetManagerVisible = ref(false)
 const presetForm = ref<SolvePresetForm>(createEmptyPresetForm())
 const inputJson = ref('')
 const currentJob = ref<SolveJob | null>(null)
+const selectedJobId = ref('')
+const jobManager = ref<InstanceType<typeof SolveJobManager>>()
+const managementBusy = ref(false)
+const jobInputVisible = ref(false)
+const jobInputJson = ref('')
+let jobRequestVersion = 0
+let disposed = false
 const loadingSchemes = ref(false)
 const loadingPlans = ref(false)
 const loadingAgents = ref(false)
@@ -508,14 +520,13 @@ const canGenerateInput = computed(() =>
     Boolean(props.selectedInstanceId && stationSchemeId.value && operationPlanId.value),
 )
 const canSubmit = computed(() => {
-    const jobActive = currentJob.value?.status === 'queued' || currentJob.value?.status === 'running'
     return Boolean(
         selectedAgent.value?.isConnected &&
         selectedAgent.value?.canUse &&
         selectedAgent.value?.isAvailable &&
         selectedModelId.value &&
         inputJson.value.trim() &&
-        !jobActive,
+        !submitting.value,
     )
 })
 const resultJson = computed(() =>
@@ -832,6 +843,10 @@ async function submitJob() {
             input,
         })
         currentJob.value = response.data
+        selectedJobId.value = response.data.jobId
+        jobRequestVersion++
+        pollingJob.value = false
+        void jobManager.value?.refresh(false)
         ElMessage.success(t('modelSolving.messages.jobSubmitted'))
         await loadAgents(true)
     } catch (error: any) {
@@ -843,22 +858,86 @@ async function submitJob() {
 }
 
 async function refreshCurrentJob(silent = false) {
-    if (!currentJob.value) return
-    if (!silent) pollingJob.value = true
+    if (!selectedJobId.value || managementBusy.value || (silent && pollingJob.value)) return
+    const jobId = selectedJobId.value
+    const requestVersion = ++jobRequestVersion
+    pollingJob.value = true
     try {
-        const response = await axios.get<SolveJob>(`/api/capacity-agents/jobs/${currentJob.value.jobId}`)
-        const previousStatus = currentJob.value.status
+        const response = await axios.get<SolveJob>(`/api/capacity-agents/jobs/${encodeURIComponent(jobId)}`)
+        if (disposed || requestVersion !== jobRequestVersion || selectedJobId.value !== jobId) return
+        const previousStatus = currentJob.value?.status
         currentJob.value = response.data
-        if (previousStatus !== response.data.status && response.data.status === 'completed') {
+        if (previousStatus && previousStatus !== response.data.status && response.data.status === 'completed') {
             ElMessage.success(t('modelSolving.messages.jobCompleted'))
-        } else if (previousStatus !== response.data.status && response.data.status === 'failed') {
+        } else if (previousStatus && previousStatus !== response.data.status && response.data.status === 'failed') {
             ElMessage.error(response.data.error || t('modelSolving.messages.jobFailed'))
         }
-    } catch (error) {
+    } catch (error: any) {
+        if (disposed || requestVersion !== jobRequestVersion) return
+        if (error?.response?.status === 404) {
+            currentJob.value = null
+            selectedJobId.value = ''
+            void jobManager.value?.refresh(false)
+        }
         console.error(error)
         if (!silent) ElMessage.error(t('modelSolving.messages.refreshJobFailed'))
     } finally {
-        if (!silent) pollingJob.value = false
+        if (requestVersion === jobRequestVersion) pollingJob.value = false
+    }
+}
+
+async function selectJob(jobId: string) {
+    selectedJobId.value = jobId
+    currentJob.value = null
+    await refreshCurrentJob()
+}
+
+async function viewJobInput() {
+    const jobId = selectedJobId.value
+    try {
+        const response = await axios.get(`/api/capacity-agents/jobs/${encodeURIComponent(jobId)}/input`)
+        if (disposed || selectedJobId.value !== jobId) return
+        jobInputJson.value = JSON.stringify(response.data, null, 2)
+        jobInputVisible.value = true
+    } catch (error) {
+        ElMessage.error(apiErrorMessage(error, t('modelSolving.messages.refreshJobFailed')))
+    }
+}
+
+async function manageJob(action: 'cancel' | 'retry' | 'delete') {
+    const job = currentJob.value
+    if (!job || managementBusy.value) return
+    if (action !== 'retry') {
+        try {
+            await ElMessageBox.confirm(t(`modelSolving.manager.${action}Confirm`, { id: job.jobId }), t(`modelSolving.manager.${action}`), { type: 'warning' })
+        } catch { return }
+    }
+    managementBusy.value = true
+    jobRequestVersion++
+    pollingJob.value = false
+    try {
+        const url = `/api/capacity-agents/jobs/${encodeURIComponent(job.jobId)}`
+        if (action === 'delete') {
+            await axios.delete(url)
+            if (selectedJobId.value === job.jobId) {
+                selectedJobId.value = ''
+                currentJob.value = null
+            }
+        } else {
+            const response = await axios.post<SolveJob>(`${url}/${action}`)
+            if (selectedJobId.value === job.jobId) {
+                jobRequestVersion++
+                selectedJobId.value = response.data.jobId
+                currentJob.value = response.data
+            }
+        }
+        ElMessage.success(t(`modelSolving.manager.${action}Success`))
+    } catch (error) {
+        ElMessage.error(apiErrorMessage(error, t('modelSolving.manager.actionFailed')))
+    } finally {
+        managementBusy.value = false
+        void jobManager.value?.refresh(false)
+        void loadAgents(true)
     }
 }
 
@@ -898,7 +977,6 @@ function clearPlansAndInput() {
     operationPlans.value = []
     operationPlanId.value = ''
     inputJson.value = ''
-    currentJob.value = null
 }
 
 function agentStatusText(agent: CapacityAgent) {
@@ -998,7 +1076,7 @@ function jobStatusText(status: SolveJob['status']) {
 function jobTagType(status: SolveJob['status']) {
     if (status === 'completed') return 'success'
     if (status === 'failed') return 'danger'
-    if (status === 'running') return 'warning'
+    if (isSolveJobActive(status)) return 'warning'
     return 'info'
 }
 
@@ -1012,6 +1090,7 @@ function apiErrorMessage(error: any, fallback: string) {
     if (typeof data === 'string' && data.trim()) return data
     const message = typeof data?.message === 'string' ? data.message.trim() : ''
     const detail = typeof data?.detail === 'string' ? data.detail.trim() : ''
+    if (typeof data?.error === 'string' && data.error.trim()) return data.error
     if (message && detail) return `${message} ${detail}`
     if (message) return message
     if (detail) return detail
@@ -1027,13 +1106,15 @@ onMounted(() => {
     void loadPresets()
     pollingTimer = window.setInterval(() => {
         void loadAgents(true)
-        if (currentJob.value?.status === 'queued' || currentJob.value?.status === 'running') {
+        if (selectedJobId.value && (!currentJob.value || isSolveJobActive(currentJob.value.status))) {
             void refreshCurrentJob(true)
         }
     }, 2000)
 })
 
 onBeforeUnmount(() => {
+    disposed = true
+    jobRequestVersion++
     schemeLoadVersion++
     planLoadVersion++
     if (pollingTimer !== undefined) window.clearInterval(pollingTimer)

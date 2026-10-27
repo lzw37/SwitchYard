@@ -50,6 +50,19 @@ public sealed class SaturatedOperationPlanService
             throw new UnauthorizedAccessException("当前用户无权保存该实例的饱和计划。");
         }
 
+        // A result can be replayed when the API restarts after committing a plan but
+        // before acknowledging the job. Use a stable ID so that replay is idempotent.
+        var targetPlanId = $"sat-{jobId}"[..Math.Min(31, 4 + jobId.Length)];
+        var existingPlan = (db.Query<OperationPlanRow>(@"SELECT * FROM operationplan
+            WHERE InstanceID = @InstanceId AND StationSchemeID = @StationSchemeId AND OperationPlanID = @targetPlanId",
+            new { context.InstanceId, context.StationSchemeId, targetPlanId }) ?? new()).FirstOrDefault();
+        if (existingPlan != null)
+        {
+            if (existingPlan.Description?.EndsWith($"任务 {jobId}。", StringComparison.Ordinal) != true)
+                throw new InvalidOperationException("求解结果计划 ID 已被其他计划占用。");
+            return existingPlan;
+        }
+
         var sourcePlan = (db.Query<OperationPlanRow>(
             $@"SELECT InstanceID, StationSchemeID, OperationPlanID, Name, Description, SortOrder, CreatedDate, UpdatedDate
                FROM {Quote("operationplan")}
@@ -110,7 +123,6 @@ public sealed class SaturatedOperationPlanService
         var solvedSnapshots = PrepareProcessSnapshots(db, sourceScope, result, processSnapshots);
 
         var now = DateTime.Now;
-        var targetPlanId = GenerateOperationPlanId(db, context.InstanceId, context.StationSchemeId);
         var sourceName = string.IsNullOrWhiteSpace(sourcePlan.Name)
             ? sourcePlan.OperationPlanID ?? "作业计划"
             : sourcePlan.Name;
@@ -320,28 +332,6 @@ public sealed class SaturatedOperationPlanService
                    @InstanceID, @StationSchemeID, @OperationPlanID, @Name, @Description, @SortOrder, @CreatedDate, @UpdatedDate)",
             plan);
         if (inserted != 1) throw new InvalidOperationException("保存饱和作业计划失败。");
-    }
-
-    private static string GenerateOperationPlanId(DBConnector db, string instanceId, string stationSchemeId)
-    {
-        for (var attempt = 0; attempt < 10; attempt++)
-        {
-            var candidate = $"sat-{DateTime.Now:yyyyMMddHHmmss}-{Guid.NewGuid():N}"[..31];
-            var exists = (db.Query<OperationPlanRow>(
-                $@"SELECT OperationPlanID
-                   FROM {Quote("operationplan")}
-                   WHERE InstanceID = @instanceId
-                     AND StationSchemeID = @stationSchemeId
-                     AND OperationPlanID = @candidate
-                   LIMIT 1",
-                new { instanceId, stationSchemeId, candidate }) ?? new List<OperationPlanRow>()).Any();
-            if (!exists)
-            {
-                return candidate;
-            }
-        }
-
-        throw new InvalidOperationException("无法生成唯一的饱和作业计划 ID。");
     }
 
     private static int GetNextSortOrder(DBConnector db, string instanceId, string stationSchemeId)

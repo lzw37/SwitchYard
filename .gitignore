@@ -377,6 +377,9 @@ MigrationBackup/
 FodyWeavers.xsd
 SwitchYard.WebApi/SwitchYard.Hump/HumpDatabase
 LocalData
+!PyStationCapacity/LocalData/
+PyStationCapacity/LocalData/*
+!PyStationCapacity/LocalData/mysql-localdata-init.sql
 switchyard-vue/src/assets/教学文档
 switchyard-vue/src/assets/站场视频
 switchyardvid

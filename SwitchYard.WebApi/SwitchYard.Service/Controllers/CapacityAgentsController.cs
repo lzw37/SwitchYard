@@ -267,6 +267,59 @@ public sealed class CapacityAgentsController : ControllerBase
     }
 
     [Authorize]
+    [HttpGet("jobs/page")]
+    public IActionResult GetJobPage([FromQuery] int limit = 20, [FromQuery] int offset = 0, [FromQuery] string? status = null)
+    {
+        var page = _jobs.GetPage(User.Identity?.Name ?? string.Empty, IsAdmin(), limit, offset, status);
+        return Ok(new { items = page.Items, total = page.Total });
+    }
+
+    [Authorize]
+    [HttpPost("jobs/{jobId}/cancel")]
+    public async Task<IActionResult> CancelJob(string jobId)
+    {
+        var access = CheckJobAccess(jobId);
+        if (access != null) return access;
+        return Ok(await _jobs.CancelAsync(jobId));
+    }
+
+    [Authorize]
+    [HttpPost("jobs/{jobId}/retry")]
+    public async Task<IActionResult> RetryJob(string jobId, CancellationToken cancellationToken)
+    {
+        var access = CheckJobAccess(jobId);
+        if (access != null) return access;
+        var (job, error) = await _jobs.RetryAsync(jobId, cancellationToken);
+        if (job == null) return Conflict(new { message = error });
+        if (error != null) return StatusCode(503, job);
+        return AcceptedAtAction(nameof(GetJob), new { jobId = job.JobId }, job);
+    }
+
+    [Authorize]
+    [HttpDelete("jobs/{jobId}")]
+    public IActionResult DeleteJob(string jobId)
+    {
+        var access = CheckJobAccess(jobId);
+        if (access != null) return access;
+        return _jobs.Delete(jobId) ? NoContent() : Conflict(new { message = "请先取消任务并等待计算代理确认停止，再删除记录。" });
+    }
+
+    [Authorize]
+    [HttpGet("jobs/{jobId}/input")]
+    public IActionResult GetJobInput(string jobId)
+    {
+        var access = CheckJobAccess(jobId);
+        return access ?? Ok(_jobs.GetInput(jobId));
+    }
+
+    private IActionResult? CheckJobAccess(string jobId)
+    {
+        var job = _jobs.Get(jobId);
+        if (job == null) return NotFound();
+        return !IsAdmin() && !string.Equals(job.RequestedBy, User.Identity?.Name, StringComparison.Ordinal) ? Forbid() : null;
+    }
+
+    [Authorize]
     [HttpGet("jobs/{jobId}")]
     public IActionResult GetJob(string jobId)
     {

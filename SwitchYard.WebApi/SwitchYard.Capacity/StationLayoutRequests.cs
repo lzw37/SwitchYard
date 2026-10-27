@@ -2,6 +2,13 @@ using System.Collections.Generic;
 
 namespace SwitchYard.Capacity
 {
+    public sealed class StationLayoutDatabaseRequest
+    {
+        public string? InstanceID { get; set; }
+
+        public string? StationSchemeID { get; set; }
+    }
+
     public sealed class StationLayoutSaveRequest
     {
         public string Json { get; set; } = string.Empty;

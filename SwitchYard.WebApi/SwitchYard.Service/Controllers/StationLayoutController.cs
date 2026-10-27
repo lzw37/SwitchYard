@@ -3708,5 +3708,30 @@ namespace SwitchYard.Service.Controllers
             });
 
         }
+
+        // Keep the legacy routes on the same validation, authorization and revision
+        // handling as the component-backed SaveJson/GetJson endpoints.
+        [HttpPost(Name = "SaveToDatabase")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> SaveToDatabase(
+            [FromBody] StationLayoutSaveRequest? request,
+            [FromServices] SwitchYard.StationLayout.IStationLayoutService service)
+        {
+            var result = await SaveJson(request, service);
+            return result is OkObjectResult ? Ok(true) : result;
+        }
+
+        [HttpPost(Name = "GetDatabaseJson")]
+        public Task<IActionResult> GetDatabaseJson(
+            [FromBody] StationLayoutDatabaseRequest? request,
+            [FromServices] SwitchYard.StationLayout.IStationLayoutService service)
+        {
+            if (string.IsNullOrWhiteSpace(request?.InstanceID))
+            {
+                return Task.FromResult<IActionResult>(BadRequest("instanceID is required when loading station layout data."));
+            }
+
+            return GetJson(service, request.InstanceID, request.StationSchemeID);
+        }
     }
 }

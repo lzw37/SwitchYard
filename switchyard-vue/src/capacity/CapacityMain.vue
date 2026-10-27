@@ -70,10 +70,9 @@
                     <el-empty v-else :description="t('capacityMain.placeholders.selectInstance')" />
                 </el-tab-pane>
                 <el-tab-pane :label="t('capacityMain.tabs.modelSolving')" name="modelSolving" lazy>
-                    <div v-if="hasSelectedInstance" class="model-solving-pane">
+                    <div class="model-solving-pane">
                         <ModelSolving :selected-instance-id="selectedInstance || ''" />
                     </div>
-                    <el-empty v-else :description="t('capacityMain.placeholders.selectInstance')" />
                 </el-tab-pane>
                 <el-tab-pane :label="t('capacityMain.tabs.resultAnalysis')" name="resultAnalysis">
                     <div class="tab-placeholder">
