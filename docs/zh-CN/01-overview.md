@@ -68,13 +68,13 @@ flowchart LR
     API --> CapacityDB[(CapacityDatabase 能力分析)]
     API --> SketchDB[(SketchLayoutDatabase 布置图分析)]
     API <-->|SignalR| Agent[CapacityAgent]
-    Agent --> Worker[隔离 Worker 子进程]
-    Worker --> Solver[CapacitySolver 类库与 OR-Tools]
+    Agent --> Domain[SwitchYard.Capacity 组装领域对象]
+    Domain --> Solver[同进程调用 CapacitySolver 与 OR-Tools]
     Module[独立 StationLayout 模块] -. 集成 .-> Browser
     Module -. 服务适配 .-> API
 ```
 
-浏览器编辑并提交业务数据，API 负责认证、范围校验、持久化及计算协调。驼峰计算在服务调用的核心库中执行；通过能力优化由 CapacityAgent 接收和调度任务，Worker 子进程调用 `SwitchYard.CapacitySolver` 类库求解。三维界面负责呈现和播放，不负责替代求解。
+浏览器编辑并提交业务数据，API 负责认证、范围校验、持久化及计算协调。驼峰计算在服务调用的核心库中执行；通过能力优化由 CapacityAgent 接收和调度任务，Agent 在同一进程中直接调用 `SwitchYard.CapacitySolver` 类库求解。三维界面负责呈现和播放，不负责替代求解。
 
 数据库使用 Dapper 访问，支持 SQLite 和 MySQL。三个配置节分别选择数据库类型与连接，账号仅存放在 HumpDatabase。不要让三个业务配置节指向同一个数据库来“简化”部署，它们包含名称相同而结构不同的表，例如 `switch`。
 
@@ -88,8 +88,8 @@ flowchart LR
 | `SwitchYard.WebApi/SwitchYard.Service/` | .NET 8 API、认证、数据访问、课程资源接口及求解调度 |
 | `SwitchYard.WebApi/SwitchYard.Hump/` | 驼峰几何、阻力、能量高度、速度及间隔计算 |
 | `SwitchYard.WebApi/SwitchYard.Capacity/` | 站场、进路、占用与代理共享契约 |
-| `SwitchYard.WebApi/SwitchYard.CapacityAgent/` | .NET 10 通信代理、任务调度和 Worker 资源管理 |
-| `SwitchYard.WebApi/SwitchYard.CapacitySolver/` | .NET 10 求解类库、模型注册、OR-Tools 与 Worker 求解入口，随 Agent 发布 |
+| `SwitchYard.WebApi/SwitchYard.CapacityAgent/` | .NET 10 通信代理、任务调度、对象组装调用和进程资源统计 |
+| `SwitchYard.WebApi/SwitchYard.CapacitySolver/` | .NET 10 强类型求解类库、模型注册与 OR-Tools，随 Agent 发布，由 Agent 直接调用 |
 | `SwitchYard.WebApi/SwitchYard.CapacitySolver.Tests/` | 共享领域对象、过程约束和求解模型回归 |
 | `SwitchYard.WebApi/SwitchYard.SketchLayout/` | 布置图几何、校验、冲突与排队计算 |
 | `SwitchYard.StationLayout/` | 可复用前端控件及同时面向 .NET 8 和 .NET 10 的后端模块 |

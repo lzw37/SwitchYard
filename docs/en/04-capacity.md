@@ -136,7 +136,7 @@ A batch adjustment is one save and one undo action. Ctrl+Z/Ctrl+Y retain up to 2
 
 ## Solving and saturated plans
 
-Start the separate CapacityAgent and connect it to the current service. The browser submits and displays jobs; the Agent handles communication, scheduling, and resource monitoring. Worker subprocesses invoke the mixed-integer model and OR-Tools in `SwitchYard.CapacitySolver`, preferring SCIP and falling back to CBC if unavailable.
+Start the separate CapacityAgent and connect it to the current service. The browser submits and displays jobs; the Agent handles communication, scheduling, and resource monitoring. The Agent directly invokes the mixed-integer model and OR-Tools in `SwitchYard.CapacitySolver` in its own process, preferring SCIP and falling back to CBC if unavailable.
 
 1. Select a scheme and plan in Model solving, generate input, and check its scope, trains, route candidates, and offsets.
 2. Select an online authorized Agent with available job slots and model `station-capacity-v1`.
@@ -158,7 +158,7 @@ Ordinary trains use adjacent movement sequencing and route connections, with mov
 
 Solve jobs, original inputs, progress, and results are persisted in the capacity database's `capacitysolvejob` table, created automatically on first use. Closing or refreshing the browser or switching instances does not stop a solve. Reopening Model solving loads the task manager with active tasks first. Filter, paginate, reopen historical tasks, inspect original inputs, and download results. Users manage their own tasks; administrators can manage all tasks. An instance selection is not required to access the manager.
 
-Cancellation first changes the status to Cancelling. The task becomes Cancelled and releases its slot only after CapacityAgent stops its Worker and acknowledges the request. Offline cancellation requests are retained and resent on reconnection or status reports. Finished tasks can be retried with their original input (creating a new task and preserving the old record), or deleted together with their stored inputs and results. Deleting a task does not delete generated operation plans. Update CapacityAgent along with the API to enable cancellation.
+Cancellation first changes the status to Cancelling. The task becomes Cancelled and releases its slot only after CapacityAgent interrupts the solve and acknowledges the request. Offline cancellation requests are retained and resent on reconnection or status reports. Finished tasks can be retried with their original input (creating a new task and preserving the old record), or deleted together with their stored inputs and results. Deleting a task does not delete generated operation plans. Update CapacityAgent along with the API to enable cancellation.
 
 After an API restart, persisted records are restored and running agents reconnect to continue reporting. Results that cannot be delivered are retained in the agent process until the API acknowledges them. If an agent process restarts and no longer has a task, reconnection marks that task failed so it can be retried. The API and CapacityAgent must remain running; computation does not continue after machine shutdown. Coordination currently targets one API process.
 
@@ -237,4 +237,4 @@ For arrival results, yellow rectangles in the track circuit occupancy plot show 
 - [Preserved operation-process guide](../archive/guides/operation-process.md): detailed graphical operations, Cell persistence, and API behavior.
 - [CapacityAgent guide](../archive/development/capacity-agent.md): installation, authentication, resources, and execution.
 - [Station layout module](../archive/development/station-layout.md): reusable editor integration.
-- Implementation: [Operation plan page](../../switchyard-vue/src/capacity/OperationPlan.vue), [input builder](../../SwitchYard.WebApi/SwitchYard.Service/Services/StationCapacityInputBuilder.cs), and [solver model](../../SwitchYard.WebApi/SwitchYard.CapacitySolver/StationCapacityModel.cs).
+- Implementation: [Operation plan page](../../switchyard-vue/src/capacity/OperationPlan.vue), [input builder](../../SwitchYard.WebApi/SwitchYard.Service/Services/StationCapacityInputBuilder.cs), and [solver model](../../SwitchYard.WebApi/SwitchYard.CapacitySolver/MIPCapacitySolver.cs).

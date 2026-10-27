@@ -68,13 +68,13 @@ flowchart LR
     API --> CapacityDB[(CapacityDatabase station capacity)]
     API --> SketchDB[(SketchLayoutDatabase facility layouts)]
     API <-->|SignalR| Agent[CapacityAgent]
-    Agent --> Worker[Isolated Worker subprocess]
-    Worker --> Solver[CapacitySolver library and OR-Tools]
+    Agent --> Domain[SwitchYard.Capacity domain assembly]
+    Domain --> Solver[In-process CapacitySolver and OR-Tools]
     Module[Standalone StationLayout module] -. integration .-> Browser
     Module -. service adapters .-> API
 ```
 
-The browser edits and submits business data. The API authenticates requests, validates their scope, persists data, and coordinates calculations. Hump calculations run in the core library called by the service. CapacityAgent receives and schedules station capacity jobs; Worker subprocesses invoke the `SwitchYard.CapacitySolver` class library. The 3D interface displays and plays results; it does not replace the solver.
+The browser edits and submits business data. The API authenticates requests, validates their scope, persists data, and coordinates calculations. Hump calculations run in the core library called by the service. CapacityAgent receives and schedules station capacity jobs; the Agent directly invokes the `SwitchYard.CapacitySolver` library in its own process. The 3D interface displays and plays results; it does not replace the solver.
 
 Dapper provides database access, with SQLite and MySQL supported. Each of the three database configuration sections selects its database type and connection. Accounts live only in HumpDatabase. Keep these databases separate: they contain identically named tables with different structures, such as `switch`.
 
@@ -88,8 +88,8 @@ Agent presence and solve jobs are held in API process memory. After an API resta
 | `SwitchYard.WebApi/SwitchYard.Service/` | .NET 8 API, authentication, persistence, course resources, and solve coordination |
 | `SwitchYard.WebApi/SwitchYard.Hump/` | Hump geometry, resistance, energy height, speed, and headway calculations |
 | `SwitchYard.WebApi/SwitchYard.Capacity/` | Shared station, route, occupancy, and agent contracts |
-| `SwitchYard.WebApi/SwitchYard.CapacityAgent/` | .NET 10 communication agent, job scheduling, and Worker resource management |
-| `SwitchYard.WebApi/SwitchYard.CapacitySolver/` | .NET 10 solver library, model registration, OR-Tools, and Worker execution entry point; published with the Agent |
+| `SwitchYard.WebApi/SwitchYard.CapacityAgent/` | .NET 10 communication agent, job scheduling, domain assembly calls, and process resource statistics |
+| `SwitchYard.WebApi/SwitchYard.CapacitySolver/` | .NET 10 typed solver library, model registration, and OR-Tools; published with the Agent and called directly in its process |
 | `SwitchYard.WebApi/SwitchYard.CapacitySolver.Tests/` | Regression tests for shared domain objects, process constraints, and solver models |
 | `SwitchYard.WebApi/SwitchYard.SketchLayout/` | Sketch geometry, validation, conflict, and queue calculations |
 | `SwitchYard.StationLayout/` | Reusable frontend component and backend module targeting both .NET 8 and .NET 10 |

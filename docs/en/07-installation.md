@@ -13,8 +13,8 @@ This chapter covers the environment, configuration, data preparation, and Capaci
 | `HumpDatabase` | Users, Refresh Tokens, hump instances and calculation data | API startup |
 | `CapacityDatabase` | Capacity instances, layouts, plans, processes, analysis, solve presets | Capacity features |
 | `SketchLayoutDatabase` | Independent SketchLayout schemes | SketchLayout features |
-| `SwitchYard.CapacityAgent` | Service communication, job scheduling, Worker cancellation, and resource monitoring | Model solving and saturated-plan generation |
-| `SwitchYard.CapacitySolver` | .NET 10 class library for solver models, OR-Tools, and the Worker execution entry point | Published with the Agent and invoked by Workers |
+| `SwitchYard.CapacityAgent` | Service communication, job scheduling, solver cancellation, and resource monitoring | Model solving and saturated-plan generation |
+| `SwitchYard.CapacitySolver` | .NET 10 class library for typed domain-model solving and OR-Tools | Published with the Agent and invoked directly in its process |
 | Course asset directories | Local videos, PDF, and Word materials | Course content |
 
 A complete current deployment has three database sections. References to “two databases” in older documents describe an earlier state. Hump and capacity schemas contain identically named tables with different structures, so they must not share a database or SQLite file. Configure, back up, and restore SketchLayout as an independent database too.
@@ -199,7 +199,7 @@ For direct source builds, the API URL is read when the development server starts
 
 ## 7. Install CapacityAgent
 
-The API dispatches jobs; the Agent handles communication, scheduling, and resource monitoring, while independent Worker subprocesses invoke the `SwitchYard.CapacitySolver` class library. Publishing the Agent includes the Solver and OR-Tools runtime dependencies; there is no separate Solver executable to deploy. Editing layouts and other independent features remain usable without an Agent, but model-dependent solve actions cannot complete. This description of project responsibilities and test entry points was updated on 2026-10-27.
+The API dispatches jobs; the Agent handles communication, scheduling, and resource monitoring and directly invokes the `SwitchYard.CapacitySolver` library in its own process. Publishing the Agent includes the Solver and OR-Tools runtime dependencies; there is no separate Solver executable to deploy. Editing layouts and other independent features remain usable without an Agent, but model-dependent solve actions cannot complete. This description of project responsibilities and test entry points was updated on 2026-10-28.
 
 ```powershell
 dotnet publish SwitchYard.WebApi/SwitchYard.CapacityAgent/SwitchYard.CapacityAgent.csproj -c Release -o ./publish/capacity-agent
@@ -232,7 +232,7 @@ Select another file with `dotnet SwitchYard.CapacityAgent.dll --config <private-
 | `agentName` | Uses the OS username when empty; use different names on different machines |
 | `maxConcurrentJobs` | 1–128; default 2 |
 | `cpuCoresPerJob` | 1–128; default 2; a per-job thread cap, not CPU affinity |
-| `memoryLimitMbPerJob` | 256–1048576; default 2048; SCIP limit plus Worker working-set monitoring |
+| `memoryLimitMbPerJob` | 256–1048576; default 2048; SCIP internal limit; no separate working-set enforcement or equivalent CBC hard limit |
 | `statusReportIntervalSeconds` | 1–60; default 2 seconds |
 | `allowAllUsers` / `allowedUsers` | Sharing is restricted to administrator Agents; at most 500 usernames, each at most 100 characters |
 
@@ -240,17 +240,17 @@ An ordinary user's Agent is always private to its owner. An administrator may al
 
 The Agent ID derives from the Agent name and login username. Reusing that pair on different machines produces the same ID; assign different `agentName` values for simultaneous Agents. Available slots also depend on logical CPUs and memory headroom, so a concurrency setting of 2 does not guarantee 2 free slots.
 
-### 7.1 Models, Workers, and job lifecycle
+### 7.1 Models and job lifecycle
 
 The current model is `station-capacity-v1`, version **2.5.0**, using OR-Tools / SCIP mixed-integer programming in `SwitchYard.CapacitySolver`. The `v1` in the ID is not the current feature version. Ordinary trains retain sequential activities and track-circuit occupation constraints; process-generated trains also retain event graphs, durations, exact/minimum ordering, resource locations, and anchor constraints.
 
 Current ordinary-train inputs require at least model 2.4.0; process references require at least 2.5.0. The service checks `minimumModelVersion` and raises the minimum for parameter sets and process references. An older Agent can appear online yet be unable to accept the input; update the Agent and its bundled Solver, then register again.
 
-Each job runs in an independent Worker process. The Agent launches its own internal `--solve-worker` entry point, which invokes the Solver library's Worker Host; the main process's model adapter forwards jobs without executing solver algorithms. CPU settings limit solver threads. The Agent periodically monitors the Worker working set and terminates a Worker exceeding its memory allowance. These controls are not equivalent to complete operating-system container isolation.
+Each job runs inside the Agent process. The Agent assembles domain objects through the shared `CapacityProblem.Build(input)` and calls the Solver directly, with no Worker, temporary input/result files, or second serialization. CPU allowances limit solver threads. Memory allowances configure SCIP internally; there is no process working-set enforcement or equivalent per-job CBC hard memory limit. Resource status samples the current Agent process.
 
 The service reserves an available slot before dispatch. Jobs progress through `queued`, `running`, and finally `completed` or `failed`. `queued` is not a durable queue waiting for future resources. A `completed` job does not guarantee a feasible solution: inspect result `hasSolution` and solver `status`.
 
-There is currently no Web/HTTP per-job cancellation endpoint. `Ctrl+C` exits the Agent, propagates cancellation, and terminates relevant Workers; it may affect every job on that Agent. Connection loss triggers reconnection. Registration reports active jobs, and the service fails abandoned previous jobs. Reconnection is not cross-process solver recovery.
+Cancellation tokens request OR-Tools interruption through `InterruptSolve` without terminating a process. `Ctrl+C` cancels all active Agent jobs and waits for model cleanup before exit. On connection loss, the Agent reconnects, registers active jobs, and resends unacknowledged results. Solver instances cannot be resumed after the process exits.
 
 | Data | Persistence |
 | --- | --- |
@@ -270,7 +270,7 @@ Run the separate solver test project from the repository root:
 dotnet run --project SwitchYard.WebApi/SwitchYard.CapacitySolver.Tests
 ```
 
-Business self-tests have moved from the Agent to this project. The Agent's `--self-test` option reports the new entry point and exits without running solver examples. Tests cover shared domain objects, route continuity, process references, concurrent Worker solving, unknown-model rejection, and cancellation of running Workers. They require no API login and write no business database. They do not validate database, proxy, or business-data integration; after publishing, submit a representative job through the Service to verify Worker startup, progress, and result delivery.
+Business self-tests have moved from the Agent to this project. The Agent's `--self-test` option reports the new entry point and exits without running solver examples. Tests cover shared domain objects, route continuity, process references, in-process concurrent solving, unknown-model rejection, and cancellation of running solves. They require no API login and write no business database. They do not validate database, proxy, or business-data integration; after publishing, submit a representative job through the Service to verify domain assembly, direct solving, progress, and result delivery.
 
 Some `*.Tests` projects and `switchyard-vue/checks` are excluded by ignore rules in the current workspace. Test files referenced by older documents may be absent from a fresh clone; confirm delivery before running them. Missing files are not successful tests.
 

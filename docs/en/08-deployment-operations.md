@@ -198,7 +198,7 @@ Missing or unconfigured directories produce empty manifests. Streaming a missing
 
 ## 6. Upgrades, rollback, and recovery
 
-Record the source revision, API `App:Version`, frontend API URL, database types, and maintenance window. Allow running solves to finish. Exiting an Agent can stop its Workers when necessary, but there is currently no per-job cancellation endpoint.
+Record the source revision, API `App:Version`, frontend API URL, database types, and maintenance window. Allow running solves to finish. Exiting an Agent requests cancellation and waits for active models to finish cleanup.
 
 Suggested upgrade sequence:
 
@@ -289,7 +289,7 @@ sudo journalctl -u switchyard-api -n 100 --no-pager
 curl -f http://127.0.0.1:7297/api/System/version
 ```
 
-API file logs are `logs/switchyard-*.log`, rolling daily and at 10 MB, retaining 30 files. Agent logs are its own `logs/capacity-agent-*.log`, rolling daily and at 50 MB, also retaining 30 files; native solver lines have `OR-Tools` source context. File count is not a number of retained days.
+API file logs are `logs/switchyard-*.log`, rolling daily and at 10 MB, retaining 30 files. Agent logs are its own `logs/capacity-agent-*.log`, rolling daily and at 50 MB, also retaining 30 files; solver summaries are recorded directly by `MIPCapacitySolver` without redirecting native standard output. File count is not a number of retained days.
 
 Logging is configured directly in code; do not assume changing the JSON `Serilog` section changes actual sinks or levels. No dedicated liveness/readiness endpoints exist. Also monitor processes, disk, databases, representative business operations, Agent availability, and failure rates.
 

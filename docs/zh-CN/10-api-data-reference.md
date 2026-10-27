@@ -178,7 +178,7 @@ Content-Type: application/json
 
 ### 共享能力领域模型
 
-当前领域模型位于 `SwitchYard.Capacity/Domain`，命名空间为 `SwitchYard.Capacity`，类型为公开 API。`SwitchYard.CapacitySolver` 引用共享库，通过 `CapacityProblem.Build(input)` 将传输 DTO 装配为当前任务的对象图。Agent 负责通信和调度，在 Worker 子进程中调用 Solver 类库。进路、Cell、Link、Node 和参数集复用同一个实体实例；参数占用行直接引用其 `Route`、`Cell`、`ParameterSet`。原始字段保留在实体的 `Input`／`Layout` 中，构图不会改变传输 JSON。
+当前领域模型位于 `SwitchYard.Capacity/Domain`，命名空间为 `SwitchYard.Capacity`，类型为公开 API。对象组装集中在共享库的 `CapacityProblem.Build(input)`，由 Agent 的任务处理方法直接调用。`SwitchYard.CapacitySolver` 接收组装完成的 `CapacityProblem` 对象，返回 `StationCapacitySolveResult` 对象；它不解析 JSON 或自行组装对象图。Agent 仅在 Service 网络边界处理 JSON，组装后直接调用 Solver，不经过文件或子进程。进路、Cell、Link、Node 和参数集复用同一个实体实例；参数占用行直接引用其 `Route`、`Cell`、`ParameterSet`。原始字段保留在实体的 `Input`／`Layout` 中，构图不会改变传输 JSON。
 
 `Train.OperationProcess` 指向共享编排模板，`Train.Process` 保存本列车的执行图。`Movement.Activity`、`StartEvent`、`EndEvent`、`CandidateRoutes` 与 `RouteOptions` 均为对象引用；地点通过 `Node`、`Anchor`、`DwellingRoute` 关联实际实体。模板内活动、事件和锚按模板作用域解析；执行事件、锚和地点按列车作用域隔离，候选地点进一步按事件隔离。求解约束使用这些对象关系，ID 仅在输入解析、求解变量键和结果输出边界使用。
 
@@ -257,6 +257,6 @@ Sketch 控制器请求大小上限为 8 MiB；DWG 导入上限为 20 MiB。代�
 
 ## 代理通讯
 
-代理连接 `/hubs/capacity-agent`，调用 `RegisterAgent`、`ReportStatus`、`ReportProgress` 和 `CompleteJob`；服务端通过 `Solve` 分发任务。注册内容含模型、访问策略、资源容量和仍在执行的任务 ID。接口及 Hub 当前没有浏览器取消任务的标准操作；停止代理会影响其正在执行的 Worker。
+代理连接 `/hubs/capacity-agent`，调用 `RegisterAgent`、`ReportStatus`、`ReportProgress` 和 `CompleteJob`；服务端通过 `Solve` 分发任务。注册内容含模型、访问策略、资源容量和仍在执行的任务 ID。服务端通过 `CancelJob` 发送取消请求，Agent 将取消信号直接传给模型；停止代理会取消全部活动任务并等待模型清理。
 
 代理注册、任务、结果和各模型输入结构见 [CapacityAgentContracts.cs](../../SwitchYard.WebApi/SwitchYard.Capacity/Contracts/CapacityAgentContracts.cs)，运行方式见[安装与首次启动](07-installation.md)。不要把 API 进程内存中的任务状态作为可备份、可恢复的数据库任务队列。

@@ -198,7 +198,7 @@ Agent 需要长连接的 WebSocket 升级头及合适超时；课程视频/PDF �
 
 ## 6. 更新、回滚与恢复
 
-上线前记录代码提交、API `App:Version`、前端构建 API URL、三库类型及变更窗口。让正在求解的任务完成；必要时退出 Agent 停止其 Worker，但当前没有单任务取消接口。
+上线前记录代码提交、API `App:Version`、前端构建 API URL、三库类型及变更窗口。让正在求解的任务完成；必要时退出 Agent，请求中断并等待其正在执行的模型完成清理。
 
 建议升级顺序：
 
@@ -289,7 +289,7 @@ sudo journalctl -u switchyard-api -n 100 --no-pager
 curl -f http://127.0.0.1:7297/api/System/version
 ```
 
-API 文件日志为 `logs/switchyard-*.log`，按日及 10 MB 分卷，保留最近 30 个文件。Agent 为自身 `logs/capacity-agent-*.log`，按日及 50 MB 分卷，也保留 30 个文件；求解原生日志以 `OR-Tools` 来源写入。文件数不是天数。
+API 文件日志为 `logs/switchyard-*.log`，按日及 10 MB 分卷，保留最近 30 个文件。Agent 为自身 `logs/capacity-agent-*.log`，按日及 50 MB 分卷，也保留 30 个文件；求解摘要由 `MIPCapacitySolver` 直接记录，不重定向原生标准输出。文件数不是天数。
 
 日志配置在程序代码中直接建立，不能假定修改 JSON 的 `Serilog` 节就改变实际输出。当前没有专门的存活/就绪健康端点，建议额外监测进程、磁盘、数据库、代表性业务操作以及 Agent 状态和失败率。
 

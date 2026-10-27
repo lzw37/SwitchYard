@@ -136,7 +136,7 @@ C2551,2,Dep,1G,02:30:00,02:33:00
 
 ## 求解与饱和计划
 
-启动独立 CapacityAgent 并连接当前服务。浏览器负责提交和展示，Agent 负责通信、调度和资源监控；Worker 子进程调用 `SwitchYard.CapacitySolver` 中的混合整数模型与 OR-Tools，优先使用 SCIP，不可用时尝试 CBC。
+启动独立 CapacityAgent 并连接当前服务。浏览器负责提交和展示，Agent 负责通信、调度和资源监控；Agent 在本进程中直接调用 `SwitchYard.CapacitySolver` 的混合整数模型与 OR-Tools，优先使用 SCIP，不可用时尝试 CBC。
 
 1. 在“模型求解”选择站场方案与计划，点击“生成输入”，核对 JSON 的计划范围、列车、候选进路及偏移。
 2. 选择在线、有权限且有空闲任务槽的 Agent，选择 `station-capacity-v1`。
@@ -158,7 +158,7 @@ C2551,2,Dep,1G,02:30:00,02:33:00
 
 求解任务、原始输入、进度及结果保存在能力数据库的 `capacitysolvejob` 表中，首次使用时自动建表。关闭、刷新网页或切换实例不会停止后台求解。重新进入“模型求解”后，任务管理列表会自动加载并优先显示进行中的任务；可筛选、分页、进入任意历史任务、查看原始输入及下载结果。普通用户仅管理自己的任务，管理员可管理全部任务；无需选择实例也可进入任务管理。
 
-任务可请求取消，状态先变为“取消中”，待 CapacityAgent 停止 Worker 并确认后才变为“已取消”并释放槽位。代理离线时保留取消请求，重连或上报状态时再次发送。已结束任务可使用原始输入重试（创建新任务并保留旧记录），也可删除任务记录、输入和结果；删除记录不删除已经生成的作业计划。取消功能需要同步更新 CapacityAgent。
+任务可请求取消，状态先变为“取消中”，待 CapacityAgent 中断求解并确认后才变为“已取消”并释放槽位。代理离线时保留取消请求，重连或上报状态时再次发送。已结束任务可使用原始输入重试（创建新任务并保留旧记录），也可删除任务记录、输入和结果；删除记录不删除已经生成的作业计划。取消功能需要同步更新 CapacityAgent。
 
 API 服务重启后会恢复任务记录。仍在运行的代理重连后继续回传进度和结果；暂时无法回传的结果在代理进程中保留至服务确认接收。若代理进程已重启且任务不再存在，重连时会将任务标记为失败，供用户重试。API 与 CapacityAgent 都需要持续运行，任务不会在关机后自行执行；当前协调方式面向单个 API 服务进程。
 
@@ -237,4 +237,4 @@ K(Cell) = 非固定作业占用总秒数 / [(1 − α) × (T − 固定作业占
 - [保留的作业过程说明](../archive/guides/operation-process.md)：详细图形操作、Cell 保存与接口规则。
 - [CapacityAgent 使用说明](../archive/development/capacity-agent.md)：安装、认证、资源配置和求解运行。
 - [站场模块说明](../archive/development/station-layout.md)：布置图复用与编辑器接入。
-- 实现入口：[作业计划页面](../../switchyard-vue/src/capacity/OperationPlan.vue)、[输入构建器](../../SwitchYard.WebApi/SwitchYard.Service/Services/StationCapacityInputBuilder.cs)、[求解模型](../../SwitchYard.WebApi/SwitchYard.CapacitySolver/StationCapacityModel.cs)。
+- 实现入口：[作业计划页面](../../switchyard-vue/src/capacity/OperationPlan.vue)、[输入构建器](../../SwitchYard.WebApi/SwitchYard.Service/Services/StationCapacityInputBuilder.cs)、[求解模型](../../SwitchYard.WebApi/SwitchYard.CapacitySolver/MIPCapacitySolver.cs)。

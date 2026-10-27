@@ -179,7 +179,7 @@ i 从 0 开始
 
 保存求解结果为饱和计划时，会校验完整事件时刻、活动映射和资源衔接，并将求解后的事件时刻、停留股道写入新计划快照。因此初始生成、能力求解、保存饱和计划是三个不同处理阶段。
 
-依据：[过程输入恢复](../../../SwitchYard.WebApi/SwitchYard.Service/Services/StationCapacityProcessInputBuilder.cs#L13)、[代理版本检查](../../../SwitchYard.WebApi/SwitchYard.Service/Services/CapacityAgentRegistry.cs#L138)、[代理中的事件约束（实现现已移至 Solver）](../../../SwitchYard.WebApi/SwitchYard.CapacitySolver/StationCapacityModel.cs)、[求解快照保存](../../../SwitchYard.WebApi/SwitchYard.Service/Services/SaturatedOperationPlanService.cs#L155)。
+依据：[过程输入恢复](../../../SwitchYard.WebApi/SwitchYard.Service/Services/StationCapacityProcessInputBuilder.cs#L13)、[代理版本检查](../../../SwitchYard.WebApi/SwitchYard.Service/Services/CapacityAgentRegistry.cs#L138)、[代理中的事件约束（实现现已移至 Solver）](../../../SwitchYard.WebApi/SwitchYard.CapacitySolver/MIPCapacitySolver.cs)、[求解快照保存](../../../SwitchYard.WebApi/SwitchYard.Service/Services/SaturatedOperationPlanService.cs#L155)。
 
 ## 取消拖动限制后的当前行为
 
@@ -207,7 +207,7 @@ endOccupationShift   = round((方块新终点分钟 - 移动终点分钟) × 60)
 
 当前前后端仍限制过程列车单独新增、删除移动及调整移动顺序。允许编辑现有移动，并不等同于解除所有结构限制。
 
-依据：[图表拖动](../../../switchyard-vue/src/capacity/OperationPlan.vue#L4899)、[拖动保存](../../../switchyard-vue/src/capacity/OperationPlan.vue#L4987)、[后端编辑](../../../SwitchYard.WebApi/SwitchYard.Service/Controllers/OperationPlanController.cs#L1199)、[快照覆盖移动输入](../../../SwitchYard.WebApi/SwitchYard.Service/Services/StationCapacityProcessInputBuilder.cs#L65)、[占用偏移参与求解（实现现已移至 Solver）](../../../SwitchYard.WebApi/SwitchYard.CapacitySolver/StationCapacityModel.cs)、[抽屉读取事件快照](../../../switchyard-vue/src/capacity/OperationPlan.vue#L318)。
+依据：[图表拖动](../../../switchyard-vue/src/capacity/OperationPlan.vue#L4899)、[拖动保存](../../../switchyard-vue/src/capacity/OperationPlan.vue#L4987)、[后端编辑](../../../SwitchYard.WebApi/SwitchYard.Service/Controllers/OperationPlanController.cs#L1199)、[快照覆盖移动输入](../../../SwitchYard.WebApi/SwitchYard.Service/Services/StationCapacityProcessInputBuilder.cs#L65)、[占用偏移参与求解（实现现已移至 Solver）](../../../SwitchYard.WebApi/SwitchYard.CapacitySolver/MIPCapacitySolver.cs)、[抽屉读取事件快照](../../../switchyard-vue/src/capacity/OperationPlan.vue#L318)。
 
 ## 实现边界和审阅事项
 

@@ -22,8 +22,12 @@ public sealed partial class CapacityProblem
     public IReadOnlyList<CapacityTrain> Trains { get; private set; } = null!;
     public IReadOnlyDictionary<string, CapacityTrain> TrainsById { get; private set; } = null!;
 
+    /// <summary>从强类型输入组装单次求解的完整领域对象图，统一解析过程引用并关联列车、进路、事件及资源。</summary>
+    /// <param name="input">调用方已完成反序列化的车站能力输入。</param>
+    /// <returns>可直接传给求解器的完整能力问题对象。</returns>
     public static CapacityProblem Build(StationCapacitySolveInput input)
     {
+        ArgumentNullException.ThrowIfNull(input);
         StationCapacityProcessReferenceResolver.Resolve(input);
         var problem = new CapacityProblem(input);
         problem.LinkDefinitions();

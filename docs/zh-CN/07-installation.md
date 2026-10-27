@@ -13,8 +13,8 @@
 | `HumpDatabase` | 用户、Refresh Token、驼峰实例和计算数据 | API 启动必需 |
 | `CapacityDatabase` | 能力实例、站场、作业计划、过程、分析及求解预设 | 能力模块必需 |
 | `SketchLayoutDatabase` | 独立 SketchLayout 方案 | SketchLayout 模块必需 |
-| `SwitchYard.CapacityAgent` | Service 通信、任务调度、Worker 取消和资源监控 | 模型求解和生成饱和计划需要 |
-| `SwitchYard.CapacitySolver` | 求解模型、OR-Tools 和 Worker 求解入口的 .NET 10 类库 | 随 Agent 发布，由 Worker 调用 |
+| `SwitchYard.CapacityAgent` | Service 通信、任务调度、求解取消和进程资源监控 | 模型求解和生成饱和计划需要 |
+| `SwitchYard.CapacitySolver` | 接收强类型领域对象的求解模型及 OR-Tools .NET 10 类库 | 随 Agent 发布，由 Agent 直接调用 |
 | 课程文件目录 | 本地视频、PDF、Word 资料 | 课程页面有内容时需要 |
 
 当前完整部署有三组数据库配置。旧文档所述“两库”是较早状态。驼峰库和能力库中存在同名异构表，不能共用同一数据库或 SQLite 文件；SketchLayout 也按独立库配置、备份和恢复。
@@ -199,7 +199,7 @@ npm.cmd run preview
 
 ## 7. 安装 CapacityAgent
 
-API 负责分派任务，Agent 负责通信、调度和资源监控，独立 Worker 子进程调用 `SwitchYard.CapacitySolver` 类库求解。发布 Agent 时会自动带入 Solver 和 OR-Tools 运行依赖，无需另行部署 Solver 可执行程序。没有可用 Agent 时，站场编辑等功能仍可使用，依赖模型的求解入口不能完成任务。此项目职责和测试入口说明更新于 2026-10-27。
+API 负责分派任务，Agent 负责通信、调度和资源监控，并在本进程中直接调用 `SwitchYard.CapacitySolver` 类库求解。发布 Agent 时会自动带入 Solver 和 OR-Tools 运行依赖，无需另行部署 Solver 可执行程序。没有可用 Agent 时，站场编辑等功能仍可使用，依赖模型的求解入口不能完成任务。此项目职责和测试入口说明更新于 2026-10-28。
 
 ```powershell
 dotnet publish SwitchYard.WebApi/SwitchYard.CapacityAgent/SwitchYard.CapacityAgent.csproj -c Release -o ./publish/capacity-agent
@@ -232,7 +232,7 @@ Agent 向 `/api/capacity-agents/authenticate` 获取带客户端类型声明的�
 | `agentName` | 空时使用操作系统用户名；建议多机器使用不同名称 |
 | `maxConcurrentJobs` | 1–128，默认 2 |
 | `cpuCoresPerJob` | 1–128，默认 2；每任务线程上限，不是 CPU 绑核 |
-| `memoryLimitMbPerJob` | 256–1048576，默认 2048；SCIP 设置与 Worker 工作集监测 |
+| `memoryLimitMbPerJob` | 256–1048576，默认 2048；SCIP 内部内存限制；不再监控独立工作集，CBC 无同等硬限制 |
 | `statusReportIntervalSeconds` | 1–60，默认 2 秒 |
 | `allowAllUsers` / `allowedUsers` | 仅管理员 Agent 可开放共享；白名单最多 500 个用户名，每项最多 100 字符 |
 
@@ -240,17 +240,17 @@ Agent 向 `/api/capacity-agents/authenticate` 获取带客户端类型声明的�
 
 Agent ID 由 Agent 名称和登录用户名计算；多台机器用同一组合会产生相同 ID。需要同时在线时设置不同 `agentName`。可用槽位还受逻辑 CPU 和内存余量约束，配置并发为 2 不代表必定有 2 个空闲槽位。
 
-### 7.1 模型、Worker 和任务生命周期
+### 7.1 模型与任务生命周期
 
 当前模型 ID 为 `station-capacity-v1`，版本 **2.5.0**，在 `SwitchYard.CapacitySolver` 中使用 OR-Tools / SCIP 混合整数规划。ID 中的 `v1` 不表示版本 1。普通列车约束顺序作业与轨道电路占用；过程列车还保留事件图、时长、严格/最小次序、资源地点及锚约束。
 
 当前普通列车输入要求模型至少 2.4.0，含作业过程引用时至少 2.5.0；服务端检查输入的 `minimumModelVersion`，并根据参数集与过程引用提高最低要求。旧 Agent 可能在线但无法接收当前任务，应更新 Agent 及随包 Solver 后重新注册。
 
-每个任务运行在独立 Worker 进程。Agent 启动自身的 `--solve-worker` 内部入口，由该入口调用 Solver 类库的 Worker Host；主进程中的模型适配器负责转发任务，不执行求解算法。CPU 资源约束控制求解线程；Agent 定期检查 Worker 工作集并在超过上限时终止它。资源限制不能等同于完整操作系统容器隔离。
+每个任务在 Agent 进程内运行。Agent 先调用共享库的 `CapacityProblem.Build(input)` 组装领域对象，再直接调用 Solver；没有 Worker、临时请求/结果文件或二次序列化。CPU 配额控制求解线程数；内存配置传给 SCIP 的内部限制参数，不再提供进程工作集硬限制，CBC 也没有同等的单任务内存硬限制。资源状态统计当前 Agent 进程的 CPU 和内存。
 
 服务端先保留空闲槽位再派发，状态经过 `queued`、`running`，最后为 `completed` 或 `failed`。`queued` 不是等待未来资源的持久队列。任务 `completed` 也不保证有可行解，须查看结果的 `hasSolution` 和求解器 `status`。
 
-当前没有 Web/HTTP 的单任务取消接口。按 `Ctrl+C` 退出 Agent 会传播取消并终止相应 Worker，可能影响这台 Agent 的所有任务。网络断开会触发重连；重新注册时报告活动任务，服务端把已丢弃的旧任务标记失败。不要把重连视为跨进程恢复求解。
+任务取消通过取消令牌调用 OR-Tools 的 `InterruptSolve`，不终止进程。按 `Ctrl+C` 会取消该 Agent 的全部活动任务，等待模型完成清理后退出。网络断开时 Agent 会重连，并重新注册活动任务和补发尚未确认的结果；退出进程后不能恢复原来的求解器实例。
 
 | 数据 | 是否持久化 |
 | --- | --- |
@@ -270,7 +270,7 @@ Agent ID 由 Agent 名称和登录用户名计算；多台机器用同一组合�
 dotnet run --project SwitchYard.WebApi/SwitchYard.CapacitySolver.Tests
 ```
 
-业务自检已从 Agent 移至此测试项目；Agent 的 `--self-test` 参数会提示新入口并退出，不再运行求解案例。测试覆盖共享领域对象、进路连通性、过程引用、并发 Worker 求解、未知模型拒绝和运行中取消，无需登录 API，不写业务数据库。通过该检查仍不等于三库、代理或业务数据通过联调；发布后还应通过 Service 向 Agent 提交代表性任务，验证 Worker 启动、进度和结果回传。
+业务自检已从 Agent 移至此测试项目；Agent 的 `--self-test` 参数会提示新入口并退出，不再运行求解案例。测试覆盖共享领域对象、进路连通性、过程引用、同进程并发求解、未知模型拒绝和运行中取消，无需登录 API，不写业务数据库。通过该检查仍不等于三库、代理或业务数据通过联调；发布后还应通过 Service 向 Agent 提交代表性任务，验证对象组装、直接求解、进度和结果回传。
 
 当前工作区部分 `*.Tests` 项目及 `switchyard-vue/checks` 由忽略规则排除。旧文档提到的本地测试文件不保证在新克隆中存在；执行前先确认文件确已交付，不把缺少文件当作测试通过。
 

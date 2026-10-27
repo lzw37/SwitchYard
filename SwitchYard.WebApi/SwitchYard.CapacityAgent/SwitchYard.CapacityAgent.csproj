@@ -20,6 +20,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="SwitchYard.CapacitySolver.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <None Update="capacity-agent.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
