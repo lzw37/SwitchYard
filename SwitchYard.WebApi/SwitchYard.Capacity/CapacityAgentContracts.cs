@@ -121,6 +121,7 @@ public sealed class CapacitySolveJobCompletion
 {
     public string JobId { get; set; } = string.Empty;
     public bool Success { get; set; }
+    public bool Cancelled { get; set; }
     public string? Error { get; set; }
     public JsonElement? Result { get; set; }
 }
@@ -145,6 +146,9 @@ public sealed class CapacitySolveJob
     public string? SourceOperationPlanId { get; set; }
     public string? ResultOperationPlanId { get; set; }
     public string? ResultOperationPlanName { get; set; }
+    public string? InstanceId { get; set; }
+    public string? StationSchemeId { get; set; }
+    public string? RetryOfJobId { get; set; }
 }
 
 public sealed class CapacitySolvePreset

@@ -14,7 +14,7 @@ namespace SwitchYard.CapacityAgent;
 internal sealed class CapacityAgentClient
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
-    private static readonly ILogger Logger = Log.ForContext<CapacityAgentClient>();
+    private static readonly Serilog.ILogger Logger = Log.ForContext<CapacityAgentClient>();
     private readonly Uri _serverUri;
     private readonly string _username;
     private readonly string _passwordHash;
@@ -26,6 +26,9 @@ internal sealed class CapacityAgentClient
     private readonly SemaphoreSlim _jobSlots;
     private readonly SemaphoreSlim _tokenLock = new(1, 1);
     private readonly ConcurrentDictionary<string, ActiveJob> _activeJobs = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, CapacitySolveJobCompletion> _pendingCompletions = new(StringComparer.OrdinalIgnoreCase);
+    private readonly SemaphoreSlim _completionLock = new(1, 1);
+    private HubConnection? _registeredConnection;
     private readonly object _resourceSampleLock = new();
     private string _accessToken = string.Empty;
     private DateTimeOffset _accessTokenExpiresAt = DateTimeOffset.MinValue;
@@ -100,8 +103,14 @@ internal sealed class CapacityAgentClient
             StartJob(connection, command, cancellationToken);
             return Task.CompletedTask;
         });
+        connection.On<string>("CancelJob", jobId =>
+        {
+            if (_activeJobs.TryGetValue(jobId, out var job)) job.Cancel();
+            return Task.CompletedTask;
+        });
         connection.Reconnecting += exception =>
         {
+            if (ReferenceEquals(_registeredConnection, connection)) _registeredConnection = null;
             if (exception is null)
             {
                 Logger.Warning("长连接中断，正在重连");
@@ -121,6 +130,7 @@ internal sealed class CapacityAgentClient
         var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         connection.Closed += exception =>
         {
+            if (ReferenceEquals(_registeredConnection, connection)) _registeredConnection = null;
             if (exception != null)
             {
                 Logger.Warning(exception, "长连接已关闭");
@@ -160,6 +170,7 @@ internal sealed class CapacityAgentClient
         CapacitySolveCommand command,
         CancellationToken cancellationToken)
     {
+        if (_activeJobs.ContainsKey(command.JobId) || _pendingCompletions.ContainsKey(command.JobId)) return;
         if (!_jobSlots.Wait(0))
         {
             Logger.Warning(
@@ -167,24 +178,26 @@ internal sealed class CapacityAgentClient
                 command.JobId,
                 _activeJobs.Count,
                 _options.MaxConcurrentJobs);
-            _ = SafeCompleteAsync(connection, new CapacitySolveJobCompletion
+            _ = QueueCompletionAsync(new CapacitySolveJobCompletion
             {
                 JobId = command.JobId,
                 Success = false,
                 Error = $"CapacityAgent 并发任务已达上限 {_options.MaxConcurrentJobs}。"
-            }, cancellationToken);
+            });
             return;
         }
 
         var resources = NormalizeTaskResources(command.Resources);
-        if (!_activeJobs.TryAdd(command.JobId, new ActiveJob(command.JobId, resources)))
+        var activeJob = new ActiveJob(command.JobId, resources, cancellationToken);
+        if (!_activeJobs.TryAdd(command.JobId, activeJob))
         {
+            activeJob.Dispose();
             _jobSlots.Release();
             Logger.Warning("拒绝重复任务 {JobId}", command.JobId);
             return;
         }
 
-        _ = ProcessJobAsync(connection, command, resources, cancellationToken);
+        _ = ProcessJobAsync(connection, command, resources, activeJob.Token);
     }
 
     private async Task ProcessJobAsync(
@@ -214,7 +227,8 @@ internal sealed class CapacityAgentClient
                 Logger.Information("任务进度 {Percent}%：{ProgressMessage}", percent, message);
                 try
                 {
-                    await connection.InvokeAsync("ReportProgress", new CapacitySolveJobProgress
+                    var currentConnection = _registeredConnection ?? throw new InvalidOperationException("CapacityAgent 正在重连。");
+                    await currentConnection.InvokeAsync("ReportProgress", new CapacitySolveJobProgress
                     {
                         JobId = command.JobId,
                         Percent = percent,
@@ -232,37 +246,38 @@ internal sealed class CapacityAgentClient
                 new CapacityModelExecutionContext(command.JobId, resources),
                 ReportProgress,
                 cancellationToken);
-            await SafeCompleteAsync(connection, new CapacitySolveJobCompletion
+            await QueueCompletionAsync(new CapacitySolveJobCompletion
             {
                 JobId = command.JobId,
                 Success = true,
                 Result = result
-            }, cancellationToken);
-            Logger.Information("求解任务已完成并回传结果");
+            });
+            Logger.Information("求解任务已完成，结果已加入回传队列");
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            Logger.Warning("求解任务因 CapacityAgent 停止而取消");
-            await SafeCompleteAsync(connection, new CapacitySolveJobCompletion
+            Logger.Warning("求解任务已取消，Worker 已停止");
+            await QueueCompletionAsync(new CapacitySolveJobCompletion
             {
                 JobId = command.JobId,
                 Success = false,
-                Error = "CapacityAgent 已停止。"
-            }, CancellationToken.None);
+                Cancelled = true,
+                Error = "求解任务已取消。"
+            });
         }
         catch (Exception exception)
         {
             Logger.Error(exception, "求解任务失败");
-            await SafeCompleteAsync(connection, new CapacitySolveJobCompletion
+            await QueueCompletionAsync(new CapacitySolveJobCompletion
             {
                 JobId = command.JobId,
                 Success = false,
                 Error = exception.Message
-            }, cancellationToken);
+            });
         }
         finally
         {
-            _activeJobs.TryRemove(command.JobId, out _);
+            if (_activeJobs.TryRemove(command.JobId, out var activeJob)) activeJob.Dispose();
             _jobSlots.Release();
             await TryReportStatusAsync(connection, CancellationToken.None);
         }
@@ -277,11 +292,13 @@ internal sealed class CapacityAgentClient
                 AgentId = _agentId,
                 Name = _agentName,
                 Models = _models.Descriptors.ToList(),
-                ActiveJobIds = _activeJobs.Keys.OrderBy(id => id, StringComparer.Ordinal).ToList(),
+                ActiveJobIds = _activeJobs.Keys.Concat(_pendingCompletions.Keys).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(id => id, StringComparer.Ordinal).ToList(),
                 Resources = CreateResourceStatus(),
                 AccessPolicy = CreateAccessPolicy()
             },
             cancellationToken);
+        _registeredConnection = connection;
+        await FlushCompletionsAsync();
     }
 
     private CapacityAgentAccessPolicy CreateAccessPolicy()
@@ -304,6 +321,7 @@ internal sealed class CapacityAgentClient
     {
         while (!cancellationToken.IsCancellationRequested)
         {
+            await FlushCompletionsAsync();
             await TryReportStatusAsync(connection, cancellationToken);
             await Task.Delay(TimeSpan.FromSeconds(_options.StatusReportIntervalSeconds), cancellationToken);
         }
@@ -399,29 +417,36 @@ internal sealed class CapacityAgentClient
         };
     }
 
-    private static async Task SafeCompleteAsync(
-        HubConnection connection,
-        CapacitySolveJobCompletion completion,
-        CancellationToken cancellationToken)
+    private async Task QueueCompletionAsync(CapacitySolveJobCompletion completion)
     {
-        for (var attempt = 1; attempt <= 5; attempt++)
+        // Keep results until the API acknowledges durable storage, including long outages.
+        _pendingCompletions[completion.JobId] = completion;
+        await FlushCompletionsAsync();
+    }
+
+    private async Task FlushCompletionsAsync()
+    {
+        if (!await _completionLock.WaitAsync(0)) return;
+        try
         {
-            try
+            var connection = _registeredConnection;
+            if (connection?.State != HubConnectionState.Connected) return;
+            foreach (var completion in _pendingCompletions.Values)
             {
-                await connection.InvokeAsync("CompleteJob", completion, cancellationToken);
-                return;
-            }
-            catch (Exception exception) when (!cancellationToken.IsCancellationRequested && attempt < 5)
-            {
-                Logger.Warning(exception, "回传任务结果失败，正在重试（{Attempt}/5）", attempt);
-                await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
-            }
-            catch (Exception exception)
-            {
-                Logger.Error(exception, "回传任务结果失败，已停止重试");
-                return;
+                try
+                {
+                    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+                    await connection.InvokeAsync("CompleteJob", completion, timeout.Token);
+                    _pendingCompletions.TryRemove(completion.JobId, out _);
+                }
+                catch (Exception exception)
+                {
+                    Logger.Warning(exception, "任务 {JobId} 结果尚未确认，将在连接恢复后继续回传", completion.JobId);
+                    break;
+                }
             }
         }
+        finally { _completionLock.Release(); }
     }
 
     private async Task<string> EnsureTokenAsync(CancellationToken cancellationToken)
@@ -530,5 +555,20 @@ internal sealed class CapacityAgentClient
         }
     }
 
-    private sealed record ActiveJob(string JobId, CapacityTaskResourceLimits Resources);
+    private sealed class ActiveJob : IDisposable
+    {
+        private readonly CancellationTokenSource _cancellation;
+        private bool _disposed;
+        public string JobId { get; }
+        public CapacityTaskResourceLimits Resources { get; }
+        public CancellationToken Token => _cancellation.Token;
+        public ActiveJob(string jobId, CapacityTaskResourceLimits resources, CancellationToken shutdown)
+        {
+            JobId = jobId;
+            Resources = resources;
+            _cancellation = CancellationTokenSource.CreateLinkedTokenSource(shutdown);
+        }
+        public void Cancel() { lock (this) { if (!_disposed) _cancellation.Cancel(); } }
+        public void Dispose() { lock (this) { _disposed = true; _cancellation.Dispose(); } }
+    }
 }

@@ -2182,7 +2182,7 @@ interface SolvePresetOption {
 
 interface SaturatedPlanJob {
     jobId: string
-    status: 'queued' | 'running' | 'completed' | 'failed'
+    status: 'queued' | 'running' | 'cancelling' | 'cancelled' | 'completed' | 'failed'
     progress: number
     progressMessage: string
     error?: string
@@ -6721,7 +6721,7 @@ async function generateSaturatedPlan() {
         while (
             runVersion === saturatedPlanRunVersion &&
             saturatedPlanJob.value &&
-            (saturatedPlanJob.value.status === 'queued' || saturatedPlanJob.value.status === 'running')
+            (saturatedPlanJob.value.status === 'queued' || saturatedPlanJob.value.status === 'running' || saturatedPlanJob.value.status === 'cancelling')
         ) {
             await waitForSaturatedPlanPoll()
             if (runVersion !== saturatedPlanRunVersion || !saturatedPlanJob.value) return
@@ -6732,6 +6732,10 @@ async function generateSaturatedPlan() {
         }
 
         if (runVersion !== saturatedPlanRunVersion || !saturatedPlanJob.value) return
+        if (saturatedPlanJob.value.status === 'cancelled') {
+            ElMessage.info(t('modelSolving.jobs.cancelled'))
+            return
+        }
         if (saturatedPlanJob.value.status === 'failed') {
             throw new Error(saturatedPlanJob.value.error || t('operationPlan.saturatedPlan.messages.generateFailed'))
         }

@@ -175,6 +175,15 @@ public sealed class CapacityAgentRegistry
         }
     }
 
+    public string? GetConnectionId(string agentId)
+    {
+        lock (_syncRoot)
+        {
+            return _agents.TryGetValue(agentId, out var record) && record.IsConnected
+                ? record.ConnectionId : null;
+        }
+    }
+
     public void UpdateStatus(string agentId, string connectionId, CapacityAgentResourceStatus resources)
     {
         lock (_syncRoot)

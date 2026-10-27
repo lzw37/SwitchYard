@@ -11,46 +11,40 @@ public sealed class CapacitySolveJobService
     private readonly CapacityAgentRegistry _agents;
     private readonly IHubContext<CapacityAgentHub> _hubContext;
     private readonly SaturatedOperationPlanService _saturatedPlans;
+    private readonly CapacitySolveJobStore _store;
     private readonly ILogger<CapacitySolveJobService> _logger;
-    private readonly ConcurrentDictionary<string, CapacitySolveJob> _jobs = new(StringComparer.OrdinalIgnoreCase);
-    private readonly ConcurrentDictionary<string, SaturatedPlanJobContext> _saturatedPlanContexts = new(StringComparer.OrdinalIgnoreCase);
-    private readonly ConcurrentDictionary<string, byte> _completingJobs = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, StoredCapacitySolveJob> _jobs = new(StringComparer.OrdinalIgnoreCase);
 
     public CapacitySolveJobService(
         CapacityAgentRegistry agents,
         IHubContext<CapacityAgentHub> hubContext,
         SaturatedOperationPlanService saturatedPlans,
+        CapacitySolveJobStore store,
         ILogger<CapacitySolveJobService> logger)
     {
         _agents = agents;
         _hubContext = hubContext;
         _saturatedPlans = saturatedPlans;
+        _store = store;
         _logger = logger;
+        foreach (var record in store.Load()) _jobs[record.Job.JobId] = record;
     }
+
+    public static bool IsTerminal(string status) => status is "completed" or "failed" or "cancelled";
 
     public async Task<(CapacitySolveJob? Job, string? Error)> SubmitAsync(
         CapacitySolveJobRequest request,
         string requestedBy,
         CancellationToken cancellationToken,
-        SaturatedPlanJobContext? saturatedPlanContext = null)
+        SaturatedPlanJobContext? saturatedPlanContext = null,
+        string? retryOfJobId = null)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var jobId = Guid.NewGuid().ToString("N");
-        var minimumModelVersion = RequiredModelVersion(request);
-        if (!_agents.TryReserve(
-                request.AgentId,
-                request.ModelId,
-                jobId,
-                requestedBy,
-                out var connectionId,
-                out var agent,
-                out var resourceLimits,
-                out var reservationError,
-                minimumModelVersion))
-        {
-            return (null, reservationError);
-        }
+        if (!_agents.TryReserve(request.AgentId, request.ModelId, jobId, requestedBy,
+                out var connectionId, out var agent, out var resources, out var error, RequiredModelVersion(request)))
+            return (null, error);
 
-        var submittedAt = DateTimeOffset.UtcNow;
         var job = new CapacitySolveJob
         {
             JobId = jobId,
@@ -60,39 +54,70 @@ public sealed class CapacitySolveJobService
             RequestedBy = requestedBy,
             Status = "queued",
             ProgressMessage = "任务已提交，等待 CapacityAgent 接收",
-            SubmittedAt = submittedAt,
+            SubmittedAt = DateTimeOffset.UtcNow,
             PresetId = saturatedPlanContext?.PresetId,
             PresetName = saturatedPlanContext?.PresetName,
-            SourceOperationPlanId = saturatedPlanContext?.SourceOperationPlanId
+            SourceOperationPlanId = saturatedPlanContext?.SourceOperationPlanId ?? InputField(request.Input, "operationPlanId"),
+            InstanceId = saturatedPlanContext?.InstanceId ?? InputField(request.Input, "instanceId"),
+            StationSchemeId = saturatedPlanContext?.StationSchemeId ?? InputField(request.Input, "stationSchemeId"),
+            RetryOfJobId = retryOfJobId
         };
-        _jobs[jobId] = job;
-        if (saturatedPlanContext != null)
+        var record = new StoredCapacitySolveJob
         {
-            _saturatedPlanContexts[jobId] = saturatedPlanContext;
-        }
-
+            Job = job,
+            Request = new CapacitySolveJobRequest { AgentId = request.AgentId, ModelId = request.ModelId, Input = request.Input.Clone() },
+            SaturatedPlanContext = saturatedPlanContext
+        };
         try
         {
-            await _hubContext.Clients.Client(connectionId).SendAsync(
-                "Solve",
-                new CapacitySolveCommand
-                {
-                    JobId = jobId,
-                    ModelId = request.ModelId,
-                    Input = request.Input.Clone(),
-                    SubmittedAt = submittedAt,
-                    Resources = resourceLimits
-                },
-                cancellationToken);
-            return (Clone(job), null);
+            _store.Save(record);
+            _jobs[jobId] = record;
+        }
+        catch
+        {
+            _agents.Release(job.AgentId, jobId);
+            throw;
+        }
+
+        // After durable acceptance, closing the HTTP request must not cancel dispatch.
+        try
+        {
+            using var dispatchTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            await _hubContext.Clients.Client(connectionId).SendAsync("Solve", new CapacitySolveCommand
+            {
+                JobId = jobId,
+                ModelId = request.ModelId,
+                Input = request.Input.Clone(),
+                SubmittedAt = job.SubmittedAt,
+                Resources = resources
+            }, dispatchTimeout.Token);
+            return (Get(jobId), null);
         }
         catch (Exception exception)
         {
-            FailJob(jobId, $"向 CapacityAgent 发送任务失败：{exception.Message}");
+            // Delivery may have happened before the transport failed. Keep the reservation
+            // until cancellation acknowledgement or agent reconciliation, never run twice.
+            lock (record)
+            {
+                if (!IsTerminal(job.Status))
+                {
+                    job.Status = "cancelling";
+                    job.ProgressMessage = "任务发送未确认，等待计算代理确认停止";
+                    job.Error = $"向 CapacityAgent 发送任务失败：{exception.Message}";
+                    _store.Save(record);
+                }
+            }
+            await SendCancellationAsync(job);
             _logger.LogError(exception, "Failed to dispatch capacity solve job {JobId}.", jobId);
-            return (Clone(job), job.Error);
+            return (Get(jobId), job.Error);
         }
     }
+
+    private static string? InputField(JsonElement input, string name) =>
+        input.ValueKind == JsonValueKind.Object
+            ? input.EnumerateObject().FirstOrDefault(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase)).Value is var value
+                && value.ValueKind == JsonValueKind.String ? value.GetString() : null
+            : null;
 
     private static string? RequiredModelVersion(CapacitySolveJobRequest request)
     {
@@ -130,169 +155,222 @@ public sealed class CapacitySolveJobService
 
     public void ReportProgress(string connectionId, CapacitySolveJobProgress progress)
     {
-        if (!_jobs.TryGetValue(progress.JobId, out var job) ||
-            !_agents.IsCurrentConnection(job.AgentId, connectionId))
+        var record = GetAgentRecord(connectionId, progress.JobId);
+        lock (record)
         {
-            throw new HubException("任务不存在或不属于当前 CapacityAgent。 ");
-        }
-
-        lock (job)
-        {
-            if (job.Status is "completed" or "failed")
-            {
-                return;
-            }
-
+            var job = record.Job;
+            if (IsTerminal(job.Status) || job.Status == "cancelling") return;
             job.Status = "running";
             job.StartedAt ??= DateTimeOffset.UtcNow;
             job.Progress = Math.Clamp(progress.Percent, 0, 100);
             job.ProgressMessage = progress.Message?.Trim() ?? string.Empty;
+            _store.Save(record);
         }
-        _agents.Touch(job.AgentId);
+        _agents.Touch(record.Job.AgentId);
     }
 
     public void Complete(string connectionId, CapacitySolveJobCompletion completion)
     {
-        if (!_jobs.TryGetValue(completion.JobId, out var job) ||
-            !_agents.IsCurrentConnection(job.AgentId, connectionId))
+        // A terminal task may have been deleted after persistence but before the
+        // agent received its acknowledgement. Acknowledge that replay as well.
+        if (!_jobs.ContainsKey(completion.JobId))
         {
-            throw new HubException("任务不存在或不属于当前 CapacityAgent。 ");
-        }
-
-        if (!_completingJobs.TryAdd(completion.JobId, 0))
-        {
+            var agentId = _agents.GetAgentId(connectionId) ?? throw new HubException("CapacityAgent 尚未注册。");
+            _agents.Release(agentId, completion.JobId);
             return;
         }
-
-        try
+        var record = GetAgentRecord(connectionId, completion.JobId);
+        lock (record)
         {
-            OperationPlanRow? savedPlan = null;
-            if (completion.Success && _saturatedPlanContexts.TryRemove(completion.JobId, out var saturatedContext))
+            var job = record.Job;
+            if (IsTerminal(job.Status))
             {
-                try
-                {
-                    if (!completion.Result.HasValue)
-                    {
-                        throw new InvalidOperationException("CapacityAgent 未返回可保存的求解结果。");
-                    }
-
-                    lock (job)
-                    {
-                        job.Status = "running";
-                        job.StartedAt ??= DateTimeOffset.UtcNow;
-                        job.Progress = Math.Max(job.Progress, 99);
-                        job.ProgressMessage = "求解完成，正在保存新的饱和作业计划";
-                    }
-                    savedPlan = _saturatedPlans.Save(saturatedContext, completion.Result.Value, completion.JobId);
-                }
-                catch (Exception exception)
-                {
-                    lock (job)
-                    {
-                        job.Status = "failed";
-                        job.Error = $"求解完成，但保存饱和作业计划失败：{exception.Message}";
-                        job.ProgressMessage = "保存饱和作业计划失败";
-                        job.CompletedAt = DateTimeOffset.UtcNow;
-                    }
-                    _agents.Release(job.AgentId, job.JobId);
-                    _logger.LogError(exception, "Failed to save saturated operation plan for job {JobId}.", completion.JobId);
-                    return;
-                }
+                if (_jobs.ContainsKey(job.JobId)) _store.Save(record);
+                _agents.Release(job.AgentId, job.JobId);
+                return;
             }
-
-            lock (job)
+            job.StartedAt ??= DateTimeOffset.UtcNow;
+            job.Result = completion.Result?.Clone();
+            if (job.Status == "cancelling" || completion.Cancelled)
             {
-                if (job.Status is "completed" or "failed")
-                {
-                    return;
-                }
-
-                job.StartedAt ??= DateTimeOffset.UtcNow;
-                job.CompletedAt = DateTimeOffset.UtcNow;
+                job.Status = "cancelled";
+                job.ProgressMessage = "任务已取消";
+                job.Error = null;
+                job.Result = null;
+            }
+            else
+            {
                 job.Status = completion.Success ? "completed" : "failed";
                 job.Progress = completion.Success ? 100 : job.Progress;
                 job.ProgressMessage = completion.Success ? "求解完成" : "求解失败";
                 job.Error = completion.Success ? null : completion.Error ?? "CapacityAgent 求解失败。";
-                job.Result = completion.Result?.Clone();
-                job.ResultOperationPlanId = savedPlan?.OperationPlanID;
-                job.ResultOperationPlanName = savedPlan?.Name;
+                if (completion.Success && record.SaturatedPlanContext != null)
+                {
+                    try
+                    {
+                        if (!completion.Result.HasValue) throw new InvalidOperationException("CapacityAgent 未返回可保存的求解结果。");
+                        var savedPlan = _saturatedPlans.Save(record.SaturatedPlanContext, completion.Result.Value, completion.JobId);
+                        job.ResultOperationPlanId = savedPlan.OperationPlanID;
+                        job.ResultOperationPlanName = savedPlan.Name;
+                    }
+                    catch (Exception exception)
+                    {
+                        job.Status = "failed";
+                        job.Error = $"求解完成，但保存饱和作业计划失败：{exception.Message}";
+                        job.ProgressMessage = "保存饱和作业计划失败";
+                        _logger.LogError(exception, "Failed to save saturated operation plan for job {JobId}.", completion.JobId);
+                    }
+                }
             }
-            _saturatedPlanContexts.TryRemove(completion.JobId, out _);
+            job.CompletedAt = DateTimeOffset.UtcNow;
+            _store.Save(record);
             _agents.Release(job.AgentId, job.JobId);
-        }
-        finally
-        {
-            _completingJobs.TryRemove(completion.JobId, out _);
         }
     }
 
     public void FailJob(string jobId, string error)
     {
-        if (!_jobs.TryGetValue(jobId, out var job))
+        if (!_jobs.TryGetValue(jobId, out var record)) return;
+        lock (record)
         {
-            return;
-        }
-        if (_completingJobs.ContainsKey(jobId))
-        {
-            return;
-        }
-
-        lock (job)
-        {
-            if (job.Status is "completed" or "failed")
-            {
-                return;
-            }
-
-            job.Status = "failed";
-            job.Error = error;
-            job.ProgressMessage = "求解失败";
+            var job = record.Job;
+            if (IsTerminal(job.Status)) return;
+            job.Status = job.Status == "cancelling" ? "cancelled" : "failed";
+            job.Error = job.Status == "cancelled" ? null : error;
+            job.ProgressMessage = job.Status == "cancelled" ? "任务已取消" : "求解失败";
             job.CompletedAt = DateTimeOffset.UtcNow;
+            _store.Save(record);
+            _agents.Release(job.AgentId, job.JobId);
         }
-        _saturatedPlanContexts.TryRemove(jobId, out _);
-        _agents.Release(job.AgentId, job.JobId);
+    }
+
+    public async Task<CapacitySolveJob?> CancelAsync(string jobId)
+    {
+        if (!_jobs.TryGetValue(jobId, out var record)) return null;
+        lock (record)
+        {
+            if (IsTerminal(record.Job.Status)) return Clone(record.Job);
+            record.Job.Status = "cancelling";
+            record.Job.ProgressMessage = "已请求取消，等待计算代理停止（离线时将在重连后执行）";
+            _store.Save(record);
+        }
+        await SendCancellationAsync(record.Job);
+        return Get(jobId);
+    }
+
+    private async Task SendCancellationAsync(CapacitySolveJob job)
+    {
+        var connectionId = _agents.GetConnectionId(job.AgentId);
+        if (connectionId == null) return;
+        try
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            await _hubContext.Clients.Client(connectionId).SendAsync("CancelJob", job.JobId, timeout.Token);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "Cancellation for {JobId} will be retried after agent reconnects.", job.JobId);
+        }
+    }
+
+    public async Task DeliverCancellationsAsync(string agentId)
+    {
+        foreach (var record in _jobs.Values.Where(r => string.Equals(r.Job.AgentId, agentId, StringComparison.OrdinalIgnoreCase)))
+        {
+            bool cancel;
+            lock (record) cancel = record.Job.Status == "cancelling";
+            if (cancel) await SendCancellationAsync(record.Job);
+        }
+    }
+
+    // Also reconciles durable records after API restart, when the registry has no prior state.
+    public async Task ReconcileAgentAsync(string agentId, IReadOnlyCollection<string> activeJobIds, DateTimeOffset? registrationStartedAt = null)
+    {
+        var active = activeJobIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var record in _jobs.Values.Where(r => string.Equals(r.Job.AgentId, agentId, StringComparison.OrdinalIgnoreCase)))
+        {
+            bool cancel;
+            lock (record)
+            {
+                // New requests may reserve a slot as soon as Register makes the agent
+                // available. They were not part of the registration's active-job snapshot.
+                if (registrationStartedAt.HasValue && record.Job.SubmittedAt > registrationStartedAt.Value) continue;
+                if (IsTerminal(record.Job.Status))
+                {
+                    _agents.Release(agentId, record.Job.JobId);
+                    continue;
+                }
+                if (!active.Contains(record.Job.JobId))
+                {
+                    FailJob(record.Job.JobId, "CapacityAgent 已重启或任务已丢失，原求解任务未能完成。可使用原输入重试。");
+                    continue;
+                }
+                cancel = record.Job.Status == "cancelling";
+            }
+            if (cancel) await SendCancellationAsync(record.Job);
+        }
+    }
+
+    public Task<(CapacitySolveJob? Job, string? Error)> RetryAsync(string jobId, CancellationToken cancellationToken)
+    {
+        if (!_jobs.TryGetValue(jobId, out var record))
+            return Task.FromResult<(CapacitySolveJob?, string?)>((null, "任务不存在。"));
+        lock (record)
+        {
+            if (!IsTerminal(record.Job.Status))
+                return Task.FromResult<(CapacitySolveJob?, string?)>((null, "任务尚未结束，无法重试。"));
+            return SubmitAsync(record.Request, record.Job.RequestedBy, cancellationToken, record.SaturatedPlanContext, jobId);
+        }
+    }
+
+    public bool Delete(string jobId)
+    {
+        if (!_jobs.TryGetValue(jobId, out var record)) return false;
+        lock (record)
+        {
+            if (!IsTerminal(record.Job.Status)) return false;
+            _store.Delete(jobId);
+            return _jobs.TryRemove(jobId, out _);
+        }
     }
 
     public CapacitySolveJob? Get(string jobId)
     {
-        return _jobs.TryGetValue(jobId, out var job) ? Clone(job) : null;
+        if (!_jobs.TryGetValue(jobId, out var record)) return null;
+        lock (record) return Clone(record.Job);
     }
 
-    public IReadOnlyList<CapacitySolveJob> GetRecent(string requestedBy, bool includeAll, int limit = 50)
+    public JsonElement? GetInput(string jobId) =>
+        _jobs.TryGetValue(jobId, out var record) ? record.Request.Input.Clone() : null;
+
+    public IReadOnlyList<CapacitySolveJob> GetRecent(string requestedBy, bool includeAll, int limit = 50) =>
+        GetPage(requestedBy, includeAll, limit, 0, null).Items;
+
+    public (IReadOnlyList<CapacitySolveJob> Items, int Total) GetPage(string requestedBy, bool includeAll, int limit, int offset, string? status)
     {
-        return _jobs.Values
-            .Where(job => includeAll || string.Equals(job.RequestedBy, requestedBy, StringComparison.Ordinal))
-            .OrderByDescending(job => job.SubmittedAt)
-            .Take(Math.Clamp(limit, 1, 200))
-            .Select(Clone)
+        var jobs = _jobs.Values.Where(r => includeAll || string.Equals(r.Job.RequestedBy, requestedBy, StringComparison.Ordinal))
+            .Select(r => { lock (r) return Clone(r.Job, includeResult: false); })
+            .Where(job => string.IsNullOrEmpty(status) || (status == "active" ? !IsTerminal(job.Status) : job.Status == status))
+            .OrderByDescending(job => !IsTerminal(job.Status)).ThenByDescending(job => job.SubmittedAt).ThenBy(job => job.JobId)
             .ToList();
+        return (jobs.Skip(Math.Max(0, offset)).Take(Math.Clamp(limit, 1, 200)).ToList(), jobs.Count);
     }
 
-    private static CapacitySolveJob Clone(CapacitySolveJob source)
+    private StoredCapacitySolveJob GetAgentRecord(string connectionId, string jobId)
     {
-        lock (source)
-        {
-            return new CapacitySolveJob
-            {
-                JobId = source.JobId,
-                AgentId = source.AgentId,
-                AgentName = source.AgentName,
-                ModelId = source.ModelId,
-                RequestedBy = source.RequestedBy,
-                Status = source.Status,
-                Progress = source.Progress,
-                ProgressMessage = source.ProgressMessage,
-                SubmittedAt = source.SubmittedAt,
-                StartedAt = source.StartedAt,
-                CompletedAt = source.CompletedAt,
-                Error = source.Error,
-                Result = source.Result?.Clone(),
-                PresetId = source.PresetId,
-                PresetName = source.PresetName,
-                SourceOperationPlanId = source.SourceOperationPlanId,
-                ResultOperationPlanId = source.ResultOperationPlanId,
-                ResultOperationPlanName = source.ResultOperationPlanName
-            };
-        }
+        if (!_jobs.TryGetValue(jobId, out var record) || !_agents.IsCurrentConnection(record.Job.AgentId, connectionId))
+            throw new HubException("任务不存在或不属于当前 CapacityAgent。");
+        return record;
     }
+
+    private static CapacitySolveJob Clone(CapacitySolveJob source, bool includeResult = true) => new()
+    {
+        JobId = source.JobId, AgentId = source.AgentId, AgentName = source.AgentName, ModelId = source.ModelId,
+        RequestedBy = source.RequestedBy, Status = source.Status, Progress = source.Progress,
+        ProgressMessage = source.ProgressMessage, SubmittedAt = source.SubmittedAt, StartedAt = source.StartedAt,
+        CompletedAt = source.CompletedAt, Error = source.Error, Result = includeResult ? source.Result?.Clone() : null,
+        PresetId = source.PresetId, PresetName = source.PresetName, SourceOperationPlanId = source.SourceOperationPlanId,
+        ResultOperationPlanId = source.ResultOperationPlanId, ResultOperationPlanName = source.ResultOperationPlanName,
+        InstanceId = source.InstanceId, StationSchemeId = source.StationSchemeId, RetryOfJobId = source.RetryOfJobId
+    };
 }

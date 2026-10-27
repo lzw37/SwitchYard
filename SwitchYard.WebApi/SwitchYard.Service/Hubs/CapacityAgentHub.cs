@@ -23,7 +23,7 @@ public sealed class CapacityAgentHub : Hub
         _logger = logger;
     }
 
-    public Task RegisterAgent(CapacityAgentRegistration registration)
+    public async Task RegisterAgent(CapacityAgentRegistration registration)
     {
         registration ??= new CapacityAgentRegistration();
         var normalizedAgentId = registration.AgentId?.Trim();
@@ -53,7 +53,8 @@ public sealed class CapacityAgentHub : Hub
                                   Context.User?.FindFirstValue(ClaimTypes.Role),
                                   "Admin",
                                   StringComparison.OrdinalIgnoreCase);
-        var abandonedJobIds = _agents.Register(
+        var registrationStartedAt = DateTimeOffset.UtcNow;
+        _agents.Register(
             normalizedAgentId,
             normalizedName,
             username,
@@ -63,11 +64,6 @@ public sealed class CapacityAgentHub : Hub
             registration.Resources ?? new CapacityAgentResourceStatus(),
             isAdministrator,
             registration.AccessPolicy ?? new CapacityAgentAccessPolicy());
-        foreach (var abandonedJobId in abandonedJobIds)
-        {
-            _jobs.FailJob(abandonedJobId, "CapacityAgent 已重启，原求解任务未能完成。");
-        }
-
         _logger.LogInformation(
             "CapacityAgent {AgentId} ({AgentName}) registered by {Username} ({Role}) with {ModelCount} model(s), {ActiveJobCount}/{MaxConcurrentJobs} active jobs. Requested allow-all: {AllowAllUsers}; whitelist entries: {AllowedUserCount}.",
             normalizedAgentId,
@@ -79,10 +75,10 @@ public sealed class CapacityAgentHub : Hub
             registration.Resources?.MaxConcurrentJobs ?? 1,
             registration.AccessPolicy?.AllowAllUsers ?? false,
             registration.AccessPolicy?.AllowedUsers?.Count ?? 0);
-        return Task.CompletedTask;
+        await _jobs.ReconcileAgentAsync(normalizedAgentId, (registration.ActiveJobIds ?? new List<string>()).Take(128).ToList(), registrationStartedAt);
     }
 
-    public Task ReportStatus(CapacityAgentResourceStatus resources)
+    public async Task ReportStatus(CapacityAgentResourceStatus resources)
     {
         var agentId = _agents.GetAgentId(Context.ConnectionId);
         if (string.IsNullOrWhiteSpace(agentId))
@@ -91,7 +87,7 @@ public sealed class CapacityAgentHub : Hub
         }
 
         _agents.UpdateStatus(agentId, Context.ConnectionId, resources ?? new CapacityAgentResourceStatus());
-        return Task.CompletedTask;
+        await _jobs.DeliverCancellationsAsync(agentId);
     }
 
     public Task ReportProgress(CapacitySolveJobProgress progress)
