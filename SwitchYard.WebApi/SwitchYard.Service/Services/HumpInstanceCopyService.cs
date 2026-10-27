@@ -39,12 +39,57 @@ namespace SwitchYard.Service.Services
         private readonly SnowflakeIdGenerator _snowflakeIdGenerator;
         private readonly ILogger<HumpInstanceCopyService> _logger;
 
+        private sealed class MissingMappedReferenceException : InvalidOperationException
+        {
+            public MissingMappedReferenceException(string mappingName, string? sourceId)
+            {
+                MappingName = mappingName;
+                SourceId = sourceId;
+            }
+
+            public string MappingName { get; }
+
+            public string? SourceId { get; }
+        }
+
         public HumpInstanceCopyService(
             SnowflakeIdGenerator snowflakeIdGenerator,
             ILogger<HumpInstanceCopyService> logger)
         {
             _snowflakeIdGenerator = snowflakeIdGenerator;
             _logger = logger;
+        }
+
+        public HumpInstanceCopyResult CopyTemplateInstanceForNewUser(string sourceInstanceID, string owner)
+        {
+            var normalizedSourceInstanceID = sourceInstanceID?.Trim() ?? string.Empty;
+            var normalizedOwner = owner?.Trim() ?? string.Empty;
+
+            if (string.IsNullOrWhiteSpace(normalizedSourceInstanceID))
+            {
+                return HumpInstanceCopyResult.Fail(400, "Source instance ID is required.");
+            }
+
+            if (string.IsNullOrWhiteSpace(normalizedOwner))
+            {
+                return HumpInstanceCopyResult.Fail(400, "Owner is required.");
+            }
+
+            var sourceInstanceName = GetInstanceName(normalizedSourceInstanceID);
+            if (sourceInstanceName == null)
+            {
+                return HumpInstanceCopyResult.Fail(404, "Source instance not found.");
+            }
+
+            if (string.IsNullOrWhiteSpace(sourceInstanceName))
+            {
+                return HumpInstanceCopyResult.Fail(400, "Source instance name is required.");
+            }
+
+            return CopyInstance(
+                normalizedSourceInstanceID,
+                $"{sourceInstanceName}{normalizedOwner}",
+                normalizedOwner);
         }
 
         public HumpInstanceCopyResult CopyInstance(string sourceInstanceID, string? newInstanceName, string owner)
@@ -442,6 +487,20 @@ namespace SwitchYard.Service.Services
 
                 return HumpInstanceCopyResult.Ok(copiedInstance);
             }
+            catch (MissingMappedReferenceException ex)
+            {
+                dbConnector.Rollback();
+                var displayName = GetReferenceDisplayName(ex.MappingName);
+                var sourceId = string.IsNullOrWhiteSpace(ex.SourceId) ? "未填写" : ex.SourceId;
+                var message = $"源实例中引用的{displayName}（{sourceId}）不存在或已被删除，请先补齐源实例数据后再复制。";
+                _logger.LogWarning(
+                    ex,
+                    "Missing mapped reference while copying HumpInstance from {SourceInstanceID}: {MappingName} {SourceID}.",
+                    normalizedSourceInstanceID,
+                    ex.MappingName,
+                    sourceId);
+                return HumpInstanceCopyResult.Fail(409, message);
+            }
             catch (Exception ex)
             {
                 dbConnector.Rollback();
@@ -453,6 +512,19 @@ namespace SwitchYard.Service.Services
                     normalizedOwner);
                 return HumpInstanceCopyResult.Fail(500, "Internal server error while copying HumpInstance.");
             }
+        }
+
+        private static string GetReferenceDisplayName(string mappingName)
+        {
+            return mappingName switch
+            {
+                "Hump scheme" => "驼峰方案",
+                "Operation condition" => "计算条件",
+                "Slope line" => "溜放线",
+                "Retarder" => "减速器",
+                "Hump calculation" => "驼峰计算",
+                _ => mappingName
+            };
         }
 
         private void EnsureWriteSucceeded(int affectedRows, string operationName)
@@ -467,12 +539,12 @@ namespace SwitchYard.Service.Services
         {
             if (string.IsNullOrWhiteSpace(sourceId))
             {
-                throw new InvalidOperationException($"{mappingName} source ID is empty.");
+                throw new MissingMappedReferenceException(mappingName, sourceId);
             }
 
             if (!idMap.TryGetValue(sourceId, out var mappedId) || string.IsNullOrWhiteSpace(mappedId))
             {
-                throw new InvalidOperationException($"{mappingName} mapping is missing for source ID {sourceId}.");
+                throw new MissingMappedReferenceException(mappingName, sourceId);
             }
 
             return mappedId;
@@ -494,6 +566,16 @@ namespace SwitchYard.Service.Services
             }
 
             throw new InvalidOperationException("Failed to generate a unique instance ID.");
+        }
+
+        private static string? GetInstanceName(string instanceID)
+        {
+            var dbConnector = DBConnector.GetDBConnector();
+            var sourceInstance = (dbConnector.Query<HumpInstance>(
+                "SELECT * FROM humpinstance WHERE ID = @id",
+                new { id = instanceID }) ?? new List<HumpInstance>()).FirstOrDefault();
+
+            return sourceInstance?.Name?.Trim();
         }
 
         private List<RetarderStatus> LoadRetarderStatusList(DBConnector dbConnector, string instanceID, string humpCalculationID)

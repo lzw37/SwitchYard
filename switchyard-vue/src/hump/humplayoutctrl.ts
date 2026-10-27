@@ -150,6 +150,7 @@ export class Switch {
 
 export class Retarder {
     id: string;
+    bindingPositionSegmentID?: string;
     bindingPositionSegment?: PositionSegment;
     numberArray: number[];
 
@@ -158,6 +159,7 @@ export class Retarder {
         numberArray: number[] = [],
     ) {
         this.id = "";
+        this.bindingPositionSegmentID = bindingPositionSegment?.id;
         this.bindingPositionSegment = bindingPositionSegment;
         this.numberArray = numberArray;
     }

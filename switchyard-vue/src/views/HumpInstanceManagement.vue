@@ -6,7 +6,7 @@
                 <p class="subtitle">{{ t('humpInstanceManagement.subtitle') }}</p>
             </div>
             <div class="header-actions">
-                <el-button size="small" icon="el-icon-refresh" @click="loadInstances" :loading="loading">
+                <el-button size="small" icon="el-icon-refresh" :loading="loading" @click="loadInstances">
                     {{ t('humpInstanceManagement.toolbar.refresh') }}
                 </el-button>
                 <el-button size="small" type="primary" icon="el-icon-plus" @click="openCreate">
@@ -52,6 +52,19 @@
                 </template>
             </el-table-column>
         </el-table>
+
+        <div class="table-footer">
+            <el-pagination
+                background
+                :current-page="pagination.pageNumber"
+                :page-size="pagination.pageSize"
+                :page-sizes="pageSizes"
+                :total="pagination.totalCount"
+                layout="total, sizes, prev, pager, next, jumper"
+                @current-change="handleCurrentChange"
+                @size-change="handleSizeChange"
+            />
+        </div>
 
         <el-dialog
             :title="dialogMode === 'create' ? t('humpInstance.dialogs.createTitle') : t('humpInstance.dialogs.editTitle')"
@@ -137,7 +150,7 @@
                     :title="
                         tr(
                             'humpInstanceManagement.copy.generatedIdHint',
-                            '新实例号将由系统自动生成',
+                            '新实例编号将由系统自动生成',
                             'The new instance ID will be generated automatically',
                         )
                     "
@@ -163,6 +176,7 @@ import { useI18n } from 'vue-i18n'
 import axios from '@/utils/axios'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
+import { DEFAULT_PAGE_SIZES, type PagedResult } from '@/types/pagination'
 
 interface HumpInstance {
     id: string
@@ -190,6 +204,12 @@ const dialogMode = ref<'create' | 'edit'>('create')
 const formRef = ref<FormInstance>()
 const copyFormRef = ref<FormInstance>()
 const copySourceLabel = ref('')
+const pageSizes = [...DEFAULT_PAGE_SIZES]
+const pagination = reactive({
+    pageNumber: 1,
+    pageSize: 10,
+    totalCount: 0,
+})
 
 const formData = reactive({
     id: '',
@@ -224,8 +244,7 @@ const tr = (
 ) => {
     const currentLocale = locale.value
     if (te(key, currentLocale)) {
-        const translated = params ? t(key, params) : t(key)
-        return translated
+        return params ? t(key, params) : t(key)
     }
 
     return interpolateText(isZhLocale.value ? zhFallback : enFallback, params)
@@ -284,15 +303,33 @@ const formatDate = (value?: string) => {
 const loadInstances = async () => {
     loading.value = true
     try {
-        const response = await axios.get<HumpInstance[]>('/Hump/GetInstances')
-        instances.value = (response.data || []).map((item) => ({
+        const response = await axios.get<PagedResult<HumpInstance>>('/Hump/GetInstancePage', {
+            params: {
+                pageNumber: pagination.pageNumber,
+                pageSize: pagination.pageSize,
+            },
+        })
+
+        const result = response.data
+        const totalPages = Math.max(1, Math.ceil((result.totalCount || 0) / (result.pageSize || pagination.pageSize)))
+        if (result.totalCount > 0 && pagination.pageNumber > totalPages) {
+            pagination.pageNumber = totalPages
+            await loadInstances()
+            return
+        }
+
+        instances.value = (result.items || []).map((item) => ({
             ...item,
             isActive: Number(item.isActive ?? 1),
         }))
+        pagination.pageNumber = result.pageNumber || pagination.pageNumber
+        pagination.pageSize = result.pageSize || pagination.pageSize
+        pagination.totalCount = result.totalCount || 0
     } catch (error: any) {
         console.error('Failed to load instances', error)
         ElMessage.error(t('humpInstance.messages.loadError'))
         instances.value = []
+        pagination.totalCount = 0
     } finally {
         loading.value = false
     }
@@ -318,6 +355,17 @@ const loadUsers = async () => {
         console.error('Failed to load users', error)
         ElMessage.error(t('humpInstanceManagement.messages.userLoadError'))
     }
+}
+
+const handleCurrentChange = (pageNumber: number) => {
+    pagination.pageNumber = pageNumber
+    void loadInstances()
+}
+
+const handleSizeChange = (pageSize: number) => {
+    pagination.pageSize = pageSize
+    pagination.pageNumber = 1
+    void loadInstances()
 }
 
 const resetForm = () => {
@@ -361,80 +409,86 @@ const openCopy = (instance: HumpInstance) => {
 const handleSubmit = async () => {
     if (!formRef.value) return
 
-    await formRef.value.validate(async (valid) => {
-        if (!valid) return
+    try {
+        await formRef.value.validate()
+    } catch {
+        return
+    }
 
-        saving.value = true
-        try {
-            if (dialogMode.value === 'create') {
-                await axios.post('/Hump/CreateInstance', {
-                    name: formData.name.trim(),
-                    owner: formData.owner,
-                    isActive: formData.isActive,
-                })
-                ElMessage.success(t('humpInstance.messages.createSuccess'))
-            } else {
-                await axios.put('/Hump/EditInstance', {
-                    id: formData.id,
-                    name: formData.name.trim(),
-                    owner: formData.owner,
-                    isActive: formData.isActive,
-                })
-                ElMessage.success(t('humpInstance.messages.editSuccess'))
-            }
-
-            dialogVisible.value = false
-            await loadInstances()
-        } catch (error: any) {
-            console.error('Failed to save instance', error)
-            ElMessage.error(
-                dialogMode.value === 'create'
-                    ? t('humpInstance.messages.createError')
-                    : t('humpInstance.messages.editError'),
-            )
-        } finally {
-            saving.value = false
+    saving.value = true
+    try {
+        if (dialogMode.value === 'create') {
+            await axios.post('/Hump/CreateInstance', {
+                name: formData.name.trim(),
+                owner: formData.owner,
+                isActive: formData.isActive,
+            })
+            pagination.pageNumber = 1
+            ElMessage.success(t('humpInstance.messages.createSuccess'))
+        } else {
+            await axios.put('/Hump/EditInstance', {
+                id: formData.id,
+                name: formData.name.trim(),
+                owner: formData.owner,
+                isActive: formData.isActive,
+            })
+            ElMessage.success(t('humpInstance.messages.editSuccess'))
         }
-    })
+
+        dialogVisible.value = false
+        await loadInstances()
+    } catch (error: any) {
+        console.error('Failed to save instance', error)
+        ElMessage.error(
+            dialogMode.value === 'create'
+                ? t('humpInstance.messages.createError')
+                : t('humpInstance.messages.editError'),
+        )
+    } finally {
+        saving.value = false
+    }
 }
 
 const handleCopy = async () => {
     if (!copyFormRef.value) return
 
-    await copyFormRef.value.validate(async (valid) => {
-        if (!valid) return
+    try {
+        await copyFormRef.value.validate()
+    } catch {
+        return
+    }
 
-        copying.value = true
-        try {
-            const response = await axios.post<HumpInstance>('/Hump/CopyHumpInstance', {
-                sourceInstanceId: copyForm.sourceInstanceID,
-                newInstanceName: copyForm.newInstanceName.trim(),
-                owner: copyForm.owner,
-            })
+    copying.value = true
+    try {
+        const response = await axios.post<HumpInstance>('/Hump/CopyHumpInstance', {
+            sourceInstanceId: copyForm.sourceInstanceID,
+            newInstanceName: copyForm.newInstanceName.trim(),
+            owner: copyForm.owner,
+        })
 
-            copyDialogVisible.value = false
-            ElMessage.success(
-                tr(
-                    'humpInstanceManagement.messages.copySuccess',
-                    '实例复制成功，新实例号：{id}',
-                    'Instance copied successfully. New ID: {id}',
-                    { id: response.data?.id || '-' },
-                ),
-            )
-            await loadInstances()
-        } catch (error: any) {
-            console.error('Failed to copy instance', error)
-            ElMessage.error(
-                tr(
-                    'humpInstanceManagement.messages.copyError',
-                    '实例复制失败',
-                    'Failed to copy instance',
-                ),
-            )
-        } finally {
-            copying.value = false
-        }
-    })
+        pagination.pageNumber = 1
+        copyDialogVisible.value = false
+        ElMessage.success(
+            tr(
+                'humpInstanceManagement.messages.copySuccess',
+                '实例复制成功，新实例编号：{id}',
+                'Instance copied successfully. New ID: {id}',
+                { id: response.data?.id || '-' },
+            ),
+        )
+        await loadInstances()
+    } catch (error: any) {
+        console.error('Failed to copy instance', error)
+        ElMessage.error(
+            tr(
+                'humpInstanceManagement.messages.copyError',
+                '实例复制失败',
+                'Failed to copy instance',
+            ),
+        )
+    } finally {
+        copying.value = false
+    }
 }
 
 onMounted(() => {
@@ -470,6 +524,11 @@ onMounted(() => {
 .header-actions {
     display: flex;
     gap: 10px;
+}
+
+.table-footer {
+    display: flex;
+    justify-content: flex-end;
 }
 
 .copy-hint {

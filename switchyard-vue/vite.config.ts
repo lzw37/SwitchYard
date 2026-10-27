@@ -13,9 +13,40 @@ export default defineConfig(({ mode }) => {
             ...(mode === "development" ? [vueDevTools()] : []),
         ],
         resolve: {
-            alias: {
-                "@": fileURLToPath(new URL("./src", import.meta.url)),
-            },
+            alias: [
+                {
+                    find: /^vue$/,
+                    replacement: fileURLToPath(
+                        new URL("./node_modules/vue/dist/vue.runtime.esm-bundler.js", import.meta.url),
+                    ),
+                },
+                {
+                    find: /^element-plus$/,
+                    replacement: fileURLToPath(
+                        new URL("./node_modules/element-plus/es/index.mjs", import.meta.url),
+                    ),
+                },
+                {
+                    find: /^@element-plus\/icons-vue$/,
+                    replacement: fileURLToPath(
+                        new URL("./node_modules/@element-plus/icons-vue/dist/index.js", import.meta.url),
+                    ),
+                },
+                {
+                    find: /^@switchyard\/station-layout$/,
+                    replacement: fileURLToPath(
+                        new URL(
+                            "../SwitchYard.StationLayout/frontend/src/index.ts",
+                            import.meta.url,
+                        ),
+                    ),
+                },
+                {
+                    find: "@",
+                    replacement: fileURLToPath(new URL("./src", import.meta.url)),
+                },
+            ],
+            dedupe: ["vue", "element-plus", "@element-plus/icons-vue"],
         },
         // 生产环境构建优化
         build: {
@@ -47,12 +78,13 @@ export default defineConfig(({ mode }) => {
         server: {
             host: "0.0.0.0",
             port: 5173,
+            strictPort: true,
             // 开发环境下的代理配置（如果需要）
             proxy:
                 mode === "development"
                     ? {
                           "/api": {
-                              target: "https://localhost:7297",
+                              target: "http://127.0.0.1:7297",
                               changeOrigin: true,
                               secure: false,
                           },

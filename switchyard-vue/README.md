@@ -1,42 +1,13 @@
-# switchyard-vue
+# SwitchYard Web frontend
 
-This template should help get you started developing with Vue 3 in Vite.
+Vue 主前端包含驼峰、通过能力、作业过程、布置图分析、课程和账号界面，并通过相邻的 `SwitchYard.StationLayout/frontend` 复用站场控件。完整说明统一在仓库 `docs/` 中维护。
 
-## Recommended IDE Setup
+The Vue frontend provides the business workspaces and reuses the adjacent station layout package. Full documentation is maintained centrally under `docs/`.
 
-[VS Code](https://code.visualstudio.com/) + [Vue (Official)](https://marketplace.visualstudio.com/items?itemName=Vue.volar) (and disable Vetur).
+| 内容 / Topic | 中文 | English |
+| --- | --- | --- |
+| 文档目录 / Documentation | [中文目录](../docs/zh-CN/README.md) | [English index](../docs/en/README.md) |
+| 启动与构建 / Setup and build | [安装指南](../docs/zh-CN/07-installation.md) | [Installation](../docs/en/07-installation.md) |
+| 开发与验证 / Development and verification | [开发接入](../docs/zh-CN/09-development-integration.md) | [Development](../docs/en/09-development-integration.md) |
 
-## Recommended Browser Setup
-
-- Chromium-based browsers (Chrome, Edge, Brave, etc.):
-  - [Vue.js devtools](https://chromewebstore.google.com/detail/vuejs-devtools/nhdogjmejiglipccpnnnanhbledajbpd) 
-  - [Turn on Custom Object Formatter in Chrome DevTools](http://bit.ly/object-formatters)
-- Firefox:
-  - [Vue.js devtools](https://addons.mozilla.org/en-US/firefox/addon/vue-js-devtools/)
-  - [Turn on Custom Object Formatter in Firefox DevTools](https://fxdx.dev/firefox-devtools-custom-object-formatters/)
-
-## Type Support for `.vue` Imports in TS
-
-TypeScript cannot handle type information for `.vue` imports by default, so we replace the `tsc` CLI with `vue-tsc` for type checking. In editors, we need [Volar](https://marketplace.visualstudio.com/items?itemName=Vue.volar) to make the TypeScript language service aware of `.vue` types.
-
-## Customize configuration
-
-See [Vite Configuration Reference](https://vite.dev/config/).
-
-## Project Setup
-
-```sh
-npm install
-```
-
-### Compile and Hot-Reload for Development
-
-```sh
-npm run dev
-```
-
-### Type-Check, Compile and Minify for Production
-
-```sh
-npm run build
-```
+[历史前端说明 / Previous frontend guide](../docs/archive/development/frontend.md) · [文档维护 / Maintenance](../docs/MAINTENANCE.md)

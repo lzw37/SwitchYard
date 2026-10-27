@@ -51,6 +51,30 @@ const shouldSkipRefresh = (requestConfig?: {
     isLoginRequest(requestConfig?.url) ||
     isRefreshRequest(requestConfig?.url);
 
+const isTimeoutError = (error: AxiosError) =>
+    error.code === "ECONNABORTED" ||
+    error.message.toLowerCase().includes("timeout");
+
+const HUMP_MISSING_REFERENCE_CODES = new Set([
+    "HUMP_REFERENCE_MISSING",
+    "HUMP_CALCULATION_DEPENDENCY_MISSING",
+]);
+
+const isHumpMissingReferencePayload = (data: unknown) => {
+    const payload = data as any;
+    const code = payload?.code || payload?.Code;
+    const legacyCode = payload?.legacyCode || payload?.LegacyCode;
+    return (
+        HUMP_MISSING_REFERENCE_CODES.has(code) ||
+        HUMP_MISSING_REFERENCE_CODES.has(legacyCode)
+    );
+};
+
+const getTimeoutMessage = () =>
+    String(i18n.global.locale.value).startsWith("zh")
+        ? "请求超时，请稍后重试"
+        : "Request timed out, please try again later";
+
 const redirectToLogin = () => {
     authStore.clearAuth();
 
@@ -149,9 +173,15 @@ axios.interceptors.request.use(
 axios.interceptors.response.use(
     (response: AxiosResponse) => response,
     async (error: AxiosError) => {
+        // Leaving a lazy 3D page intentionally cancels its pending data loads.
+        if (axios.isCancel(error)) return Promise.reject(error);
         const originalRequest = error.config as RetriableRequestConfig | undefined;
 
         if (error.response) {
+            if (isHumpMissingReferencePayload(error.response.data)) {
+                return Promise.reject(error);
+            }
+
             switch (error.response.status) {
                 case 401: {
                     if (
@@ -189,7 +219,20 @@ axios.interceptors.response.use(
                     ElMessage.error(i18n.global.t("axios.notFound") as string);
                     break;
                 case 500:
-                    ElMessage.error(i18n.global.t("axios.serverError") as string);
+                    {
+                        const payload = error.response.data as any;
+                        const message = typeof payload?.message === "string"
+                            ? payload.message.trim()
+                            : "";
+                        const detail = typeof payload?.detail === "string"
+                            ? payload.detail.trim()
+                            : "";
+                        ElMessage.error(
+                            message && detail
+                                ? `${message} ${detail}`
+                                : message || detail || (i18n.global.t("axios.serverError") as string),
+                        );
+                    }
                     break;
                 default:
                     ElMessage.error(
@@ -197,6 +240,8 @@ axios.interceptors.response.use(
                             (i18n.global.t("axios.requestFailed") as string),
                     );
             }
+        } else if (isTimeoutError(error)) {
+            ElMessage.error(getTimeoutMessage());
         } else if (error.request) {
             ElMessage.error(i18n.global.t("axios.networkError") as string);
         } else {

@@ -1,3 +1,4 @@
+using Dapper;
 using Konscious.Security.Cryptography;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -231,6 +232,60 @@ namespace SwitchYard.Service.Services
             {
                 _logger.LogError(ex, "Error loading all users");
                 return new List<User>();
+            }
+        }
+
+        /// <summary>
+        /// Get paged users, including inactive users.
+        /// </summary>
+        public PagedResult<User> GetUsersPage(int pageNumber, int pageSize, string? keyword = null)
+        {
+            try
+            {
+                var dbConnector = DBConnector.GetDBConnector();
+                var trimmedKeyword = keyword?.Trim();
+                var parameters = new DynamicParameters();
+                var whereSql = string.Empty;
+
+                if (!string.IsNullOrWhiteSpace(trimmedKeyword))
+                {
+                    whereSql = "WHERE id LIKE @Keyword OR name LIKE @Keyword OR role LIKE @Keyword OR email LIKE @Keyword";
+                    parameters.Add("Keyword", $"%{trimmedKeyword}%");
+                }
+
+                var countSql = $"SELECT COUNT(1) FROM user {whereSql}";
+                var totalCount = (dbConnector.Query<int>(countSql, parameters) ?? new List<int> { 0 }).FirstOrDefault();
+
+                parameters.Add("PageSize", pageSize);
+                parameters.Add("Offset", Math.Max(0, (pageNumber - 1) * pageSize));
+
+                var dataSql = $@"
+                    SELECT id, name, passwordhash, role, email, createat, isactive, mustchangepassword
+                    FROM user
+                    {whereSql}
+                    ORDER BY createat DESC, id DESC
+                    LIMIT @PageSize OFFSET @Offset";
+
+                var items = dbConnector.Query<User>(dataSql, parameters) ?? new List<User>();
+
+                return new PagedResult<User>
+                {
+                    Items = items,
+                    PageNumber = pageNumber,
+                    PageSize = pageSize,
+                    TotalCount = totalCount
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error loading paged users");
+                return new PagedResult<User>
+                {
+                    Items = Array.Empty<User>(),
+                    PageNumber = pageNumber,
+                    PageSize = pageSize,
+                    TotalCount = 0
+                };
             }
         }
 

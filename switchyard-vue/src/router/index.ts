@@ -6,6 +6,13 @@ const authStore = useAuthStore(pinia);
 
 const router = createRouter({
     history: createWebHistory(import.meta.env.BASE_URL),
+    scrollBehavior(to, from, savedPosition) {
+        if (to.name === "capacity-preview" || (to.name === "home" && from.name === "capacity-preview")) {
+            if (savedPosition) return savedPosition;
+            if (to.hash) return { el: to.hash, top: 100 };
+            return { left: 0, top: 0, behavior: "instant" };
+        }
+    },
     routes: [
         {
             path: "/",
@@ -69,9 +76,20 @@ const router = createRouter({
             component: () => import("../views/CreateUser.vue"),
         },
         {
+            path: "/capacity-preview",
+            name: "capacity-preview",
+            component: () => import("../views/CapacityPreview.vue"),
+        },
+        {
             path: "/capacity",
             name: "capacity",
             component: () => import("../capacity/CapacityMain.vue"),
+        },
+        {
+            path: "/sketchlayout",
+            name: "sketchlayout",
+            component: () => import("../sketchlayout/SketchLayoutMain.vue"),
+            meta: { requiresAuth: true },
         },
     ],
 });

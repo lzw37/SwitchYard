@@ -1,0 +1,3366 @@
+<template>
+    <section class="operation-simulation-page">
+        <StationLayoutViewToolbar
+            v-model:density="viewToolbarDensity"
+            v-model:show-grid="showSimulationGrid"
+            v-model:show-nodes="showSimulationNodes"
+            v-model:show-curve-arc="showSimulationCurveArc"
+            v-model:show-cell-names="showSimulationCellNames"
+            v-model:scale-x="layoutScaleX"
+            v-model:scale-y="layoutScaleY"
+            :show-display-controls="!show3D"
+            :fit-disabled="!layoutData"
+            @fit="fitLayoutToFullView"
+            :free-zoom-active="!!layoutEditorRef?.freeZoomActive"
+            @free-zoom="toggleLayoutFreeZoom"
+        >
+            <template #context>
+                <el-switch
+                    v-model="show3D"
+                    class="simulation-view-switch"
+                    :active-text="t('operationSimulation.views.threeDimensional')"
+                    :inactive-text="t('operationSimulation.views.planar')"
+                    :aria-label="t('operationSimulation.views.label')"
+                />
+                <label class="simulation-toolbar-control">
+                    <span>{{ t('stationLayout.menu.stationScheme') }}</span>
+                    <el-select
+                        v-model="currentStationSchemeId"
+                        size="small"
+                        filterable
+                        class="simulation-select"
+                        :loading="loadingStationSchemes"
+                        :disabled="!selectedInstanceId || loadingStationSchemes"
+                        :placeholder="t('stationLayout.placeholders.selectStationScheme')"
+                    >
+                        <el-option
+                            v-for="option in stationSchemeOptions"
+                            :key="option.id"
+                            :label="formatStationSchemeLabel(option)"
+                            :value="option.id"
+                        />
+                    </el-select>
+                </label>
+            </template>
+            <template #primary>
+                <label class="simulation-toolbar-control">
+                    <span>{{ t('stationLayout3d.labels.operationPlan') }}</span>
+                    <el-select
+                        v-model="currentOperationPlanId"
+                        size="small"
+                        filterable
+                        class="simulation-select"
+                        :loading="loadingOperationPlans"
+                        :disabled="!currentStationSchemeId || loadingOperationPlans"
+                        :placeholder="t('stationLayout3d.placeholders.selectOperationPlan')"
+                        @change="handleOperationPlanChange"
+                    >
+                        <el-option
+                            v-for="option in operationPlanOptions"
+                            :key="option.operationPlanID"
+                            :label="formatOperationPlanLabel(option)"
+                            :value="option.operationPlanID"
+                        />
+                    </el-select>
+                </label>
+                <label class="simulation-toolbar-control">
+                    <span>{{ t('stationLayout3d.labels.playbackScope') }}</span>
+                    <el-radio-group
+                        v-model="playbackMode"
+                        size="small"
+                        class="playback-mode-toggle"
+                        @change="handlePlaybackModeChange"
+                    >
+                        <el-radio-button value="single">{{ t('stationLayout3d.playbackModes.single') }}</el-radio-button>
+                        <el-radio-button value="all">{{ t('stationLayout3d.playbackModes.all') }}</el-radio-button>
+                    </el-radio-group>
+                </label>
+                <label class="simulation-toolbar-control">
+                    <span>{{ t('stationLayout3d.labels.train') }}</span>
+                    <el-select
+                        v-model="selectedTrainId"
+                        size="small"
+                        filterable
+                        class="simulation-select train-select"
+                        :loading="loadingTrainOperationPlan"
+                        :disabled="isAllTrainPlayback || trainOptions.length === 0 || loadingTrainOperationPlan"
+                        :placeholder="isAllTrainPlayback ? t('stationLayout3d.placeholders.allTrains') : t('stationLayout3d.placeholders.selectTrain')"
+                        @change="handleTrainChange"
+                    >
+                        <el-option
+                            v-for="option in trainOptions"
+                            :key="option.id"
+                            :label="formatTrainLabel(option)"
+                            :value="option.id"
+                        />
+                    </el-select>
+                </label>
+            </template>
+            <template #actions>
+                <ActionButton
+                    :label="t('common.actions.refresh')"
+                    :icon="Refresh"
+                    :loading="loadingAnyData"
+                    :disabled="!hasScheme"
+                    @click="refreshSimulationData"
+                />
+            </template>
+        </StationLayoutViewToolbar>
+
+        <div ref="simulationBodyRef" class="simulation-body" :style="{ '--simulation-side-width': `${simulationSideWidth}px` }">
+            <div ref="simulationLeftPanelRef" class="simulation-left-panel">
+                <el-empty v-if="!hasScheme" class="simulation-scheme-empty"
+                    :description="t('stationLayout.placeholders.createStationScheme')" />
+                <StationLayout3D
+                    v-if="hasScheme && show3D && active"
+                    v-model:train-model="selectedTrainModel"
+                    v-model:display-ratio="displayRatio3D"
+                    v-model:show-labels="showLabels3D"
+                    v-model:show-track-occupancy="showTrackOccupancy3D"
+                    :layout="layoutData"
+                    :grid-spacing="layoutGridSpacing"
+                    :runs="routeRuns"
+                    :playhead-seconds="playheadSeconds"
+                    :get-playback-seconds="getPlaybackSeconds"
+                    :is-playing="isPlaying"
+                    :is-all-train-playback="isAllTrainPlayback"
+                    :track-occupancy-timeline="trackOccupancyTimeline"
+                    @render-error="pausePlayback"
+                />
+                <div
+                    v-show="hasScheme && !show3D"
+                    ref="layoutViewportRef"
+                    class="simulation-layout-view"
+                    v-loading="loadingLayout"
+                >
+                    <div v-if="hasScheme && layoutData" class="simulation-layout-stage" :style="simulationLayoutStageStyle">
+                        <StationLayoutEditor
+                            ref="layoutEditorRef"
+                            class="simulation-station-layer"
+                            :class="{ 'is-playing': isPlaying }"
+                            readonly
+                            :display-scale-x="layoutScaleX"
+                            :display-scale-y="layoutScaleY"
+                            :display-styles="layoutDisplayStyles"
+                            :show-grid="showSimulationGrid"
+                            :show-nodes="showSimulationNodes"
+                            :show-curve-arc="showSimulationCurveArc"
+                            :grid-spacing="layoutGridSpacing"
+                            :cells="layoutCells"
+                            :show-cell-names="showSimulationCellNames"
+                            :highlighted-route-node-ids="highlightedRouteNodeIds"
+                            :highlighted-route-link-ids="highlightedRouteLinkIds"
+                            :highlighted-route-arrow-node-ids="highlightedRouteArrowNodeIds"
+                            :highlighted-route-color="highlightedRouteColor"
+                            :highlighted-route-arrow-visible="highlightedRouteArrowVisible"
+                            :highlighted-routes="highlightedRoutes"
+                        />
+                        <SimulationTrainOverlay
+                            :cars="simulationScreenTrainCars"
+                            :viewport-el="layoutViewportRef"
+                            :scene-width="layoutViewportState.width"
+                            :scene-height="layoutViewportState.height"
+                            :projection="layoutViewportState"
+                            :animate="isPlaying && !show3D && active"
+                            :reset-revision="trainOverlayResetRevision"
+                        />
+                    </div>
+                    <div v-else class="simulation-layout-empty">
+                        {{ layoutEmptyText }}
+                    </div>
+                </div>
+
+                <PaneDivider
+                    v-model="ganttPanelHeight"
+                    direction="vertical"
+                    reverse
+                    :min="minGanttPanelHeight"
+                    :max="maxGanttPanelHeight"
+                    :reset-value="defaultGanttPanelHeight"
+                    :label="t('common.resize.vertical')"
+                />
+
+                <section class="simulation-gantt-panel" :style="simulationGanttPanelStyle">
+                    <div class="simulation-gantt-header">
+                        <div class="simulation-gantt-title">
+                            <h3 :title="ganttSummaryText">{{ t('stationLayout3d.gantt.title') }}</h3>
+                        </div>
+                        <div class="simulation-gantt-subtable-toolbar">
+                            <el-tabs
+                                v-model="activeGanttSubTableId"
+                                class="simulation-gantt-sub-tabs"
+                                @tab-remove="removeGanttSubTable"
+                            >
+                                <el-tab-pane
+                                    v-for="(subTable, index) in ganttSubTables"
+                                    :key="subTable.id"
+                                    :name="subTable.id"
+                                    :label="formatGanttSubTableLabel(subTable, index)"
+                                    :closable="ganttSubTables.length > 1"
+                                />
+                            </el-tabs>
+                            <div class="simulation-gantt-subtable-actions">
+                                <span class="simulation-gantt-subtable-summary">
+                                    {{ activeGanttSubTableSummaryText }}
+                                </span>
+                                <ActionButton
+                                    :label="t('stationLayout3d.buttons.editSubTable')"
+                                    :icon="Edit"
+                                    :disabled="!activeGanttSubTable"
+                                    @click="openEditGanttSubTableDialog"
+                                />
+                                <ActionButton
+                                    :label="t('stationLayout3d.buttons.createSubTable')"
+                                    :icon="Plus"
+                                    @click="openCreateGanttSubTableDialog"
+                                />
+                            </div>
+                        </div>
+                    </div>
+                    <TrackOccupancyGantt
+                        ref="ganttRef"
+                        v-model:scale-x="ganttScaleX"
+                        :rows="ganttDisplayRows"
+                        :ticks="ganttTicks"
+                        :timeline-width="ganttTimelineWidth"
+                        :playhead-left="ganttPlayheadLeft"
+                        :empty-text="ganttEmptyText"
+                        :cell-axis-label="t('stationLayout3d.gantt.cellAxis')"
+                        :time-axis-label="t('operationPlan.trainOperationChart.timeAxis')"
+                        :refresh-disabled="!hasScope || loadingAnyData"
+                        :refresh-loading="loadingAnyData"
+                        @refresh="refreshSimulationData"
+                    />
+                </section>
+
+                <el-dialog
+                    v-model="ganttSubTableDialogVisible"
+                    :title="ganttSubTableDialogTitle"
+                    width="560px"
+                    class="simulation-gantt-subtable-dialog"
+                >
+                    <el-form label-position="top">
+                        <el-form-item :label="t('stationLayout3d.labels.subTableName')">
+                            <el-input
+                                v-model="ganttSubTableDialogForm.name"
+                                maxlength="100"
+                                show-word-limit
+                                :placeholder="t('stationLayout3d.placeholders.subTableName')"
+                            />
+                        </el-form-item>
+                        <el-form-item :label="t('stationLayout3d.labels.subTableCells')">
+                            <el-select
+                                v-model="ganttSubTableDialogForm.cellIds"
+                                class="simulation-gantt-subtable-cell-select"
+                                multiple
+                                filterable
+                                clearable
+                                collapse-tags
+                                collapse-tags-tooltip
+                                :placeholder="t('stationLayout3d.placeholders.selectSubTableCells')"
+                            >
+                                <el-option
+                                    v-for="cell in ganttAvailableCells"
+                                    :key="cell.id"
+                                    :label="cell.name || cell.id"
+                                    :value="cell.id"
+                                />
+                            </el-select>
+                        </el-form-item>
+                    </el-form>
+                    <template #footer>
+                        <ActionButton
+                            variant="text"
+                            :label="t('common.actions.cancel')"
+                            @click="ganttSubTableDialogVisible = false"
+                            :icon="Close"
+                        />
+                        <ActionButton
+                            variant="text"
+                            :label="t('stationLayout3d.dialogs.confirm')"
+                            type="primary"
+                            @click="confirmGanttSubTableDialog"
+                            :icon="Check"
+                        />
+                    </template>
+                </el-dialog>
+            </div>
+
+            <PaneDivider
+                v-model="simulationSideWidth"
+                class="simulation-side-divider"
+                reverse
+                :min="280"
+                :max="maxSimulationSideWidth"
+                :reset-value="380"
+                :label="t('common.resize.horizontal')"
+            />
+            <aside class="simulation-side-panel">
+                <header class="simulation-panel-header">
+                    <div>
+                        <span>{{ playbackSummaryText }}</span>
+                    </div>
+                    <el-tag size="small" :type="playbackStatusTagType">
+                        {{ playbackStatusText }}
+                    </el-tag>
+                </header>
+
+                <div class="simulation-controls">
+                    <div class="simulation-control-buttons">
+                        <ActionButton
+                            :label="t('common.actions.reset')"
+                            :icon="RefreshLeft"
+                            :disabled="!canPlayback"
+                            @click="resetPlayback"
+                        />
+                        <ActionButton
+                            :label="isPlaying ? t('stationLayout3d.buttons.pause') : t('stationLayout3d.buttons.play')"
+                            :icon="isPlaying ? VideoPause : VideoPlay"
+                            type="primary"
+                            :disabled="!canPlayback"
+                            @click="togglePlayback"
+                        />
+                        <span class="simulation-clock">{{ playbackClockText }}</span>
+                    </div>
+                    <el-slider
+                        :model-value="playheadSeconds"
+                        :min="0"
+                        :max="playbackSliderMax"
+                        :step="0.1"
+                        :disabled="!canPlayback"
+                        :format-tooltip="formatPlayheadTooltip"
+                        @input="handlePlayheadInput"
+                    />
+                    <div class="simulation-speed-row">
+                        <span>{{ t('stationLayout3d.labels.speed') }}</span>
+                        <el-select
+                            v-model="playbackSpeed"
+                            size="small"
+                            class="simulation-speed-select"
+                            :disabled="!canPlayback"
+                        >
+                            <el-option :value="1" label="1x" />
+                            <el-option :value="10" label="10x" />
+                            <el-option :value="60" label="60x" />
+                            <el-option :value="180" label="180x" />
+                            <el-option :value="300" label="300x" />
+                        </el-select>
+                    </div>
+                </div>
+
+                <section class="simulation-route-status">
+                    <div class="simulation-status-grid">
+                        <div>
+                            <span>{{ t('operationSimulation.currentRoute') }}</span>
+                            <strong>{{ activeRouteName }}</strong>
+                        </div>
+                        <div>
+                            <span>{{ t('operationSimulation.phase') }}</span>
+                            <strong>{{ activePhaseText }}</strong>
+                        </div>
+                        <div>
+                            <span>{{ t('operationSimulation.progress') }}</span>
+                            <strong>{{ activeRouteProgressText }}</strong>
+                        </div>
+                        <div v-if="!show3D">
+                            <span>{{ t('operationSimulation.formation') }}</span>
+                            <strong>{{ t('operationSimulation.carCount', { count: 8 }) }}</strong>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="simulation-table-section">
+                    <div class="simulation-table-header">
+                        <h3>{{ t('operationSimulation.movementSequence') }}</h3>
+                        <span>{{ t('operationSimulation.routeCount', { count: routeRuns.length }) }}</span>
+                    </div>
+                    <SimulationMovementTable
+                        ref="movementTableRef"
+                        :rows="simulationRows"
+                        :get-phase="getCachedRunPhase"
+                        :status-text="getRunStatusText"
+                        :status-type="getRunStatusType"
+                        :row-class-name="getSimulationRowClassName"
+                        :empty-text="movementTableEmptyText"
+                    />
+                </section>
+            </aside>
+        </div>
+    </section>
+</template>
+
+<script setup lang="ts">
+import ActionButton from '@/components/ui/ActionButton.vue'
+import TrackOccupancyGantt from './components/TrackOccupancyGantt.vue'
+import { trackOccupancyGanttMetrics, type TrackOccupancyGanttRow } from './components/trackOccupancyGantt'
+import { namedTrackCellNames } from './components/chartRowKinds'
+import { normalizeMovementCellOccupations } from './movementCellOccupation'
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { Check, Close, Edit, Plus, Refresh, RefreshLeft, VideoPause, VideoPlay } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
+import axios from '@/utils/axios'
+import { useCapacityStore } from '@/stores/capacity'
+import { useStationSchemeSelection } from './useStationSchemeSelection'
+import PaneDivider from '@/components/ui/PaneDivider.vue'
+import type {
+    StationRouteOption, TrainOperationPlanTrain, TrainOperationPlanMovement,
+    Point, PathSegment, PolylinePath, RouteGeometry, RouteRun,
+} from './simulationTypes'
+import type { RollingStockModelSelection } from './three/emuModelSelection'
+import { createTrackOccupancyTimeline } from './trackOccupancy'
+
+import StationLayoutEditor from './components/StationLayoutEditor.vue'
+import { buildPlanarTrainScene, samplePlanarTrainScene } from './simulationTrainMotion'
+import { isDwellingRoute } from './simulationDwelling'
+import { countActiveRoutePhases, getHighlightedRouteRunIndices, getRouteRunPhase as getRunPhase, type RouteRunPhase as RunPhase } from './simulationRouteActivity'
+import { getStationRouteHighlightColor } from './routeColors'
+import StationLayoutViewToolbar from './components/StationLayoutViewToolbar.vue'
+import SimulationMovementTable from './components/SimulationMovementTable.vue'
+import SimulationTrainOverlay from './components/SimulationTrainOverlay.vue'
+
+const StationLayout3D = defineAsyncComponent(() => import('./StationLayout3D.vue'))
+const { t } = useI18n()
+
+interface StationSchemeOption {
+    id: string
+    name: string
+}
+
+interface OperationPlanOption {
+    instanceID: string
+    stationSchemeID: string
+    operationPlanID: string
+    name: string
+    description: string
+    sortOrder: number | null
+}
+
+interface StationRouteTimeOption {
+    routeID: string
+    trainTypeID: string
+    cellID: string
+    startOccupationShift: number | null
+    endOccupationShift: number | null
+    isInterruptCell: boolean
+}
+
+interface LayoutNode {
+    id: string
+    x: number
+    y: number
+}
+
+interface LayoutTrack {
+    id: string
+    name: string
+    x1: number
+    y1: number
+    x2: number
+    y2: number
+    fromNodeID: string
+    toNodeID: string
+}
+
+interface LayoutCell {
+    id: string
+    name: string
+    linkIDList: string
+}
+
+interface RouteHighlight {
+    key: string
+    nodeIds: string[]
+    linkIds: string[]
+    arrowNodeIds: string[]
+    color: string
+    arrowVisible: boolean
+}
+
+interface SimulationTrainCar {
+    key: string
+    x: number
+    y: number
+    angle: number
+    length: number
+    width: number
+    fill: string
+    stroke: string
+    label?: string
+}
+
+interface CanvasViewportState {
+    minX: number
+    minY: number
+    maxX: number
+    maxY: number
+    width: number
+    height: number
+    scaleX: number
+    scaleY: number
+}
+
+type PlaybackMode = 'single' | 'all'
+
+interface RouteRunSource {
+    train: TrainOperationPlanTrain
+    movement: TrainOperationPlanMovement
+    sourceIndex: number
+}
+
+interface SimulationRow {
+    index: number
+    key: string
+    trainName: string
+    routeName: string
+    timeText: string
+}
+
+interface GanttTick {
+    key: string
+    seconds: number
+    left: number
+    label: string
+    major: boolean
+}
+
+interface GanttBlock {
+    key: string
+    label: string
+    title: string
+    startSeconds: number
+    endSeconds: number
+    left: number
+    width: number
+    color: string
+}
+
+interface GanttLane {
+    key: string
+    label: string
+    sortIndex: number
+    blocks: GanttBlock[]
+}
+
+interface GanttSubTable {
+    id: string
+    name: string
+    cellIds: string[]
+    hasCustomSelection: boolean
+}
+
+interface GanttSubTableSettingPayload {
+    subTableID: string
+    subTableName: string
+    cellIDs: string[]
+    sortOrder: number
+}
+
+interface GanttSubTableDialogForm {
+    name: string
+    cellIds: string[]
+}
+
+const props = withDefaults(defineProps<{
+    selectedInstanceId: string
+    active?: boolean
+}>(), { active: true })
+
+const defaultOperationPlanID = 'default'
+const syntheticRouteGapSeconds = 1.2
+const routeLockMinSeconds = 1.2
+const routeLockMaxSeconds = 8
+const playbackRenderIntervalMs = 33
+const ganttSidebarWidth = trackOccupancyGanttMetrics.sidebarWidth
+const ganttMinTimelineWidth = 860
+const ganttMaxTimelineWidth = 6400
+const ganttTargetPixelsPerSecond = 0.08
+const ganttDefaultSubTableCount = 3
+const defaultGanttPanelHeight = 260
+const minGanttPanelHeight = 160
+const minLayoutPanelHeight = 220
+const horizontalResizerHeight = 8
+
+function createEmptyCanvasViewportState(): CanvasViewportState {
+    return {
+        minX: 0,
+        minY: 0,
+        maxX: 0,
+        maxY: 0,
+        width: 0,
+        height: 0,
+        scaleX: 1,
+        scaleY: 1,
+    }
+}
+
+const capacityStore = useCapacityStore()
+const currentStationSchemeId = useStationSchemeSelection(() => props.selectedInstanceId)
+const stationSchemesInstanceId = ref('')
+const currentOperationPlanId = ref('')
+const selectedTrainId = ref('')
+const stationSchemeOptions = ref<StationSchemeOption[]>([])
+const operationPlanOptions = ref<OperationPlanOption[]>([])
+const stationRouteOptions = ref<StationRouteOption[]>([])
+const stationRouteTimesByKey = ref<Record<string, StationRouteTimeOption[]>>({})
+const trainOperationPlanTrains = ref<TrainOperationPlanTrain[]>([])
+const trainOperationPlanMovements = ref<TrainOperationPlanMovement[]>([])
+const layoutData = ref<Record<string, unknown> | null>(null)
+const layoutDisplayStyles = ref<Record<string, unknown>>({})
+const layoutCells = ref<LayoutCell[]>([])
+const layoutGridSpacing = ref(20)
+const layoutScaleX = ref(1)
+const layoutScaleY = ref(1)
+const viewToolbarDensity = ref('compact')
+const show3D = ref(false)
+const selectedTrainModel = ref<RollingStockModelSelection>('auto')
+const displayRatio3D = ref(1)
+const showLabels3D = ref(true)
+const showTrackOccupancy3D = ref(false)
+const showSimulationGrid = ref(false)
+const showSimulationNodes = ref(true)
+const showSimulationCurveArc = ref(true)
+const showSimulationCellNames = ref(true)
+const layoutEditorRef = ref<any | null>(null)
+const simulationLeftPanelRef = ref<HTMLElement | null>(null)
+const layoutViewportRef = ref<HTMLElement | null>(null)
+const movementTableRef = ref<InstanceType<typeof SimulationMovementTable> | null>(null)
+const ganttRef = ref<InstanceType<typeof TrackOccupancyGantt> | null>(null)
+const ganttScaleX = ref(1)
+const ganttViewportRef = computed(() => ganttRef.value?.viewport || null)
+// Reading the editor's exposed getter in a computed tracks its scale and bounds,
+// including changes made by fit-to-view, without keeping a second stale snapshot.
+const layoutViewportState = computed<CanvasViewportState>(readLayoutViewportState)
+const loadingStationSchemes = ref(false)
+const loadingOperationPlans = ref(false)
+const loadingStationRoutes = ref(false)
+const loadingStationRouteTimes = ref(false)
+const loadingTrainOperationPlan = ref(false)
+const loadingLayout = ref(false)
+const playheadSeconds = ref(0)
+const trainOverlayResetRevision = ref(0)
+const playbackSpeed = ref(60)
+const playbackMode = ref<PlaybackMode>('single')
+const isPlaying = ref(false)
+const activeRunIndex = ref(-1)
+const activeRunIndices = ref<number[]>([])
+const activeRunPhase = ref<RunPhase>('waiting')
+const activeLockingRunCount = ref(0)
+const activeMovingRunCount = ref(0)
+const activeDwellingRunCount = ref(0)
+const runPhaseByKey = ref<Record<string, RunPhase>>({})
+const simulationBodyRef = ref<HTMLElement | null>(null)
+const simulationSideWidth = ref(380)
+const maxSimulationSideWidth = ref(640)
+const maxGanttPanelHeight = ref(defaultGanttPanelHeight * 2)
+let panelResizeObserver: ResizeObserver | null = null
+const ganttPanelHeight = ref(defaultGanttPanelHeight)
+const ganttSubTableSequence = ref(ganttDefaultSubTableCount)
+const ganttSubTables = ref<GanttSubTable[]>(
+    Array.from({ length: ganttDefaultSubTableCount }, (_, index) => createGanttSubTable(index + 1)),
+)
+const activeGanttSubTableId = ref(ganttSubTables.value[0]?.id || '')
+const loadingGanttSubTableSettings = ref(false)
+const savingGanttSubTableSettings = ref(false)
+const ganttSubTableDialogVisible = ref(false)
+const ganttSubTableDialogMode = ref<'create' | 'edit'>('create')
+const ganttSubTableDialogTargetId = ref('')
+const ganttSubTableDialogTargetSequence = ref(0)
+const ganttSubTableDialogForm = ref<GanttSubTableDialogForm>({
+    name: '',
+    cellIds: [],
+})
+
+let stationSchemeLoadVersion = 0
+let schemeDataLoadVersion = 0
+let isDisposed = false
+let layoutNeedsFit = false
+let operationPlanLoadVersion = 0
+let stationRouteLoadVersion = 0
+let stationRouteTimeLoadVersion = 0
+let trainPlanLoadVersion = 0
+let layoutLoadVersion = 0
+let ganttSubTableLoadVersion = 0
+let animationFrameId: number | null = null
+let tableScrollFrameId: number | null = null
+let ganttScrollFrameId: number | null = null
+let ganttSubTableSaveTimer: ReturnType<typeof window.setTimeout> | null = null
+let suppressGanttSubTableSave = false
+let ganttSubTableSaveRevision = 0
+let ganttSubTableSavingRevision = 0
+let ganttSubTableSaveRequest: Promise<unknown> | null = null
+let lastAnimationTimestamp = 0
+let lastPlaybackRenderTimestamp = 0
+let playbackRuntimeSeconds = 0
+const trainCarAngleMemory = new Map<string, number>()
+
+const hasScheme = computed(() => Boolean(props.selectedInstanceId && currentStationSchemeId.value.trim()))
+const hasScope = computed(() => Boolean(hasScheme.value && currentOperationPlanId.value.trim()))
+const loadingAnyData = computed(() => (
+    loadingStationSchemes.value ||
+    loadingOperationPlans.value ||
+    loadingStationRoutes.value ||
+    loadingStationRouteTimes.value ||
+    loadingTrainOperationPlan.value ||
+    loadingGanttSubTableSettings.value ||
+    savingGanttSubTableSettings.value ||
+    loadingLayout.value
+))
+const trainOptions = computed(() => trainOperationPlanTrains.value)
+const isAllTrainPlayback = computed(() => playbackMode.value === 'all')
+const trainMap = computed(() => {
+    const map = new Map<string, TrainOperationPlanTrain>()
+    trainOperationPlanTrains.value.forEach((train) => map.set(train.id, train))
+    return map
+})
+const selectedTrain = computed(() => trainOptions.value.find((train) => train.id === selectedTrainId.value) || null)
+const stationRouteMap = computed(() => {
+    const map = new Map<string, StationRouteOption>()
+    stationRouteOptions.value.forEach((route) => map.set(route.id, route))
+    return map
+})
+const layoutNodeMap = computed(() => {
+    const map = new Map<string, LayoutNode>()
+    getLayoutNodes(layoutData.value).forEach((node) => map.set(node.id, node))
+    return map
+})
+const layoutTrackMap = computed(() => {
+    const map = new Map<string, LayoutTrack>()
+    getLayoutTracks(layoutData.value).forEach((track) => map.set(track.id, track))
+    return map
+})
+const selectedTrainMovements = computed(() => {
+    const trainID = selectedTrainId.value
+    if (!trainID) return []
+    return trainOperationPlanMovements.value
+        .filter((movement) => movement.trainID === trainID)
+        .sort(compareMovements)
+})
+const routeRuns = computed<RouteRun[]>(() => buildRouteRuns())
+const canPlayback = computed(() => routeRuns.value.length > 0 && simulationDurationSeconds.value > 0)
+const simulationDurationSeconds = computed(() => {
+    return routeRuns.value.reduce((maxSeconds, run) => Math.max(maxSeconds, run.endSeconds), 0)
+})
+const playbackSliderMax = computed(() => Math.max(1, Number(simulationDurationSeconds.value.toFixed(1))))
+const usesPlanTime = computed(() => routeRuns.value.some((run) => run.usesPlanTime))
+const timelineOriginSeconds = computed(() => {
+    const timedRuns = routeRuns.value.filter((run) => run.usesPlanTime)
+    if (timedRuns.length === 0) return 0
+    return Math.min(...timedRuns.map((run) => run.absoluteStartSeconds))
+})
+const ganttTimelineWidth = computed(() => {
+    const duration = Math.max(1, simulationDurationSeconds.value)
+    return Math.round(Math.max(
+        ganttMinTimelineWidth,
+        Math.min(ganttMaxTimelineWidth, duration * ganttTargetPixelsPerSecond),
+    ))
+})
+const ganttTimeScale = computed(() => ganttTimelineWidth.value / Math.max(1, simulationDurationSeconds.value))
+const ganttPlayheadLeft = computed(() => secondsToGanttLeft(playheadSeconds.value))
+const simulationGanttPanelStyle = computed(() => ({
+    flexBasis: `${ganttPanelHeight.value}px`,
+}))
+const ganttTicks = computed<GanttTick[]>(() => buildGanttTicks())
+const ganttAvailableCells = computed<LayoutCell[]>(() => getGanttAvailableCells())
+const activeGanttSubTable = computed(() => (
+    ganttSubTables.value.find((subTable) => subTable.id === activeGanttSubTableId.value) ||
+    ganttSubTables.value[0] ||
+    null
+))
+const activeGanttSubTableCellIds = computed(() => normalizeGanttSubTableCellIds(activeGanttSubTable.value?.cellIds || []))
+const activeGanttSubTableCells = computed<LayoutCell[]>(() => {
+    const selectedCellIds = new Set(activeGanttSubTableCellIds.value)
+    return ganttAvailableCells.value.filter((cell) => selectedCellIds.has(cell.id))
+})
+// Occupancy in 3D uses all cells, independent of the selected Gantt sub-table.
+const trackOccupancyTimeline = computed(() => createTrackOccupancyTimeline(
+    routeRuns.value.flatMap(run => buildGanttBlocksForRun(run).map(({ cellID, block }) => ({
+        cellID, startSeconds: block.startSeconds, endSeconds: block.endSeconds, color: block.color,
+    }))),
+    layoutCells.value,
+))
+const ganttLanes = computed<GanttLane[]>(() => buildGanttLanes())
+const ganttTrackNamesByCell = computed(() => namedTrackCellNames(layoutCells.value,
+    readArray(layoutData.value, 'tracks', 'Tracks').map(track => ({
+        id: readString(track, 'id', 'ID').trim(), name: readString(track, 'name', 'Name').trim(),
+    })),
+))
+const ganttDisplayRows = computed<TrackOccupancyGanttRow[]>(() => ganttLanes.value.map((lane) => ({
+    key: lane.key,
+    label: lane.label,
+    kind: ganttTrackNamesByCell.value.has(lane.key) ? 'track' : 'cell',
+    trackNames: ganttTrackNamesByCell.value.get(lane.key) || [],
+    blocks: lane.blocks.map((block) => ({
+        ...block,
+        className: getGanttBlockClassName(block),
+    })),
+})))
+const ganttSummaryText = computed(() => {
+    if (routeRuns.value.length === 0) return t('stationLayout3d.gantt.noPlayableWork')
+    const blockCount = ganttLanes.value.reduce((count, lane) => count + lane.blocks.length, 0)
+    return t('stationLayout3d.gantt.summary', { laneCount: ganttLanes.value.length, blockCount })
+})
+const activeGanttSubTableSummaryText = computed(() => (
+    t('stationLayout3d.gantt.subTableSummary', { selected: activeGanttSubTableCells.value.length, total: ganttAvailableCells.value.length })
+))
+const ganttSubTableDialogTitle = computed(() => (
+    ganttSubTableDialogMode.value === 'create' ? t('stationLayout3d.dialogs.createGanttSubTable') : t('stationLayout3d.dialogs.editGanttSubTable')
+))
+const ganttEmptyText = computed(() => {
+    if (routeRuns.value.length === 0) return movementTableEmptyText.value
+    if (ganttAvailableCells.value.length > 0 && activeGanttSubTableCells.value.length === 0) {
+        return t('stationLayout3d.gantt.emptySubTable')
+    }
+    return t('stationLayout3d.gantt.emptyOccupation')
+})
+const activeRun = computed(() => {
+    const runs = routeRuns.value
+    if (runs.length === 0) return null
+    return runs[activeRunIndex.value] || runs[0] || null
+})
+const highlightedRouteRuns = computed(() => activeRunIndices.value
+    .map((index) => routeRuns.value[index] || null)
+    .filter((run): run is RouteRun => run !== null))
+const highlightedRoutes = computed<RouteHighlight[]>((previous) => {
+    const previousByKey = new Map(previous?.map((route) => [route.key, route]))
+    const routesByKey = new Map<string, RouteHighlight>()
+    for (const run of highlightedRouteRuns.value) {
+        // Keep paths ordered and separate so simultaneous routes retain their
+        // own curves, directions and colors. Reuse props when only trains change.
+        const key = JSON.stringify([run.route.id, run.color, run.nodeIds, run.linkIds])
+        if (routesByKey.has(key)) continue
+        routesByKey.set(key, previousByKey.get(key) || {
+            key,
+            nodeIds: [...run.nodeIds],
+            linkIds: [...run.linkIds],
+            arrowNodeIds: [...run.nodeIds],
+            color: run.color,
+            arrowVisible: run.nodeIds.length >= 2,
+        })
+    }
+    const routes = [...routesByKey.values()].sort((left, right) => left.key < right.key ? -1 : left.key > right.key ? 1 : 0)
+    return previous && previous.length === routes.length && routes.every((route, index) => route === previous[index])
+        ? previous
+        : routes
+})
+const activePhase = computed(() => activeRunPhase.value)
+const activeRouteProgress = computed(() => getActiveRouteProgress(activeRun.value, playheadSeconds.value))
+// Several trains can share a route. Keep unchanged IDs stable so a new train
+// does not redraw the station's tracks, signals and other static SVG elements.
+const highlightedRouteNodeIds = computed<string[]>((previous) => normalizeUniqueStrings(highlightedRouteRuns.value.flatMap((run) => run.nodeIds), previous))
+const highlightedRouteLinkIds = computed<string[]>((previous) => normalizeUniqueStrings(highlightedRouteRuns.value.flatMap((run) => run.linkIds), previous))
+const highlightedRouteArrowNodeIds = highlightedRouteNodeIds
+const highlightedRouteColor = computed(() => activeRun.value?.color || getStationRouteHighlightColor(''))
+const highlightedRouteArrowVisible = computed(() => highlightedRouteArrowNodeIds.value.length >= 2)
+const planarTrainScene = computed(() => buildPlanarTrainScene(routeRuns.value, layoutViewportState.value))
+const simulationScreenTrainCars = computed<SimulationTrainCar[]>(() => show3D.value || !props.active ? [] : buildSimulationTrainCars())
+const simulationLayoutStageStyle = computed(() => {
+    if (layoutViewportState.value.width <= 0 || layoutViewportState.value.height <= 0) return {}
+    return {
+        width: `${layoutViewportState.value.width}px`,
+        height: `${layoutViewportState.value.height}px`,
+    }
+})
+const activeRouteName = computed(() => {
+    if (isAllTrainPlayback.value || activeRunIndices.value.length > 1) {
+        const activeCount = activeRunIndices.value.length
+        if (activeCount > 0) return t('operationSimulation.activeRoutes', { count: activeCount })
+        return routeRuns.value.length > 0 ? t('operationSimulation.waitingNext') : '-'
+    }
+    return activeRun.value ? getRouteDisplayName(activeRun.value.route) : '-'
+})
+const activePhaseText = computed(() => {
+    if (isAllTrainPlayback.value || activeRunIndices.value.length > 1) {
+        const locking = activeLockingRunCount.value
+        const moving = activeMovingRunCount.value
+        const dwelling = activeDwellingRunCount.value
+        if (dwelling > 0) return t('stationLayout3d.phase.allActiveWithDwelling', { locking, moving, dwelling })
+        if (locking + moving <= 0) return t('stationLayout3d.phase.waiting')
+        return t('stationLayout3d.phase.allActive', { locking, moving })
+    }
+    if (!activeRun.value) return t('stationLayout3d.phase.selecting')
+    if (activePhase.value === 'locking') return t('stationLayout3d.phase.locking')
+    if (activePhase.value === 'dwelling') return t('stationLayout3d.phase.dwelling')
+    if (activePhase.value === 'moving') return t('operationSimulation.moving')
+    if (activePhase.value === 'finished') return t('operationSimulation.completed')
+    return t('stationLayout3d.phase.waiting')
+})
+const finishedRunCount = computed(() => routeRuns.value.filter((run) => runPhaseByKey.value[run.key] === 'finished').length)
+const activeRouteProgressText = computed(() => {
+    if (isAllTrainPlayback.value || activeRunIndices.value.length > 1) return `${finishedRunCount.value}/${routeRuns.value.length}`
+    return `${Math.round(activeRouteProgress.value * 100)}%`
+})
+const playbackStatusText = computed(() => {
+    if (!canPlayback.value) return t('stationLayout3d.status.notReady')
+    if (isPlaying.value) return t('stationLayout3d.status.playing')
+    if (playheadSeconds.value >= simulationDurationSeconds.value) return t('stationLayout3d.status.finished')
+    return t('stationLayout3d.status.paused')
+})
+const playbackStatusTagType = computed<'success' | 'warning' | 'info'>(() => {
+    if (isPlaying.value) return 'success'
+    if (!canPlayback.value) return 'info'
+    return 'warning'
+})
+const playbackClockText = computed(() => (
+    usesPlanTime.value
+        ? formatClockSeconds(timelineOriginSeconds.value + playheadSeconds.value)
+        : formatDurationSeconds(playheadSeconds.value)
+))
+const playbackSummaryText = computed(() => {
+    if (isAllTrainPlayback.value) {
+        return t('stationLayout3d.playback.allSummary', { trainCount: trainOptions.value.length, routeCount: routeRuns.value.length })
+    }
+    const train = selectedTrain.value
+    if (!train) return t('stationLayout3d.playback.selectTrain')
+    return t('stationLayout3d.playback.singleSummary', { train: formatTrainLabel(train), movementCount: selectedTrainMovements.value.length })
+})
+const layoutEmptyText = computed(() => {
+    if (!hasScheme.value) return t('stationLayout.placeholders.createStationScheme')
+    if (loadingLayout.value) return t('operationSimulation.loadingLayout')
+    return t('operationSimulation.emptyLayout')
+})
+const movementTableEmptyText = computed(() => {
+    if (isAllTrainPlayback.value) return t('stationLayout3d.gantt.emptyAllPlan')
+    if (!selectedTrain.value) return t('stationLayout3d.placeholders.selectTrain')
+    if (selectedTrainMovements.value.length === 0) return t('stationLayout3d.gantt.emptyTrainPlan')
+    return t('stationLayout3d.gantt.emptyRoute')
+})
+// Playback status stays outside table data so a phase change does not make
+// Element Plus reprocess and lay out every operation row.
+const simulationRows = computed<SimulationRow[]>(() => routeRuns.value.map((run, index) => ({
+    index,
+    key: run.key,
+    trainName: formatTrainLabel(run.train),
+    routeName: getRouteDisplayName(run.route),
+    timeText: getRunTimeText(run),
+})))
+const currentSimulationRunIndex = computed(getSimulationTableCurrentRunIndex)
+const activeSimulationRunIndices = computed(() => new Set(activeRunIndices.value))
+
+function secondsToGanttLeft(seconds: number) {
+    const duration = Math.max(1, simulationDurationSeconds.value)
+    return Math.max(0, Math.min(duration, Number(seconds || 0))) * ganttTimeScale.value
+}
+
+function buildGanttTicks(): GanttTick[] {
+    const duration = simulationDurationSeconds.value
+    if (duration <= 0) return []
+
+    const targetTickCount = Math.max(4, Math.min(12, Math.floor(ganttTimelineWidth.value / 120)))
+    const stepSeconds = getNiceGanttTickStepSeconds(duration / targetTickCount)
+    const ticks: GanttTick[] = []
+    const seen = new Set<number>()
+    const originSeconds = usesPlanTime.value ? timelineOriginSeconds.value : 0
+    const firstAlignedSeconds = usesPlanTime.value
+        ? Math.max(0, Math.ceil(originSeconds / stepSeconds) * stepSeconds - originSeconds)
+        : 0
+
+    const addTick = (seconds: number, major: boolean) => {
+        const normalizedSeconds = Math.max(0, Math.min(duration, seconds))
+        const tickKey = Math.round(normalizedSeconds * 10)
+        if (seen.has(tickKey)) return
+        seen.add(tickKey)
+        ticks.push({
+            key: String(tickKey),
+            seconds: normalizedSeconds,
+            left: secondsToGanttLeft(normalizedSeconds),
+            label: formatGanttTickLabel(normalizedSeconds),
+            major,
+        })
+    }
+
+    addTick(0, true)
+    let tickIndex = 0
+    for (let seconds = firstAlignedSeconds; seconds <= duration; seconds += stepSeconds) {
+        addTick(seconds, tickIndex % 2 === 0)
+        tickIndex++
+    }
+    addTick(duration, true)
+    return ticks.sort((left, right) => left.seconds - right.seconds)
+}
+
+function getNiceGanttTickStepSeconds(rawStepSeconds: number) {
+    const steps = [5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200, 10800, 14400, 21600, 43200]
+    return steps.find((step) => step >= rawStepSeconds) || steps[steps.length - 1] || 3600
+}
+
+function formatGanttTickLabel(seconds: number) {
+    return usesPlanTime.value
+        ? formatClockSeconds(timelineOriginSeconds.value + seconds)
+        : formatDurationSeconds(seconds)
+}
+
+function buildGanttLanes(): GanttLane[] {
+    if (routeRuns.value.length === 0) return []
+    const lanesByCell = buildGanttBaseLanes()
+
+    routeRuns.value.forEach((run) => {
+        const trainLabel = formatTrainLabel(run.train)
+        const routeName = getRouteDisplayName(run.route)
+        buildGanttBlocksForRun(run).forEach(({ cellID, block }) => {
+            const lane = lanesByCell.get(cellID)
+            if (!lane) return
+            lane.blocks.push({
+                ...block,
+                label: trainLabel,
+                title: `${lane.label} · ${trainLabel} · ${routeName} · ${formatGanttTickLabel(block.startSeconds)} - ${formatGanttTickLabel(block.endSeconds)}`,
+            })
+        })
+    })
+
+    return Array.from(lanesByCell.values())
+        .map((lane) => ({
+            ...lane,
+            blocks: lane.blocks.sort((left, right) => left.left - right.left),
+        }))
+        .sort((left, right) => (
+            left.sortIndex - right.sortIndex ||
+            left.label.localeCompare(right.label, undefined, { numeric: true, sensitivity: 'base' })
+        ))
+}
+
+function buildGanttBaseLanes() {
+    const lanesByCell = new Map<string, GanttLane>()
+    activeGanttSubTableCells.value.forEach((cell, index) => {
+        const cellID = String(cell.id || cell.name || '').trim()
+        if (!cellID || lanesByCell.has(cellID)) return
+        lanesByCell.set(cellID, {
+            key: cellID,
+            label: cell.name || cellID,
+            sortIndex: index,
+            blocks: [],
+        })
+    })
+    return lanesByCell
+}
+
+function getGanttAvailableCells() {
+    return layoutCells.value.length > 0
+        ? layoutCells.value
+        : getFallbackGanttCellsFromRouteTimes()
+}
+
+function getFallbackGanttCellsFromRouteTimes() {
+    const cellsById = new Map<string, LayoutCell>()
+    Object.values(stationRouteTimesByKey.value).flat().forEach((time) => {
+        const cellID = time.cellID.trim()
+        if (!cellID || cellsById.has(cellID)) return
+        cellsById.set(cellID, {
+            id: cellID,
+            name: cellID,
+            linkIDList: '',
+        })
+    })
+    return Array.from(cellsById.values())
+}
+
+function buildGanttBlocksForRun(run: RouteRun) {
+    const origin = run.usesPlanTime ? timelineOriginSeconds.value : run.absoluteStartSeconds - run.startSeconds
+    return (run.movement.cellOccupations || []).map((cell, index) => ({
+        cellID: cell.cellID,
+        block: createGanttBlock(run, cell.cellID, index, cell.startSeconds - origin, cell.endSeconds - origin),
+    }))
+}
+
+function createGanttBlock(
+    run: RouteRun,
+    cellID: string,
+    blockIndex: number,
+    rawStartSeconds: number,
+    rawEndSeconds: number,
+): GanttBlock {
+    const duration = Math.max(0.1, simulationDurationSeconds.value)
+    const orderedStartSeconds = Math.min(rawStartSeconds, rawEndSeconds)
+    const orderedEndSeconds = Math.max(rawStartSeconds, rawEndSeconds)
+    const startSeconds = Math.max(0, Math.min(duration, orderedStartSeconds))
+    const endSeconds = Math.max(startSeconds + 0.1, Math.max(0, Math.min(duration, orderedEndSeconds)))
+    return {
+        key: `${run.key}-${cellID}-${blockIndex}`,
+        label: '',
+        title: '',
+        startSeconds,
+        endSeconds,
+        left: secondsToGanttLeft(startSeconds),
+        width: Math.max(8, (endSeconds - startSeconds) * ganttTimeScale.value),
+        color: run.color,
+    }
+}
+
+function getRouteLayoutCellIds(run: RouteRun) {
+    if (run.linkIds.length === 0) return []
+    const routeLinkIds = new Set(run.linkIds)
+    return layoutCells.value
+        .filter((cell) => parseRouteReferenceList(cell.linkIDList).some((linkID) => routeLinkIds.has(linkID)))
+        .map((cell) => cell.id || cell.name)
+        .filter((cellID) => Boolean(cellID))
+}
+
+function getGanttBlockClassName(block: GanttBlock) {
+    const classes: string[] = []
+    if (playheadSeconds.value >= block.endSeconds) {
+        classes.push('is-finished')
+    } else if (playheadSeconds.value >= block.startSeconds) {
+        classes.push('is-active')
+    } else {
+        classes.push('is-waiting')
+    }
+    return classes.join(' ')
+}
+
+function getGanttSubTableFallbackName(index: number) {
+    return t('stationLayout3d.gantt.subTableFallbackName', { index })
+}
+
+function createGanttSubTable(index: number, name?: string): GanttSubTable {
+    return {
+        id: `occupation-time-sub-table-${index}`,
+        name: name?.trim() || getGanttSubTableFallbackName(index),
+        cellIds: [],
+        hasCustomSelection: false,
+    }
+}
+
+function formatGanttSubTableLabel(subTable: GanttSubTable, index: number) {
+    return subTable.name?.trim() || getGanttSubTableFallbackName(index + 1)
+}
+
+function normalizeGanttSubTableCellIds(cellIds: string[]) {
+    const availableCellIds = new Set(ganttAvailableCells.value.map((cell) => cell.id))
+    return normalizeUniqueStrings(cellIds).filter((cellID) => availableCellIds.has(cellID))
+}
+
+function normalizeStoredGanttSubTableCellIds(cellIds: string[]) {
+    return normalizeUniqueStrings(cellIds)
+}
+
+function runWithoutGanttSubTableSave(action: () => void) {
+    suppressGanttSubTableSave = true
+    try {
+        action()
+    } finally {
+        void nextTick(() => {
+            suppressGanttSubTableSave = false
+        })
+    }
+}
+
+function resetGanttSubTables() {
+    ganttSubTableSequence.value = ganttDefaultSubTableCount
+    ganttSubTables.value = Array.from(
+        { length: ganttDefaultSubTableCount },
+        (_, index) => createGanttSubTable(index + 1),
+    )
+    activeGanttSubTableId.value = ganttSubTables.value[0]?.id || ''
+}
+
+function syncGanttSubTables(cells: LayoutCell[]) {
+    if (ganttSubTables.value.length === 0) {
+        ganttSubTables.value = [createGanttSubTable(1)]
+        ganttSubTableSequence.value = 1
+    }
+
+    const cellIds = cells.map((cell) => cell.id).filter(Boolean)
+    const availableCellIds = new Set(cellIds)
+    if (cellIds.length === 0) return
+
+    ganttSubTables.value = ganttSubTables.value.map((subTable) => ({
+        ...subTable,
+        cellIds: subTable.cellIds.filter((cellID) => availableCellIds.has(cellID)),
+    }))
+
+    if (!ganttSubTables.value.some((subTable) => subTable.id === activeGanttSubTableId.value)) {
+        activeGanttSubTableId.value = ganttSubTables.value[0]?.id || ''
+    }
+
+    const hasCustomSelection = ganttSubTables.value.some((subTable) => subTable.hasCustomSelection)
+    if (hasCustomSelection) return
+
+    const tableCount = Math.max(1, ganttSubTables.value.length)
+    const chunkSize = Math.max(1, Math.ceil(cellIds.length / tableCount))
+    ganttSubTables.value = ganttSubTables.value.map((subTable, index) => ({
+        ...subTable,
+        cellIds: cellIds.slice(index * chunkSize, (index + 1) * chunkSize),
+        hasCustomSelection: false,
+    }))
+}
+
+function getNextGanttSubTableDraft() {
+    const usedIds = new Set(ganttSubTables.value.map((item) => item.id))
+    let sequence = ganttSubTableSequence.value
+    let subTable: GanttSubTable
+    do {
+        sequence += 1
+        subTable = createGanttSubTable(sequence)
+    } while (usedIds.has(subTable.id))
+
+    return { sequence, subTable }
+}
+
+function openCreateGanttSubTableDialog() {
+    const { sequence, subTable } = getNextGanttSubTableDraft()
+    const selectedCellIds = new Set(ganttSubTables.value.flatMap((item) => item.cellIds))
+    const remainingCellIds = ganttAvailableCells.value
+        .map((cell) => cell.id)
+        .filter((cellID) => !selectedCellIds.has(cellID))
+
+    ganttSubTableDialogMode.value = 'create'
+    ganttSubTableDialogTargetId.value = subTable.id
+    ganttSubTableDialogTargetSequence.value = sequence
+    ganttSubTableDialogForm.value = {
+        name: subTable.name,
+        cellIds: remainingCellIds,
+    }
+    ganttSubTableDialogVisible.value = true
+}
+
+function openEditGanttSubTableDialog() {
+    const activeSubTable = activeGanttSubTable.value
+    if (!activeSubTable) return
+
+    const activeIndex = ganttSubTables.value.findIndex((subTable) => subTable.id === activeSubTable.id)
+    ganttSubTableDialogMode.value = 'edit'
+    ganttSubTableDialogTargetId.value = activeSubTable.id
+    ganttSubTableDialogTargetSequence.value = 0
+    ganttSubTableDialogForm.value = {
+        name: activeSubTable.name?.trim() || getGanttSubTableFallbackName(activeIndex + 1),
+        cellIds: [...activeSubTable.cellIds],
+    }
+    ganttSubTableDialogVisible.value = true
+}
+
+function confirmGanttSubTableDialog() {
+    const name = ganttSubTableDialogForm.value.name.trim()
+    if (!name) {
+        ElMessage.warning(t('stationLayout3d.placeholders.subTableName'))
+        return
+    }
+
+    const cellIds = normalizeGanttSubTableCellIds(ganttSubTableDialogForm.value.cellIds)
+    if (ganttSubTableDialogMode.value === 'create') {
+        let subTableId = ganttSubTableDialogTargetId.value
+        let sequence = ganttSubTableDialogTargetSequence.value
+        if (!subTableId || ganttSubTables.value.some((subTable) => subTable.id === subTableId)) {
+            const draft = getNextGanttSubTableDraft()
+            subTableId = draft.subTable.id
+            sequence = draft.sequence
+        }
+
+        ganttSubTableSequence.value = Math.max(ganttSubTableSequence.value, sequence)
+        ganttSubTables.value = [
+            ...ganttSubTables.value,
+            {
+                id: subTableId,
+                name,
+                cellIds,
+                hasCustomSelection: true,
+            },
+        ]
+        activeGanttSubTableId.value = subTableId
+    } else {
+        const subTableId = ganttSubTableDialogTargetId.value
+        ganttSubTables.value = ganttSubTables.value.map((subTable) => (
+            subTable.id === subTableId
+                ? {
+                    ...subTable,
+                    name,
+                    cellIds,
+                    hasCustomSelection: true,
+                }
+                : subTable
+        ))
+    }
+
+    ganttSubTableDialogVisible.value = false
+}
+
+function removeGanttSubTable(name: string | number) {
+    if (ganttSubTables.value.length <= 1) return
+
+    const subTableId = String(name)
+    const removedIndex = ganttSubTables.value.findIndex((subTable) => subTable.id === subTableId)
+    if (removedIndex < 0) return
+
+    const nextSubTables = ganttSubTables.value.filter((subTable) => subTable.id !== subTableId)
+    ganttSubTables.value = nextSubTables
+    if (activeGanttSubTableId.value === subTableId) {
+        activeGanttSubTableId.value = nextSubTables[Math.min(removedIndex, nextSubTables.length - 1)]?.id || ''
+    }
+}
+
+function normalizeGanttSubTableSetting(item: unknown): GanttSubTable | null {
+    const id = readString(item, 'subTableID', 'SubTableID', 'id', 'ID').trim()
+    if (!id) return null
+
+    const cellIDs = normalizeStoredGanttSubTableCellIds(
+        readArray(item, 'cellIDs', 'CellIDs', 'cellIds').map((cellID) => String(cellID ?? '')),
+    )
+    const fallbackCellIDList = readString(item, 'cellIDList', 'CellIDList').trim()
+    return {
+        id,
+        name: readString(item, 'subTableName', 'SubTableName', 'name', 'Name').trim(),
+        cellIds: cellIDs.length > 0
+            ? cellIDs
+            : normalizeStoredGanttSubTableCellIds(parseRouteReferenceList(fallbackCellIDList)),
+        hasCustomSelection: true,
+    }
+}
+
+function applyGanttSubTableSettings(settings: GanttSubTable[]) {
+    const nextSettings = settings.length > 0
+        ? settings
+        : Array.from({ length: ganttDefaultSubTableCount }, (_, index) => createGanttSubTable(index + 1))
+
+    runWithoutGanttSubTableSave(() => {
+        ganttSubTables.value = nextSettings.map((setting, index) => ({
+            ...setting,
+            name: setting.name?.trim() || getGanttSubTableFallbackName(index + 1),
+            cellIds: normalizeStoredGanttSubTableCellIds(setting.cellIds),
+            hasCustomSelection: true,
+        }))
+        ganttSubTableSequence.value = Math.max(ganttDefaultSubTableCount, ganttSubTables.value.length)
+        activeGanttSubTableId.value = ganttSubTables.value[0]?.id || ''
+        syncGanttSubTables(ganttAvailableCells.value)
+    })
+}
+
+function buildGanttSubTableSettingsPayload(): GanttSubTableSettingPayload[] {
+    return ganttSubTables.value.map((subTable, index) => ({
+        subTableID: subTable.id,
+        subTableName: subTable.name?.trim() || getGanttSubTableFallbackName(index + 1),
+        cellIDs: normalizeStoredGanttSubTableCellIds(subTable.cellIds),
+        sortOrder: index,
+    }))
+}
+
+function readString(source: unknown, ...keys: string[]) {
+    const record = source && typeof source === 'object' ? source as Record<string, unknown> : {}
+    for (const key of keys) {
+        const value = record[key]
+        if (value !== undefined && value !== null) return String(value)
+    }
+    return ''
+}
+
+function readArray(source: unknown, ...keys: string[]) {
+    const record = source && typeof source === 'object' ? source as Record<string, unknown> : {}
+    for (const key of keys) {
+        const value = record[key]
+        if (Array.isArray(value)) return value
+    }
+    return []
+}
+
+function readOptionalInteger(source: unknown, ...keys: string[]): number | null {
+    const record = source && typeof source === 'object' ? source as Record<string, unknown> : {}
+    for (const key of keys) {
+        const value = record[key]
+        if (value === undefined || value === null || value === '') continue
+        const parsed = Number(value)
+        if (Number.isFinite(parsed)) return Math.trunc(parsed)
+    }
+    return null
+}
+
+function readBoolean(source: unknown, defaultValue: boolean, ...keys: string[]) {
+    const record = source && typeof source === 'object' ? source as Record<string, unknown> : {}
+    for (const key of keys) {
+        const value = record[key]
+        if (value === undefined || value === null || value === '') continue
+        if (typeof value === 'boolean') return value
+        if (typeof value === 'number') return value === 1
+        const text = String(value).trim().toLowerCase()
+        if (['1', 'true', 'yes', 'y'].includes(text)) return true
+        if (['0', 'false', 'no', 'n'].includes(text)) return false
+    }
+    return defaultValue
+}
+
+function normalizeStationSchemeOption(item: unknown): StationSchemeOption | null {
+    const id = readString(item, 'id', 'ID').trim()
+    if (!id) return null
+    return {
+        id,
+        name: readString(item, 'name', 'Name').trim() || id,
+    }
+}
+
+function normalizeOperationPlanOption(item: unknown): OperationPlanOption | null {
+    const operationPlanID = readString(item, 'operationPlanID', 'OperationPlanID').trim()
+    if (!operationPlanID) return null
+    return {
+        instanceID: readString(item, 'instanceID', 'InstanceID').trim(),
+        stationSchemeID: readString(item, 'stationSchemeID', 'StationSchemeID').trim(),
+        operationPlanID,
+        name: readString(item, 'name', 'Name').trim() || operationPlanID,
+        description: readString(item, 'description', 'Description').trim(),
+        sortOrder: readOptionalInteger(item, 'sortOrder', 'SortOrder'),
+    }
+}
+
+function normalizeStationRouteOption(item: unknown): StationRouteOption | null {
+    const id = readString(item, 'id', 'ID').trim()
+    if (!id) return null
+    const description = readString(item, 'description', 'Description').trim()
+    return {
+        id,
+        name: description || id,
+        type: readString(item, 'type', 'Type').trim(),
+        nodeList: readString(item, 'nodeList', 'NodeList').trim(),
+        linkList: readString(item, 'linkList', 'LinkList').trim(),
+        startNodeID: readString(item, 'startNodeID', 'StartNodeID').trim(),
+        endNodeID: readString(item, 'endNodeID', 'EndNodeID').trim(),
+    }
+}
+
+function normalizeStationRouteTimeOption(item: unknown): StationRouteTimeOption | null {
+    const cellID = readString(item, 'cellID', 'CellID').trim()
+    if (!cellID) return null
+    return {
+        routeID: readString(item, 'routeID', 'RouteID').trim(),
+        trainTypeID: readString(item, 'trainTypeID', 'TrainTypeID').trim(),
+        cellID,
+        startOccupationShift: readOptionalInteger(item, 'startOccupationShift', 'StartOccupationShift'),
+        endOccupationShift: readOptionalInteger(item, 'endOccupationShift', 'EndOccupationShift'),
+        isInterruptCell: readBoolean(item, false, 'isInterruptCell', 'IsInterruptCell'),
+    }
+}
+
+function normalizeTrain(item: unknown): TrainOperationPlanTrain | null {
+    const id = readString(item, 'id', 'ID').trim()
+    if (!id) return null
+    return {
+        id,
+        trainTemplateID: readString(item, 'trainTemplateID', 'TrainTemplateID').trim(),
+        trainNumber: readString(item, 'trainNumber', 'TrainNumber').trim(),
+        name: readString(item, 'name', 'Name').trim(),
+        trainType: readString(item, 'trainType', 'TrainType').trim(),
+        isFixedOperation: readBoolean(item, false, 'isFixedOperation', 'IsFixedOperation'),
+    }
+}
+
+function normalizeMovement(item: unknown): TrainOperationPlanMovement | null {
+    const trainID = readString(item, 'trainID', 'TrainID').trim()
+    const movementID = readString(item, 'movementID', 'MovementID').trim()
+    if (!trainID || !movementID) return null
+    return {
+        trainID,
+        trainTemplateID: readString(item, 'trainTemplateID', 'TrainTemplateID').trim(),
+        movementID,
+        name: readString(item, 'name', 'Name').trim(),
+        routeIDList: readString(item, 'routeIDList', 'RouteIDList').trim(),
+        minDuration: readOptionalInteger(item, 'minDuration', 'MinDuration'),
+        earliestStartTime: readString(item, 'earliestStartTime', 'EarliestStartTime').trim(),
+        latestEndTime: readString(item, 'latestEndTime', 'LatestEndTime').trim(),
+        cellOccupationOverridesJson: readString(item, 'cellOccupationOverridesJson', 'CellOccupationOverridesJson'),
+        cellOccupations: normalizeMovementCellOccupations(readArray(item, 'cellOccupations', 'CellOccupations')),
+        route: readString(item, 'route', 'Route').trim(),
+        tag: readString(item, 'tag', 'Tag').trim(),
+        sortOrder: readOptionalInteger(item, 'sortOrder', 'SortOrder'),
+    }
+}
+
+function normalizeTrainOperationPlanResponse(data: unknown) {
+    const record = data && typeof data === 'object' ? data as Record<string, unknown> : {}
+    const rawTrains = Array.isArray(record.trains)
+        ? record.trains
+        : Array.isArray(record.Trains)
+            ? record.Trains
+            : []
+    const rawMovements = Array.isArray(record.movements)
+        ? record.movements
+        : Array.isArray(record.Movements)
+            ? record.Movements
+            : []
+    const previousTrainId = selectedTrainId.value
+    trainOperationPlanTrains.value = rawTrains
+        .map(normalizeTrain)
+        .filter((item): item is TrainOperationPlanTrain => item !== null)
+    trainOperationPlanMovements.value = rawMovements
+        .map(normalizeMovement)
+        .filter((item): item is TrainOperationPlanMovement => item !== null)
+    selectedTrainId.value = trainOperationPlanTrains.value.some((train) => train.id === previousTrainId)
+        ? previousTrainId
+        : trainOperationPlanTrains.value[0]?.id || ''
+}
+
+function getLayoutDisplayStyles(data: unknown): Record<string, unknown> {
+    const metadata = readRecord(readRecord(data).metadata)
+    const styles = metadata.displayStyles
+    return styles && typeof styles === 'object' && !Array.isArray(styles) ? styles as Record<string, unknown> : {}
+}
+
+function getLayoutGridSpacing(data: unknown) {
+    const metadata = readRecord(readRecord(data).metadata)
+    const gridSettings = readRecord(metadata.gridSettings)
+    const parsed = Number(gridSettings.spacing ?? gridSettings.Spacing ?? 20)
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 20
+}
+
+function getLayoutCells(data: unknown): LayoutCell[] {
+    const cells = Array.isArray(readRecord(data).cells) ? readRecord(data).cells as unknown[] : []
+    return cells
+        .map((cell) => ({
+            id: readString(cell, 'id', 'ID').trim(),
+            name: readString(cell, 'name', 'Name').trim(),
+            linkIDList: readString(cell, 'linkIDList', 'LinkIDList').trim(),
+        }))
+        .map((cell) => ({ ...cell, name: cell.name || cell.id }))
+        .filter((cell) => cell.id || cell.name || cell.linkIDList)
+}
+
+function getLayoutNodes(data: unknown): LayoutNode[] {
+    const nodes = Array.isArray(readRecord(data).nodes) ? readRecord(data).nodes as unknown[] : []
+    return nodes
+        .map((node) => {
+            const id = readString(node, 'id', 'ID').trim()
+            const x = Number(readRecord(node).x ?? readRecord(node).X)
+            const y = Number(readRecord(node).y ?? readRecord(node).Y)
+            return { id, x, y }
+        })
+        .filter((node) => node.id && Number.isFinite(node.x) && Number.isFinite(node.y))
+}
+
+function getLayoutTracks(data: unknown): LayoutTrack[] {
+    const tracks = Array.isArray(readRecord(data).tracks) ? readRecord(data).tracks as unknown[] : []
+    return tracks
+        .map((track) => {
+            const record = readRecord(track)
+            const id = readString(track, 'id', 'ID').trim()
+            return {
+                id,
+                name: readString(track, 'name', 'Name').trim(),
+                x1: Number(record.x1 ?? record.X1),
+                y1: Number(record.y1 ?? record.Y1),
+                x2: Number(record.x2 ?? record.X2),
+                y2: Number(record.y2 ?? record.Y2),
+                fromNodeID: readString(track, 'fromNodeID', 'FromNodeID').trim(),
+                toNodeID: readString(track, 'toNodeID', 'ToNodeID').trim(),
+            }
+        })
+        .filter((track) => (
+            track.id &&
+            Number.isFinite(track.x1) &&
+            Number.isFinite(track.y1) &&
+            Number.isFinite(track.x2) &&
+            Number.isFinite(track.y2)
+        ))
+}
+
+function readRecord(value: unknown): Record<string, unknown> {
+    return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
+}
+
+function formatStationSchemeLabel(option: StationSchemeOption) {
+    return option.name && option.name !== option.id ? `${option.name} (${option.id})` : option.id
+}
+
+function formatOperationPlanLabel(option: OperationPlanOption) {
+    return option.name && option.name !== option.operationPlanID
+        ? `${option.name} (${option.operationPlanID})`
+        : option.operationPlanID
+}
+
+function formatTrainLabel(train: TrainOperationPlanTrain) {
+    const number = train.trainNumber || train.id
+    const name = train.name ? ` ${train.name}` : ''
+    return `${number}${name}`
+}
+
+function parseRouteReferenceList(value: string) {
+    const text = String(value || '').trim()
+    if (!text) return []
+    try {
+        const parsed = JSON.parse(text)
+        if (Array.isArray(parsed)) return normalizeUniqueStrings(parsed)
+    } catch {
+        // Route lists may be stored as plain text.
+    }
+    return normalizeUniqueStrings(text.split(/(?:\s*->\s*)|(?:\s*[,，、\n\r]\s*)|\s+/))
+}
+
+function normalizeUniqueStrings(values: unknown[], previous?: string[]) {
+    const result: string[] = []
+    const seen = new Set<string>()
+    values.forEach((value) => {
+        const text = String(value ?? '').trim()
+        if (!text || seen.has(text)) return
+        seen.add(text)
+        result.push(text)
+    })
+    if (previous?.length === result.length && result.every((value, index) => value === previous[index])) {
+        return previous
+    }
+    return result
+}
+
+function compareMovements(left: TrainOperationPlanMovement, right: TrainOperationPlanMovement) {
+    const leftOrder = Number(left.sortOrder)
+    const rightOrder = Number(right.sortOrder)
+    if (Number.isFinite(leftOrder) && Number.isFinite(rightOrder) && leftOrder !== rightOrder) {
+        return leftOrder - rightOrder
+    }
+    const leftStart = parseOperationPlanTime(left.earliestStartTime)
+    const rightStart = parseOperationPlanTime(right.earliestStartTime)
+    if (leftStart !== null && rightStart !== null && leftStart !== rightStart) return leftStart - rightStart
+    return left.movementID.localeCompare(right.movementID, undefined, { numeric: true, sensitivity: 'base' })
+}
+
+function parseOperationPlanTime(value: string) {
+    const text = String(value || '').trim()
+    if (!text) return null
+    let dayOffset = 0
+    let timeText = text
+    const dayMatch = text.match(/^D\+(\d+)\s+(.+)$/i)
+    if (dayMatch) {
+        dayOffset = Number(dayMatch[1])
+        timeText = (dayMatch[2] || '').trim()
+    }
+    const parts = timeText.split(':')
+    if (parts.length < 2) return null
+    const hours = Number(parts[0])
+    const minutes = Number(parts[1])
+    const seconds = parts.length > 2 ? Number(parts[2]) : 0
+    if (
+        !Number.isFinite(hours) ||
+        !Number.isFinite(minutes) ||
+        !Number.isFinite(seconds) ||
+        hours < 0 ||
+        minutes < 0 ||
+        minutes >= 60 ||
+        seconds < 0 ||
+        seconds >= 60
+    ) {
+        return null
+    }
+    return dayOffset * 24 * 60 + hours * 60 + minutes + seconds / 60
+}
+
+function formatClockSeconds(totalSeconds: number) {
+    const normalizedSeconds = Math.max(0, Math.round(totalSeconds))
+    const days = Math.floor(normalizedSeconds / 86400)
+    const secondsInDay = normalizedSeconds % 86400
+    const hours = Math.floor(secondsInDay / 3600)
+    const minutes = Math.floor((secondsInDay % 3600) / 60)
+    const seconds = secondsInDay % 60
+    const timeText = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+    return days > 0 ? `D+${days} ${timeText}` : timeText
+}
+
+function formatDurationSeconds(totalSeconds: number) {
+    const normalizedSeconds = Math.max(0, Math.round(totalSeconds))
+    const minutes = Math.floor(normalizedSeconds / 60)
+    const seconds = normalizedSeconds % 60
+    return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+}
+
+function getRouteDisplayName(route: StationRouteOption) {
+    return route.name || route.id || '-'
+}
+
+function getTrainColor(trainID: string) {
+    const colors = ['#2563eb', '#dc2626', '#059669', '#7c3aed', '#ea580c', '#0891b2']
+    const hash = trainID.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0)
+    return colors[hash % colors.length] || colors[0] || '#2563eb'
+}
+
+function getPlaybackRunSources(): RouteRunSource[] {
+    if (!isAllTrainPlayback.value) {
+        const train = selectedTrain.value
+        if (!train) return []
+        return selectedTrainMovements.value.map((movement, sourceIndex) => ({ train, movement, sourceIndex }))
+    }
+
+    return trainOperationPlanMovements.value
+        .map((movement, sourceIndex) => {
+            const train = trainMap.value.get(movement.trainID)
+            return train ? { train, movement, sourceIndex } : null
+        })
+        .filter((item): item is RouteRunSource => item !== null)
+        .sort(compareRouteRunSources)
+}
+
+function compareRouteRunSources(left: RouteRunSource, right: RouteRunSource) {
+    const leftStart = parseOperationPlanTime(left.movement.earliestStartTime)
+    const rightStart = parseOperationPlanTime(right.movement.earliestStartTime)
+    if (leftStart !== null && rightStart !== null && leftStart !== rightStart) return leftStart - rightStart
+    if (leftStart !== null && rightStart === null) return -1
+    if (leftStart === null && rightStart !== null) return 1
+    const trainCompare = formatTrainLabel(left.train).localeCompare(
+        formatTrainLabel(right.train),
+        undefined,
+        { numeric: true, sensitivity: 'base' },
+    )
+    if (trainCompare !== 0) return trainCompare
+    const movementCompare = compareMovements(left.movement, right.movement)
+    return movementCompare !== 0 ? movementCompare : left.sourceIndex - right.sourceIndex
+}
+
+function buildRouteRuns(): RouteRun[] {
+    const rawRuns = getPlaybackRunSources()
+        .map((source) => {
+            const { movement, train, sourceIndex } = source
+            const routeID = getMovementRouteID(movement)
+            const route = stationRouteMap.value.get(routeID)
+            if (!route) return null
+            const geometry = buildRouteGeometry(route)
+            if (geometry.path.totalLength <= 0 || geometry.path.segments.length === 0) return null
+            const startMinutes = parseOperationPlanTime(movement.earliestStartTime)
+            const endMinutes = parseOperationPlanTime(movement.latestEndTime)
+            return { movement, train, route, geometry, startMinutes, endMinutes, sourceIndex }
+        })
+        .filter((item): item is {
+            movement: TrainOperationPlanMovement
+            train: TrainOperationPlanTrain
+            route: StationRouteOption
+            geometry: RouteGeometry
+            startMinutes: number | null
+            endMinutes: number | null
+            sourceIndex: number
+        } => item !== null)
+
+    const hasValidPlanTime = (item: (typeof rawRuns)[number]) => (
+        item.startMinutes !== null &&
+        item.endMinutes !== null
+    )
+    const playableRuns = isAllTrainPlayback.value
+        ? rawRuns.filter(hasValidPlanTime)
+        : rawRuns
+    const timedRuns = playableRuns.filter(hasValidPlanTime)
+    const usesTimedPlan = isAllTrainPlayback.value
+        ? playableRuns.length > 0
+        : playableRuns.length > 0 && timedRuns.length === playableRuns.length
+    const originSeconds = usesTimedPlan
+        ? Math.min(...timedRuns.map((item) => getRouteOccupationWindowSeconds(item).startSeconds))
+        : 0
+    let syntheticCursor = 0
+
+    return playableRuns.map((item, index) => {
+        const fallbackDuration = getFallbackRouteDurationSeconds(item.movement, item.geometry.path.totalLength)
+        let startSeconds = syntheticCursor
+        let endSeconds = syntheticCursor + fallbackDuration
+        let absoluteStartSeconds = startSeconds
+        let absoluteEndSeconds = endSeconds
+        let runUsesPlanTime = false
+
+        if (usesTimedPlan && hasValidPlanTime(item)) {
+            const occupationWindow = getRouteOccupationWindowSeconds(item)
+            absoluteStartSeconds = occupationWindow.startSeconds
+            absoluteEndSeconds = Math.max(occupationWindow.endSeconds, absoluteStartSeconds + fallbackDuration)
+            startSeconds = absoluteStartSeconds - originSeconds
+            endSeconds = absoluteEndSeconds - originSeconds
+            runUsesPlanTime = true
+        } else {
+            syntheticCursor = endSeconds + syntheticRouteGapSeconds
+        }
+
+        const duration = Math.max(0.1, endSeconds - startSeconds)
+        const lockSeconds = Math.min(routeLockMaxSeconds, Math.max(routeLockMinSeconds, duration * 0.16))
+        return {
+            key: `${item.train.id}-${item.movement.movementID}-${item.route.id}-${index}`,
+            train: item.train,
+            movement: item.movement,
+            route: item.route,
+            path: item.geometry.path,
+            nodeIds: item.geometry.nodeIds,
+            linkIds: item.geometry.linkIds,
+            startSeconds,
+            endSeconds,
+            lockSeconds: isDwellingRoute(item.route.type) ? 0 : Math.min(lockSeconds, duration * 0.65),
+            usesPlanTime: runUsesPlanTime,
+            absoluteStartSeconds,
+            absoluteEndSeconds,
+            color: getStationRouteHighlightColor(item.route.type),
+        }
+    }).sort((left, right) => (
+        left.startSeconds - right.startSeconds ||
+        left.endSeconds - right.endSeconds ||
+        formatTrainLabel(left.train).localeCompare(formatTrainLabel(right.train), undefined, { numeric: true, sensitivity: 'base' })
+    ))
+}
+
+function getRouteOccupationWindowSeconds(item: {
+    movement: TrainOperationPlanMovement
+    train: TrainOperationPlanTrain
+    route: StationRouteOption
+    startMinutes: number | null
+    endMinutes: number | null
+}) {
+    const baseStartSeconds = Number(item.startMinutes || 0) * 60
+    const baseEndSeconds = Number(item.endMinutes || item.startMinutes || 0) * 60
+    const cells = item.movement.cellOccupations || []
+    const startSeconds = Math.min(baseStartSeconds, ...cells.map(cell => cell.startSeconds))
+    const endSeconds = Math.max(baseEndSeconds, ...cells.map(cell => cell.endSeconds))
+    return { startSeconds, endSeconds }
+}
+
+function getMovementRouteID(movement: TrainOperationPlanMovement) {
+    const selectedRouteID = movement.route.trim()
+    if (selectedRouteID) return selectedRouteID
+    return parseRouteReferenceList(movement.routeIDList)[0] || ''
+}
+
+function getStationRouteTimeKey(routeID: string, trainTypeID: string) {
+    return `${routeID.trim()}::${trainTypeID.trim()}`
+}
+
+function getStationRouteTimes(routeID: string, trainTypeID: string) {
+    const specificKey = getStationRouteTimeKey(routeID, trainTypeID)
+    const defaultKey = getStationRouteTimeKey(routeID, '')
+    const specificRows = stationRouteTimesByKey.value[specificKey] || []
+    if (specificRows.length > 0) return specificRows
+    return stationRouteTimesByKey.value[defaultKey] || []
+}
+
+function getFallbackRouteDurationSeconds(movement: TrainOperationPlanMovement, pathLength: number) {
+    const minDuration = Number(movement.minDuration)
+    if (Number.isFinite(minDuration) && minDuration > 0) return Math.max(4, minDuration)
+    return Math.max(8, Math.min(36, pathLength / 55))
+}
+
+function buildRouteGeometry(route: StationRouteOption): RouteGeometry {
+    const linkIds = parseRouteReferenceList(route.linkList)
+    const nodeIds = normalizeUniqueStrings([
+        ...parseRouteReferenceList(route.nodeList),
+        route.startNodeID,
+        route.endNodeID,
+    ])
+    let points = parseRouteReferenceList(route.nodeList)
+        .map((nodeId) => pointFromNodeId(nodeId))
+        .filter((point): point is Point => point !== null)
+
+    if (points.length < 2) {
+        points = buildPointsFromLinks(route, linkIds)
+    }
+    if (points.length < 2) {
+        points = [pointFromNodeId(route.startNodeID), pointFromNodeId(route.endNodeID)]
+            .filter((point): point is Point => point !== null)
+    }
+
+    return {
+        path: buildPolylinePath(points),
+        nodeIds,
+        linkIds,
+    }
+}
+
+function pointFromNodeId(nodeId: string): Point | null {
+    const id = String(nodeId || '').trim()
+    if (!id) return null
+    const node = layoutNodeMap.value.get(id)
+    if (!node) return null
+    return { x: node.x, y: node.y, nodeId: id }
+}
+
+function buildPointsFromLinks(route: StationRouteOption, linkIds: string[]): Point[] {
+    const points: Point[] = []
+    let currentNodeId = route.startNodeID.trim()
+    const startPoint = pointFromNodeId(currentNodeId)
+    if (startPoint) points.push(startPoint)
+
+    linkIds.forEach((linkId) => {
+        const track = layoutTrackMap.value.get(linkId)
+        if (!track) return
+        const endpoints = getTrackEndpoints(track)
+        if (!endpoints) return
+        const [fromPoint, toPoint] = endpoints
+        if (points.length === 0) {
+            if (currentNodeId && currentNodeId === track.toNodeID) {
+                points.push(toPoint, fromPoint)
+                currentNodeId = track.fromNodeID
+            } else {
+                points.push(fromPoint, toPoint)
+                currentNodeId = track.toNodeID
+            }
+            return
+        }
+
+        if (currentNodeId && currentNodeId === track.fromNodeID) {
+            appendDistinctPoint(points, toPoint)
+            currentNodeId = track.toNodeID
+        } else if (currentNodeId && currentNodeId === track.toNodeID) {
+            appendDistinctPoint(points, fromPoint)
+            currentNodeId = track.fromNodeID
+        } else {
+            const last = points[points.length - 1]
+            if (!last) return
+            const fromDistance = getPointDistance(last, fromPoint)
+            const toDistance = getPointDistance(last, toPoint)
+            if (fromDistance <= toDistance) {
+                appendDistinctPoint(points, fromPoint)
+                appendDistinctPoint(points, toPoint)
+                currentNodeId = track.toNodeID
+            } else {
+                appendDistinctPoint(points, toPoint)
+                appendDistinctPoint(points, fromPoint)
+                currentNodeId = track.fromNodeID
+            }
+        }
+    })
+
+    return points
+}
+
+function getTrackEndpoints(track: LayoutTrack): [Point, Point] | null {
+    const fromNode = pointFromNodeId(track.fromNodeID)
+    const toNode = pointFromNodeId(track.toNodeID)
+    const fromPoint = fromNode || { x: track.x1, y: track.y1, nodeId: track.fromNodeID || undefined }
+    const toPoint = toNode || { x: track.x2, y: track.y2, nodeId: track.toNodeID || undefined }
+    if (!Number.isFinite(fromPoint.x) || !Number.isFinite(fromPoint.y) || !Number.isFinite(toPoint.x) || !Number.isFinite(toPoint.y)) {
+        return null
+    }
+    return [fromPoint, toPoint]
+}
+
+function appendDistinctPoint(points: Point[], point: Point) {
+    const previous = points[points.length - 1]
+    if (previous && getPointDistance(previous, point) < 0.001) return
+    points.push(point)
+}
+
+function buildPolylinePath(points: Point[]): PolylinePath {
+    const normalizedPoints: Point[] = []
+    points.forEach((point) => appendDistinctPoint(normalizedPoints, point))
+
+    const segments: PathSegment[] = []
+    let cursor = 0
+    for (let index = 0; index < normalizedPoints.length - 1; index++) {
+        const from = normalizedPoints[index]
+        const to = normalizedPoints[index + 1]
+        if (!from || !to) continue
+        const length = getPointDistance(from, to)
+        if (length <= 0.001) continue
+        segments.push({
+            from,
+            to,
+            length,
+            startDistance: cursor,
+            angle: normalizePathAngle(Math.atan2(to.y - from.y, to.x - from.x) * 180 / Math.PI),
+        })
+        cursor += length
+    }
+
+    return {
+        points: normalizedPoints,
+        segments,
+        totalLength: cursor,
+    }
+}
+
+function getPointDistance(left: Point, right: Point) {
+    return Math.hypot(right.x - left.x, right.y - left.y)
+}
+
+function normalizePathAngle(angle: number) {
+    const normalized = Number(angle) % 360
+    return normalized < 0 ? normalized + 360 : normalized
+}
+
+function getNearestEquivalentPathAngle(angle: number, referenceAngle: number) {
+    const normalized = normalizePathAngle(angle)
+    if (!Number.isFinite(referenceAngle)) return normalized
+    return normalized + Math.round((referenceAngle - normalized) / 360) * 360
+}
+
+function getContinuousTrainCarAngle(key: string, angle: number) {
+    const previousAngle = trainCarAngleMemory.get(key)
+    const continuousAngle = previousAngle === undefined
+        ? normalizePathAngle(angle)
+        : getNearestEquivalentPathAngle(angle, previousAngle)
+    trainCarAngleMemory.set(key, continuousAngle)
+    return continuousAngle
+}
+
+function pruneTrainCarAngleMemory(cars: SimulationTrainCar[]) {
+    const visibleKeys = new Set(cars.map((car) => car.key))
+    Array.from(trainCarAngleMemory.keys()).forEach((key) => {
+        if (!visibleKeys.has(key)) trainCarAngleMemory.delete(key)
+    })
+}
+
+function clearTrainCarAngleMemory() {
+    trainCarAngleMemory.clear()
+}
+
+function findActiveRunIndex(currentSeconds: number) {
+    const runs = routeRuns.value
+    if (runs.length === 0) return -1
+    if (!isAllTrainPlayback.value) {
+        const dwellingIndex = runs.findIndex(run => isDwellingRoute(run.route.type)
+            && currentSeconds >= run.startSeconds && currentSeconds < run.endSeconds)
+        if (dwellingIndex >= 0) return dwellingIndex
+    }
+    const inProgress = runs.find((run) => currentSeconds >= run.startSeconds && currentSeconds < run.endSeconds)
+    if (inProgress) return runs.indexOf(inProgress)
+    for (let index = runs.length - 1; index >= 0; index--) {
+        const run = runs[index]
+        if (run && currentSeconds >= run.endSeconds) return index
+    }
+    return 0
+}
+
+function syncActiveRunIndex(currentSeconds = playheadSeconds.value) {
+    const nextIndex = findActiveRunIndex(currentSeconds)
+    if (activeRunIndex.value !== nextIndex) activeRunIndex.value = nextIndex
+    const nextActiveIndices = getHighlightedRouteRunIndices(routeRuns.value, currentSeconds, isAllTrainPlayback.value ? -1 : nextIndex)
+    if (!areNumberArraysEqual(activeRunIndices.value, nextActiveIndices)) activeRunIndices.value = nextActiveIndices
+    const nextPhaseByKey = buildRunPhaseMap(currentSeconds)
+    if (!areRunPhaseMapsEqual(runPhaseByKey.value, nextPhaseByKey)) runPhaseByKey.value = nextPhaseByKey
+    const nextRun = nextIndex >= 0 ? routeRuns.value[nextIndex] || null : null
+    const nextPhase = getRunPhase(nextRun, currentSeconds)
+    if (activeRunPhase.value !== nextPhase) activeRunPhase.value = nextPhase
+    const activeRuns = nextActiveIndices
+        .map(index => routeRuns.value[index])
+        .filter((run): run is RouteRun => !!run)
+    const { locking: lockingCount, moving: movingCount, dwelling: dwellingCount } = countActiveRoutePhases(activeRuns, currentSeconds)
+    if (activeLockingRunCount.value !== lockingCount) activeLockingRunCount.value = lockingCount
+    if (activeMovingRunCount.value !== movingCount) activeMovingRunCount.value = movingCount
+    if (activeDwellingRunCount.value !== dwellingCount) activeDwellingRunCount.value = dwellingCount
+}
+
+function buildRunPhaseMap(currentSeconds: number) {
+    const phaseMap: Record<string, RunPhase> = {}
+    routeRuns.value.forEach((run) => {
+        phaseMap[run.key] = getRunPhase(run, currentSeconds)
+    })
+    return phaseMap
+}
+
+function areNumberArraysEqual(left: number[], right: number[]) {
+    if (left.length !== right.length) return false
+    return left.every((value, index) => value === right[index])
+}
+
+function areRunPhaseMapsEqual(left: Record<string, RunPhase>, right: Record<string, RunPhase>) {
+    const leftKeys = Object.keys(left)
+    const rightKeys = Object.keys(right)
+    if (leftKeys.length !== rightKeys.length) return false
+    return rightKeys.every((key) => left[key] === right[key])
+}
+
+function getCachedRunPhase(index: number): RunPhase {
+    const run = routeRuns.value[index]
+    if (!run) return 'waiting'
+    return runPhaseByKey.value[run.key] || 'waiting'
+}
+
+function getActiveRouteProgress(run: RouteRun | null, currentSeconds: number) {
+    if (!run) return 0
+    const moveStart = run.startSeconds + (isDwellingRoute(run.route.type) ? 0 : run.lockSeconds)
+    const moveDuration = Math.max(0.1, run.endSeconds - moveStart)
+    if (currentSeconds <= moveStart) return 0
+    return Math.max(0, Math.min(1, (currentSeconds - moveStart) / moveDuration))
+}
+
+function buildSimulationTrainCars(): SimulationTrainCar[] {
+    const cars = samplePlanarTrainScene(planarTrainScene.value, playheadSeconds.value, !isAllTrainPlayback.value)
+        .map(car => {
+            const train = trainMap.value.get(car.trainID)
+            const fill = getTrainColor(car.trainID)
+            return {
+                ...car,
+                angle: getContinuousTrainCarAngle(car.key, car.angle),
+                fill: car.carIndex === 0 ? fill : lightenTrainColor(fill, car.carIndex),
+                stroke: '#f8fafc',
+                label: car.carIndex === 0 ? train?.trainNumber || car.trainID : '',
+            }
+        })
+    pruneTrainCarAngleMemory(cars)
+    return cars
+}
+
+function lightenTrainColor(color: string, index: number) {
+    if (index % 2 === 0) return color
+    const hex = color.replace('#', '')
+    if (hex.length !== 6) return color
+    const r = Math.min(255, parseInt(hex.slice(0, 2), 16) + 28)
+    const g = Math.min(255, parseInt(hex.slice(2, 4), 16) + 28)
+    const b = Math.min(255, parseInt(hex.slice(4, 6), 16) + 28)
+    return `#${toHex(r)}${toHex(g)}${toHex(b)}`
+}
+
+function toHex(value: number) {
+    return Math.max(0, Math.min(255, value)).toString(16).padStart(2, '0')
+}
+
+function getRunTimeText(run: RouteRun) {
+    if (run.usesPlanTime) {
+        return `${formatClockSeconds(run.absoluteStartSeconds)} - ${formatClockSeconds(run.absoluteEndSeconds)}`
+    }
+    return `${formatDurationSeconds(run.startSeconds)} - ${formatDurationSeconds(run.endSeconds)}`
+}
+
+function getRunStatusText(phase: ReturnType<typeof getRunPhase>) {
+    if (phase === 'dwelling') return t('stationLayout3d.phase.dwelling')
+    if (phase === 'locking') return t('stationLayout3d.phase.locking')
+    if (phase === 'moving') return t('operationSimulation.moving')
+    if (phase === 'finished') return t('operationSimulation.completed')
+    return t('operationSimulation.pending')
+}
+
+function getRunStatusType(phase: ReturnType<typeof getRunPhase>): 'success' | 'warning' | 'info' | 'primary' {
+    if (phase === 'locking') return 'warning'
+    if (phase === 'moving') return 'primary'
+    if (phase === 'dwelling') return 'primary'
+    if (phase === 'finished') return 'success'
+    return 'info'
+}
+
+function getSimulationRowClassName({ row }: { row: SimulationRow }) {
+    const classes: string[] = []
+    if (row.index === currentSimulationRunIndex.value) {
+        classes.push('simulation-current-row')
+    }
+    const isActiveRun = activeSimulationRunIndices.value.has(row.index)
+    if (isActiveRun && isRunProcessingPhase(getCachedRunPhase(row.index))) {
+        classes.push('simulation-active-row')
+    }
+    return classes.join(' ')
+}
+
+function isRunProcessingPhase(phase: RunPhase) {
+    return phase === 'locking' || phase === 'moving' || phase === 'dwelling'
+}
+
+function getSimulationTableCurrentRunIndex() {
+    const activeIndex = activeRunIndices.value.find((index) => index >= 0 && isRunProcessingPhase(getCachedRunPhase(index)))
+    if (activeIndex !== undefined) return activeIndex
+    const nextRunIndex = routeRuns.value.findIndex((run) => playheadSeconds.value < run.endSeconds)
+    if (nextRunIndex >= 0) return nextRunIndex
+    return routeRuns.value.length - 1
+}
+
+function scheduleScrollSimulationTableToCurrentRun() {
+    if (tableScrollFrameId !== null) {
+        window.cancelAnimationFrame(tableScrollFrameId)
+    }
+    tableScrollFrameId = window.requestAnimationFrame(() => {
+        tableScrollFrameId = null
+        void nextTick(() => {
+            scrollSimulationTableToCurrentRun()
+        })
+    })
+}
+
+function scrollSimulationTableToCurrentRun() {
+    const rowIndex = currentSimulationRunIndex.value
+    if (rowIndex < 0 || !simulationRows.value[rowIndex]) return
+    movementTableRef.value?.scrollToRow(rowIndex, 'smart')
+}
+
+function scheduleScrollGanttToPlayhead() {
+    if (ganttScrollFrameId !== null) {
+        window.cancelAnimationFrame(ganttScrollFrameId)
+    }
+    ganttScrollFrameId = window.requestAnimationFrame(() => {
+        ganttScrollFrameId = null
+        scrollGanttToPlayhead()
+    })
+}
+
+function scrollGanttToPlayhead() {
+    const viewport = ganttViewportRef.value
+    if (!viewport || routeRuns.value.length === 0) return
+    const playheadContentLeft = ganttSidebarWidth + ganttPlayheadLeft.value * ganttScaleX.value
+    const targetLeft = Math.max(0, playheadContentLeft - viewport.clientWidth * 0.45)
+    viewport.scrollLeft = targetLeft
+}
+
+function getMaxGanttPanelHeight() {
+    const panelHeight = simulationLeftPanelRef.value?.clientHeight || 0
+    if (panelHeight <= 0) return defaultGanttPanelHeight * 2
+    return Math.max(
+        minGanttPanelHeight,
+        panelHeight - minLayoutPanelHeight - horizontalResizerHeight,
+    )
+}
+
+function clampNumber(value: number, min: number, max: number) {
+    return Math.max(min, Math.min(max, value))
+}
+
+function formatPlayheadTooltip(value: number) {
+    return usesPlanTime.value
+        ? formatClockSeconds(timelineOriginSeconds.value + Number(value || 0))
+        : formatDurationSeconds(Number(value || 0))
+}
+
+function handlePlayheadInput(value: number | number[]) {
+    const nextValue = Array.isArray(value) ? Number(value[0] || 0) : Number(value || 0)
+    setPlayheadSeconds(nextValue)
+}
+
+function togglePlayback() {
+    if (!canPlayback.value) return
+    if (isPlaying.value) {
+        pausePlayback()
+    } else {
+        startPlayback()
+    }
+}
+
+function startPlayback() {
+    if (!canPlayback.value || isPlaying.value || !props.active) return
+    if (playheadSeconds.value >= simulationDurationSeconds.value) {
+        setPlayheadSeconds(0)
+    }
+    playbackRuntimeSeconds = playheadSeconds.value
+    isPlaying.value = true
+    lastAnimationTimestamp = 0
+    lastPlaybackRenderTimestamp = 0
+    animationFrameId = window.requestAnimationFrame(stepPlayback)
+}
+
+function pausePlayback() {
+    if (isPlaying.value) setPlayheadSeconds(playbackRuntimeSeconds)
+    isPlaying.value = false
+    if (animationFrameId !== null) {
+        window.cancelAnimationFrame(animationFrameId)
+        animationFrameId = null
+    }
+}
+
+function resetPlayback() {
+    pausePlayback()
+    clearTrainCarAngleMemory()
+    setPlayheadSeconds(0)
+}
+
+// The 3D renderer samples this same clock each frame; it never advances playback.
+function getPlaybackSeconds() {
+    return isPlaying.value ? playbackRuntimeSeconds : playheadSeconds.value
+}
+
+function stepPlayback(timestamp: number) {
+    animationFrameId = null
+    if (isDisposed || !isPlaying.value) return
+    if (!lastAnimationTimestamp) lastAnimationTimestamp = timestamp
+    const deltaSeconds = Math.max(0, (timestamp - lastAnimationTimestamp) / 1000)
+    lastAnimationTimestamp = timestamp
+    playbackRuntimeSeconds = Math.min(
+        simulationDurationSeconds.value,
+        playbackRuntimeSeconds + deltaSeconds * playbackSpeed.value,
+    )
+    const shouldRender = timestamp - lastPlaybackRenderTimestamp >= playbackRenderIntervalMs ||
+        playbackRuntimeSeconds >= simulationDurationSeconds.value
+    if (shouldRender) {
+        playheadSeconds.value = playbackRuntimeSeconds
+        syncActiveRunIndex(playbackRuntimeSeconds)
+        lastPlaybackRenderTimestamp = timestamp
+    }
+    if (playbackRuntimeSeconds >= simulationDurationSeconds.value) {
+        setPlayheadSeconds(simulationDurationSeconds.value)
+        pausePlayback()
+        return
+    }
+    animationFrameId = window.requestAnimationFrame(stepPlayback)
+}
+
+function stopPlaybackForReload() {
+    pausePlayback()
+    clearTrainCarAngleMemory()
+    setPlayheadSeconds(0)
+}
+
+function clampPlayheadToDuration() {
+    if (playheadSeconds.value > simulationDurationSeconds.value) {
+        setPlayheadSeconds(simulationDurationSeconds.value)
+        return
+    }
+    syncActiveRunIndex(playheadSeconds.value)
+}
+
+function setPlayheadSeconds(value: number) {
+    trainOverlayResetRevision.value++
+    const clamped = Math.max(0, Math.min(simulationDurationSeconds.value, Number(value || 0)))
+    playbackRuntimeSeconds = clamped
+    playheadSeconds.value = clamped
+    syncActiveRunIndex(clamped)
+}
+
+function clearOperationPlans() {
+    operationPlanLoadVersion++
+    loadingOperationPlans.value = false
+    operationPlanOptions.value = []
+    currentOperationPlanId.value = ''
+    clearGanttSubTableState()
+    clearTrainPlan()
+}
+
+function clearTrainPlan() {
+    trainPlanLoadVersion++
+    loadingTrainOperationPlan.value = false
+    trainOperationPlanTrains.value = []
+    trainOperationPlanMovements.value = []
+    selectedTrainId.value = ''
+    clearStationRouteTimes()
+    stopPlaybackForReload()
+}
+
+function clearStationRoutes() {
+    stationRouteLoadVersion++
+    loadingStationRoutes.value = false
+    stationRouteOptions.value = []
+    clearStationRouteTimes()
+}
+
+function clearStationRouteTimes() {
+    stationRouteTimeLoadVersion++
+    stationRouteTimesByKey.value = {}
+    loadingStationRouteTimes.value = false
+}
+
+function clearGanttSubTableState() {
+    ganttSubTableLoadVersion++
+    if (ganttSubTableSaveTimer) {
+        window.clearTimeout(ganttSubTableSaveTimer)
+        ganttSubTableSaveTimer = null
+    }
+    loadingGanttSubTableSettings.value = false
+    savingGanttSubTableSettings.value = false
+    ganttSubTableDialogVisible.value = false
+    ganttSubTableDialogTargetId.value = ''
+    ganttSubTableDialogTargetSequence.value = 0
+    ganttSubTableDialogForm.value = {
+        name: '',
+        cellIds: [],
+    }
+    runWithoutGanttSubTableSave(resetGanttSubTables)
+}
+
+function clearLayout() {
+    layoutLoadVersion++
+    loadingLayout.value = false
+    layoutData.value = null
+    layoutDisplayStyles.value = {}
+    layoutCells.value = []
+    layoutGridSpacing.value = 20
+    layoutScaleX.value = 1
+    layoutScaleY.value = 1
+    layoutEditorRef.value?.clearElements?.()
+}
+
+async function loadStationSchemes() {
+    if (isDisposed) return
+    const instanceID = props.selectedInstanceId
+    stationSchemesInstanceId.value = ''
+    if (!instanceID) {
+        stationSchemeLoadVersion++
+        stationSchemeOptions.value = []
+        clearOperationPlans()
+        clearStationRoutes()
+        clearLayout()
+        loadingStationSchemes.value = false
+        return
+    }
+
+    const loadVersion = ++stationSchemeLoadVersion
+    const requestedSchemeId = currentStationSchemeId.value
+    loadingStationSchemes.value = true
+    try {
+        const response = await axios.get('/StationLayout/GetStationSchemes', { params: { instanceID } })
+        if (loadVersion !== stationSchemeLoadVersion || instanceID !== props.selectedInstanceId) return
+        stationSchemeOptions.value = (Array.isArray(response.data) ? response.data : [])
+            .map(normalizeStationSchemeOption)
+            .filter((item): item is StationSchemeOption => item !== null)
+        if (currentStationSchemeId.value === requestedSchemeId) {
+            if (!stationSchemeOptions.value.some((item) => item.id === requestedSchemeId)) {
+                const fallbackId = stationSchemeOptions.value[0]?.id
+                if (fallbackId) currentStationSchemeId.value = fallbackId
+                else capacityStore.clearStationScheme(instanceID)
+            }
+        }
+        stationSchemesInstanceId.value = instanceID
+    } catch (error) {
+        if (loadVersion !== stationSchemeLoadVersion || instanceID !== props.selectedInstanceId) return
+        console.error('Failed to load simulation station schemes:', error)
+        stationSchemeOptions.value = []
+        clearOperationPlans()
+        clearStationRoutes()
+        clearLayout()
+        ElMessage.error(t('operationSimulation.loadSchemesFailed'))
+    } finally {
+        if (loadVersion === stationSchemeLoadVersion) loadingStationSchemes.value = false
+    }
+}
+
+async function loadOperationPlans() {
+    const instanceID = props.selectedInstanceId
+    const stationSchemeID = currentStationSchemeId.value.trim()
+    if (!instanceID || !stationSchemeID) {
+        clearOperationPlans()
+        return
+    }
+
+    const loadVersion = ++operationPlanLoadVersion
+    const previousId = currentOperationPlanId.value
+    loadingOperationPlans.value = true
+    try {
+        const response = await axios.get('/OperationPlan/GetOperationPlans', {
+            params: { instanceID, stationSchemeID },
+        })
+        if (
+            loadVersion !== operationPlanLoadVersion ||
+            instanceID !== props.selectedInstanceId ||
+            stationSchemeID !== currentStationSchemeId.value.trim()
+        ) {
+            return
+        }
+        operationPlanOptions.value = (Array.isArray(response.data) ? response.data : [])
+            .map(normalizeOperationPlanOption)
+            .filter((item): item is OperationPlanOption => item !== null)
+        currentOperationPlanId.value = operationPlanOptions.value.some((item) => item.operationPlanID === previousId)
+            ? previousId
+            : operationPlanOptions.value.find((item) => item.operationPlanID === defaultOperationPlanID)?.operationPlanID ||
+                operationPlanOptions.value[0]?.operationPlanID ||
+                ''
+    } catch (error) {
+        if (loadVersion !== operationPlanLoadVersion) return
+        console.error('Failed to load simulation operation plans:', error)
+        clearOperationPlans()
+        ElMessage.error(t('stationLayout3d.messages.loadOperationPlansFailed'))
+    } finally {
+        if (loadVersion === operationPlanLoadVersion) loadingOperationPlans.value = false
+    }
+}
+
+async function loadStationRoutes() {
+    const instanceID = props.selectedInstanceId
+    const stationSchemeID = currentStationSchemeId.value.trim()
+    if (!instanceID || !stationSchemeID) {
+        clearStationRoutes()
+        return
+    }
+
+    const loadVersion = ++stationRouteLoadVersion
+    loadingStationRoutes.value = true
+    try {
+        const response = await axios.get('/StationLayout/GetStationRoutes', {
+            params: { instanceID, stationSchemeID },
+        })
+        if (
+            loadVersion !== stationRouteLoadVersion ||
+            instanceID !== props.selectedInstanceId ||
+            stationSchemeID !== currentStationSchemeId.value.trim()
+        ) {
+            return
+        }
+        stationRouteOptions.value = (Array.isArray(response.data) ? response.data : [])
+            .map(normalizeStationRouteOption)
+            .filter((item): item is StationRouteOption => item !== null)
+    } catch (error) {
+        if (loadVersion !== stationRouteLoadVersion) return
+        console.error('Failed to load simulation station routes:', error)
+        stationRouteOptions.value = []
+        ElMessage.error(t('stationLayout3d.messages.loadStationRoutesFailed'))
+    } finally {
+        if (loadVersion === stationRouteLoadVersion) loadingStationRoutes.value = false
+    }
+}
+
+async function loadTrainOperationPlan() {
+    const instanceID = props.selectedInstanceId
+    const stationSchemeID = currentStationSchemeId.value.trim()
+    const operationPlanID = currentOperationPlanId.value.trim()
+    if (!instanceID || !stationSchemeID || !operationPlanID) {
+        clearTrainPlan()
+        return
+    }
+
+    const loadVersion = ++trainPlanLoadVersion
+    loadingTrainOperationPlan.value = true
+    try {
+        const response = await axios.get('/OperationPlan/GetTrainOperationPlan', {
+            params: { instanceID, stationSchemeID, operationPlanID },
+        })
+        if (
+            loadVersion !== trainPlanLoadVersion ||
+            instanceID !== props.selectedInstanceId ||
+            stationSchemeID !== currentStationSchemeId.value.trim() ||
+            operationPlanID !== currentOperationPlanId.value.trim()
+        ) {
+            return
+        }
+        normalizeTrainOperationPlanResponse(response.data)
+        stopPlaybackForReload()
+    } catch (error) {
+        if (loadVersion !== trainPlanLoadVersion) return
+        console.error('Failed to load simulation train operation plan:', error)
+        clearTrainPlan()
+        ElMessage.error(t('stationLayout3d.messages.loadTrainOperationPlanFailed'))
+    } finally {
+        if (loadVersion === trainPlanLoadVersion) loadingTrainOperationPlan.value = false
+    }
+}
+
+function getStationRouteTimePairs() {
+    const pairs = new Map<string, { routeID: string; trainTypeID: string }>()
+    trainOperationPlanMovements.value.forEach((movement) => {
+        const routeID = getMovementRouteID(movement)
+        if (!routeID) return
+        const trainTypeID = trainMap.value.get(movement.trainID)?.trainType?.trim() || ''
+        const defaultKey = getStationRouteTimeKey(routeID, '')
+        pairs.set(defaultKey, { routeID, trainTypeID: '' })
+        if (trainTypeID) {
+            const specificKey = getStationRouteTimeKey(routeID, trainTypeID)
+            pairs.set(specificKey, { routeID, trainTypeID })
+        }
+    })
+    return Array.from(pairs.values())
+}
+
+async function loadStationRouteTimes() {
+    const instanceID = props.selectedInstanceId
+    const stationSchemeID = currentStationSchemeId.value.trim()
+    if (!instanceID || !stationSchemeID || trainOperationPlanMovements.value.length === 0) {
+        clearStationRouteTimes()
+        return
+    }
+
+    const loadVersion = ++stationRouteTimeLoadVersion
+    loadingStationRouteTimes.value = true
+    try {
+        const pairs = getStationRouteTimePairs()
+        if (pairs.length === 0) {
+            stationRouteTimesByKey.value = {}
+            return
+        }
+
+        const entries = await Promise.all(pairs.map(async (pair) => {
+            const response = await axios.get('/StationLayout/GetStationRouteTimes', {
+                params: {
+                    instanceID,
+                    stationSchemeID,
+                    routeID: pair.routeID,
+                    trainTypeID: pair.trainTypeID,
+                },
+            })
+            const rows = (Array.isArray(response.data) ? response.data : [])
+                .map(normalizeStationRouteTimeOption)
+                .filter((item): item is StationRouteTimeOption => item !== null)
+                .map((time) => ({
+                    ...time,
+                    routeID: time.routeID || pair.routeID,
+                    trainTypeID: time.trainTypeID || pair.trainTypeID,
+                }))
+            return [getStationRouteTimeKey(pair.routeID, pair.trainTypeID), rows] as const
+        }))
+
+        if (
+            loadVersion !== stationRouteTimeLoadVersion ||
+            instanceID !== props.selectedInstanceId ||
+            stationSchemeID !== currentStationSchemeId.value.trim()
+        ) {
+            return
+        }
+        stationRouteTimesByKey.value = Object.fromEntries(entries)
+    } catch (error) {
+        if (loadVersion !== stationRouteTimeLoadVersion) return
+        console.error('Failed to load simulation station route times:', error)
+        stationRouteTimesByKey.value = {}
+        ElMessage.error(t('stationLayout3d.messages.loadRouteTimesFailed'))
+    } finally {
+        if (loadVersion === stationRouteTimeLoadVersion) loadingStationRouteTimes.value = false
+    }
+}
+
+async function loadGanttSubTableSettings() {
+    const instanceID = props.selectedInstanceId
+    const stationSchemeID = currentStationSchemeId.value.trim()
+    const operationPlanID = currentOperationPlanId.value.trim()
+    if (!instanceID || !stationSchemeID || !operationPlanID) {
+        runWithoutGanttSubTableSave(resetGanttSubTables)
+        return
+    }
+
+    const loadVersion = ++ganttSubTableLoadVersion
+    loadingGanttSubTableSettings.value = true
+    try {
+        const response = await axios.get('/OperationPlan/GetOperationOccupationTimeSubTables', {
+            params: {
+                instanceID,
+                stationSchemeID,
+                operationPlanID,
+            },
+        })
+        if (
+            loadVersion !== ganttSubTableLoadVersion ||
+            instanceID !== props.selectedInstanceId ||
+            stationSchemeID !== currentStationSchemeId.value.trim() ||
+            operationPlanID !== currentOperationPlanId.value.trim()
+        ) {
+            return
+        }
+
+        const settings = (Array.isArray(response.data) ? response.data : [])
+            .map(normalizeGanttSubTableSetting)
+            .filter((item): item is GanttSubTable => item !== null)
+        if (settings.length > 0) {
+            applyGanttSubTableSettings(settings)
+            return
+        }
+
+        runWithoutGanttSubTableSave(() => {
+            resetGanttSubTables()
+            syncGanttSubTables(ganttAvailableCells.value)
+        })
+        void nextTick(() => {
+            scheduleSaveGanttSubTableSettings(0)
+        })
+    } catch (error) {
+        if (loadVersion !== ganttSubTableLoadVersion) return
+        console.error('Failed to load simulation gantt sub table settings:', error)
+        runWithoutGanttSubTableSave(() => {
+            resetGanttSubTables()
+            syncGanttSubTables(ganttAvailableCells.value)
+        })
+    } finally {
+        if (loadVersion === ganttSubTableLoadVersion) {
+            loadingGanttSubTableSettings.value = false
+        }
+    }
+}
+
+async function saveGanttSubTableSettingsNow() {
+    if (
+        isDisposed ||
+        suppressGanttSubTableSave ||
+        loadingGanttSubTableSettings.value ||
+        savingGanttSubTableSettings.value
+    ) {
+        return
+    }
+
+    const instanceID = props.selectedInstanceId
+    const stationSchemeID = currentStationSchemeId.value.trim()
+    const operationPlanID = currentOperationPlanId.value.trim()
+    if (!instanceID || !stationSchemeID || !operationPlanID) return
+
+    const subTables = buildGanttSubTableSettingsPayload()
+    if (subTables.length === 0) return
+
+    const savingRevision = ganttSubTableSaveRevision
+    ganttSubTableSavingRevision = savingRevision
+    savingGanttSubTableSettings.value = true
+    const request = axios.put('/OperationPlan/SaveOperationOccupationTimeSubTables', {
+        instanceID,
+        stationSchemeID,
+        operationPlanID,
+        subTables,
+    })
+    ganttSubTableSaveRequest = request
+    try {
+        const response = await request
+        if (
+            isDisposed ||
+            instanceID !== props.selectedInstanceId ||
+            stationSchemeID !== currentStationSchemeId.value.trim() ||
+            operationPlanID !== currentOperationPlanId.value.trim()
+        ) {
+            return
+        }
+
+        const settings = (Array.isArray(response.data) ? response.data : [])
+            .map(normalizeGanttSubTableSetting)
+            .filter((item): item is GanttSubTable => item !== null)
+        if (settings.length > 0 && savingRevision === ganttSubTableSaveRevision) {
+            applyGanttSubTableSettings(settings)
+        }
+    } catch (error) {
+        if (!isDisposed) console.error('Failed to save simulation gantt sub table settings:', error)
+    } finally {
+        // An older scheme's save may finish after a new scheme started saving.
+        if (ganttSubTableSaveRequest === request) {
+            ganttSubTableSaveRequest = null
+            savingGanttSubTableSettings.value = false
+            if (!isDisposed && savingRevision !== ganttSubTableSaveRevision) {
+                scheduleSaveGanttSubTableSettings(0)
+            }
+        }
+    }
+}
+
+function flushPendingGanttSubTableSettings() {
+    const hasPendingChanges = ganttSubTableSaveTimer !== null ||
+        (savingGanttSubTableSettings.value && ganttSubTableSavingRevision !== ganttSubTableSaveRevision)
+    if (!hasPendingChanges || loadingGanttSubTableSettings.value || !hasScope.value) return
+    // Finish a user's pending edit before discarding this page. Only the small
+    // request payload survives; its result never updates the disposed component.
+    const payload = {
+        instanceID: props.selectedInstanceId,
+        stationSchemeID: currentStationSchemeId.value.trim(),
+        operationPlanID: currentOperationPlanId.value.trim(),
+        subTables: buildGanttSubTableSettingsPayload(),
+    }
+    if (!payload.subTables.length) return
+    void (ganttSubTableSaveRequest || Promise.resolve())
+        .catch(() => undefined)
+        .then(() => axios.put('/OperationPlan/SaveOperationOccupationTimeSubTables', payload))
+        .catch(error => console.error('Failed to save pending simulation gantt sub table settings:', error))
+}
+
+function scheduleSaveGanttSubTableSettings(delay = 500) {
+    if (isDisposed || suppressGanttSubTableSave || loadingGanttSubTableSettings.value) return
+
+    if (ganttSubTableSaveTimer) {
+        window.clearTimeout(ganttSubTableSaveTimer)
+    }
+    ganttSubTableSaveTimer = window.setTimeout(() => {
+        ganttSubTableSaveTimer = null
+        void saveGanttSubTableSettingsNow()
+    }, delay)
+}
+
+async function loadLayout() {
+    const instanceID = props.selectedInstanceId
+    const stationSchemeID = currentStationSchemeId.value.trim()
+    if (!instanceID || !stationSchemeID) {
+        clearLayout()
+        return
+    }
+
+    const loadVersion = ++layoutLoadVersion
+    loadingLayout.value = true
+    try {
+        const response = await axios.post('/StationLayout/GetJson', null, {
+            params: { instanceID, stationSchemeID },
+        })
+        if (
+            loadVersion !== layoutLoadVersion ||
+            instanceID !== props.selectedInstanceId ||
+            stationSchemeID !== currentStationSchemeId.value.trim()
+        ) {
+            return
+        }
+        layoutData.value = readRecord(response.data)
+        layoutDisplayStyles.value = getLayoutDisplayStyles(response.data)
+        layoutCells.value = getLayoutCells(response.data)
+        layoutGridSpacing.value = getLayoutGridSpacing(response.data)
+        await loadLayoutIntoEditor()
+    } catch (error) {
+        if (loadVersion !== layoutLoadVersion) return
+        console.error('Failed to load simulation layout:', error)
+        clearLayout()
+        ElMessage.error(t('operationSimulation.loadLayoutFailed'))
+    } finally {
+        if (loadVersion === layoutLoadVersion) loadingLayout.value = false
+    }
+}
+
+async function loadLayoutIntoEditor() {
+    if (!layoutData.value) return
+    await nextTick()
+    layoutEditorRef.value?.loadDataFromJson?.(layoutData.value)
+    await nextTick()
+    layoutNeedsFit = true
+    fitVisibleLayout()
+}
+
+function fitVisibleLayout() {
+    if (!layoutNeedsFit || show3D.value || !props.active) return
+    if (fitLayoutToFullView()) layoutNeedsFit = false
+}
+
+function readLayoutViewportState(): CanvasViewportState {
+    if (!layoutData.value) return createEmptyCanvasViewportState()
+    const state = layoutEditorRef.value?.getCanvasViewportState?.()
+    if (!state || typeof state !== 'object') return createEmptyCanvasViewportState()
+    const width = Number(state.width)
+    const height = Number(state.height)
+    const scaleX = Number(state.scaleX)
+    const scaleY = Number(state.scaleY)
+    if (
+        !Number.isFinite(width) ||
+        !Number.isFinite(height) ||
+        width <= 0 ||
+        height <= 0 ||
+        !Number.isFinite(scaleX) || scaleX <= 0 ||
+        !Number.isFinite(scaleY) || scaleY <= 0
+    ) {
+        return createEmptyCanvasViewportState()
+    }
+    return {
+        minX: Number(state.minX || 0),
+        minY: Number(state.minY || 0),
+        maxX: Number(state.maxX || 0),
+        maxY: Number(state.maxY || 0),
+        width,
+        height,
+        scaleX,
+        scaleY,
+    }
+}
+
+function toggleLayoutFreeZoom() {
+    return layoutEditorRef.value?.toggleFreeZoom?.(layoutViewportRef.value, (scaleX: number, scaleY: number) => {
+        layoutScaleX.value = scaleX
+        layoutScaleY.value = scaleY
+    }) ?? false
+}
+
+function fitLayoutToFullView() {
+    return layoutEditorRef.value?.fitFullView?.(layoutViewportRef.value, (scale: number) => {
+        layoutScaleX.value = scale
+        layoutScaleY.value = scale
+    }) ?? false
+}
+
+async function refreshSimulationData() {
+    if (isDisposed) return
+    const loadVersion = schemeDataLoadVersion
+    const instanceID = props.selectedInstanceId
+    const stationSchemeID = currentStationSchemeId.value
+    const operationPlanID = currentOperationPlanId.value
+    if (!hasScope.value) {
+        clearStationRoutes()
+        clearTrainPlan()
+        clearGanttSubTableState()
+        await loadLayout()
+        return
+    }
+    stopPlaybackForReload()
+    await Promise.all([loadStationRoutes(), loadTrainOperationPlan(), loadLayout()])
+    if (
+        isDisposed || loadVersion !== schemeDataLoadVersion ||
+        instanceID !== props.selectedInstanceId || stationSchemeID !== currentStationSchemeId.value ||
+        operationPlanID !== currentOperationPlanId.value
+    ) return
+    await Promise.all([loadStationRouteTimes(), loadGanttSubTableSettings()])
+}
+
+async function handleStationSchemeChange() {
+    const loadVersion = ++schemeDataLoadVersion
+    const instanceID = props.selectedInstanceId
+    const stationSchemeID = currentStationSchemeId.value
+    stopPlaybackForReload()
+    clearOperationPlans()
+    clearStationRoutes()
+    clearLayout()
+    await loadOperationPlans()
+    if (
+        isDisposed || loadVersion !== schemeDataLoadVersion ||
+        instanceID !== props.selectedInstanceId || stationSchemeID !== currentStationSchemeId.value
+    ) return
+    await refreshSimulationData()
+}
+
+async function handleOperationPlanChange() {
+    stopPlaybackForReload()
+    clearTrainPlan()
+    clearGanttSubTableState()
+    await loadTrainOperationPlan()
+    await Promise.all([loadStationRouteTimes(), loadGanttSubTableSettings()])
+}
+
+function handleTrainChange() {
+    resetPlayback()
+}
+
+function handlePlaybackModeChange() {
+    resetPlayback()
+}
+
+watch(
+    () => props.selectedInstanceId,
+    async () => {
+        schemeDataLoadVersion++
+        stopPlaybackForReload()
+        clearOperationPlans()
+        clearStationRoutes()
+        clearLayout()
+        stationSchemeOptions.value = []
+        await loadStationSchemes()
+    },
+    { immediate: true },
+)
+
+watch([currentStationSchemeId, stationSchemesInstanceId], () => {
+    if (props.selectedInstanceId && stationSchemesInstanceId.value === props.selectedInstanceId) {
+        void handleStationSchemeChange()
+    }
+})
+
+watch(simulationDurationSeconds, () => {
+    clampPlayheadToDuration()
+})
+
+watch(routeRuns, () => {
+    syncActiveRunIndex(playheadSeconds.value)
+    scheduleScrollSimulationTableToCurrentRun()
+    scheduleScrollGanttToPlayhead()
+})
+
+watch(
+    ganttAvailableCells,
+    (cells) => {
+        syncGanttSubTables(cells)
+    },
+    { immediate: true },
+)
+
+watch(
+    ganttSubTables,
+    () => {
+        if (suppressGanttSubTableSave || loadingGanttSubTableSettings.value) return
+        ganttSubTableSaveRevision += 1
+        scheduleSaveGanttSubTableSettings()
+    },
+    { deep: true },
+)
+
+watch(currentSimulationRunIndex, () => {
+    scheduleScrollSimulationTableToCurrentRun()
+}, {
+    flush: 'post',
+})
+
+watch(playheadSeconds, () => {
+    scheduleScrollGanttToPlayhead()
+}, {
+    flush: 'post',
+})
+
+watch(() => props.active, (active) => {
+    if (!active) pausePlayback()
+    else void nextTick(fitVisibleLayout)
+})
+
+watch(show3D, () => {
+    // Discard interpolation from the hidden 2D overlay when returning to it.
+    trainOverlayResetRevision.value++
+    void nextTick(fitVisibleLayout)
+})
+
+onMounted(() => {
+    const syncPanelBounds = () => {
+        maxSimulationSideWidth.value = Math.max(280, (simulationBodyRef.value?.clientWidth || 920) - 328)
+        simulationSideWidth.value = Math.min(simulationSideWidth.value, maxSimulationSideWidth.value)
+        maxGanttPanelHeight.value = getMaxGanttPanelHeight()
+        ganttPanelHeight.value = Math.min(ganttPanelHeight.value, maxGanttPanelHeight.value)
+    }
+    panelResizeObserver = new ResizeObserver(syncPanelBounds)
+    if (simulationBodyRef.value) panelResizeObserver.observe(simulationBodyRef.value)
+    if (simulationLeftPanelRef.value) panelResizeObserver.observe(simulationLeftPanelRef.value)
+    syncPanelBounds()
+})
+
+onBeforeUnmount(() => {
+    flushPendingGanttSubTableSettings()
+    isDisposed = true
+    schemeDataLoadVersion++
+    stationSchemeLoadVersion++
+    operationPlanLoadVersion++
+    stationRouteLoadVersion++
+    stationRouteTimeLoadVersion++
+    trainPlanLoadVersion++
+    layoutLoadVersion++
+    ganttSubTableLoadVersion++
+    pausePlayback()
+    panelResizeObserver?.disconnect()
+    if (ganttSubTableSaveTimer) {
+        window.clearTimeout(ganttSubTableSaveTimer)
+        ganttSubTableSaveTimer = null
+    }
+    if (tableScrollFrameId !== null) {
+        window.cancelAnimationFrame(tableScrollFrameId)
+        tableScrollFrameId = null
+    }
+    if (ganttScrollFrameId !== null) {
+        window.cancelAnimationFrame(ganttScrollFrameId)
+        ganttScrollFrameId = null
+    }
+})
+</script>
+
+<style scoped lang="css">
+.operation-simulation-page {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    gap: 10px;
+    overflow: hidden;
+}
+
+.simulation-toolbar {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-height: 36px;
+}
+
+.simulation-toolbar-left,
+.simulation-toolbar-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.simulation-toolbar-left {
+    flex: 1;
+    flex-wrap: wrap;
+}
+
+.simulation-toolbar-control {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+.simulation-toolbar-control span,
+.simulation-speed-row span {
+    color: #40546b;
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.simulation-select {
+    width: min(280px, 32vw);
+}
+
+.train-select {
+    width: min(320px, 34vw);
+}
+
+.playback-mode-toggle :deep(.el-radio-button__inner) {
+    padding: 5px 10px;
+}
+
+.simulation-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 8px minmax(0, var(--simulation-side-width));
+    flex: 1 1 auto;
+    gap: 0;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.simulation-left-panel {
+    display: flex;
+    min-width: 0;
+    min-height: 0;
+    flex-direction: column;
+    gap: 0;
+}
+
+.simulation-layout-view {
+    position: relative;
+    flex: 1 1 0;
+    contain: size;
+    min-width: 0;
+    min-height: 0;
+    overflow: auto;
+    border: 1px solid var(--sy-border);
+    border-radius: var(--sy-radius, 6px);
+    background: #31363f;
+}
+
+.simulation-scheme-empty {
+    flex: 1 1 0;
+    min-height: 0;
+    overflow: auto;
+    border: 1px solid var(--sy-border);
+    border-radius: var(--sy-radius, 6px);
+    background: var(--el-bg-color);
+}
+
+
+.simulation-layout-stage {
+    position: relative;
+    display: block;
+    min-width: 100%;
+    min-height: 100%;
+}
+
+.simulation-station-layer {
+    filter: brightness(1);
+    transition: filter 180ms ease;
+}
+
+.simulation-station-layer.is-playing {
+    filter: brightness(0.65);
+}
+
+.simulation-layout-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: #d7dee9;
+    font-size: 13px;
+}
+
+.simulation-gantt-panel {
+    display: flex;
+    flex: 0 0 260px;
+    min-height: 188px;
+    flex-direction: column;
+    overflow: hidden;
+    border: 1px solid var(--sy-border);
+    border-radius: var(--sy-radius, 6px);
+    background: #ffffff;
+}
+
+.simulation-gantt-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-height: 40px;
+    padding: 6px 10px;
+    border-bottom: 1px solid #edf2f7;
+}
+
+.simulation-gantt-title {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: baseline;
+    gap: 8px;
+    min-width: 0;
+    white-space: nowrap;
+}
+
+.simulation-gantt-header h3 {
+    margin: 0;
+    color: #21354f;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.simulation-gantt-title span {
+    color: #65758a;
+    font-size: 12px;
+}
+
+.simulation-gantt-subtable-toolbar {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.simulation-gantt-sub-tabs {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.simulation-gantt-sub-tabs :deep(.el-tabs__header) {
+    margin: 0;
+}
+
+.simulation-gantt-sub-tabs :deep(.el-tabs__nav-wrap::after) {
+    display: none;
+}
+
+.simulation-gantt-sub-tabs :deep(.el-tabs__item) {
+    height: 28px;
+    padding: 0 12px;
+    font-size: 12px;
+    line-height: 28px;
+}
+
+.simulation-gantt-subtable-actions {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 6px;
+}
+
+.simulation-gantt-subtable-actions :deep(.el-button + .el-button) {
+    margin-left: 0;
+}
+
+.simulation-gantt-subtable-summary {
+    flex: 0 0 auto;
+    color: #65758a;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.simulation-gantt-subtable-cell-select {
+    width: 100%;
+}
+
+
+.simulation-side-panel {
+    display: flex;
+    min-width: 0;
+    min-height: 0;
+    flex-direction: column;
+    overflow: hidden;
+    border: 1px solid var(--sy-border);
+    border-radius: var(--sy-radius, 6px);
+    background: #ffffff;
+}
+
+.simulation-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 14px;
+    border-bottom: 1px solid #e4edf6;
+    background: var(--el-fill-color-extra-light);
+}
+
+.simulation-panel-header h2,
+.simulation-table-header h3 {
+    margin: 0;
+    color: #21354f;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.4;
+}
+
+.simulation-panel-header span,
+.simulation-table-header span {
+    color: #65758a;
+    font-size: 12px;
+}
+
+.simulation-controls {
+    display: flex;
+    flex: 0 0 auto;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 14px;
+    border-bottom: 1px solid #edf2f7;
+}
+
+.simulation-control-buttons,
+.simulation-speed-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.simulation-clock {
+    margin-left: auto;
+    color: #1f3a68;
+    font-family: Consolas, "Microsoft YaHei", monospace;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.simulation-speed-row {
+    justify-content: space-between;
+}
+
+.simulation-speed-select {
+    width: 112px;
+}
+
+.simulation-route-status {
+    flex: 0 0 auto;
+    padding: 12px 14px;
+    border-bottom: 1px solid #edf2f7;
+}
+
+.simulation-status-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.simulation-status-grid div {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 3px;
+    padding: 8px 10px;
+    border: 1px solid #e4edf6;
+    border-radius: 6px;
+    background: #fbfdff;
+}
+
+.simulation-status-grid span {
+    color: #718096;
+    font-size: 12px;
+}
+
+.simulation-status-grid strong {
+    min-width: 0;
+    overflow: hidden;
+    color: #21354f;
+    font-size: 13px;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.simulation-table-section {
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 0;
+    flex-direction: column;
+}
+
+.simulation-table-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 14px 8px;
+}
+
+@media (max-width: 760px) {
+    .simulation-side-divider { display: none; }
+
+    .simulation-body {
+        grid-template-columns: minmax(0, 1fr);
+        overflow: auto;
+    }
+
+    .simulation-left-panel {
+        min-height: 650px;
+    }
+
+    .simulation-layout-view {
+        min-height: 420px;
+    }
+
+    .simulation-side-panel {
+        min-height: 460px;
+    }
+}
+
+@media (max-width: 680px) {
+    .simulation-toolbar,
+    .simulation-toolbar-left,
+    .simulation-toolbar-right,
+    .simulation-toolbar-control {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .simulation-toolbar-right {
+        flex-direction: row;
+    }
+
+    .simulation-left-panel {
+        min-height: 600px;
+    }
+
+    .simulation-layout-view {
+        min-height: 380px;
+    }
+
+    .simulation-gantt-panel {
+        flex-basis: 220px;
+    }
+
+    .simulation-select,
+    .train-select {
+        width: 100%;
+    }
+}
+</style>

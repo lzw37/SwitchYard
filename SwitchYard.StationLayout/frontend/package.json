@@ -1,0 +1,50 @@
+{
+  "name": "@switchyard/station-layout",
+  "version": "0.1.0-alpha.2",
+  "license": "MIT",
+  "private": false,
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "style": "./dist/station-layout.css",
+  "sideEffects": [
+    "./dist/station-layout.css"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./style.css": {
+      "types": "./dist/style.d.ts",
+      "default": "./dist/station-layout.css"
+    }
+  },
+  "scripts": {
+    "build": "vite build && vue-tsc --declaration --emitDeclarationOnly",
+    "type-check": "vue-tsc --noEmit",
+    "test:free-zoom": "node --test tests/layout-free-zoom.mjs",
+    "test:contract": "tsc -p tsconfig.contract.json --noEmit",
+    "test:runtime": "node tests/layout-runtime.mjs && node --test tests/layout-full-view.mjs && node tests/layout-inline-rename.mjs && node tests/layout-json-codec.mjs && node tests/layout-json-editor.mjs && node tests/layout-json-integration.mjs && node tests/layout-topology.mjs && node tests/layout-repair.mjs && node tests/layout-identity.mjs",
+    "pack:offline": "npm pack"
+  },
+  "peerDependencies": {
+    "@element-plus/icons-vue": ">=2.3.0 <3",
+    "element-plus": ">=2.10.0 <3",
+    "vue": ">=3.5.0 <4"
+  },
+  "devDependencies": {
+    "@element-plus/icons-vue": "^2.3.2",
+    "@vitejs/plugin-vue": "^6.0.2",
+    "@vue/tsconfig": "^0.8.1",
+    "element-plus": "^2.13.0",
+    "typescript": "~5.9.0",
+    "vite": "^7.2.4",
+    "vue": "^3.5.25",
+    "vue-tsc": "^3.1.5"
+  }
+}

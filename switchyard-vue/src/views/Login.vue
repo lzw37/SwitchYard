@@ -12,7 +12,6 @@
                     <el-input
                         v-model="loginForm.username"
                         :placeholder="t('login.usernamePlaceholder')"
-                        prefix-icon="User"
                         size="large"
                         clearable
                     />
@@ -23,7 +22,6 @@
                         v-model="loginForm.password"
                         type="password"
                         :placeholder="t('login.passwordPlaceholder')"
-                        prefix-icon="Lock"
                         size="large"
                         show-password
                         @keyup.enter="handleLogin"
@@ -31,15 +29,7 @@
                 </el-form-item>
 
                 <el-form-item>
-                    <el-button
-                        type="primary"
-                        size="large"
-                        :loading="loading"
-                        class="login-button"
-                        @click="handleLogin"
-                    >
-                        {{ t("login.login") }}
-                    </el-button>
+                    <ActionButton type="primary" :label="t('login.login')" :icon="actionIcons.forward" :loading="loading" @click="handleLogin" />
                 </el-form-item>
 
                 <div class="register-link">
@@ -57,6 +47,8 @@ import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
 import type { FormInstance, FormRules } from "element-plus";
+import ActionButton from '@/components/ui/ActionButton.vue';
+import { actionIcons } from '@/components/ui/actionIcons';
 import CryptoJS from "crypto-js";
 import axios from "@/utils/axios";
 import { useAuthStore } from "@/stores/auth";
@@ -166,7 +158,7 @@ const handleLogin = async () => {
                 ElMessage.success(t("login.success"));
 
                 if (data.mustChangePassword === true) {
-                    ElMessage.warning("首次登录或密码被重置后，请先修改密码");
+                    ElMessage.warning(t('userInfo.messages.passwordChangeRequired'));
                     await router.push("/userinfo?forcePasswordChange=1");
                     return;
                 }
@@ -198,32 +190,28 @@ const handleLogin = async () => {
     justify-content: center;
     align-items: center;
     min-height: 100vh;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: var(--sy-background, #f5f7fa);
 }
 
 .login-box {
-    width: 400px;
-    padding: 40px;
+    width: min(400px, calc(100vw - 32px));
+    box-sizing: border-box;
+    padding: 28px;
     background: white;
-    border-radius: 10px;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+    border: 1px solid var(--sy-border, #dfe4ea);
+    border-radius: 6px;
 }
 
 .login-title {
     text-align: center;
     margin-bottom: 30px;
     color: #333;
-    font-size: 24px;
+    font-size: 20px;
     font-weight: 600;
 }
 
 .login-form {
     width: 100%;
-}
-
-.login-button {
-    width: 100%;
-    margin-top: 10px;
 }
 
 :deep(.el-form-item) {
@@ -238,7 +226,7 @@ const handleLogin = async () => {
 }
 
 .register-link a {
-    color: #667eea;
+    color: var(--el-color-primary, #4776a8);
     text-decoration: none;
     margin-left: 5px;
     font-weight: 500;

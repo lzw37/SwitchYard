@@ -1,0 +1,3639 @@
+{
+  "schemaVersion": 1,
+  "generator": "scripts/collect-nuget-licenses.py",
+  "scope": "Git-tracked csproj files, their current local obj/project.assets.json, and local NuGet cache metadata/texts. No restore, build, network request, or platform completeness assertion.",
+  "limitations": [
+    "A local restore may omit other target runtime identifiers or publication modes; repeat for each actual release artifact.",
+    "Static csproj comparison does not evaluate arbitrary imported MSBuild props/targets; review custom or conditional builds separately.",
+    "Package license metadata does not enumerate bundled native, generated, embedded, or statically linked components.",
+    "Absence of a local license/NOTICE file does not remove upstream redistribution obligations.",
+    "This inventory is evidence, not a certification that a binary distribution is ready for release."
+  ],
+  "summary": {
+    "projects": 7,
+    "projectsWithIssues": 0,
+    "uniquePackageVersions": 81,
+    "packagesWithoutStandaloneLicenseText": 70,
+    "uniqueLocalTextFiles": 6,
+    "packagesWithNativeAssets": 6
+  },
+  "projects": [
+    {
+      "project": "SwitchYard.StationLayout/backend/SwitchYard.StationLayout.csproj",
+      "projectSha256": "5b254584a917c94b1205578979b820f53b3940cbc6b4b1fdec6ad80771c00e8d",
+      "targetFrameworks": [
+        "net10.0",
+        "net8.0"
+      ],
+      "directReferences": [
+        {
+          "id": "ACadSharp",
+          "requestedVersion": "3.4.29"
+        }
+      ],
+      "projectReferences": [],
+      "assetsProjectReferences": {
+        "net10.0": [],
+        "net8.0": []
+      },
+      "assets": "SwitchYard.StationLayout/backend/obj/project.assets.json",
+      "resolvedTargets": [
+        "net10.0",
+        "net8.0"
+      ],
+      "resolvedPackages": [
+        "ACadSharp/3.4.29"
+      ],
+      "issues": []
+    },
+    {
+      "project": "SwitchYard.WebApi/SwitchYard.Capacity/SwitchYard.Capacity.csproj",
+      "projectSha256": "55db719914c3e880e8865ebb458295807895e062d5725d7cf814ec2545a04147",
+      "targetFrameworks": [
+        "net8.0"
+      ],
+      "directReferences": [
+        {
+          "id": "ACadSharp",
+          "requestedVersion": "3.4.29"
+        }
+      ],
+      "projectReferences": [],
+      "assetsProjectReferences": {
+        "net8.0": []
+      },
+      "assets": "SwitchYard.WebApi/SwitchYard.Capacity/obj/project.assets.json",
+      "resolvedTargets": [
+        "net8.0"
+      ],
+      "resolvedPackages": [
+        "ACadSharp/3.4.29"
+      ],
+      "issues": []
+    },
+    {
+      "project": "SwitchYard.WebApi/SwitchYard.CapacityAgent/SwitchYard.CapacityAgent.csproj",
+      "projectSha256": "d03821b5def62df143a5bccc03dba419eb4f221ec7f579e8c09ffe6708f3de83",
+      "targetFrameworks": [
+        "net10.0"
+      ],
+      "directReferences": [
+        {
+          "id": "Google.OrTools",
+          "requestedVersion": "9.15.6755"
+        },
+        {
+          "id": "Microsoft.AspNetCore.SignalR.Client",
+          "requestedVersion": "10.0.10"
+        },
+        {
+          "id": "Serilog",
+          "requestedVersion": "4.0.0"
+        },
+        {
+          "id": "Serilog.Sinks.Console",
+          "requestedVersion": "5.0.0"
+        },
+        {
+          "id": "Serilog.Sinks.File",
+          "requestedVersion": "6.0.0"
+        }
+      ],
+      "projectReferences": [
+        "SwitchYard.WebApi/SwitchYard.Capacity/SwitchYard.Capacity.csproj"
+      ],
+      "assetsProjectReferences": {
+        "net10.0": [
+          "SwitchYard.WebApi/SwitchYard.Capacity/SwitchYard.Capacity.csproj"
+        ]
+      },
+      "assets": "SwitchYard.WebApi/SwitchYard.CapacityAgent/obj/project.assets.json",
+      "resolvedTargets": [
+        "net10.0"
+      ],
+      "resolvedPackages": [
+        "ACadSharp/3.4.29",
+        "Google.OrTools.runtime.linux-arm64/9.15.6755",
+        "Google.OrTools.runtime.linux-x64/9.15.6755",
+        "Google.OrTools.runtime.osx-arm64/9.15.6755",
+        "Google.OrTools.runtime.osx-x64/9.15.6755",
+        "Google.OrTools.runtime.win-x64/9.15.6755",
+        "Google.OrTools/9.15.6755",
+        "Google.Protobuf/3.33.1",
+        "Microsoft.AspNetCore.Connections.Abstractions/10.0.10",
+        "Microsoft.AspNetCore.Http.Connections.Client/10.0.10",
+        "Microsoft.AspNetCore.Http.Connections.Common/10.0.10",
+        "Microsoft.AspNetCore.SignalR.Client.Core/10.0.10",
+        "Microsoft.AspNetCore.SignalR.Client/10.0.10",
+        "Microsoft.AspNetCore.SignalR.Common/10.0.10",
+        "Microsoft.AspNetCore.SignalR.Protocols.Json/10.0.10",
+        "Microsoft.Extensions.DependencyInjection.Abstractions/10.0.10",
+        "Microsoft.Extensions.DependencyInjection/10.0.10",
+        "Microsoft.Extensions.Features/10.0.10",
+        "Microsoft.Extensions.Logging.Abstractions/10.0.10",
+        "Microsoft.Extensions.Logging/10.0.10",
+        "Microsoft.Extensions.Options/10.0.10",
+        "Microsoft.Extensions.Primitives/10.0.10",
+        "Serilog.Sinks.Console/5.0.0",
+        "Serilog.Sinks.File/6.0.0",
+        "Serilog/4.0.0"
+      ],
+      "issues": []
+    },
+    {
+      "project": "SwitchYard.WebApi/SwitchYard.Hump/SwitchYard.Hump.csproj",
+      "projectSha256": "e151f959964eb450a5b86b72765e3f9c505645fa9516eae485743d2b43911c8e",
+      "targetFrameworks": [
+        "net8.0"
+      ],
+      "directReferences": [],
+      "projectReferences": [],
+      "assetsProjectReferences": {
+        "net8.0": []
+      },
+      "assets": "SwitchYard.WebApi/SwitchYard.Hump/obj/project.assets.json",
+      "resolvedTargets": [
+        "net8.0"
+      ],
+      "resolvedPackages": [],
+      "issues": []
+    },
+    {
+      "project": "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj",
+      "projectSha256": "07bd04a86114f8b984c2842e0725e2334a1b77309c3c1822126c875a4eed9d78",
+      "targetFrameworks": [
+        "net8.0"
+      ],
+      "directReferences": [
+        {
+          "id": "ClosedXML",
+          "requestedVersion": "0.104.2"
+        },
+        {
+          "id": "Dapper",
+          "requestedVersion": "2.1.66"
+        },
+        {
+          "id": "Konscious.Security.Cryptography.Argon2",
+          "requestedVersion": "1.3.1"
+        },
+        {
+          "id": "Microsoft.AspNetCore.Authentication.JwtBearer",
+          "requestedVersion": "8.0.11"
+        },
+        {
+          "id": "Microsoft.Data.Sqlite",
+          "requestedVersion": "10.0.1"
+        },
+        {
+          "id": "Microsoft.Extensions.Logging",
+          "requestedVersion": "10.0.1"
+        },
+        {
+          "id": "MySqlConnector",
+          "requestedVersion": "2.6.1"
+        },
+        {
+          "id": "Serilog.AspNetCore",
+          "requestedVersion": "8.0.3"
+        },
+        {
+          "id": "Serilog.Sinks.File",
+          "requestedVersion": "6.0.0"
+        },
+        {
+          "id": "Swashbuckle.AspNetCore",
+          "requestedVersion": "6.6.2"
+        }
+      ],
+      "projectReferences": [
+        "SwitchYard.StationLayout/backend/SwitchYard.StationLayout.csproj",
+        "SwitchYard.WebApi/SwitchYard.Capacity/SwitchYard.Capacity.csproj",
+        "SwitchYard.WebApi/SwitchYard.Hump/SwitchYard.Hump.csproj",
+        "SwitchYard.WebApi/SwitchYard.SketchLayout/SwitchYard.SketchLayout.csproj"
+      ],
+      "assetsProjectReferences": {
+        "net8.0": [
+          "SwitchYard.StationLayout/backend/SwitchYard.StationLayout.csproj",
+          "SwitchYard.WebApi/SwitchYard.Capacity/SwitchYard.Capacity.csproj",
+          "SwitchYard.WebApi/SwitchYard.Hump/SwitchYard.Hump.csproj",
+          "SwitchYard.WebApi/SwitchYard.SketchLayout/SwitchYard.SketchLayout.csproj"
+        ]
+      },
+      "assets": "SwitchYard.WebApi/SwitchYard.Service/obj/project.assets.json",
+      "resolvedTargets": [
+        "net8.0"
+      ],
+      "resolvedPackages": [
+        "ACadSharp/3.4.29",
+        "ClosedXML.Parser/1.2.0",
+        "ClosedXML/0.104.2",
+        "Dapper/2.1.66",
+        "DocumentFormat.OpenXml.Framework/3.1.1",
+        "DocumentFormat.OpenXml/3.1.1",
+        "ExcelNumberFormat/1.1.0",
+        "Konscious.Security.Cryptography.Argon2/1.3.1",
+        "Konscious.Security.Cryptography.Blake2/1.1.1",
+        "Microsoft.AspNetCore.Authentication.JwtBearer/8.0.11",
+        "Microsoft.Data.Sqlite.Core/10.0.1",
+        "Microsoft.Data.Sqlite/10.0.1",
+        "Microsoft.Extensions.ApiDescription.Server/6.0.5",
+        "Microsoft.Extensions.Configuration.Abstractions/8.0.0",
+        "Microsoft.Extensions.Configuration.Binder/8.0.0",
+        "Microsoft.Extensions.DependencyInjection.Abstractions/10.0.1",
+        "Microsoft.Extensions.DependencyInjection/10.0.1",
+        "Microsoft.Extensions.DependencyModel/8.0.2",
+        "Microsoft.Extensions.Diagnostics.Abstractions/8.0.0",
+        "Microsoft.Extensions.FileProviders.Abstractions/8.0.0",
+        "Microsoft.Extensions.Hosting.Abstractions/8.0.0",
+        "Microsoft.Extensions.Logging.Abstractions/10.0.1",
+        "Microsoft.Extensions.Logging/10.0.1",
+        "Microsoft.Extensions.Options/10.0.1",
+        "Microsoft.Extensions.Primitives/10.0.1",
+        "Microsoft.IdentityModel.Abstractions/7.1.2",
+        "Microsoft.IdentityModel.JsonWebTokens/7.1.2",
+        "Microsoft.IdentityModel.Logging/7.1.2",
+        "Microsoft.IdentityModel.Protocols.OpenIdConnect/7.1.2",
+        "Microsoft.IdentityModel.Protocols/7.1.2",
+        "Microsoft.IdentityModel.Tokens/7.1.2",
+        "Microsoft.OpenApi/1.6.14",
+        "MySqlConnector/2.6.1",
+        "RBush/4.0.0",
+        "SQLitePCLRaw.bundle_e_sqlite3/2.1.11",
+        "SQLitePCLRaw.core/2.1.11",
+        "SQLitePCLRaw.lib.e_sqlite3/2.1.11",
+        "SQLitePCLRaw.provider.e_sqlite3/2.1.11",
+        "Serilog.AspNetCore/8.0.3",
+        "Serilog.Extensions.Hosting/8.0.0",
+        "Serilog.Extensions.Logging/8.0.0",
+        "Serilog.Formatting.Compact/2.0.0",
+        "Serilog.Settings.Configuration/8.0.4",
+        "Serilog.Sinks.Console/5.0.0",
+        "Serilog.Sinks.Debug/2.0.0",
+        "Serilog.Sinks.File/6.0.0",
+        "Serilog/4.0.0",
+        "SixLabors.Fonts/1.0.0",
+        "Swashbuckle.AspNetCore.Swagger/6.6.2",
+        "Swashbuckle.AspNetCore.SwaggerGen/6.6.2",
+        "Swashbuckle.AspNetCore.SwaggerUI/6.6.2",
+        "Swashbuckle.AspNetCore/6.6.2",
+        "System.Diagnostics.DiagnosticSource/10.0.1",
+        "System.IO.Packaging/8.0.1",
+        "System.IdentityModel.Tokens.Jwt/7.1.2",
+        "System.Memory/4.5.4"
+      ],
+      "issues": []
+    },
+    {
+      "project": "SwitchYard.WebApi/SwitchYard.SketchLayout/SwitchYard.SketchLayout.csproj",
+      "projectSha256": "8bfbe2bf0c6036509cacdfd064a59d230c80b49cac589bd8119be4e9f07c9084",
+      "targetFrameworks": [
+        "net8.0"
+      ],
+      "directReferences": [],
+      "projectReferences": [],
+      "assetsProjectReferences": {
+        "net8.0": []
+      },
+      "assets": "SwitchYard.WebApi/SwitchYard.SketchLayout/obj/project.assets.json",
+      "resolvedTargets": [
+        "net8.0"
+      ],
+      "resolvedPackages": [],
+      "issues": []
+    },
+    {
+      "project": "tools/SQLiteToMySqlMigrator/SQLiteToMySqlMigrator.csproj",
+      "projectSha256": "5016873fb86e6818029499ad8b5c634c70546558bcd2d0a6ed1a378854c22c79",
+      "targetFrameworks": [
+        "net8.0"
+      ],
+      "directReferences": [
+        {
+          "id": "Microsoft.Data.Sqlite",
+          "requestedVersion": "10.0.1"
+        },
+        {
+          "id": "MySqlConnector",
+          "requestedVersion": "2.4.0"
+        }
+      ],
+      "projectReferences": [],
+      "assetsProjectReferences": {
+        "net8.0": []
+      },
+      "assets": "tools/SQLiteToMySqlMigrator/obj/project.assets.json",
+      "resolvedTargets": [
+        "net8.0"
+      ],
+      "resolvedPackages": [
+        "Microsoft.Data.Sqlite.Core/10.0.1",
+        "Microsoft.Data.Sqlite/10.0.1",
+        "Microsoft.Extensions.DependencyInjection.Abstractions/8.0.2",
+        "Microsoft.Extensions.Logging.Abstractions/8.0.2",
+        "MySqlConnector/2.4.0",
+        "SQLitePCLRaw.bundle_e_sqlite3/2.1.11",
+        "SQLitePCLRaw.core/2.1.11",
+        "SQLitePCLRaw.lib.e_sqlite3/2.1.11",
+        "SQLitePCLRaw.provider.e_sqlite3/2.1.11",
+        "System.Memory/4.5.3"
+      ],
+      "issues": []
+    }
+  ],
+  "packages": [
+    {
+      "id": "ACadSharp",
+      "version": "3.4.29",
+      "cachePath": "<NuGet package folder>/acadsharp/3.4.29",
+      "license": {
+        "type": "expression",
+        "value": "MIT"
+      },
+      "licenseUrl": "https://licenses.nuget.org/MIT",
+      "authors": "DomCr",
+      "copyright": "Copyright (c) 2026 Albert Domenech",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/DomCR/ACadSharp",
+        "commit": "3010994939c1bc21df0c9e2931e9baee4564815a"
+      },
+      "projectUrl": "https://github.com/DomCR/ACadSharp",
+      "licenseFiles": [],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "acadsharp.nuspec",
+        "sha256": "db862da296922286f550d3fdeb5ee4c57e33c92851cd258f1557456ce5b86837"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.StationLayout/backend/SwitchYard.StationLayout.csproj",
+        "SwitchYard.WebApi/SwitchYard.Capacity/SwitchYard.Capacity.csproj",
+        "SwitchYard.WebApi/SwitchYard.CapacityAgent/SwitchYard.CapacityAgent.csproj",
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj"
+      ],
+      "directIn": [
+        "SwitchYard.StationLayout/backend/SwitchYard.StationLayout.csproj",
+        "SwitchYard.WebApi/SwitchYard.Capacity/SwitchYard.Capacity.csproj"
+      ]
+    },
+    {
+      "id": "ClosedXML.Parser",
+      "version": "1.2.0",
+      "cachePath": "<NuGet package folder>/closedxml.parser/1.2.0",
+      "license": {
+        "type": "expression",
+        "value": "MIT"
+      },
+      "licenseUrl": "https://licenses.nuget.org/MIT",
+      "authors": "Jan Havlíček",
+      "copyright": null,
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/ClosedXML/ClosedXML.Parser",
+        "commit": "aaf2ade77aa160d7e929088320eab562b2df6851"
+      },
+      "projectUrl": "https://github.com/ClosedXML/ClosedXML.Parser",
+      "licenseFiles": [],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "closedxml.parser.nuspec",
+        "sha256": "890f3ae65c1c34777e7db6040daadcb003ab65766c52b38c1176ba2853c426da"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "ClosedXML",
+      "version": "0.104.2",
+      "cachePath": "<NuGet package folder>/closedxml/0.104.2",
+      "license": {
+        "type": "expression",
+        "value": "MIT"
+      },
+      "licenseUrl": "https://licenses.nuget.org/MIT",
+      "authors": "Jan Havlíček, Francois Botha, Aleksei Pankratev, Manuel de Leon, Amir Ghezelbash",
+      "copyright": null,
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/ClosedXML/ClosedXML",
+        "commit": "3dfd3414f3aa32fa8ffee7124478ca9ac5fe6945"
+      },
+      "projectUrl": "https://github.com/ClosedXML/ClosedXML",
+      "licenseFiles": [],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "closedxml.nuspec",
+        "sha256": "4f9d4370e43e8ad31b0968ba72e21dd36f2d5ec617bd9c2a5a35195c2cad80d0"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj"
+      ],
+      "directIn": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj"
+      ]
+    },
+    {
+      "id": "Dapper",
+      "version": "2.1.66",
+      "cachePath": "<NuGet package folder>/dapper/2.1.66",
+      "license": {
+        "type": "expression",
+        "value": "Apache-2.0"
+      },
+      "licenseUrl": "https://licenses.nuget.org/Apache-2.0",
+      "authors": "Sam Saffron,Marc Gravell,Nick Craver",
+      "copyright": "2019 Stack Exchange, Inc.",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/DapperLib/Dapper",
+        "commit": "bd4f75b512de3e00f2c2631d5309961a1ecfea23"
+      },
+      "projectUrl": "https://github.com/DapperLib/Dapper",
+      "licenseFiles": [],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "dapper.nuspec",
+        "sha256": "32ed564ceceeb7d91a7e950dfcd1d60f4e4b879c955f86cdd1422d52f9ffb239"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj"
+      ],
+      "directIn": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj"
+      ]
+    },
+    {
+      "id": "DocumentFormat.OpenXml.Framework",
+      "version": "3.1.1",
+      "cachePath": "<NuGet package folder>/documentformat.openxml.framework/3.1.1",
+      "license": {
+        "type": "expression",
+        "value": "MIT"
+      },
+      "licenseUrl": "https://licenses.nuget.org/MIT",
+      "authors": "Microsoft",
+      "copyright": "© Microsoft Corporation. All rights reserved.",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/dotnet/Open-XML-SDK",
+        "commit": "f9e6ad7524e22b6b1f932deabc9055201b7870c0"
+      },
+      "projectUrl": "https://github.com/dotnet/Open-XML-SDK",
+      "licenseFiles": [],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "documentformat.openxml.framework.nuspec",
+        "sha256": "d3446279fb7923b5612ae01323c7c062ff534fdc4851c29855d3d5a90b5a00ab"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "DocumentFormat.OpenXml",
+      "version": "3.1.1",
+      "cachePath": "<NuGet package folder>/documentformat.openxml/3.1.1",
+      "license": {
+        "type": "expression",
+        "value": "MIT"
+      },
+      "licenseUrl": "https://licenses.nuget.org/MIT",
+      "authors": "Microsoft",
+      "copyright": "© Microsoft Corporation. All rights reserved.",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/dotnet/Open-XML-SDK",
+        "commit": "f9e6ad7524e22b6b1f932deabc9055201b7870c0"
+      },
+      "projectUrl": "https://github.com/dotnet/Open-XML-SDK",
+      "licenseFiles": [],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "documentformat.openxml.nuspec",
+        "sha256": "d6ea629022a51027ddc75c6398a25b65fc90780471db32dfeebcc53b4c2481fa"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "ExcelNumberFormat",
+      "version": "1.1.0",
+      "cachePath": "<NuGet package folder>/excelnumberformat/1.1.0",
+      "license": {
+        "type": "expression",
+        "value": "MIT"
+      },
+      "licenseUrl": "https://licenses.nuget.org/MIT",
+      "authors": "ExcelNumberFormat developers",
+      "copyright": null,
+      "repository": null,
+      "projectUrl": "https://github.com/andersnm/ExcelNumberFormat",
+      "licenseFiles": [],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "excelnumberformat.nuspec",
+        "sha256": "e5f439f21cb51cd7c6376bd06778e94b601c0b5bf6779d8fbb92113921fb2001"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "Google.OrTools.runtime.linux-arm64",
+      "version": "9.15.6755",
+      "cachePath": "<NuGet package folder>/google.ortools.runtime.linux-arm64/9.15.6755",
+      "license": {
+        "type": "expression",
+        "value": "Apache-2.0"
+      },
+      "licenseUrl": "https://licenses.nuget.org/Apache-2.0",
+      "authors": "Laurent Perron",
+      "copyright": "Copyright 2019-2021 Google LLC",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/google/or-tools",
+        "commit": "551ad10d94835c99e5e1e684500d3db398c0e345"
+      },
+      "projectUrl": "https://developers.google.com/optimization",
+      "licenseFiles": [],
+      "nativeAssets": [
+        "runtimes/linux-arm64/native/google-ortools-native.so",
+        "runtimes/linux-arm64/native/libCbc.so.2",
+        "runtimes/linux-arm64/native/libCbcSolver.so.2",
+        "runtimes/linux-arm64/native/libCgl.so.0",
+        "runtimes/linux-arm64/native/libClp.so.1",
+        "runtimes/linux-arm64/native/libClpSolver.so.1",
+        "runtimes/linux-arm64/native/libCoinUtils.so.2",
+        "runtimes/linux-arm64/native/libOsi.so.0",
+        "runtimes/linux-arm64/native/libOsiCbc.so.2",
+        "runtimes/linux-arm64/native/libOsiClp.so.1",
+        "runtimes/linux-arm64/native/libabsl_base.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_city.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_civil_time.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_cord.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_cord_internal.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_cordz_functions.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_cordz_handle.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_cordz_info.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_crc32c.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_crc_cord_state.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_crc_cpu_detect.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_crc_internal.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_debugging_internal.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_decode_rust_punycode.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_demangle_internal.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_demangle_rust.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_die_if_null.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_examine_stack.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_exponential_biased.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_flags_commandlineflag.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_flags_commandlineflag_internal.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_flags_config.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_flags_internal.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_flags_marshalling.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_flags_parse.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_flags_private_handle_accessor.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_flags_program_name.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_flags_reflection.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_flags_usage.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_flags_usage_internal.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_graphcycles_internal.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_hash.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_hashtablez_sampler.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_int128.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_kernel_timeout_internal.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_leak_check.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_log_entry.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_log_flags.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_log_globals.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_log_initialize.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_log_internal_check_op.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_log_internal_conditions.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_log_internal_fnmatch.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_log_internal_format.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_log_internal_globals.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_log_internal_log_sink_set.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_log_internal_message.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_log_internal_nullguard.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_log_internal_proto.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_log_internal_structured_proto.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_log_severity.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_log_sink.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_malloc_internal.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_random_distributions.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_random_internal_entropy_pool.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_random_internal_platform.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_random_internal_randen.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_random_internal_randen_hwaes.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_random_internal_randen_hwaes_impl.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_random_internal_randen_slow.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_random_internal_seed_material.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_random_seed_gen_exception.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_random_seed_sequences.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_raw_hash_set.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_raw_logging_internal.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_spinlock_wait.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_stacktrace.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_status.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_statusor.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_str_format_internal.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_strerror.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_string_view.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_strings.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_strings_internal.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_symbolize.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_synchronization.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_throw_delegate.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_time.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_time_zone.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_tracing_internal.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_utf8_for_code_point.so.2508.0.0",
+        "runtimes/linux-arm64/native/libabsl_vlog_config_internal.so.2508.0.0",
+        "runtimes/linux-arm64/native/libbz2.so.1",
+        "runtimes/linux-arm64/native/libhighs.so.1",
+        "runtimes/linux-arm64/native/libortools.so.9",
+        "runtimes/linux-arm64/native/libprotobuf.so.33.1.0",
+        "runtimes/linux-arm64/native/libre2.so.11",
+        "runtimes/linux-arm64/native/libscip.so.10.0",
+        "runtimes/linux-arm64/native/libutf8_validity.so.33.1.0",
+        "runtimes/linux-arm64/native/libz.so.1"
+      ],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts.",
+        "Native assets require a separate audit of bundled/static dependencies; the NuGet license is not a complete component inventory."
+      ],
+      "nuspec": {
+        "file": "google.ortools.runtime.linux-arm64.nuspec",
+        "sha256": "31f85cc9a245c0bd9c781daf799c887d43747de6264dbd18be929cb782b1eb28"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.CapacityAgent/SwitchYard.CapacityAgent.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "Google.OrTools.runtime.linux-x64",
+      "version": "9.15.6755",
+      "cachePath": "<NuGet package folder>/google.ortools.runtime.linux-x64/9.15.6755",
+      "license": {
+        "type": "expression",
+        "value": "Apache-2.0"
+      },
+      "licenseUrl": "https://licenses.nuget.org/Apache-2.0",
+      "authors": "Laurent Perron",
+      "copyright": "Copyright 2019-2021 Google LLC",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/google/or-tools",
+        "commit": "551ad10d94835c99e5e1e684500d3db398c0e345"
+      },
+      "projectUrl": "https://developers.google.com/optimization",
+      "licenseFiles": [],
+      "nativeAssets": [
+        "runtimes/linux-x64/native/google-ortools-native.so",
+        "runtimes/linux-x64/native/libCbc.so.2",
+        "runtimes/linux-x64/native/libCbcSolver.so.2",
+        "runtimes/linux-x64/native/libCgl.so.0",
+        "runtimes/linux-x64/native/libClp.so.1",
+        "runtimes/linux-x64/native/libClpSolver.so.1",
+        "runtimes/linux-x64/native/libCoinUtils.so.2",
+        "runtimes/linux-x64/native/libOsi.so.0",
+        "runtimes/linux-x64/native/libOsiCbc.so.2",
+        "runtimes/linux-x64/native/libOsiClp.so.1",
+        "runtimes/linux-x64/native/libabsl_base.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_city.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_civil_time.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_cord.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_cord_internal.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_cordz_functions.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_cordz_handle.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_cordz_info.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_crc32c.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_crc_cord_state.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_crc_cpu_detect.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_crc_internal.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_debugging_internal.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_decode_rust_punycode.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_demangle_internal.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_demangle_rust.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_die_if_null.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_examine_stack.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_exponential_biased.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_flags_commandlineflag.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_flags_commandlineflag_internal.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_flags_config.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_flags_internal.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_flags_marshalling.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_flags_parse.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_flags_private_handle_accessor.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_flags_program_name.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_flags_reflection.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_flags_usage.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_flags_usage_internal.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_graphcycles_internal.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_hash.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_hashtablez_sampler.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_int128.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_kernel_timeout_internal.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_leak_check.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_log_entry.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_log_flags.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_log_globals.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_log_initialize.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_log_internal_check_op.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_log_internal_conditions.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_log_internal_fnmatch.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_log_internal_format.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_log_internal_globals.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_log_internal_log_sink_set.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_log_internal_message.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_log_internal_nullguard.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_log_internal_proto.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_log_internal_structured_proto.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_log_severity.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_log_sink.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_malloc_internal.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_random_distributions.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_random_internal_entropy_pool.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_random_internal_platform.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_random_internal_randen.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_random_internal_randen_hwaes.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_random_internal_randen_hwaes_impl.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_random_internal_randen_slow.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_random_internal_seed_material.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_random_seed_gen_exception.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_random_seed_sequences.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_raw_hash_set.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_raw_logging_internal.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_spinlock_wait.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_stacktrace.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_status.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_statusor.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_str_format_internal.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_strerror.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_string_view.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_strings.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_strings_internal.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_symbolize.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_synchronization.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_throw_delegate.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_time.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_time_zone.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_tracing_internal.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_utf8_for_code_point.so.2508.0.0",
+        "runtimes/linux-x64/native/libabsl_vlog_config_internal.so.2508.0.0",
+        "runtimes/linux-x64/native/libbz2.so.1",
+        "runtimes/linux-x64/native/libhighs.so.1",
+        "runtimes/linux-x64/native/libortools.so.9",
+        "runtimes/linux-x64/native/libprotobuf.so.33.1.0",
+        "runtimes/linux-x64/native/libre2.so.11",
+        "runtimes/linux-x64/native/libscip.so.10.0",
+        "runtimes/linux-x64/native/libutf8_validity.so.33.1.0",
+        "runtimes/linux-x64/native/libz.so.1"
+      ],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts.",
+        "Native assets require a separate audit of bundled/static dependencies; the NuGet license is not a complete component inventory."
+      ],
+      "nuspec": {
+        "file": "google.ortools.runtime.linux-x64.nuspec",
+        "sha256": "7528011c0dc4cebce241d483f3eebbc8469f545a317bbc3f6a716d98f050f205"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.CapacityAgent/SwitchYard.CapacityAgent.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "Google.OrTools.runtime.osx-arm64",
+      "version": "9.15.6755",
+      "cachePath": "<NuGet package folder>/google.ortools.runtime.osx-arm64/9.15.6755",
+      "license": {
+        "type": "expression",
+        "value": "Apache-2.0"
+      },
+      "licenseUrl": "https://licenses.nuget.org/Apache-2.0",
+      "authors": "Laurent Perron",
+      "copyright": "Copyright 2019-2021 Google LLC",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/google/or-tools",
+        "commit": "551ad10d94835c99e5e1e684500d3db398c0e345"
+      },
+      "projectUrl": "https://developers.google.com/optimization",
+      "licenseFiles": [],
+      "nativeAssets": [
+        "runtimes/osx-arm64/native/google-ortools-native.dylib",
+        "runtimes/osx-arm64/native/libCbc.2.dylib",
+        "runtimes/osx-arm64/native/libCbcSolver.2.dylib",
+        "runtimes/osx-arm64/native/libCgl.0.dylib",
+        "runtimes/osx-arm64/native/libClp.1.dylib",
+        "runtimes/osx-arm64/native/libClpSolver.1.dylib",
+        "runtimes/osx-arm64/native/libCoinUtils.2.dylib",
+        "runtimes/osx-arm64/native/libOsi.0.dylib",
+        "runtimes/osx-arm64/native/libOsiCbc.2.dylib",
+        "runtimes/osx-arm64/native/libOsiClp.1.dylib",
+        "runtimes/osx-arm64/native/libabsl_base.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_city.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_civil_time.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_cord.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_cord_internal.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_cordz_functions.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_cordz_handle.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_cordz_info.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_crc32c.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_crc_cord_state.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_crc_cpu_detect.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_crc_internal.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_debugging_internal.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_decode_rust_punycode.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_demangle_internal.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_demangle_rust.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_die_if_null.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_examine_stack.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_exponential_biased.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_flags_commandlineflag.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_flags_commandlineflag_internal.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_flags_config.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_flags_internal.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_flags_marshalling.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_flags_parse.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_flags_private_handle_accessor.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_flags_program_name.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_flags_reflection.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_flags_usage.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_flags_usage_internal.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_graphcycles_internal.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_hash.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_hashtablez_sampler.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_int128.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_kernel_timeout_internal.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_leak_check.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_log_entry.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_log_flags.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_log_globals.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_log_initialize.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_log_internal_check_op.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_log_internal_conditions.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_log_internal_fnmatch.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_log_internal_format.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_log_internal_globals.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_log_internal_log_sink_set.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_log_internal_message.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_log_internal_nullguard.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_log_internal_proto.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_log_internal_structured_proto.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_log_severity.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_log_sink.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_malloc_internal.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_random_distributions.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_random_internal_entropy_pool.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_random_internal_platform.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_random_internal_randen.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_random_internal_randen_hwaes.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_random_internal_randen_hwaes_impl.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_random_internal_randen_slow.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_random_internal_seed_material.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_random_seed_gen_exception.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_random_seed_sequences.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_raw_hash_set.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_raw_logging_internal.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_spinlock_wait.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_stacktrace.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_status.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_statusor.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_str_format_internal.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_strerror.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_string_view.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_strings.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_strings_internal.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_symbolize.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_synchronization.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_throw_delegate.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_time.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_time_zone.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_tracing_internal.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_utf8_for_code_point.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libabsl_vlog_config_internal.2508.0.0.dylib",
+        "runtimes/osx-arm64/native/libbz2.1.dylib",
+        "runtimes/osx-arm64/native/libhighs.1.dylib",
+        "runtimes/osx-arm64/native/libortools.9.dylib",
+        "runtimes/osx-arm64/native/libprotobuf.33.1.0.dylib",
+        "runtimes/osx-arm64/native/libre2.11.dylib",
+        "runtimes/osx-arm64/native/libscip.10.0.dylib",
+        "runtimes/osx-arm64/native/libutf8_validity.33.1.0.dylib",
+        "runtimes/osx-arm64/native/libz.1.dylib"
+      ],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts.",
+        "Native assets require a separate audit of bundled/static dependencies; the NuGet license is not a complete component inventory."
+      ],
+      "nuspec": {
+        "file": "google.ortools.runtime.osx-arm64.nuspec",
+        "sha256": "2284f8de73c71f7220d85d84f265479f87cfeebab995d1bb4307550fa12e7e97"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.CapacityAgent/SwitchYard.CapacityAgent.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "Google.OrTools.runtime.osx-x64",
+      "version": "9.15.6755",
+      "cachePath": "<NuGet package folder>/google.ortools.runtime.osx-x64/9.15.6755",
+      "license": {
+        "type": "expression",
+        "value": "Apache-2.0"
+      },
+      "licenseUrl": "https://licenses.nuget.org/Apache-2.0",
+      "authors": "Laurent Perron",
+      "copyright": "Copyright 2019-2021 Google LLC",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/google/or-tools",
+        "commit": "551ad10d94835c99e5e1e684500d3db398c0e345"
+      },
+      "projectUrl": "https://developers.google.com/optimization",
+      "licenseFiles": [],
+      "nativeAssets": [
+        "runtimes/osx-x64/native/google-ortools-native.dylib",
+        "runtimes/osx-x64/native/libCbc.2.dylib",
+        "runtimes/osx-x64/native/libCbcSolver.2.dylib",
+        "runtimes/osx-x64/native/libCgl.0.dylib",
+        "runtimes/osx-x64/native/libClp.1.dylib",
+        "runtimes/osx-x64/native/libClpSolver.1.dylib",
+        "runtimes/osx-x64/native/libCoinUtils.2.dylib",
+        "runtimes/osx-x64/native/libOsi.0.dylib",
+        "runtimes/osx-x64/native/libOsiCbc.2.dylib",
+        "runtimes/osx-x64/native/libOsiClp.1.dylib",
+        "runtimes/osx-x64/native/libabsl_base.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_city.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_civil_time.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_cord.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_cord_internal.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_cordz_functions.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_cordz_handle.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_cordz_info.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_crc32c.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_crc_cord_state.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_crc_cpu_detect.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_crc_internal.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_debugging_internal.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_decode_rust_punycode.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_demangle_internal.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_demangle_rust.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_die_if_null.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_examine_stack.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_exponential_biased.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_flags_commandlineflag.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_flags_commandlineflag_internal.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_flags_config.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_flags_internal.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_flags_marshalling.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_flags_parse.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_flags_private_handle_accessor.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_flags_program_name.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_flags_reflection.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_flags_usage.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_flags_usage_internal.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_graphcycles_internal.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_hash.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_hashtablez_sampler.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_int128.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_kernel_timeout_internal.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_leak_check.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_log_entry.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_log_flags.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_log_globals.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_log_initialize.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_log_internal_check_op.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_log_internal_conditions.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_log_internal_fnmatch.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_log_internal_format.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_log_internal_globals.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_log_internal_log_sink_set.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_log_internal_message.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_log_internal_nullguard.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_log_internal_proto.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_log_internal_structured_proto.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_log_severity.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_log_sink.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_malloc_internal.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_random_distributions.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_random_internal_entropy_pool.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_random_internal_platform.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_random_internal_randen.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_random_internal_randen_hwaes.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_random_internal_randen_hwaes_impl.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_random_internal_randen_slow.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_random_internal_seed_material.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_random_seed_gen_exception.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_random_seed_sequences.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_raw_hash_set.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_raw_logging_internal.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_spinlock_wait.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_stacktrace.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_status.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_statusor.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_str_format_internal.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_strerror.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_string_view.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_strings.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_strings_internal.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_symbolize.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_synchronization.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_throw_delegate.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_time.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_time_zone.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_tracing_internal.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_utf8_for_code_point.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libabsl_vlog_config_internal.2508.0.0.dylib",
+        "runtimes/osx-x64/native/libbz2.1.dylib",
+        "runtimes/osx-x64/native/libhighs.1.dylib",
+        "runtimes/osx-x64/native/libortools.9.dylib",
+        "runtimes/osx-x64/native/libprotobuf.33.1.0.dylib",
+        "runtimes/osx-x64/native/libre2.11.dylib",
+        "runtimes/osx-x64/native/libscip.10.0.dylib",
+        "runtimes/osx-x64/native/libutf8_validity.33.1.0.dylib",
+        "runtimes/osx-x64/native/libz.1.dylib"
+      ],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts.",
+        "Native assets require a separate audit of bundled/static dependencies; the NuGet license is not a complete component inventory."
+      ],
+      "nuspec": {
+        "file": "google.ortools.runtime.osx-x64.nuspec",
+        "sha256": "11c058c15b786c0f698ef69e93e6ba91dec0e6649801d17809f29e5d7114c2b8"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.CapacityAgent/SwitchYard.CapacityAgent.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "Google.OrTools.runtime.win-x64",
+      "version": "9.15.6755",
+      "cachePath": "<NuGet package folder>/google.ortools.runtime.win-x64/9.15.6755",
+      "license": {
+        "type": "expression",
+        "value": "Apache-2.0"
+      },
+      "licenseUrl": "https://licenses.nuget.org/Apache-2.0",
+      "authors": "Laurent Perron",
+      "copyright": "Copyright 2019-2021 Google LLC",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/google/or-tools",
+        "commit": "551ad10d94835c99e5e1e684500d3db398c0e345"
+      },
+      "projectUrl": "https://developers.google.com/optimization",
+      "licenseFiles": [],
+      "nativeAssets": [
+        "runtimes/win-x64/native/abseil_dll.dll",
+        "runtimes/win-x64/native/bz2.dll",
+        "runtimes/win-x64/native/google-ortools-native.dll",
+        "runtimes/win-x64/native/highs.dll",
+        "runtimes/win-x64/native/libprotobuf.dll",
+        "runtimes/win-x64/native/libscip.dll",
+        "runtimes/win-x64/native/libutf8_validity.dll",
+        "runtimes/win-x64/native/ortools.dll",
+        "runtimes/win-x64/native/re2.dll",
+        "runtimes/win-x64/native/zlib1.dll"
+      ],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts.",
+        "Native assets require a separate audit of bundled/static dependencies; the NuGet license is not a complete component inventory."
+      ],
+      "nuspec": {
+        "file": "google.ortools.runtime.win-x64.nuspec",
+        "sha256": "add4aa289080937695eb497e5d88a71a254033f7212485551b4fc4475d1a0cf5"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.CapacityAgent/SwitchYard.CapacityAgent.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "Google.OrTools",
+      "version": "9.15.6755",
+      "cachePath": "<NuGet package folder>/google.ortools/9.15.6755",
+      "license": {
+        "type": "expression",
+        "value": "Apache-2.0"
+      },
+      "licenseUrl": "https://licenses.nuget.org/Apache-2.0",
+      "authors": "Laurent Perron",
+      "copyright": "Copyright 2019-2021 Google LLC",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/google/or-tools",
+        "commit": "551ad10d94835c99e5e1e684500d3db398c0e345"
+      },
+      "projectUrl": "https://developers.google.com/optimization",
+      "licenseFiles": [],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "google.ortools.nuspec",
+        "sha256": "3bdbebaa1b0e5fe8ef80550c725f2f545a7004b7eea3f01923edc64f230f48d4"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.CapacityAgent/SwitchYard.CapacityAgent.csproj"
+      ],
+      "directIn": [
+        "SwitchYard.WebApi/SwitchYard.CapacityAgent/SwitchYard.CapacityAgent.csproj"
+      ]
+    },
+    {
+      "id": "Google.Protobuf",
+      "version": "3.33.1",
+      "cachePath": "<NuGet package folder>/google.protobuf/3.33.1",
+      "license": {
+        "type": "expression",
+        "value": "BSD-3-Clause"
+      },
+      "licenseUrl": "https://licenses.nuget.org/BSD-3-Clause",
+      "authors": "Google Inc.",
+      "copyright": "Copyright 2015, Google Inc.",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/protocolbuffers/protobuf.git",
+        "commit": "a8d85ffbc7158660b4247f732371d1b07780510e"
+      },
+      "projectUrl": "https://github.com/protocolbuffers/protobuf",
+      "licenseFiles": [],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "google.protobuf.nuspec",
+        "sha256": "7ea587341e171e7a873318ed1844214a851b8c62e909f3f6a64b0714c614f8ed"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.CapacityAgent/SwitchYard.CapacityAgent.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "Konscious.Security.Cryptography.Argon2",
+      "version": "1.3.1",
+      "cachePath": "<NuGet package folder>/konscious.security.cryptography.argon2/1.3.1",
+      "license": {
+        "type": "expression",
+        "value": "MIT"
+      },
+      "licenseUrl": "https://licenses.nuget.org/MIT",
+      "authors": "Keef Aragon",
+      "copyright": "(c) 2024 Keef Aragon",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/kmaragon/Konscious.Security.Cryptography.git",
+        "commit": "4ed95a5377e411506ca6868409b5c7d7ecaa859b"
+      },
+      "projectUrl": "https://github.com/kmaragon/Konscious.Security.Cryptography",
+      "licenseFiles": [],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "konscious.security.cryptography.argon2.nuspec",
+        "sha256": "952e0d9c45eeb92c30fa361f7612e73a9844435f00a498f23e36ce348708b255"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj"
+      ],
+      "directIn": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj"
+      ]
+    },
+    {
+      "id": "Konscious.Security.Cryptography.Blake2",
+      "version": "1.1.1",
+      "cachePath": "<NuGet package folder>/konscious.security.cryptography.blake2/1.1.1",
+      "license": {
+        "type": "expression",
+        "value": "MIT"
+      },
+      "licenseUrl": "https://licenses.nuget.org/MIT",
+      "authors": "Keef Aragon",
+      "copyright": "(c) 2024 Keef Aragon",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/kmaragon/Konscious.Security.Cryptography.git",
+        "commit": "4ed95a5377e411506ca6868409b5c7d7ecaa859b"
+      },
+      "projectUrl": "https://github.com/kmaragon/Konscious.Security.Cryptography",
+      "licenseFiles": [],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "konscious.security.cryptography.blake2.nuspec",
+        "sha256": "380600610d3e7485e705380fd4694bb25346ad96cdc5fedc4186fe7ad90e5e0f"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "Microsoft.AspNetCore.Authentication.JwtBearer",
+      "version": "8.0.11",
+      "cachePath": "<NuGet package folder>/microsoft.aspnetcore.authentication.jwtbearer/8.0.11",
+      "license": {
+        "type": "expression",
+        "value": "MIT"
+      },
+      "licenseUrl": "https://licenses.nuget.org/MIT",
+      "authors": "Microsoft",
+      "copyright": "© Microsoft Corporation. All rights reserved.",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/dotnet/aspnetcore",
+        "commit": "47576478939fdd59b4400ad135f47938af486ab3"
+      },
+      "projectUrl": "https://asp.net/",
+      "licenseFiles": [
+        {
+          "file": "THIRD-PARTY-NOTICES.TXT",
+          "kind": "notice",
+          "sha256": "307d014f65d8482314f1400ddeae7a0cbabb96c2207bcc77f6233cc10588e5d9"
+        }
+      ],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "microsoft.aspnetcore.authentication.jwtbearer.nuspec",
+        "sha256": "4edec2a537da50d73f71c7edcc04c40d7f10ddfd73df0743fed5f242800ee96f"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj"
+      ],
+      "directIn": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj"
+      ]
+    },
+    {
+      "id": "Microsoft.AspNetCore.Connections.Abstractions",
+      "version": "10.0.10",
+      "cachePath": "<NuGet package folder>/microsoft.aspnetcore.connections.abstractions/10.0.10",
+      "license": {
+        "type": "expression",
+        "value": "MIT"
+      },
+      "licenseUrl": "https://licenses.nuget.org/MIT",
+      "authors": "Microsoft",
+      "copyright": "© Microsoft Corporation. All rights reserved.",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/dotnet/dotnet",
+        "commit": "f7d90799ce4ef09a0bb257852a57248d2a8fb8dd"
+      },
+      "projectUrl": "https://asp.net/",
+      "licenseFiles": [
+        {
+          "file": "THIRD-PARTY-NOTICES.TXT",
+          "kind": "notice",
+          "sha256": "307d014f65d8482314f1400ddeae7a0cbabb96c2207bcc77f6233cc10588e5d9"
+        }
+      ],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "microsoft.aspnetcore.connections.abstractions.nuspec",
+        "sha256": "3e8e63431a4d30b9c30713025cb9562888d0ef64c6767de20a6ff255def9e79d"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.CapacityAgent/SwitchYard.CapacityAgent.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "Microsoft.AspNetCore.Http.Connections.Client",
+      "version": "10.0.10",
+      "cachePath": "<NuGet package folder>/microsoft.aspnetcore.http.connections.client/10.0.10",
+      "license": {
+        "type": "expression",
+        "value": "MIT"
+      },
+      "licenseUrl": "https://licenses.nuget.org/MIT",
+      "authors": "Microsoft",
+      "copyright": "© Microsoft Corporation. All rights reserved.",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/dotnet/dotnet",
+        "commit": "f7d90799ce4ef09a0bb257852a57248d2a8fb8dd"
+      },
+      "projectUrl": "https://asp.net/",
+      "licenseFiles": [
+        {
+          "file": "THIRD-PARTY-NOTICES.TXT",
+          "kind": "notice",
+          "sha256": "307d014f65d8482314f1400ddeae7a0cbabb96c2207bcc77f6233cc10588e5d9"
+        }
+      ],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "microsoft.aspnetcore.http.connections.client.nuspec",
+        "sha256": "b5ca40a2b10e7c3b356b825abeeab0c900681b2b1f5bc1cc0ef3ae230cc177b4"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.CapacityAgent/SwitchYard.CapacityAgent.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "Microsoft.AspNetCore.Http.Connections.Common",
+      "version": "10.0.10",
+      "cachePath": "<NuGet package folder>/microsoft.aspnetcore.http.connections.common/10.0.10",
+      "license": {
+        "type": "expression",
+        "value": "MIT"
+      },
+      "licenseUrl": "https://licenses.nuget.org/MIT",
+      "authors": "Microsoft",
+      "copyright": "© Microsoft Corporation. All rights reserved.",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/dotnet/dotnet",
+        "commit": "f7d90799ce4ef09a0bb257852a57248d2a8fb8dd"
+      },
+      "projectUrl": "https://asp.net/",
+      "licenseFiles": [
+        {
+          "file": "THIRD-PARTY-NOTICES.TXT",
+          "kind": "notice",
+          "sha256": "307d014f65d8482314f1400ddeae7a0cbabb96c2207bcc77f6233cc10588e5d9"
+        }
+      ],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "microsoft.aspnetcore.http.connections.common.nuspec",
+        "sha256": "f784aae8df9dff6261da5a425068a6a12f3bbf886d7c0ed5398c06542fdc9d79"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.CapacityAgent/SwitchYard.CapacityAgent.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "Microsoft.AspNetCore.SignalR.Client.Core",
+      "version": "10.0.10",
+      "cachePath": "<NuGet package folder>/microsoft.aspnetcore.signalr.client.core/10.0.10",
+      "license": {
+        "type": "expression",
+        "value": "MIT"
+      },
+      "licenseUrl": "https://licenses.nuget.org/MIT",
+      "authors": "Microsoft",
+      "copyright": "© Microsoft Corporation. All rights reserved.",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/dotnet/dotnet",
+        "commit": "f7d90799ce4ef09a0bb257852a57248d2a8fb8dd"
+      },
+      "projectUrl": "https://asp.net/",
+      "licenseFiles": [
+        {
+          "file": "THIRD-PARTY-NOTICES.TXT",
+          "kind": "notice",
+          "sha256": "307d014f65d8482314f1400ddeae7a0cbabb96c2207bcc77f6233cc10588e5d9"
+        }
+      ],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "microsoft.aspnetcore.signalr.client.core.nuspec",
+        "sha256": "517e9db241f914de7f9ad536bc4c96f8b57eb6c4fa834b877a06da6ba935de09"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.CapacityAgent/SwitchYard.CapacityAgent.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "Microsoft.AspNetCore.SignalR.Client",
+      "version": "10.0.10",
+      "cachePath": "<NuGet package folder>/microsoft.aspnetcore.signalr.client/10.0.10",
+      "license": {
+        "type": "expression",
+        "value": "MIT"
+      },
+      "licenseUrl": "https://licenses.nuget.org/MIT",
+      "authors": "Microsoft",
+      "copyright": "© Microsoft Corporation. All rights reserved.",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/dotnet/dotnet",
+        "commit": "f7d90799ce4ef09a0bb257852a57248d2a8fb8dd"
+      },
+      "projectUrl": "https://asp.net/",
+      "licenseFiles": [
+        {
+          "file": "THIRD-PARTY-NOTICES.TXT",
+          "kind": "notice",
+          "sha256": "307d014f65d8482314f1400ddeae7a0cbabb96c2207bcc77f6233cc10588e5d9"
+        }
+      ],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "microsoft.aspnetcore.signalr.client.nuspec",
+        "sha256": "5a822e92b25dfb00fe46f0ffcfba215bd55bd89ea197c8193ebdb999d6d7a3f8"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.CapacityAgent/SwitchYard.CapacityAgent.csproj"
+      ],
+      "directIn": [
+        "SwitchYard.WebApi/SwitchYard.CapacityAgent/SwitchYard.CapacityAgent.csproj"
+      ]
+    },
+    {
+      "id": "Microsoft.AspNetCore.SignalR.Common",
+      "version": "10.0.10",
+      "cachePath": "<NuGet package folder>/microsoft.aspnetcore.signalr.common/10.0.10",
+      "license": {
+        "type": "expression",
+        "value": "MIT"
+      },
+      "licenseUrl": "https://licenses.nuget.org/MIT",
+      "authors": "Microsoft",
+      "copyright": "© Microsoft Corporation. All rights reserved.",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/dotnet/dotnet",
+        "commit": "f7d90799ce4ef09a0bb257852a57248d2a8fb8dd"
+      },
+      "projectUrl": "https://asp.net/",
+      "licenseFiles": [
+        {
+          "file": "THIRD-PARTY-NOTICES.TXT",
+          "kind": "notice",
+          "sha256": "307d014f65d8482314f1400ddeae7a0cbabb96c2207bcc77f6233cc10588e5d9"
+        }
+      ],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "microsoft.aspnetcore.signalr.common.nuspec",
+        "sha256": "cacb016c88aea95539021fd098a53fbe2c04fc8b0a01d28d3586797a417f7eb6"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.CapacityAgent/SwitchYard.CapacityAgent.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "Microsoft.AspNetCore.SignalR.Protocols.Json",
+      "version": "10.0.10",
+      "cachePath": "<NuGet package folder>/microsoft.aspnetcore.signalr.protocols.json/10.0.10",
+      "license": {
+        "type": "expression",
+        "value": "MIT"
+      },
+      "licenseUrl": "https://licenses.nuget.org/MIT",
+      "authors": "Microsoft",
+      "copyright": "© Microsoft Corporation. All rights reserved.",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/dotnet/dotnet",
+        "commit": "f7d90799ce4ef09a0bb257852a57248d2a8fb8dd"
+      },
+      "projectUrl": "https://asp.net/",
+      "licenseFiles": [
+        {
+          "file": "THIRD-PARTY-NOTICES.TXT",
+          "kind": "notice",
+          "sha256": "307d014f65d8482314f1400ddeae7a0cbabb96c2207bcc77f6233cc10588e5d9"
+        }
+      ],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "microsoft.aspnetcore.signalr.protocols.json.nuspec",
+        "sha256": "d691ce9f6eb8c6b3141fb015a195957cb7bb9b27722053d25488e5ec1637ac09"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.CapacityAgent/SwitchYard.CapacityAgent.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "Microsoft.Data.Sqlite.Core",
+      "version": "10.0.1",
+      "cachePath": "<NuGet package folder>/microsoft.data.sqlite.core/10.0.1",
+      "license": {
+        "type": "expression",
+        "value": "MIT"
+      },
+      "licenseUrl": "https://licenses.nuget.org/MIT",
+      "authors": "Microsoft",
+      "copyright": "© Microsoft Corporation. All rights reserved.",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/dotnet/dotnet",
+        "commit": "fad253f51b461736dfd3cd9c15977bb7493becef"
+      },
+      "projectUrl": "https://docs.microsoft.com/dotnet/standard/data/sqlite/",
+      "licenseFiles": [],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "microsoft.data.sqlite.core.nuspec",
+        "sha256": "8ff66c36030f075529923224016209e9426458d98622adf26ac934770b1490ab"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj",
+        "tools/SQLiteToMySqlMigrator/SQLiteToMySqlMigrator.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "Microsoft.Data.Sqlite",
+      "version": "10.0.1",
+      "cachePath": "<NuGet package folder>/microsoft.data.sqlite/10.0.1",
+      "license": {
+        "type": "expression",
+        "value": "MIT"
+      },
+      "licenseUrl": "https://licenses.nuget.org/MIT",
+      "authors": "Microsoft",
+      "copyright": "© Microsoft Corporation. All rights reserved.",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/dotnet/dotnet",
+        "commit": "fad253f51b461736dfd3cd9c15977bb7493becef"
+      },
+      "projectUrl": "https://docs.microsoft.com/dotnet/standard/data/sqlite/",
+      "licenseFiles": [],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "microsoft.data.sqlite.nuspec",
+        "sha256": "fa1481670f445cf590b9ed300275891fff6bf73b437e55bf4d56d003e4566689"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj",
+        "tools/SQLiteToMySqlMigrator/SQLiteToMySqlMigrator.csproj"
+      ],
+      "directIn": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj",
+        "tools/SQLiteToMySqlMigrator/SQLiteToMySqlMigrator.csproj"
+      ]
+    },
+    {
+      "id": "Microsoft.Extensions.ApiDescription.Server",
+      "version": "6.0.5",
+      "cachePath": "<NuGet package folder>/microsoft.extensions.apidescription.server/6.0.5",
+      "license": {
+        "type": "expression",
+        "value": "MIT"
+      },
+      "licenseUrl": "https://licenses.nuget.org/MIT",
+      "authors": "Microsoft",
+      "copyright": "© Microsoft Corporation. All rights reserved.",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/dotnet/aspnetcore",
+        "commit": "e5f183b656a0e8bc087108130a5a9b54ae94494e"
+      },
+      "projectUrl": "https://asp.net/",
+      "licenseFiles": [],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "microsoft.extensions.apidescription.server.nuspec",
+        "sha256": "ee96e8e4112d962a2f875801fbac05c6ab5de4d82934fe6c9ed7670f70eeb7a4"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "Microsoft.Extensions.Configuration.Abstractions",
+      "version": "8.0.0",
+      "cachePath": "<NuGet package folder>/microsoft.extensions.configuration.abstractions/8.0.0",
+      "license": {
+        "type": "expression",
+        "value": "MIT"
+      },
+      "licenseUrl": "https://licenses.nuget.org/MIT",
+      "authors": "Microsoft",
+      "copyright": "© Microsoft Corporation. All rights reserved.",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/dotnet/runtime",
+        "commit": "5535e31a712343a63f5d7d796cd874e563e5ac14"
+      },
+      "projectUrl": "https://dot.net/",
+      "licenseFiles": [
+        {
+          "file": "LICENSE.TXT",
+          "kind": "license-or-copyright",
+          "sha256": "d7a68596ab69b06f51ca278a6545148e4269a9381c26d597c13df5d88e08cf5b"
+        },
+        {
+          "file": "THIRD-PARTY-NOTICES.TXT",
+          "kind": "notice",
+          "sha256": "19c19dcac9f3ee6302cfbc6745bb8e79f08efc4c933eb8dc5509bf14b88347ec"
+        }
+      ],
+      "nativeAssets": [],
+      "issues": [],
+      "nuspec": {
+        "file": "microsoft.extensions.configuration.abstractions.nuspec",
+        "sha256": "93dee1a923d8435a77fb5020f0de7c2949b678f65b7d354f82190ad06a084eb1"
+      },
+      "licenseTextStatus": "local-text-found-review-scope",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "Microsoft.Extensions.Configuration.Binder",
+      "version": "8.0.0",
+      "cachePath": "<NuGet package folder>/microsoft.extensions.configuration.binder/8.0.0",
+      "license": {
+        "type": "expression",
+        "value": "MIT"
+      },
+      "licenseUrl": "https://licenses.nuget.org/MIT",
+      "authors": "Microsoft",
+      "copyright": "© Microsoft Corporation. All rights reserved.",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/dotnet/runtime",
+        "commit": "5535e31a712343a63f5d7d796cd874e563e5ac14"
+      },
+      "projectUrl": "https://dot.net/",
+      "licenseFiles": [
+        {
+          "file": "LICENSE.TXT",
+          "kind": "license-or-copyright",
+          "sha256": "d7a68596ab69b06f51ca278a6545148e4269a9381c26d597c13df5d88e08cf5b"
+        },
+        {
+          "file": "THIRD-PARTY-NOTICES.TXT",
+          "kind": "notice",
+          "sha256": "19c19dcac9f3ee6302cfbc6745bb8e79f08efc4c933eb8dc5509bf14b88347ec"
+        }
+      ],
+      "nativeAssets": [],
+      "issues": [],
+      "nuspec": {
+        "file": "microsoft.extensions.configuration.binder.nuspec",
+        "sha256": "2fb91bbcd9fdba5d6c6d36b5cda06d2767357d4b89ee71332435767c65c35dd3"
+      },
+      "licenseTextStatus": "local-text-found-review-scope",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "Microsoft.Extensions.DependencyInjection.Abstractions",
+      "version": "10.0.1",
+      "cachePath": "<NuGet package folder>/microsoft.extensions.dependencyinjection.abstractions/10.0.1",
+      "license": {
+        "type": "expression",
+        "value": "MIT"
+      },
+      "licenseUrl": "https://licenses.nuget.org/MIT",
+      "authors": "Microsoft",
+      "copyright": "© Microsoft Corporation. All rights reserved.",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/dotnet/dotnet",
+        "commit": "fad253f51b461736dfd3cd9c15977bb7493becef"
+      },
+      "projectUrl": "https://dot.net/",
+      "licenseFiles": [
+        {
+          "file": "THIRD-PARTY-NOTICES.TXT",
+          "kind": "notice",
+          "sha256": "6d15e10a101c6bfff2ab4429ed061bf76c456fc4b23ad6b03e0d0f8377148a21"
+        }
+      ],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "microsoft.extensions.dependencyinjection.abstractions.nuspec",
+        "sha256": "e802c1d0db0d23075d2e3007b9161c6ba0c2bd095da6f0ee4e45131c785522bf"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "Microsoft.Extensions.DependencyInjection.Abstractions",
+      "version": "10.0.10",
+      "cachePath": "<NuGet package folder>/microsoft.extensions.dependencyinjection.abstractions/10.0.10",
+      "license": {
+        "type": "expression",
+        "value": "MIT"
+      },
+      "licenseUrl": "https://licenses.nuget.org/MIT",
+      "authors": "Microsoft",
+      "copyright": "© Microsoft Corporation. All rights reserved.",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/dotnet/dotnet",
+        "commit": "f7d90799ce4ef09a0bb257852a57248d2a8fb8dd"
+      },
+      "projectUrl": "https://dot.net/",
+      "licenseFiles": [
+        {
+          "file": "THIRD-PARTY-NOTICES.TXT",
+          "kind": "notice",
+          "sha256": "6d15e10a101c6bfff2ab4429ed061bf76c456fc4b23ad6b03e0d0f8377148a21"
+        }
+      ],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "microsoft.extensions.dependencyinjection.abstractions.nuspec",
+        "sha256": "0c95e70ef7abddd0120b259dd80f5677c22b4f638fb8c5aa50846c03c65a7569"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.CapacityAgent/SwitchYard.CapacityAgent.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "Microsoft.Extensions.DependencyInjection.Abstractions",
+      "version": "8.0.2",
+      "cachePath": "<NuGet package folder>/microsoft.extensions.dependencyinjection.abstractions/8.0.2",
+      "license": {
+        "type": "expression",
+        "value": "MIT"
+      },
+      "licenseUrl": "https://licenses.nuget.org/MIT",
+      "authors": "Microsoft",
+      "copyright": "© Microsoft Corporation. All rights reserved.",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/dotnet/runtime",
+        "commit": "81cabf2857a01351e5ab578947c7403a5b128ad1"
+      },
+      "projectUrl": "https://dot.net/",
+      "licenseFiles": [
+        {
+          "file": "LICENSE.TXT",
+          "kind": "license-or-copyright",
+          "sha256": "d7a68596ab69b06f51ca278a6545148e4269a9381c26d597c13df5d88e08cf5b"
+        },
+        {
+          "file": "THIRD-PARTY-NOTICES.TXT",
+          "kind": "notice",
+          "sha256": "b60b2912da28eaa6518593c9e2efb5334ee062d3c42e80d8fdfa806b3dc52977"
+        }
+      ],
+      "nativeAssets": [],
+      "issues": [],
+      "nuspec": {
+        "file": "microsoft.extensions.dependencyinjection.abstractions.nuspec",
+        "sha256": "0d37e4c53a93e295975d3f62214ff54088f34ac72dc1d601e1c504190bb59dc8"
+      },
+      "licenseTextStatus": "local-text-found-review-scope",
+      "projects": [
+        "tools/SQLiteToMySqlMigrator/SQLiteToMySqlMigrator.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "Microsoft.Extensions.DependencyInjection",
+      "version": "10.0.1",
+      "cachePath": "<NuGet package folder>/microsoft.extensions.dependencyinjection/10.0.1",
+      "license": {
+        "type": "expression",
+        "value": "MIT"
+      },
+      "licenseUrl": "https://licenses.nuget.org/MIT",
+      "authors": "Microsoft",
+      "copyright": "© Microsoft Corporation. All rights reserved.",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/dotnet/dotnet",
+        "commit": "fad253f51b461736dfd3cd9c15977bb7493becef"
+      },
+      "projectUrl": "https://dot.net/",
+      "licenseFiles": [
+        {
+          "file": "THIRD-PARTY-NOTICES.TXT",
+          "kind": "notice",
+          "sha256": "6d15e10a101c6bfff2ab4429ed061bf76c456fc4b23ad6b03e0d0f8377148a21"
+        }
+      ],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "microsoft.extensions.dependencyinjection.nuspec",
+        "sha256": "9cbd3d875ea0f126bd65264159c04e832bacb53eccffeca01d4f72fec382fcb6"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "Microsoft.Extensions.DependencyInjection",
+      "version": "10.0.10",
+      "cachePath": "<NuGet package folder>/microsoft.extensions.dependencyinjection/10.0.10",
+      "license": {
+        "type": "expression",
+        "value": "MIT"
+      },
+      "licenseUrl": "https://licenses.nuget.org/MIT",
+      "authors": "Microsoft",
+      "copyright": "© Microsoft Corporation. All rights reserved.",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/dotnet/dotnet",
+        "commit": "f7d90799ce4ef09a0bb257852a57248d2a8fb8dd"
+      },
+      "projectUrl": "https://dot.net/",
+      "licenseFiles": [
+        {
+          "file": "THIRD-PARTY-NOTICES.TXT",
+          "kind": "notice",
+          "sha256": "6d15e10a101c6bfff2ab4429ed061bf76c456fc4b23ad6b03e0d0f8377148a21"
+        }
+      ],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "microsoft.extensions.dependencyinjection.nuspec",
+        "sha256": "bddd1cd5168cdcc297ae2609203985005d8da2533f29930b75ea993b2d847e71"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.CapacityAgent/SwitchYard.CapacityAgent.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "Microsoft.Extensions.DependencyModel",
+      "version": "8.0.2",
+      "cachePath": "<NuGet package folder>/microsoft.extensions.dependencymodel/8.0.2",
+      "license": {
+        "type": "expression",
+        "value": "MIT"
+      },
+      "licenseUrl": "https://licenses.nuget.org/MIT",
+      "authors": "Microsoft",
+      "copyright": "© Microsoft Corporation. All rights reserved.",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/dotnet/runtime",
+        "commit": "81cabf2857a01351e5ab578947c7403a5b128ad1"
+      },
+      "projectUrl": "https://dot.net/",
+      "licenseFiles": [
+        {
+          "file": "LICENSE.TXT",
+          "kind": "license-or-copyright",
+          "sha256": "d7a68596ab69b06f51ca278a6545148e4269a9381c26d597c13df5d88e08cf5b"
+        },
+        {
+          "file": "THIRD-PARTY-NOTICES.TXT",
+          "kind": "notice",
+          "sha256": "b60b2912da28eaa6518593c9e2efb5334ee062d3c42e80d8fdfa806b3dc52977"
+        }
+      ],
+      "nativeAssets": [],
+      "issues": [],
+      "nuspec": {
+        "file": "microsoft.extensions.dependencymodel.nuspec",
+        "sha256": "81e9f8a0fdde2696d2bd27412d70688877b4160cd97391a15bcb5b2385b3b0ad"
+      },
+      "licenseTextStatus": "local-text-found-review-scope",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "Microsoft.Extensions.Diagnostics.Abstractions",
+      "version": "8.0.0",
+      "cachePath": "<NuGet package folder>/microsoft.extensions.diagnostics.abstractions/8.0.0",
+      "license": {
+        "type": "expression",
+        "value": "MIT"
+      },
+      "licenseUrl": "https://licenses.nuget.org/MIT",
+      "authors": "Microsoft",
+      "copyright": "© Microsoft Corporation. All rights reserved.",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/dotnet/runtime",
+        "commit": "5535e31a712343a63f5d7d796cd874e563e5ac14"
+      },
+      "projectUrl": "https://dot.net/",
+      "licenseFiles": [
+        {
+          "file": "LICENSE.TXT",
+          "kind": "license-or-copyright",
+          "sha256": "d7a68596ab69b06f51ca278a6545148e4269a9381c26d597c13df5d88e08cf5b"
+        },
+        {
+          "file": "THIRD-PARTY-NOTICES.TXT",
+          "kind": "notice",
+          "sha256": "19c19dcac9f3ee6302cfbc6745bb8e79f08efc4c933eb8dc5509bf14b88347ec"
+        }
+      ],
+      "nativeAssets": [],
+      "issues": [],
+      "nuspec": {
+        "file": "microsoft.extensions.diagnostics.abstractions.nuspec",
+        "sha256": "92d994ee380c3621dd1cc9bf71707e46be7b38ffc6f0aa2094efb489c6127b98"
+      },
+      "licenseTextStatus": "local-text-found-review-scope",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "Microsoft.Extensions.Features",
+      "version": "10.0.10",
+      "cachePath": "<NuGet package folder>/microsoft.extensions.features/10.0.10",
+      "license": {
+        "type": "expression",
+        "value": "MIT"
+      },
+      "licenseUrl": "https://licenses.nuget.org/MIT",
+      "authors": "Microsoft",
+      "copyright": "© Microsoft Corporation. All rights reserved.",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/dotnet/dotnet",
+        "commit": "f7d90799ce4ef09a0bb257852a57248d2a8fb8dd"
+      },
+      "projectUrl": "https://asp.net/",
+      "licenseFiles": [
+        {
+          "file": "THIRD-PARTY-NOTICES.TXT",
+          "kind": "notice",
+          "sha256": "307d014f65d8482314f1400ddeae7a0cbabb96c2207bcc77f6233cc10588e5d9"
+        }
+      ],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "microsoft.extensions.features.nuspec",
+        "sha256": "c3b7fd6c9f669f89ea43e04da989fffe7ec6b347b9d058b5928690215261fb5a"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.CapacityAgent/SwitchYard.CapacityAgent.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "Microsoft.Extensions.FileProviders.Abstractions",
+      "version": "8.0.0",
+      "cachePath": "<NuGet package folder>/microsoft.extensions.fileproviders.abstractions/8.0.0",
+      "license": {
+        "type": "expression",
+        "value": "MIT"
+      },
+      "licenseUrl": "https://licenses.nuget.org/MIT",
+      "authors": "Microsoft",
+      "copyright": "© Microsoft Corporation. All rights reserved.",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/dotnet/runtime",
+        "commit": "5535e31a712343a63f5d7d796cd874e563e5ac14"
+      },
+      "projectUrl": "https://dot.net/",
+      "licenseFiles": [
+        {
+          "file": "LICENSE.TXT",
+          "kind": "license-or-copyright",
+          "sha256": "d7a68596ab69b06f51ca278a6545148e4269a9381c26d597c13df5d88e08cf5b"
+        },
+        {
+          "file": "THIRD-PARTY-NOTICES.TXT",
+          "kind": "notice",
+          "sha256": "19c19dcac9f3ee6302cfbc6745bb8e79f08efc4c933eb8dc5509bf14b88347ec"
+        }
+      ],
+      "nativeAssets": [],
+      "issues": [],
+      "nuspec": {
+        "file": "microsoft.extensions.fileproviders.abstractions.nuspec",
+        "sha256": "4621946198a9b34631fb3a586c9f2890cc94f3ad9c065d6c0b07ecdd14205ce1"
+      },
+      "licenseTextStatus": "local-text-found-review-scope",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "Microsoft.Extensions.Hosting.Abstractions",
+      "version": "8.0.0",
+      "cachePath": "<NuGet package folder>/microsoft.extensions.hosting.abstractions/8.0.0",
+      "license": {
+        "type": "expression",
+        "value": "MIT"
+      },
+      "licenseUrl": "https://licenses.nuget.org/MIT",
+      "authors": "Microsoft",
+      "copyright": "© Microsoft Corporation. All rights reserved.",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/dotnet/runtime",
+        "commit": "5535e31a712343a63f5d7d796cd874e563e5ac14"
+      },
+      "projectUrl": "https://dot.net/",
+      "licenseFiles": [
+        {
+          "file": "LICENSE.TXT",
+          "kind": "license-or-copyright",
+          "sha256": "d7a68596ab69b06f51ca278a6545148e4269a9381c26d597c13df5d88e08cf5b"
+        },
+        {
+          "file": "THIRD-PARTY-NOTICES.TXT",
+          "kind": "notice",
+          "sha256": "19c19dcac9f3ee6302cfbc6745bb8e79f08efc4c933eb8dc5509bf14b88347ec"
+        }
+      ],
+      "nativeAssets": [],
+      "issues": [],
+      "nuspec": {
+        "file": "microsoft.extensions.hosting.abstractions.nuspec",
+        "sha256": "18d462f36a825dada426c6f1b72f489583a6461e4cedbff05ceb61a060b2ddd3"
+      },
+      "licenseTextStatus": "local-text-found-review-scope",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "Microsoft.Extensions.Logging.Abstractions",
+      "version": "10.0.1",
+      "cachePath": "<NuGet package folder>/microsoft.extensions.logging.abstractions/10.0.1",
+      "license": {
+        "type": "expression",
+        "value": "MIT"
+      },
+      "licenseUrl": "https://licenses.nuget.org/MIT",
+      "authors": "Microsoft",
+      "copyright": "© Microsoft Corporation. All rights reserved.",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/dotnet/dotnet",
+        "commit": "fad253f51b461736dfd3cd9c15977bb7493becef"
+      },
+      "projectUrl": "https://dot.net/",
+      "licenseFiles": [
+        {
+          "file": "THIRD-PARTY-NOTICES.TXT",
+          "kind": "notice",
+          "sha256": "6d15e10a101c6bfff2ab4429ed061bf76c456fc4b23ad6b03e0d0f8377148a21"
+        }
+      ],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "microsoft.extensions.logging.abstractions.nuspec",
+        "sha256": "629545146db4bbc7658199c60b08cf9ef1312dd62fcfd4e5784485c0a84123f0"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "Microsoft.Extensions.Logging.Abstractions",
+      "version": "10.0.10",
+      "cachePath": "<NuGet package folder>/microsoft.extensions.logging.abstractions/10.0.10",
+      "license": {
+        "type": "expression",
+        "value": "MIT"
+      },
+      "licenseUrl": "https://licenses.nuget.org/MIT",
+      "authors": "Microsoft",
+      "copyright": "© Microsoft Corporation. All rights reserved.",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/dotnet/dotnet",
+        "commit": "f7d90799ce4ef09a0bb257852a57248d2a8fb8dd"
+      },
+      "projectUrl": "https://dot.net/",
+      "licenseFiles": [
+        {
+          "file": "THIRD-PARTY-NOTICES.TXT",
+          "kind": "notice",
+          "sha256": "6d15e10a101c6bfff2ab4429ed061bf76c456fc4b23ad6b03e0d0f8377148a21"
+        }
+      ],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "microsoft.extensions.logging.abstractions.nuspec",
+        "sha256": "bedb09d9a04ea6d879e6566e886f200ae741a364d1d5b234e09376217a948e56"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.CapacityAgent/SwitchYard.CapacityAgent.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "Microsoft.Extensions.Logging.Abstractions",
+      "version": "8.0.2",
+      "cachePath": "<NuGet package folder>/microsoft.extensions.logging.abstractions/8.0.2",
+      "license": {
+        "type": "expression",
+        "value": "MIT"
+      },
+      "licenseUrl": "https://licenses.nuget.org/MIT",
+      "authors": "Microsoft",
+      "copyright": "© Microsoft Corporation. All rights reserved.",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/dotnet/runtime",
+        "commit": "81cabf2857a01351e5ab578947c7403a5b128ad1"
+      },
+      "projectUrl": "https://dot.net/",
+      "licenseFiles": [
+        {
+          "file": "LICENSE.TXT",
+          "kind": "license-or-copyright",
+          "sha256": "d7a68596ab69b06f51ca278a6545148e4269a9381c26d597c13df5d88e08cf5b"
+        },
+        {
+          "file": "THIRD-PARTY-NOTICES.TXT",
+          "kind": "notice",
+          "sha256": "b60b2912da28eaa6518593c9e2efb5334ee062d3c42e80d8fdfa806b3dc52977"
+        }
+      ],
+      "nativeAssets": [],
+      "issues": [],
+      "nuspec": {
+        "file": "microsoft.extensions.logging.abstractions.nuspec",
+        "sha256": "58d8c0f19a536be80e14ed0ce0bf63303058e577201a3069422523a4d818cd1f"
+      },
+      "licenseTextStatus": "local-text-found-review-scope",
+      "projects": [
+        "tools/SQLiteToMySqlMigrator/SQLiteToMySqlMigrator.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "Microsoft.Extensions.Logging",
+      "version": "10.0.1",
+      "cachePath": "<NuGet package folder>/microsoft.extensions.logging/10.0.1",
+      "license": {
+        "type": "expression",
+        "value": "MIT"
+      },
+      "licenseUrl": "https://licenses.nuget.org/MIT",
+      "authors": "Microsoft",
+      "copyright": "© Microsoft Corporation. All rights reserved.",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/dotnet/dotnet",
+        "commit": "fad253f51b461736dfd3cd9c15977bb7493becef"
+      },
+      "projectUrl": "https://dot.net/",
+      "licenseFiles": [
+        {
+          "file": "THIRD-PARTY-NOTICES.TXT",
+          "kind": "notice",
+          "sha256": "6d15e10a101c6bfff2ab4429ed061bf76c456fc4b23ad6b03e0d0f8377148a21"
+        }
+      ],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "microsoft.extensions.logging.nuspec",
+        "sha256": "92202412cf89063dbacfd01bb922231cf5fd924a67ca5aaa75c17e3da9119097"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj"
+      ],
+      "directIn": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj"
+      ]
+    },
+    {
+      "id": "Microsoft.Extensions.Logging",
+      "version": "10.0.10",
+      "cachePath": "<NuGet package folder>/microsoft.extensions.logging/10.0.10",
+      "license": {
+        "type": "expression",
+        "value": "MIT"
+      },
+      "licenseUrl": "https://licenses.nuget.org/MIT",
+      "authors": "Microsoft",
+      "copyright": "© Microsoft Corporation. All rights reserved.",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/dotnet/dotnet",
+        "commit": "f7d90799ce4ef09a0bb257852a57248d2a8fb8dd"
+      },
+      "projectUrl": "https://dot.net/",
+      "licenseFiles": [
+        {
+          "file": "THIRD-PARTY-NOTICES.TXT",
+          "kind": "notice",
+          "sha256": "6d15e10a101c6bfff2ab4429ed061bf76c456fc4b23ad6b03e0d0f8377148a21"
+        }
+      ],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "microsoft.extensions.logging.nuspec",
+        "sha256": "48ddb1f3a4421752024d12b2fa1745b46a069acaecfc775677a9c91c8c5129bc"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.CapacityAgent/SwitchYard.CapacityAgent.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "Microsoft.Extensions.Options",
+      "version": "10.0.1",
+      "cachePath": "<NuGet package folder>/microsoft.extensions.options/10.0.1",
+      "license": {
+        "type": "expression",
+        "value": "MIT"
+      },
+      "licenseUrl": "https://licenses.nuget.org/MIT",
+      "authors": "Microsoft",
+      "copyright": "© Microsoft Corporation. All rights reserved.",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/dotnet/dotnet",
+        "commit": "fad253f51b461736dfd3cd9c15977bb7493becef"
+      },
+      "projectUrl": "https://dot.net/",
+      "licenseFiles": [
+        {
+          "file": "THIRD-PARTY-NOTICES.TXT",
+          "kind": "notice",
+          "sha256": "6d15e10a101c6bfff2ab4429ed061bf76c456fc4b23ad6b03e0d0f8377148a21"
+        }
+      ],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "microsoft.extensions.options.nuspec",
+        "sha256": "f5b67afbfc62ae064bc5ceb90d15f7a0f7ca6592d530bcbae9d2c858c2743a94"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "Microsoft.Extensions.Options",
+      "version": "10.0.10",
+      "cachePath": "<NuGet package folder>/microsoft.extensions.options/10.0.10",
+      "license": {
+        "type": "expression",
+        "value": "MIT"
+      },
+      "licenseUrl": "https://licenses.nuget.org/MIT",
+      "authors": "Microsoft",
+      "copyright": "© Microsoft Corporation. All rights reserved.",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/dotnet/dotnet",
+        "commit": "f7d90799ce4ef09a0bb257852a57248d2a8fb8dd"
+      },
+      "projectUrl": "https://dot.net/",
+      "licenseFiles": [
+        {
+          "file": "THIRD-PARTY-NOTICES.TXT",
+          "kind": "notice",
+          "sha256": "6d15e10a101c6bfff2ab4429ed061bf76c456fc4b23ad6b03e0d0f8377148a21"
+        }
+      ],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "microsoft.extensions.options.nuspec",
+        "sha256": "ee55c6f0fca958a27d90d3c9a9d974ff1b8dd7e625565bb8219d84c3bed4e894"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.CapacityAgent/SwitchYard.CapacityAgent.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "Microsoft.Extensions.Primitives",
+      "version": "10.0.1",
+      "cachePath": "<NuGet package folder>/microsoft.extensions.primitives/10.0.1",
+      "license": {
+        "type": "expression",
+        "value": "MIT"
+      },
+      "licenseUrl": "https://licenses.nuget.org/MIT",
+      "authors": "Microsoft",
+      "copyright": "© Microsoft Corporation. All rights reserved.",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/dotnet/dotnet",
+        "commit": "fad253f51b461736dfd3cd9c15977bb7493becef"
+      },
+      "projectUrl": "https://dot.net/",
+      "licenseFiles": [
+        {
+          "file": "THIRD-PARTY-NOTICES.TXT",
+          "kind": "notice",
+          "sha256": "6d15e10a101c6bfff2ab4429ed061bf76c456fc4b23ad6b03e0d0f8377148a21"
+        }
+      ],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "microsoft.extensions.primitives.nuspec",
+        "sha256": "d6ad3a2a41af30633ab12ff4433ff4bae9bfee0398062819e5f4f37ca80a4f13"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "Microsoft.Extensions.Primitives",
+      "version": "10.0.10",
+      "cachePath": "<NuGet package folder>/microsoft.extensions.primitives/10.0.10",
+      "license": {
+        "type": "expression",
+        "value": "MIT"
+      },
+      "licenseUrl": "https://licenses.nuget.org/MIT",
+      "authors": "Microsoft",
+      "copyright": "© Microsoft Corporation. All rights reserved.",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/dotnet/dotnet",
+        "commit": "f7d90799ce4ef09a0bb257852a57248d2a8fb8dd"
+      },
+      "projectUrl": "https://dot.net/",
+      "licenseFiles": [
+        {
+          "file": "THIRD-PARTY-NOTICES.TXT",
+          "kind": "notice",
+          "sha256": "6d15e10a101c6bfff2ab4429ed061bf76c456fc4b23ad6b03e0d0f8377148a21"
+        }
+      ],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "microsoft.extensions.primitives.nuspec",
+        "sha256": "7c5215df6da89c10f7a9813d8f5c8968a7ac6870afb71129fd045c37f5861bbe"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.CapacityAgent/SwitchYard.CapacityAgent.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "Microsoft.IdentityModel.Abstractions",
+      "version": "7.1.2",
+      "cachePath": "<NuGet package folder>/microsoft.identitymodel.abstractions/7.1.2",
+      "license": {
+        "type": "expression",
+        "value": "MIT"
+      },
+      "licenseUrl": "https://licenses.nuget.org/MIT",
+      "authors": "Microsoft",
+      "copyright": "© Microsoft Corporation. All rights reserved.",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/AzureAD/azure-activedirectory-identitymodel-extensions-for-dotnet",
+        "commit": "a607fa5e0005a6178cf1d2fed4fa0f8179cdb186"
+      },
+      "projectUrl": "https://github.com/AzureAD/azure-activedirectory-identitymodel-extensions-for-dotnet",
+      "licenseFiles": [],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "microsoft.identitymodel.abstractions.nuspec",
+        "sha256": "c0488a31c13a8d20f36c7d7a46035881fa5e15e9016a65bcaab89934476f4354"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "Microsoft.IdentityModel.JsonWebTokens",
+      "version": "7.1.2",
+      "cachePath": "<NuGet package folder>/microsoft.identitymodel.jsonwebtokens/7.1.2",
+      "license": {
+        "type": "expression",
+        "value": "MIT"
+      },
+      "licenseUrl": "https://licenses.nuget.org/MIT",
+      "authors": "Microsoft",
+      "copyright": "© Microsoft Corporation. All rights reserved.",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/AzureAD/azure-activedirectory-identitymodel-extensions-for-dotnet",
+        "commit": "a607fa5e0005a6178cf1d2fed4fa0f8179cdb186"
+      },
+      "projectUrl": "https://github.com/AzureAD/azure-activedirectory-identitymodel-extensions-for-dotnet",
+      "licenseFiles": [],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "microsoft.identitymodel.jsonwebtokens.nuspec",
+        "sha256": "82e1b6b35167d8a278a3db6a621339c7eeea71837cac6b29a539064fc784dea1"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "Microsoft.IdentityModel.Logging",
+      "version": "7.1.2",
+      "cachePath": "<NuGet package folder>/microsoft.identitymodel.logging/7.1.2",
+      "license": {
+        "type": "expression",
+        "value": "MIT"
+      },
+      "licenseUrl": "https://licenses.nuget.org/MIT",
+      "authors": "Microsoft",
+      "copyright": "© Microsoft Corporation. All rights reserved.",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/AzureAD/azure-activedirectory-identitymodel-extensions-for-dotnet",
+        "commit": "a607fa5e0005a6178cf1d2fed4fa0f8179cdb186"
+      },
+      "projectUrl": "https://github.com/AzureAD/azure-activedirectory-identitymodel-extensions-for-dotnet",
+      "licenseFiles": [],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "microsoft.identitymodel.logging.nuspec",
+        "sha256": "5f91186a59bbabe7218e85b57474ead2b2547f57e5394026a647e3a493f8a6a3"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "Microsoft.IdentityModel.Protocols.OpenIdConnect",
+      "version": "7.1.2",
+      "cachePath": "<NuGet package folder>/microsoft.identitymodel.protocols.openidconnect/7.1.2",
+      "license": {
+        "type": "expression",
+        "value": "MIT"
+      },
+      "licenseUrl": "https://licenses.nuget.org/MIT",
+      "authors": "Microsoft",
+      "copyright": "© Microsoft Corporation. All rights reserved.",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/AzureAD/azure-activedirectory-identitymodel-extensions-for-dotnet",
+        "commit": "a607fa5e0005a6178cf1d2fed4fa0f8179cdb186"
+      },
+      "projectUrl": "https://github.com/AzureAD/azure-activedirectory-identitymodel-extensions-for-dotnet",
+      "licenseFiles": [],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "microsoft.identitymodel.protocols.openidconnect.nuspec",
+        "sha256": "14dc27f45ceff73c38be8d169c97c4f656ea45eb63fb1ef13acc029da0d86f58"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "Microsoft.IdentityModel.Protocols",
+      "version": "7.1.2",
+      "cachePath": "<NuGet package folder>/microsoft.identitymodel.protocols/7.1.2",
+      "license": {
+        "type": "expression",
+        "value": "MIT"
+      },
+      "licenseUrl": "https://licenses.nuget.org/MIT",
+      "authors": "Microsoft",
+      "copyright": "© Microsoft Corporation. All rights reserved.",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/AzureAD/azure-activedirectory-identitymodel-extensions-for-dotnet",
+        "commit": "a607fa5e0005a6178cf1d2fed4fa0f8179cdb186"
+      },
+      "projectUrl": "https://github.com/AzureAD/azure-activedirectory-identitymodel-extensions-for-dotnet",
+      "licenseFiles": [],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "microsoft.identitymodel.protocols.nuspec",
+        "sha256": "1c70fc993408340f5f6757ca1d6f78a1618fb83dec69de0610b6a7b7448214fa"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "Microsoft.IdentityModel.Tokens",
+      "version": "7.1.2",
+      "cachePath": "<NuGet package folder>/microsoft.identitymodel.tokens/7.1.2",
+      "license": {
+        "type": "expression",
+        "value": "MIT"
+      },
+      "licenseUrl": "https://licenses.nuget.org/MIT",
+      "authors": "Microsoft",
+      "copyright": "© Microsoft Corporation. All rights reserved.",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/AzureAD/azure-activedirectory-identitymodel-extensions-for-dotnet",
+        "commit": "a607fa5e0005a6178cf1d2fed4fa0f8179cdb186"
+      },
+      "projectUrl": "https://github.com/AzureAD/azure-activedirectory-identitymodel-extensions-for-dotnet",
+      "licenseFiles": [],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "microsoft.identitymodel.tokens.nuspec",
+        "sha256": "6f0a3598f4eb5e4e022c685421ff102e00ccb67ffbdb32f624bdf06323ea6028"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "Microsoft.OpenApi",
+      "version": "1.6.14",
+      "cachePath": "<NuGet package folder>/microsoft.openapi/1.6.14",
+      "license": {
+        "type": "expression",
+        "value": "MIT"
+      },
+      "licenseUrl": "https://licenses.nuget.org/MIT",
+      "authors": "Microsoft",
+      "copyright": "© Microsoft Corporation. All rights reserved.",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/Microsoft/OpenAPI.NET",
+        "commit": "ec6a1d47550199f0cc05fa25a49ce8ce135f783d"
+      },
+      "projectUrl": "https://github.com/Microsoft/OpenAPI.NET",
+      "licenseFiles": [],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "microsoft.openapi.nuspec",
+        "sha256": "86bce763f77b64352cc3d4fcd7e9ca96b317a14abba6a1425b694c410aab2cb3"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "MySqlConnector",
+      "version": "2.4.0",
+      "cachePath": "<NuGet package folder>/mysqlconnector/2.4.0",
+      "license": {
+        "type": "expression",
+        "value": "MIT"
+      },
+      "licenseUrl": "https://licenses.nuget.org/MIT",
+      "authors": "Bradley Grainger",
+      "copyright": "Copyright 2016–2024 Bradley Grainger",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/mysql-net/MySqlConnector.git",
+        "commit": "76f8c519f746d65b1847a5bf5f168a2744589958"
+      },
+      "projectUrl": "https://mysqlconnector.net/",
+      "licenseFiles": [],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "mysqlconnector.nuspec",
+        "sha256": "5bebd4e8491d37593a3886eeb1f343b9c488e8ec0eeb73e54241ffde5c82c70f"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "tools/SQLiteToMySqlMigrator/SQLiteToMySqlMigrator.csproj"
+      ],
+      "directIn": [
+        "tools/SQLiteToMySqlMigrator/SQLiteToMySqlMigrator.csproj"
+      ]
+    },
+    {
+      "id": "MySqlConnector",
+      "version": "2.6.1",
+      "cachePath": "<NuGet package folder>/mysqlconnector/2.6.1",
+      "license": {
+        "type": "expression",
+        "value": "MIT"
+      },
+      "licenseUrl": "https://licenses.nuget.org/MIT",
+      "authors": "Bradley Grainger",
+      "copyright": "Copyright 2016–2026 Bradley Grainger",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/mysql-net/MySqlConnector.git",
+        "commit": "5802bd06d4e0787215b9f7acc4c8f8cf4ee8de8a"
+      },
+      "projectUrl": "https://mysqlconnector.net/",
+      "licenseFiles": [],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "mysqlconnector.nuspec",
+        "sha256": "f704d62361213dbee75a15178a040ca0b49f0ceed15e5bd1038cc04af696ab73"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj"
+      ],
+      "directIn": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj"
+      ]
+    },
+    {
+      "id": "RBush",
+      "version": "4.0.0",
+      "cachePath": "<NuGet package folder>/rbush/4.0.0",
+      "license": {
+        "type": "expression",
+        "value": "MIT"
+      },
+      "licenseUrl": "https://licenses.nuget.org/MIT",
+      "authors": "viceroypenguin",
+      "copyright": "Copyright © 2017-2024 Turning Code, LLC (and others)",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/viceroypenguin/RBush",
+        "branch": "refs/tags/v4.0.0",
+        "commit": "b8690322abac35d835baa2fdca4a3918ed77a910"
+      },
+      "projectUrl": null,
+      "licenseFiles": [],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "rbush.nuspec",
+        "sha256": "0126d84e8c538acf9e0ce53786ec93fff7046f290d6af9914230b3e06a1d18cd"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "Serilog.AspNetCore",
+      "version": "8.0.3",
+      "cachePath": "<NuGet package folder>/serilog.aspnetcore/8.0.3",
+      "license": {
+        "type": "expression",
+        "value": "Apache-2.0"
+      },
+      "licenseUrl": "https://licenses.nuget.org/Apache-2.0",
+      "authors": "Microsoft,Serilog Contributors",
+      "copyright": null,
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/serilog/serilog-aspnetcore",
+        "commit": "4522f89cd93771d23c8130efae51140f56e8ee72"
+      },
+      "projectUrl": "https://github.com/serilog/serilog-aspnetcore",
+      "licenseFiles": [],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "serilog.aspnetcore.nuspec",
+        "sha256": "aa2d8a3e46802cb88c949881ac9b43bab2289618004cd499aede2d719c8ce77f"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj"
+      ],
+      "directIn": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj"
+      ]
+    },
+    {
+      "id": "Serilog.Extensions.Hosting",
+      "version": "8.0.0",
+      "cachePath": "<NuGet package folder>/serilog.extensions.hosting/8.0.0",
+      "license": {
+        "type": "expression",
+        "value": "Apache-2.0"
+      },
+      "licenseUrl": "https://licenses.nuget.org/Apache-2.0",
+      "authors": "Microsoft,Serilog Contributors",
+      "copyright": null,
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/serilog/serilog-extensions-hosting",
+        "commit": "11a23e34f1c7aaafa5703dd7639ba6dc1171c7f6"
+      },
+      "projectUrl": "https://github.com/serilog/serilog-extensions-hosting",
+      "licenseFiles": [],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "serilog.extensions.hosting.nuspec",
+        "sha256": "9fd6dec77a701eae659793d1f5e4e07a2b35d8a2e690291c92aa127783b766e1"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "Serilog.Extensions.Logging",
+      "version": "8.0.0",
+      "cachePath": "<NuGet package folder>/serilog.extensions.logging/8.0.0",
+      "license": {
+        "type": "expression",
+        "value": "Apache-2.0"
+      },
+      "licenseUrl": "https://licenses.nuget.org/Apache-2.0",
+      "authors": "Microsoft,Serilog Contributors",
+      "copyright": null,
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/serilog/serilog-extensions-logging.git",
+        "commit": "2138e8cad250ef15369a26ba577d61a8b4f0912e"
+      },
+      "projectUrl": "https://github.com/serilog/serilog-extensions-logging",
+      "licenseFiles": [],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "serilog.extensions.logging.nuspec",
+        "sha256": "6ba5e961d01c4f456995072e15c3f6a91c52c59a140bd3008294df97a5f33a58"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "Serilog.Formatting.Compact",
+      "version": "2.0.0",
+      "cachePath": "<NuGet package folder>/serilog.formatting.compact/2.0.0",
+      "license": {
+        "type": "expression",
+        "value": "Apache-2.0"
+      },
+      "licenseUrl": "https://licenses.nuget.org/Apache-2.0",
+      "authors": "Serilog Contributors",
+      "copyright": null,
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/serilog/serilog-formatting-compact"
+      },
+      "projectUrl": "https://github.com/serilog/serilog-formatting-compact",
+      "licenseFiles": [],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "serilog.formatting.compact.nuspec",
+        "sha256": "6853f660cfa1a0c55c34ab835593e6bd697c3dc14241322564784462dd76a386"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "Serilog.Settings.Configuration",
+      "version": "8.0.4",
+      "cachePath": "<NuGet package folder>/serilog.settings.configuration/8.0.4",
+      "license": {
+        "type": "expression",
+        "value": "Apache-2.0"
+      },
+      "licenseUrl": "https://licenses.nuget.org/Apache-2.0",
+      "authors": "Serilog Contributors",
+      "copyright": null,
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/serilog/serilog-settings-configuration.git",
+        "commit": "71ba0e33a2cfb9802be163fcc6438a8104a54d6d"
+      },
+      "projectUrl": "https://github.com/serilog/serilog-settings-configuration",
+      "licenseFiles": [],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "serilog.settings.configuration.nuspec",
+        "sha256": "086ec3ad578793568645a9f46efbdd0b352f8ecc4cf557d45d2cc06141ddcc2a"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "Serilog.Sinks.Console",
+      "version": "5.0.0",
+      "cachePath": "<NuGet package folder>/serilog.sinks.console/5.0.0",
+      "license": {
+        "type": "expression",
+        "value": "Apache-2.0"
+      },
+      "licenseUrl": "https://licenses.nuget.org/Apache-2.0",
+      "authors": "Serilog Contributors",
+      "copyright": null,
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/serilog/serilog-sinks-console"
+      },
+      "projectUrl": "https://github.com/serilog/serilog-sinks-console",
+      "licenseFiles": [],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "serilog.sinks.console.nuspec",
+        "sha256": "12bc121dbbad1c6f317107f40536c63a59ec1cf1ce70eefdb66376aa6aa0c07b"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.CapacityAgent/SwitchYard.CapacityAgent.csproj",
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj"
+      ],
+      "directIn": [
+        "SwitchYard.WebApi/SwitchYard.CapacityAgent/SwitchYard.CapacityAgent.csproj"
+      ]
+    },
+    {
+      "id": "Serilog.Sinks.Debug",
+      "version": "2.0.0",
+      "cachePath": "<NuGet package folder>/serilog.sinks.debug/2.0.0",
+      "license": {
+        "type": "expression",
+        "value": "Apache-2.0"
+      },
+      "licenseUrl": "https://licenses.nuget.org/Apache-2.0",
+      "authors": "Serilog Contributors",
+      "copyright": null,
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/serilog/serilog-sinks-debug"
+      },
+      "projectUrl": "https://github.com/serilog/serilog-sinks-debug",
+      "licenseFiles": [],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "serilog.sinks.debug.nuspec",
+        "sha256": "1e769682ac3eef12f871b7efbaad9c338f52160c4e78f2d577a437459a446e12"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "Serilog.Sinks.File",
+      "version": "6.0.0",
+      "cachePath": "<NuGet package folder>/serilog.sinks.file/6.0.0",
+      "license": {
+        "type": "expression",
+        "value": "Apache-2.0"
+      },
+      "licenseUrl": "https://licenses.nuget.org/Apache-2.0",
+      "authors": "Serilog Contributors",
+      "copyright": null,
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/serilog/serilog-sinks-file",
+        "commit": "c7b9bc3d87f9bb98572a52286135efda1e608ad6"
+      },
+      "projectUrl": "https://github.com/serilog/serilog-sinks-file",
+      "licenseFiles": [],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "serilog.sinks.file.nuspec",
+        "sha256": "79eb1c94605121403525475d822f7f565a3b4dce336695aae11d0f44daac80af"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.CapacityAgent/SwitchYard.CapacityAgent.csproj",
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj"
+      ],
+      "directIn": [
+        "SwitchYard.WebApi/SwitchYard.CapacityAgent/SwitchYard.CapacityAgent.csproj",
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj"
+      ]
+    },
+    {
+      "id": "Serilog",
+      "version": "4.0.0",
+      "cachePath": "<NuGet package folder>/serilog/4.0.0",
+      "license": {
+        "type": "expression",
+        "value": "Apache-2.0"
+      },
+      "licenseUrl": "https://licenses.nuget.org/Apache-2.0",
+      "authors": "Serilog Contributors",
+      "copyright": "Copyright © 2013-24 Serilog Contributors",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/serilog/serilog.git",
+        "commit": "573a62874260d7a1708f620076b5469f69bc79b3"
+      },
+      "projectUrl": "https://serilog.net/",
+      "licenseFiles": [],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "serilog.nuspec",
+        "sha256": "1b158a9242bc8e6f5814f711ab0d8fc70cb6749be4eb2bc9b94e4caeef697226"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.CapacityAgent/SwitchYard.CapacityAgent.csproj",
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj"
+      ],
+      "directIn": [
+        "SwitchYard.WebApi/SwitchYard.CapacityAgent/SwitchYard.CapacityAgent.csproj"
+      ]
+    },
+    {
+      "id": "SixLabors.Fonts",
+      "version": "1.0.0",
+      "cachePath": "<NuGet package folder>/sixlabors.fonts/1.0.0",
+      "license": {
+        "type": "expression",
+        "value": "Apache-2.0"
+      },
+      "licenseUrl": "https://licenses.nuget.org/Apache-2.0",
+      "authors": "Six Labors and contributors",
+      "copyright": "Copyright © Six Labors",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/SixLabors/Fonts",
+        "commit": "32bef42997adb10268369ca149777f00e4241ce9"
+      },
+      "projectUrl": "https://github.com/SixLabors/Fonts",
+      "licenseFiles": [],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "sixlabors.fonts.nuspec",
+        "sha256": "dbd5856e3bbf6d25087250dbad4fe3140383dfe82610c3cce4929fbc59c7e7a8"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "SQLitePCLRaw.bundle_e_sqlite3",
+      "version": "2.1.11",
+      "cachePath": "<NuGet package folder>/sqlitepclraw.bundle_e_sqlite3/2.1.11",
+      "license": {
+        "type": "expression",
+        "value": "Apache-2.0"
+      },
+      "licenseUrl": "https://licenses.nuget.org/Apache-2.0",
+      "authors": "Eric Sink",
+      "copyright": "Copyright 2014-2024 SourceGear, LLC",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/ericsink/SQLitePCL.raw"
+      },
+      "projectUrl": null,
+      "licenseFiles": [],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "sqlitepclraw.bundle_e_sqlite3.nuspec",
+        "sha256": "f8204aad2733babf578b5935a7c75acac78eafd22eb7467cef25d305b7e06a10"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj",
+        "tools/SQLiteToMySqlMigrator/SQLiteToMySqlMigrator.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "SQLitePCLRaw.core",
+      "version": "2.1.11",
+      "cachePath": "<NuGet package folder>/sqlitepclraw.core/2.1.11",
+      "license": {
+        "type": "expression",
+        "value": "Apache-2.0"
+      },
+      "licenseUrl": "https://licenses.nuget.org/Apache-2.0",
+      "authors": "Eric Sink",
+      "copyright": "Copyright 2014-2024 SourceGear, LLC",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/ericsink/SQLitePCL.raw"
+      },
+      "projectUrl": null,
+      "licenseFiles": [],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "sqlitepclraw.core.nuspec",
+        "sha256": "6561e062a5e659ded08feb24f13b70606678c1912bb655a3c24599a75490d4ae"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj",
+        "tools/SQLiteToMySqlMigrator/SQLiteToMySqlMigrator.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "SQLitePCLRaw.lib.e_sqlite3",
+      "version": "2.1.11",
+      "cachePath": "<NuGet package folder>/sqlitepclraw.lib.e_sqlite3/2.1.11",
+      "license": {
+        "type": "expression",
+        "value": "Apache-2.0"
+      },
+      "licenseUrl": "https://licenses.nuget.org/Apache-2.0",
+      "authors": "Eric Sink",
+      "copyright": "Copyright 2014-2024 SourceGear, LLC",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/ericsink/SQLitePCL.raw"
+      },
+      "projectUrl": null,
+      "licenseFiles": [],
+      "nativeAssets": [
+        "runtimes/linux-arm/native/libe_sqlite3.so",
+        "runtimes/linux-arm64/native/libe_sqlite3.so",
+        "runtimes/linux-armel/native/libe_sqlite3.so",
+        "runtimes/linux-mips64/native/libe_sqlite3.so",
+        "runtimes/linux-musl-arm/native/libe_sqlite3.so",
+        "runtimes/linux-musl-arm64/native/libe_sqlite3.so",
+        "runtimes/linux-musl-riscv64/native/libe_sqlite3.so",
+        "runtimes/linux-musl-s390x/native/libe_sqlite3.so",
+        "runtimes/linux-musl-x64/native/libe_sqlite3.so",
+        "runtimes/linux-ppc64le/native/libe_sqlite3.so",
+        "runtimes/linux-riscv64/native/libe_sqlite3.so",
+        "runtimes/linux-s390x/native/libe_sqlite3.so",
+        "runtimes/linux-x64/native/libe_sqlite3.so",
+        "runtimes/linux-x86/native/libe_sqlite3.so",
+        "runtimes/maccatalyst-arm64/native/libe_sqlite3.dylib",
+        "runtimes/maccatalyst-x64/native/libe_sqlite3.dylib",
+        "runtimes/osx-arm64/native/libe_sqlite3.dylib",
+        "runtimes/osx-x64/native/libe_sqlite3.dylib",
+        "runtimes/win-arm/native/e_sqlite3.dll",
+        "runtimes/win-arm64/native/e_sqlite3.dll",
+        "runtimes/win-x64/native/e_sqlite3.dll",
+        "runtimes/win-x86/native/e_sqlite3.dll"
+      ],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts.",
+        "Native assets require a separate audit of bundled/static dependencies; the NuGet license is not a complete component inventory."
+      ],
+      "nuspec": {
+        "file": "sqlitepclraw.lib.e_sqlite3.nuspec",
+        "sha256": "fba9ca3b4fc13b6e2c118a898d760750046b099af3a56740c2017005e71ad1e4"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj",
+        "tools/SQLiteToMySqlMigrator/SQLiteToMySqlMigrator.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "SQLitePCLRaw.provider.e_sqlite3",
+      "version": "2.1.11",
+      "cachePath": "<NuGet package folder>/sqlitepclraw.provider.e_sqlite3/2.1.11",
+      "license": {
+        "type": "expression",
+        "value": "Apache-2.0"
+      },
+      "licenseUrl": "https://licenses.nuget.org/Apache-2.0",
+      "authors": "Eric Sink",
+      "copyright": "Copyright 2014-2024 SourceGear, LLC",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/ericsink/SQLitePCL.raw"
+      },
+      "projectUrl": null,
+      "licenseFiles": [],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "sqlitepclraw.provider.e_sqlite3.nuspec",
+        "sha256": "55c4de0d90d48c4b2365ff63ce939a7d87346dcb4d932830d28fc2c316439f07"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj",
+        "tools/SQLiteToMySqlMigrator/SQLiteToMySqlMigrator.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "Swashbuckle.AspNetCore.Swagger",
+      "version": "6.6.2",
+      "cachePath": "<NuGet package folder>/swashbuckle.aspnetcore.swagger/6.6.2",
+      "license": {
+        "type": "expression",
+        "value": "MIT"
+      },
+      "licenseUrl": "https://licenses.nuget.org/MIT",
+      "authors": "domaindrivendev",
+      "copyright": "Copyright (c) 2016-2024 Richard Morris",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/domaindrivendev/Swashbuckle.AspNetCore.git",
+        "commit": "fe87e6d4ce56cda59474763067b929d4d92fd146"
+      },
+      "projectUrl": "https://github.com/domaindrivendev/Swashbuckle.AspNetCore",
+      "licenseFiles": [],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "swashbuckle.aspnetcore.swagger.nuspec",
+        "sha256": "ae5bbd12fb14c1dcec370e7ed45e68d838ecd2f0e5d05216232f9d2041fd763c"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "Swashbuckle.AspNetCore.SwaggerGen",
+      "version": "6.6.2",
+      "cachePath": "<NuGet package folder>/swashbuckle.aspnetcore.swaggergen/6.6.2",
+      "license": {
+        "type": "expression",
+        "value": "MIT"
+      },
+      "licenseUrl": "https://licenses.nuget.org/MIT",
+      "authors": "domaindrivendev",
+      "copyright": "Copyright (c) 2016-2024 Richard Morris",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/domaindrivendev/Swashbuckle.AspNetCore.git",
+        "commit": "fe87e6d4ce56cda59474763067b929d4d92fd146"
+      },
+      "projectUrl": "https://github.com/domaindrivendev/Swashbuckle.AspNetCore",
+      "licenseFiles": [],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "swashbuckle.aspnetcore.swaggergen.nuspec",
+        "sha256": "79ac217241028d8095aa00532abd38954bc3c07a0cb8126428a5a3822628d53a"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "Swashbuckle.AspNetCore.SwaggerUI",
+      "version": "6.6.2",
+      "cachePath": "<NuGet package folder>/swashbuckle.aspnetcore.swaggerui/6.6.2",
+      "license": {
+        "type": "expression",
+        "value": "MIT"
+      },
+      "licenseUrl": "https://licenses.nuget.org/MIT",
+      "authors": "domaindrivendev",
+      "copyright": "Copyright (c) 2016-2024 Richard Morris",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/domaindrivendev/Swashbuckle.AspNetCore.git",
+        "commit": "fe87e6d4ce56cda59474763067b929d4d92fd146"
+      },
+      "projectUrl": "https://github.com/domaindrivendev/Swashbuckle.AspNetCore",
+      "licenseFiles": [],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "swashbuckle.aspnetcore.swaggerui.nuspec",
+        "sha256": "32f3021a60a01242c76c90c5f0637796673226933e503471f5a78b36f9a7f58d"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "Swashbuckle.AspNetCore",
+      "version": "6.6.2",
+      "cachePath": "<NuGet package folder>/swashbuckle.aspnetcore/6.6.2",
+      "license": {
+        "type": "expression",
+        "value": "MIT"
+      },
+      "licenseUrl": "https://licenses.nuget.org/MIT",
+      "authors": "domaindrivendev",
+      "copyright": null,
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/domaindrivendev/Swashbuckle.AspNetCore.git"
+      },
+      "projectUrl": "https://github.com/domaindrivendev/Swashbuckle.AspNetCore",
+      "licenseFiles": [],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "swashbuckle.aspnetcore.nuspec",
+        "sha256": "1251abdb6a8a4924b20d752e9256d0b3d783b8204b66e89fded741dd39ea8b02"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj"
+      ],
+      "directIn": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj"
+      ]
+    },
+    {
+      "id": "System.Diagnostics.DiagnosticSource",
+      "version": "10.0.1",
+      "cachePath": "<NuGet package folder>/system.diagnostics.diagnosticsource/10.0.1",
+      "license": {
+        "type": "expression",
+        "value": "MIT"
+      },
+      "licenseUrl": "https://licenses.nuget.org/MIT",
+      "authors": "Microsoft",
+      "copyright": "© Microsoft Corporation. All rights reserved.",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/dotnet/dotnet",
+        "commit": "fad253f51b461736dfd3cd9c15977bb7493becef"
+      },
+      "projectUrl": "https://dot.net/",
+      "licenseFiles": [
+        {
+          "file": "THIRD-PARTY-NOTICES.TXT",
+          "kind": "notice",
+          "sha256": "6d15e10a101c6bfff2ab4429ed061bf76c456fc4b23ad6b03e0d0f8377148a21"
+        }
+      ],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "system.diagnostics.diagnosticsource.nuspec",
+        "sha256": "43fe9f31603495d047289ed96664f8d707071dfa4edc61f8ac91b062e025dc57"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "System.IdentityModel.Tokens.Jwt",
+      "version": "7.1.2",
+      "cachePath": "<NuGet package folder>/system.identitymodel.tokens.jwt/7.1.2",
+      "license": {
+        "type": "expression",
+        "value": "MIT"
+      },
+      "licenseUrl": "https://licenses.nuget.org/MIT",
+      "authors": "Microsoft",
+      "copyright": "© Microsoft Corporation. All rights reserved.",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/AzureAD/azure-activedirectory-identitymodel-extensions-for-dotnet",
+        "commit": "a607fa5e0005a6178cf1d2fed4fa0f8179cdb186"
+      },
+      "projectUrl": "https://github.com/AzureAD/azure-activedirectory-identitymodel-extensions-for-dotnet",
+      "licenseFiles": [],
+      "nativeAssets": [],
+      "issues": [
+        "No standalone license/copyright text found; nuspec expressions and URLs are not license texts."
+      ],
+      "nuspec": {
+        "file": "system.identitymodel.tokens.jwt.nuspec",
+        "sha256": "adf7283d61b4127df0941c7a78f1f61601532b8441d5bae421e3a3d2987c3aab"
+      },
+      "licenseTextStatus": "not-present-in-local-package",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "System.IO.Packaging",
+      "version": "8.0.1",
+      "cachePath": "<NuGet package folder>/system.io.packaging/8.0.1",
+      "license": {
+        "type": "expression",
+        "value": "MIT"
+      },
+      "licenseUrl": "https://licenses.nuget.org/MIT",
+      "authors": "Microsoft",
+      "copyright": "© Microsoft Corporation. All rights reserved.",
+      "repository": {
+        "type": "git",
+        "url": "https://github.com/dotnet/runtime",
+        "commit": "81cabf2857a01351e5ab578947c7403a5b128ad1"
+      },
+      "projectUrl": "https://dot.net/",
+      "licenseFiles": [
+        {
+          "file": "LICENSE.TXT",
+          "kind": "license-or-copyright",
+          "sha256": "d7a68596ab69b06f51ca278a6545148e4269a9381c26d597c13df5d88e08cf5b"
+        },
+        {
+          "file": "THIRD-PARTY-NOTICES.TXT",
+          "kind": "notice",
+          "sha256": "b60b2912da28eaa6518593c9e2efb5334ee062d3c42e80d8fdfa806b3dc52977"
+        }
+      ],
+      "nativeAssets": [],
+      "issues": [],
+      "nuspec": {
+        "file": "system.io.packaging.nuspec",
+        "sha256": "28198c2ab50ffecd09b1403ad7315bf0406d98cab8a69258ce6a6ca2d6479c62"
+      },
+      "licenseTextStatus": "local-text-found-review-scope",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "System.Memory",
+      "version": "4.5.3",
+      "cachePath": "<NuGet package folder>/system.memory/4.5.3",
+      "license": null,
+      "licenseUrl": "https://github.com/dotnet/corefx/blob/master/LICENSE.TXT",
+      "authors": "Microsoft",
+      "copyright": "© Microsoft Corporation. All rights reserved.",
+      "repository": null,
+      "projectUrl": "https://dot.net/",
+      "licenseFiles": [
+        {
+          "file": "LICENSE.TXT",
+          "kind": "license-or-copyright",
+          "sha256": "d7a68596ab69b06f51ca278a6545148e4269a9381c26d597c13df5d88e08cf5b"
+        },
+        {
+          "file": "THIRD-PARTY-NOTICES.TXT",
+          "kind": "notice",
+          "sha256": "7864a01e2fdef7e8fdf81b906efb1466f083206affea7ba7e6dadea429754765"
+        }
+      ],
+      "nativeAssets": [],
+      "issues": [
+        "No modern nuspec license declaration; inspect local text and upstream version."
+      ],
+      "nuspec": {
+        "file": "system.memory.nuspec",
+        "sha256": "d38da361a4741fa4f1ad0c6d83489f450affdea4caefe3bcd3d3e19290b235c4"
+      },
+      "licenseTextStatus": "local-text-found-review-scope",
+      "projects": [
+        "tools/SQLiteToMySqlMigrator/SQLiteToMySqlMigrator.csproj"
+      ],
+      "directIn": []
+    },
+    {
+      "id": "System.Memory",
+      "version": "4.5.4",
+      "cachePath": "<NuGet package folder>/system.memory/4.5.4",
+      "license": null,
+      "licenseUrl": "https://github.com/dotnet/corefx/blob/master/LICENSE.TXT",
+      "authors": "Microsoft",
+      "copyright": "© Microsoft Corporation. All rights reserved.",
+      "repository": null,
+      "projectUrl": "https://dot.net/",
+      "licenseFiles": [
+        {
+          "file": "LICENSE.TXT",
+          "kind": "license-or-copyright",
+          "sha256": "d7a68596ab69b06f51ca278a6545148e4269a9381c26d597c13df5d88e08cf5b"
+        },
+        {
+          "file": "THIRD-PARTY-NOTICES.TXT",
+          "kind": "notice",
+          "sha256": "7864a01e2fdef7e8fdf81b906efb1466f083206affea7ba7e6dadea429754765"
+        }
+      ],
+      "nativeAssets": [],
+      "issues": [
+        "No modern nuspec license declaration; inspect local text and upstream version."
+      ],
+      "nuspec": {
+        "file": "system.memory.nuspec",
+        "sha256": "b58115244a5d8817c65017d55b2d3a4ede57feb1a0f55ab4a70493a23460ea89"
+      },
+      "licenseTextStatus": "local-text-found-review-scope",
+      "projects": [
+        "SwitchYard.WebApi/SwitchYard.Service/SwitchYard.Service.csproj"
+      ],
+      "directIn": []
+    }
+  ]
+}

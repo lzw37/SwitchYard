@@ -1,6 +1,7 @@
 {
     "name": "switchyard-vue",
     "version": "0.0.0",
+    "license": "MIT",
     "private": true,
     "type": "module",
     "engines": {
@@ -15,14 +16,17 @@
         "preview": "vite preview",
         "preview:prod": "vite preview --mode production",
         "build-only": "vite build",
-        "type-check": "vue-tsc --build"
+        "type-check": "vue-tsc --build",
+        "check:i18n": "node checks/i18n.mjs"
     },
     "dependencies": {
         "@element-plus/icons-vue": "^2.3.2",
+        "@switchyard/station-layout": "file:../SwitchYard.StationLayout/frontend",
         "@types/three": "^0.184.0",
         "axios": "^1.13.2",
         "crypto-js": "^4.2.0",
         "element-plus": "^2.13.0",
+        "fflate": "^0.8.3",
         "jquery": "^3.7.1",
         "mammoth": "^1.11.0",
         "pdfjs-dist": "^5.4.624",

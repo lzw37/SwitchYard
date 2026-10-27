@@ -2,24 +2,23 @@
   <section class="quiz-shell">
     <div class="quiz-top">
       <div class="quiz-headline">
-        <h3>习题练习</h3>
+        <h3>{{ t('course.quiz.title') }}</h3>
         <div class="quiz-summary">
-          <span v-if="loading">正在加载习题...</span>
+          <span v-if="loading">{{ t('course.quiz.loading') }}</span>
           <template v-else>
-            <span>已答 {{ answeredCount }} / {{ items.length }} 题</span>
-            <span v-if="gradeResult.graded">得分 {{ gradeResult.correct }} / {{ items.length }}</span>
+            <span>{{ t('course.quiz.answered', { answered: answeredCount, total: items.length }) }}</span>
+            <span v-if="gradeResult.graded">{{ t('course.quiz.score', { correct: gradeResult.correct, total: items.length }) }}</span>
           </template>
         </div>
       </div>
 
       <div class="quiz-action">
-        <span class="action-hint">{{ gradeResult.graded ? "已完成评分，可查看每题答案" : "完成后点击评分查看答案" }}</span>
-        <button class="primary" :disabled="loading" @click="grade">评分</button>
+        <ActionButton :label="t('course.quiz.grade')" :icon="actionIcons.save" :disabled="loading || items.length === 0" @click="grade" />
       </div>
     </div>
 
     <div v-if="loadError" class="muted">{{ loadError }}</div>
-    <div v-else-if="!loading && items.length === 0" class="muted">未解析到可用题目。</div>
+    <div v-else-if="!loading && items.length === 0" class="muted">{{ t('course.quiz.empty') }}</div>
 
     <div class="question-list">
       <div v-for="(it, idx) in items" :key="it.id" class="question">
@@ -30,16 +29,16 @@
             v-model="userInputs[it.id]"
             class="blank-input"
             type="text"
-            placeholder="请输入答案..."
+            :placeholder="t('course.quiz.answerPlaceholder')" :aria-label="t('course.quiz.answerPlaceholder')"
           />
         </div>
 
         <div v-if="gradeResult.graded" class="feedback" :class="feedbackClass(it.id)">
           <div class="feedback-line">
             <span class="badge" :class="feedbackBadgeClass(it.id)">{{ feedbackText(it.id) }}</span>
-            <span class="muted">相似度：{{ formatPercent(gradeResult.details[it.id]?.similarity ?? 0) }}%</span>
+            <span class="muted">{{ t('course.quiz.similarity', { percent: formatPercent(gradeResult.details[it.id]?.similarity ?? 0) }) }}</span>
           </div>
-          <p class="explain">标准答案：<span class="answer">{{ it.answer }}</span></p>
+          <p class="explain">{{ t('course.quiz.answer') }}: <span class="answer">{{ it.answer }}</span></p>
         </div>
       </div>
     </div>
@@ -48,6 +47,11 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from "vue";
+import { useI18n } from 'vue-i18n';
+import ActionButton from '@/components/ui/ActionButton.vue';
+import { actionIcons } from '@/components/ui/actionIcons';
+
+const { t } = useI18n();
 
 const props = defineProps<{
   quizDocUrl: string;
@@ -110,7 +114,7 @@ async function loadQuiz() {
       if (userInputs[it.id] === undefined) userInputs[it.id] = "";
     }
   } catch (error) {
-    loadError.value = `习题加载失败：${error instanceof Error ? error.message : "未知错误"}`;
+    loadError.value = t('course.quiz.loadFailed', { error: error instanceof Error ? error.message : t('common.unknownError') });
   } finally {
     loading.value = false;
   }
@@ -393,198 +397,33 @@ function feedbackBadgeClass(id: string) {
 
 function feedbackText(id: string) {
   const level = gradeResult.details[id]?.level;
-  if (level === "correct") return "正确";
-  if (level === "partial") return "基本正确";
-  return "错误";
+  if (level === "correct") return t('course.quiz.correct');
+  if (level === "partial") return t('course.quiz.partial');
+  return t('course.quiz.wrong');
 }
 </script>
 
 <style scoped>
-.quiz-shell {
-  margin-top: 22px;
-  border: 1px solid var(--stroke);
-  border-radius: 16px;
-  padding: 16px;
-  background: linear-gradient(120deg, rgba(15, 22, 41, 0.9), rgba(20, 33, 58, 0.85));
-  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.22);
-}
-
-.quiz-headline h3 {
-  margin: 0;
-  font-size: 16px;
-  line-height: 1.2;
-  color: #f1f7ff;
-  letter-spacing: 0.02em;
-  font-weight: 700;
-}
-
-.quiz-top {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.quiz-summary {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  color: var(--muted);
-  margin-top: 4px;
-  margin-bottom: 8px;
-  gap: 16px;
-  flex-wrap: wrap;
-  font-size: 14px;
-}
-
-.quiz-action {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 8px;
-  margin-top: -3px;
-}
-
-.action-hint {
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.primary {
-  background: linear-gradient(120deg, #22d3ee, #6ee7ff);
-  border: none;
-  color: #03111a;
-  font-weight: 700;
-  padding: 8px 14px;
-  border-radius: 12px;
-  cursor: pointer;
-  box-shadow: 0 12px 30px rgba(110, 231, 255, 0.28);
-  transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
-}
-
-.primary:hover {
-  transform: translateY(-1px);
-}
-
-.primary:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-  box-shadow: none;
-  transform: none;
-}
-
-.muted {
-  color: var(--muted);
-}
-
-.question-list {
-  margin-top: 8px;
-}
-
-.question {
-  border: 1px solid var(--stroke);
-  border-radius: 12px;
-  padding: 10px 12px;
-  background: rgba(255, 255, 255, 0.03);
-  margin-bottom: 10px;
-}
-
-.question-title {
-  margin-bottom: 8px;
-  font-weight: 600;
-}
-
-.blank-row {
-  margin-top: 8px;
-}
-
-.blank-input {
-  width: 100%;
-  border: 1px solid var(--stroke);
-  border-radius: 10px;
-  padding: 10px 12px;
-  background: rgba(255, 255, 255, 0.03);
-  color: var(--text);
-  outline: none;
-}
-
-.blank-input:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(110, 231, 255, 0.15);
-}
-
-.feedback {
-  margin-top: 10px;
-  border-radius: 8px;
-  padding: 8px 10px;
-  border: 1px solid var(--stroke);
-}
-
-.feedback.good {
-  border-color: var(--good);
-}
-
-.feedback.warn {
-  border-color: var(--warn);
-}
-
-.feedback.bad {
-  border-color: rgba(255, 80, 80, 0.7);
-}
-
-.feedback-line {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-}
-
-.answer {
-  color: var(--text);
-  font-weight: 600;
-}
-
-.badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 8px;
-  border-radius: 10px;
-  border: 1px solid var(--stroke);
-  font-size: 12px;
-}
-
-.badge.good {
-  border-color: var(--good);
-  color: var(--good);
-}
-
-.badge.warn {
-  border-color: var(--warn);
-  color: var(--warn);
-}
-
-.badge.bad {
-  border-color: rgba(255, 80, 80, 0.8);
-  color: rgba(255, 120, 120, 1);
-}
-
-@media (max-width: 900px) {
-  .quiz-top {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .quiz-headline h3 {
-    font-size: 16px;
-  }
-
-  .action-hint {
-    font-size: 12px;
-  }
-
-  .quiz-action {
-    align-items: flex-start;
-  }
-}
+.quiz-shell { margin-top: 16px; border: 1px solid var(--stroke, #dfe4ea); border-radius: 6px; padding: 12px; background: var(--sy-surface, #fff); }
+.quiz-headline h3 { margin: 0; font-size: 14px; font-weight: 600; }
+.quiz-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.quiz-summary { display: flex; flex-wrap: wrap; gap: 12px; margin: 6px 0; color: var(--muted, #909399); font-size: 12px; }
+.quiz-action { display: flex; align-items: center; }
+.muted { color: var(--muted, #909399); }
+.question-list { margin-top: 8px; }
+.question { padding: 12px 0; border-top: 1px solid var(--stroke, #dfe4ea); }
+.question-title { margin-bottom: 8px; font-weight: 500; }
+.blank-row { margin-top: 8px; }
+.blank-input { box-sizing: border-box; width: 100%; border: 1px solid var(--stroke, #dfe4ea); border-radius: 4px; padding: 8px 10px; background: var(--sy-surface, #fff); color: var(--text, #303133); font: inherit; outline: none; }
+.blank-input:focus { border-color: var(--accent, #4776a8); }
+.feedback { margin-top: 10px; border-left: 2px solid var(--stroke, #dfe4ea); padding: 4px 10px; }
+.feedback.good { border-color: var(--good, #529b64); }
+.feedback.warn { border-color: var(--warn, #b98739); }
+.feedback.bad { border-color: var(--el-color-danger, #c45656); }
+.feedback-line { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; font-size: 12px; }
+.answer { font-weight: 500; }
+.explain { margin: 6px 0; }
+.badge.good { color: var(--good, #529b64); }
+.badge.warn { color: var(--warn, #b98739); }
+.badge.bad { color: var(--el-color-danger, #c45656); }
 </style>

@@ -32,7 +32,7 @@
         /// 计算单位风阻力
         /// </summary>
         /// <param name="wagonMass">车辆总重/t</param>
-        /// <param name="airDensity">空气密度/(kg*s^2/m^4)</param>
+        /// <param name="airDensity">气流密度/(kg·s^2/m^4)</param>
         /// <param name="windwardArea">迎风面积/m^2</param>
         /// <param name="wagonVelocity">车辆速度/(m/s)</param>
         /// <param name="windVelocity">风速/(m/s)</param>
@@ -41,7 +41,7 @@
         public static double CalculateAirResistance(double wagonMass, double airDensity, double windwardArea,
             double wagonVelocity, double windVelocity, int isHeadWind)
         {
-            double rho = airDensity; // 空气密度/(kg*s^2/m^4)
+            double rho = airDensity; // 气流密度/(kg·s^2/m^4)
             double f= windwardArea; // 迎风面积/m^2
             double v_wagon = wagonVelocity; // 车辆速度/(m/s)
             double v_wind = windVelocity; // 风速/(m/s)

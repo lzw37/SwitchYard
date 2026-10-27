@@ -1,0 +1,62 @@
+{
+  "AllowedHosts": "*",
+  "WebApi": {
+    "Hosts": ["http://0.0.0.0:8080"]
+  },
+  "Cors": {
+    "AllowedOrigins": []
+  },
+  "Course": {
+    "VideoDir": "/data/course",
+    "DocDir": "/data/course"
+  },
+  "Jwt": {
+    "SecretKey": "",
+    "Issuer": "SwitchYard.Service",
+    "Audience": "SwitchYard.Client",
+    "ExpirationMinutes": "60",
+    "RefreshTokenExpirationDays": "7"
+  },
+  "HumpDatabase": {
+    "DatabaseType": "Mysql",
+    "MysqlConfig": {
+      "Host": "host.docker.internal",
+      "Port": 3306,
+      "Database": "hump",
+      "Username": "",
+      "Password": "",
+      "CharSet": "utf8mb4",
+      "SslMode": "Preferred",
+      "ConnectionTimeout": 15
+    },
+    "SqlliteConfig": { "DatabaseFile": "/data/hump.db" }
+  },
+  "CapacityDatabase": {
+    "DatabaseType": "Mysql",
+    "MysqlConfig": {
+      "Host": "host.docker.internal",
+      "Port": 3306,
+      "Database": "capacity",
+      "Username": "",
+      "Password": "",
+      "CharSet": "utf8mb4",
+      "SslMode": "Preferred",
+      "ConnectionTimeout": 15
+    },
+    "SqlliteConfig": { "DatabaseFile": "/data/capacity.db" }
+  },
+  "SketchLayoutDatabase": {
+    "DatabaseType": "Mysql",
+    "MysqlConfig": {
+      "Host": "host.docker.internal",
+      "Port": 3306,
+      "Database": "sketchlayout",
+      "Username": "",
+      "Password": "",
+      "CharSet": "utf8mb4",
+      "SslMode": "Preferred",
+      "ConnectionTimeout": 15
+    },
+    "SqlliteConfig": { "DatabaseFile": "/data/sketchlayout.db" }
+  }
+}

@@ -234,9 +234,8 @@ namespace SwitchYard.Service.Controllers
                     return StatusCode(500, new { message = "创建用户失败" });
                 }
 
-                var defaultInstanceCopyResult = _humpInstanceCopyService.CopyInstance(
+                var defaultInstanceCopyResult = _humpInstanceCopyService.CopyTemplateInstanceForNewUser(
                     DefaultTemplateInstanceId,
-                    string.Empty,
                     newUser.Name);
                 if (!defaultInstanceCopyResult.Success)
                 {

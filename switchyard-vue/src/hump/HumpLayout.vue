@@ -8,7 +8,7 @@
             <el-button type="primary" size="small" @click="openSlopeLineManager">...</el-button>
             <div>
                 <el-button-group>
-                    <el-button type="plain" size="small" @click="loadFlatLayout">{{ t('hump.load') }}</el-button>
+                    <el-button type="plain" size="small" @click="loadFlatLayout()">{{ t('hump.load') }}</el-button>
                     <el-button type="primary" size="small" @click="saveFlatLayout">{{ t('hump.buttons.save')
                     }}</el-button>
                 </el-button-group>
@@ -63,7 +63,7 @@
         <div class="plan-graphic">
             <div class="graphic-placeholder">
                 <HumpLayoutCtrl ref="ctrlRef" v-model:flatLayout="flatLayout" v-model:globalCursorX="globalCursorX"
-                    :isToolbarDisplay="true" />
+                    :isToolbarDisplay="true" @selection-change="handleLayoutSelectionChange" />
             </div>
         </div>
 
@@ -79,8 +79,10 @@
                                         style="margin-left:20px;" @click="addPosition">{{ t('hump.buttons.add')
                                         }}</el-button>
                                 </div>
-                                <el-table :data="flatLayout?.positionList || []" row-key="_rowKey" stripe :max-height="400"
-                                    style="width: 100%">
+                                <el-table :key="positionTableRenderKey" ref="positionTableRef"
+                                    :data="flatLayout?.positionList || []" row-key="_rowKey" stripe :max-height="400"
+                                    style="width: 100%"
+                                    :row-class-name="getPositionRowClassName">
                                     <el-table-column :label="t('hump.id')" width="100">
                                         <template #default="scope">
                                             <el-input v-model="scope.row.id" size="small"
@@ -111,8 +113,10 @@
                                         @click="updatePositionSegmentList" style="margin-left:20px">{{ t('hump.update')
                                         }}</el-button>
                                 </div>
-                                <el-table :data="flatLayout?.positionSegmentList || []" row-key="id" stripe :max-height="400"
-                                    style="width: 100%">
+                                <el-table :key="segmentTableRenderKey" ref="segmentTableRef"
+                                    :data="flatLayout?.positionSegmentList || []" row-key="id" stripe :max-height="400"
+                                    style="width: 100%"
+                                    :row-class-name="getSegmentRowClassName">
                                     <el-table-column prop="id" :label="t('hump.id')" width="100"></el-table-column>
                                     <el-table-column prop="startPositionID" :label="t('hump.startID')"
                                         width="120"></el-table-column>
@@ -163,7 +167,9 @@
                                 @click="addSwitch">{{ t('hump.buttons.add')
                                 }}</el-button>
                         </div>
-                        <el-table :data="flatLayout?.switchList || []" row-key="id" stripe :max-height="400" style="width: 100%">
+                        <el-table :key="switchTableRenderKey" ref="switchTableRef" :data="flatLayout?.switchList || []"
+                            row-key="id" stripe :max-height="400" style="width: 100%"
+                            :row-class-name="getSwitchRowClassName">
                             <el-table-column :label="t('hump.id')" width="100">
                                 <template #default="scope">
                                     {{ scope.row.id }}
@@ -199,11 +205,11 @@
                                     </el-select>
                                 </template>
                             </el-table-column>
-                            <el-table-column label="道岔辙叉号码" width="150">
+                            <el-table-column :label="t('hump.frogNumber')" width="150">
                                 <template #default="scope">
                                     <el-select :model-value="getSwitchFrogNumberValue(scope.row)"
                                         @change="onSwitchFrogNumberChange(scope.row, $event)"
-                                        placeholder="请选择辙叉号码" size="small" style="width:130px">
+                                        :placeholder="t('hump.chooseFrogNumber')" size="small" style="width:130px">
                                         <el-option v-for="opt in getSwitchFrogNumberOptions()" :key="opt.value"
                                             :label="opt.label" :value="opt.value" />
                                     </el-select>
@@ -251,7 +257,9 @@
                                 @click="addRetarder">{{ t('hump.buttons.add')
                                 }}</el-button>
                         </div>
-                        <el-table :data="flatLayout?.retarderList || []" row-key="id" stripe :max-height="400" style="width: 100%">
+                        <el-table :key="retarderTableRenderKey" ref="retarderTableRef"
+                            :data="flatLayout?.retarderList || []" row-key="id" stripe :max-height="400"
+                            style="width: 100%" :row-class-name="getRetarderRowClassName">
                             <el-table-column :label="t('hump.retarder.index')" width="80">
                                 <template #default="scope">{{ scope.row.id }}</template>
                             </el-table-column>
@@ -302,12 +310,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted, computed } from 'vue'
+import { ref, watch, onMounted, computed, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import HumpLayoutCtrl from './HumpLayoutCtrl.vue'
 import type { FlatLayout } from './humplayoutctrl'
 import { CurveDirections, SwitchTypes, SwitchDirections, SwitchSides, LocationParam } from './humplayoutctrl'
 import axios from '@/utils/axios'
+import { getHumpMissingReferenceMessage } from '@/utils/humpMissingReference'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 interface SlopeLine {
@@ -321,6 +330,24 @@ interface EditableSlopeLine extends SlopeLine {
     _isNew: boolean
     _loading: boolean
     _originalName: string
+}
+
+type LayoutSelectionKind = 'segment' | 'position' | 'switch' | 'retarder' | 'rectangle' | 'clear'
+type LayoutSelectionState = {
+    segments: string[]
+    positions: string[]
+    switches: string[]
+    retarders: string[]
+}
+type LayoutSelectionChangePayload = {
+    source: LayoutSelectionKind
+    activeId?: string
+    selections: LayoutSelectionState
+}
+type LayoutTableKey = 'position' | 'segment' | 'switch' | 'retarder'
+type LayoutTabKey = 'ctrl' | 'switch' | 'retarder'
+type TableInstanceLike = {
+    $el?: HTMLElement | null
 }
 
 type SwitchFrogNumberValue =
@@ -354,10 +381,27 @@ const slopeLineManagerVisible = ref(false)
 const slopeLineEditList = ref<EditableSlopeLine[]>([])
 
 const ctrlRef = ref<InstanceType<typeof HumpLayoutCtrl> | null>(null)
+const positionTableRef = ref<TableInstanceLike | null>(null)
+const segmentTableRef = ref<TableInstanceLike | null>(null)
+const switchTableRef = ref<TableInstanceLike | null>(null)
+const retarderTableRef = ref<TableInstanceLike | null>(null)
 const flatLayout = ref<FlatLayout | null>(null)
 const globalCursorX = ref<number | undefined>(undefined)
 const isPositionListDirty = ref(false)
+const suppressNextFlatLayoutLoadedMessage = ref(false)
 let positionRowKeySeed = 0
+let instanceLineLoadSequence = 0
+
+function createEmptyLayoutSelection(): LayoutSelectionState {
+    return {
+        segments: [],
+        positions: [],
+        switches: [],
+        retarders: [],
+    }
+}
+
+const highlightedLayoutSelection = ref<LayoutSelectionState>(createEmptyLayoutSelection())
 
 function dmsToDecimal(degrees: number, minutes: number, seconds: number) {
     const sign = degrees < 0 ? -1 : 1
@@ -381,24 +425,162 @@ function ensurePositionRowKeys(layout: FlatLayout) {
     return layout
 }
 
+function resetLayoutHighlights() {
+    highlightedLayoutSelection.value = createEmptyLayoutSelection()
+}
+
+function cloneLayoutSelection(selection?: Partial<LayoutSelectionState> | null): LayoutSelectionState {
+    return {
+        segments: [...(selection?.segments ?? [])],
+        positions: [...(selection?.positions ?? [])],
+        switches: [...(selection?.switches ?? [])],
+        retarders: [...(selection?.retarders ?? [])],
+    }
+}
+
+const highlightedPositionIdSet = computed(() => new Set(highlightedLayoutSelection.value.positions.map(id => id.toString())))
+const highlightedSegmentIdSet = computed(() => new Set(highlightedLayoutSelection.value.segments.map(id => id.toString())))
+const highlightedSwitchBindingPositionIdSet = computed(() => new Set(highlightedLayoutSelection.value.switches.map(id => id.toString())))
+const highlightedRetarderBindingSegmentIdSet = computed(() => new Set(highlightedLayoutSelection.value.retarders.map(id => id.toString())))
+const positionTableRenderKey = computed(() => `position:${highlightedLayoutSelection.value.positions.join('|')}`)
+const segmentTableRenderKey = computed(() => `segment:${highlightedLayoutSelection.value.segments.join('|')}`)
+const switchTableRenderKey = computed(() => `switch:${highlightedLayoutSelection.value.switches.join('|')}`)
+const retarderTableRenderKey = computed(() => `retarder:${highlightedLayoutSelection.value.retarders.join('|')}`)
+
+function getPositionRowClassName({ row }: { row: any }) {
+    return highlightedPositionIdSet.value.has(row?.id?.toString?.() ?? '') ? 'layout-selected-row' : ''
+}
+
+function getSegmentRowClassName({ row }: { row: any }) {
+    return highlightedSegmentIdSet.value.has(row?.id?.toString?.() ?? '') ? 'layout-selected-row' : ''
+}
+
+function getSwitchRowClassName({ row }: { row: any }) {
+    return highlightedSwitchBindingPositionIdSet.value.has(row?.bindingPositionID?.toString?.() ?? '') ? 'layout-selected-row' : ''
+}
+
+function getRetarderRowClassName({ row }: { row: any }) {
+    return highlightedRetarderBindingSegmentIdSet.value.has(row?.bindingPositionSegmentID?.toString?.() ?? '') ? 'layout-selected-row' : ''
+}
+
+function getTableRef(tableKey: LayoutTableKey) {
+    switch (tableKey) {
+        case 'position':
+            return positionTableRef
+        case 'segment':
+            return segmentTableRef
+        case 'switch':
+            return switchTableRef
+        case 'retarder':
+            return retarderTableRef
+    }
+}
+
+function findPositionRowIndex(id: string) {
+    return (flatLayout.value?.positionList ?? []).findIndex(row => row?.id?.toString?.() === id)
+}
+
+function findSegmentRowIndex(id: string) {
+    return (flatLayout.value?.positionSegmentList ?? []).findIndex(row => row?.id?.toString?.() === id)
+}
+
+function findSwitchRowIndex(bindingPositionID: string) {
+    return (flatLayout.value?.switchList ?? []).findIndex(row => row?.bindingPositionID?.toString?.() === bindingPositionID)
+}
+
+function findRetarderRowIndex(bindingPositionSegmentID: string) {
+    return (flatLayout.value?.retarderList ?? []).findIndex(row => row?.bindingPositionSegmentID?.toString?.() === bindingPositionSegmentID)
+}
+
+function resolveTargetSelectionId(ids: string[], activeId?: string) {
+    if (activeId && ids.includes(activeId)) {
+        return activeId
+    }
+    return ids[0] ?? ''
+}
+
+function getTableBodyWrapper(table: TableInstanceLike | null) {
+    const root = table?.$el
+    if (!root) return null
+    return (root.querySelector('.el-scrollbar__wrap') ?? root.querySelector('.el-table__body-wrapper')) as HTMLElement | null
+}
+
+function scrollTableRowToTop(table: TableInstanceLike | null, rowIndex: number) {
+    if (!table || rowIndex < 0) return
+
+    const root = table.$el
+    const bodyWrapper = getTableBodyWrapper(table)
+    if (!root || !bodyWrapper) return
+
+    const rows = root.querySelectorAll('tbody .el-table__row')
+    const rowElement = rows.item(rowIndex) as HTMLElement | null
+    if (!rowElement) return
+
+    const wrapperRect = bodyWrapper.getBoundingClientRect()
+    const rowRect = rowElement.getBoundingClientRect()
+    bodyWrapper.scrollTop += rowRect.top - wrapperRect.top
+}
+
+function resolveSelectionTarget(payload: LayoutSelectionChangePayload): { tab: LayoutTabKey; table: LayoutTableKey; rowIndex: number } | null {
+    switch (payload.source) {
+        case 'position': {
+            const id = resolveTargetSelectionId(payload.selections.positions, payload.activeId)
+            const rowIndex = findPositionRowIndex(id)
+            return rowIndex >= 0 ? { tab: 'ctrl', table: 'position', rowIndex } : null
+        }
+        case 'segment': {
+            const id = resolveTargetSelectionId(payload.selections.segments, payload.activeId)
+            const rowIndex = findSegmentRowIndex(id)
+            return rowIndex >= 0 ? { tab: 'ctrl', table: 'segment', rowIndex } : null
+        }
+        case 'switch': {
+            const id = resolveTargetSelectionId(payload.selections.switches, payload.activeId)
+            const rowIndex = findSwitchRowIndex(id)
+            return rowIndex >= 0 ? { tab: 'switch', table: 'switch', rowIndex } : null
+        }
+        case 'retarder': {
+            const id = resolveTargetSelectionId(payload.selections.retarders, payload.activeId)
+            const rowIndex = findRetarderRowIndex(id)
+            return rowIndex >= 0 ? { tab: 'retarder', table: 'retarder', rowIndex } : null
+        }
+        default:
+            return null
+    }
+}
+
+async function handleLayoutSelectionChange(payload: LayoutSelectionChangePayload) {
+    highlightedLayoutSelection.value = cloneLayoutSelection(payload.selections)
+
+    const target = resolveSelectionTarget(payload)
+    if (!target) {
+        return
+    }
+
+    planSubTab.value = target.tab
+    await nextTick()
+    requestAnimationFrame(() => {
+        scrollTableRowToTop(getTableRef(target.table).value, target.rowIndex)
+    })
+}
+
 const switchFrogNumberDefinitions: SwitchFrogNumberOption[] = [
     {
-        label: '9号单开',
+        label: 'frontend.frogNumbers.single9',
         value: '9',
         curveDegree: dmsToDecimal(6, 20, 25)
     },
     {
-        label: '12号单开',
+        label: 'frontend.frogNumbers.single12',
         value: '12',
         curveDegree: dmsToDecimal(4, 45, 49)
     },
     {
-        label: '6号对称',
+        label: 'frontend.frogNumbers.symmetric6',
         value: 'symmetric-6',
         curveDegree: dmsToDecimal(9, 27, 44) / 2
     },
     {
-        label: '6.5号对称道岔',
+        label: 'frontend.frogNumbers.symmetric65',
         value: 'symmetric-6-5',
         curveDegree: dmsToDecimal(8, 44, 46) / 2
     }
@@ -542,7 +724,7 @@ async function copySlopeLineInManager(row: EditableSlopeLine) {
     try {
         await axios.post('/Hump/CopySlopeLine', {
             SourceSlopeLineID: row.id,
-            NewName: `${row.name}副本`
+            NewName: t('frontend.copyName', { name: row.name })
         })
         ElMessage.success(t('hump.messages.slopeLineCopied'))
         await loadSlopeLines()
@@ -596,22 +778,36 @@ async function removeSlopeLineInManager(row: EditableSlopeLine, index: number) {
     }
 }
 // Reload slope lines when selected instance changes.
-watch(() => props.selectedInstanceId, (newValue) => {
+watch(() => props.selectedInstanceId, async (newValue) => {
+    const loadSequence = ++instanceLineLoadSequence
+    resetLayoutHighlights()
+    ctrlRef.value?.clearSelections?.()
+    selectedLine.value = null
+    flatLayout.value = null
+
     if (newValue) {
-        loadSlopeLines()
-        selectedLine.value = null
-        flatLayout.value = null
+        await loadSlopeLines()
+        if (loadSequence !== instanceLineLoadSequence) return
+
+        const firstLineId = lines.value[0]?.id ?? null
+        if (firstLineId) {
+            suppressNextFlatLayoutLoadedMessage.value = true
+            selectedLine.value = firstLineId
+        }
     } else {
         lines.value = []
-        selectedLine.value = null
     }
 }, { immediate: true })
 
 // 选中溜放线变化时，清空平面布局数据
 watch(selectedLine, (newValue) => {
+    resetLayoutHighlights()
+    ctrlRef.value?.clearSelections?.()
     flatLayout.value = null
+    const showSuccessMessage = !suppressNextFlatLayoutLoadedMessage.value
+    suppressNextFlatLayoutLoadedMessage.value = false
     if (newValue) {
-        loadFlatLayout()
+        loadFlatLayout({ showSuccessMessage })
     }
 }, { immediate: true })
 
@@ -657,7 +853,10 @@ const switchTypeOptions = computed(() => [
     { label: getSwitchTypeLabel(SwitchTypes.None), value: SwitchTypes.None }
 ])
 
-const switchFrogNumberOptions = computed(() => switchFrogNumberDefinitions)
+const switchFrogNumberOptions = computed(() => switchFrogNumberDefinitions.map(option => ({
+    ...option,
+    label: t(option.label)
+})))
 
 const switchDirectionOptions = computed(() => [
     { label: getSwitchDirectionLabel(SwitchDirections.Reverse), value: SwitchDirections.Reverse },
@@ -1151,7 +1350,9 @@ function normalizeFlatLayoutResponse(data: FlatLayout | null | undefined): FlatL
     return ensurePositionRowKeys(data)
 }
 
-function loadFlatLayout() {
+function loadFlatLayout(options: { showSuccessMessage?: boolean } = {}) {
+    const { showSuccessMessage = true } = options
+
     if (!props.selectedInstanceId) {
         ElMessage.warning(t('hump.messages.selectInstanceFirst'))
         return
@@ -1169,12 +1370,16 @@ function loadFlatLayout() {
         }
     }).then(response => {
         flatLayout.value = normalizeFlatLayoutResponse(response.data)
+        resetLayoutHighlights()
+        ctrlRef.value?.clearSelections?.()
         isPositionListDirty.value = false
-        ElMessage.success(t('hump.messages.flatLayoutLoaded'))
+        if (showSuccessMessage) {
+            ElMessage.success(t('hump.messages.flatLayoutLoaded'))
+        }
         // child will react to flatLayout prop change and load data
     }).catch(error => {
         console.error('Error fetching flat layout data:', error)
-        ElMessage.error(t('hump.messages.loadFlatLayoutError'))
+        ElMessage.error(getHumpMissingReferenceMessage(error, 'hump.messages.loadFlatLayoutError'))
     })
 }
 
@@ -1290,5 +1495,10 @@ function saveFlatLayout() {
 .table-native-input:focus,
 .table-native-select:focus {
     border-color: #409eff;
+}
+
+:deep(.el-table__body tr.layout-selected-row > td.el-table__cell),
+:deep(.el-table__body tr.layout-selected-row:hover > td.el-table__cell) {
+    background-color: #dff7df !important;
 }
 </style>

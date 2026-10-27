@@ -53,7 +53,7 @@ namespace SwitchYard.Hump
         public int IsHeadWind { get; set; }
 
         /// <summary>
-        /// 空气密度/(kg·s²/m⁴)
+        /// 气流密度/(kg·s^2/m^4)
         /// </summary>
         public double AirDensity { get; set; }
 

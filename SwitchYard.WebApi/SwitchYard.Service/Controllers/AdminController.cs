@@ -54,6 +54,38 @@ namespace SwitchYard.Service.Controllers
             }
         }
 
+        [HttpGet("users/paged")]
+        public IActionResult GetUsersPaged([FromQuery] UserPaginationQuery query)
+        {
+            try
+            {
+                var pagedUsers = _userService.GetUsersPage(query.PageNumber, query.PageSize, query.Keyword);
+                var result = new PagedResult<AdminUserListItem>
+                {
+                    Items = pagedUsers.Items.Select(user => new AdminUserListItem
+                    {
+                        Id = user.Id,
+                        Name = user.Name,
+                        Role = user.Role,
+                        Email = user.Email,
+                        CreateAt = user.CreateAt,
+                        IsActive = user.IsActive,
+                        MustChangePassword = user.MustChangePassword
+                    }).ToList(),
+                    PageNumber = pagedUsers.PageNumber,
+                    PageSize = pagedUsers.PageSize,
+                    TotalCount = pagedUsers.TotalCount
+                };
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to get paged user list");
+                return StatusCode(500, new { message = "Internal server error" });
+            }
+        }
+
         [HttpPost("users")]
         public IActionResult CreateUser([FromBody] AdminCreateUserRequest request)
         {
@@ -94,6 +126,32 @@ namespace SwitchYard.Service.Controllers
                 if (createdUser == null)
                 {
                     return StatusCode(500, new { message = "Failed to create user" });
+                }
+
+                var defaultInstanceCopyResult = _humpInstanceCopyService.CopyTemplateInstanceForNewUser(
+                    DefaultTemplateInstanceId,
+                    createdUser.Name);
+                if (!defaultInstanceCopyResult.Success)
+                {
+                    _logger.LogError(
+                        "Default hump instance initialization failed for admin-created user {Username}, UserId: {UserId}, TemplateInstanceId: {TemplateInstanceId}, StatusCode: {StatusCode}, Error: {ErrorMessage}",
+                        createdUser.Name,
+                        createdUser.Id,
+                        DefaultTemplateInstanceId,
+                        defaultInstanceCopyResult.StatusCode,
+                        defaultInstanceCopyResult.ErrorMessage);
+
+                    var rollbackSucceeded = _userService.DeleteUser(createdUser.Id);
+                    if (!rollbackSucceeded)
+                    {
+                        _logger.LogError(
+                            "User rollback failed after default hump instance initialization error for admin-created user {Username}, UserId: {UserId}",
+                            createdUser.Name,
+                            createdUser.Id);
+                        return StatusCode(500, new { message = "Failed to initialize default instance and failed to roll back user creation" });
+                    }
+
+                    return StatusCode(500, new { message = "Failed to initialize default instance" });
                 }
 
                 return Ok(new
@@ -447,9 +505,8 @@ namespace SwitchYard.Service.Controllers
                     }
                     else
                     {
-                        var instanceResult = _humpInstanceCopyService.CopyInstance(
+                        var instanceResult = _humpInstanceCopyService.CopyTemplateInstanceForNewUser(
                             DefaultTemplateInstanceId,
-                            string.Empty,
                             createdUser.Name);
 
                         if (!instanceResult.Success)

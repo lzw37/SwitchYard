@@ -1,0 +1,172 @@
+{
+    "nav": {
+        "label": "Capacity module navigation",
+        "home": "Back to home",
+        "features": "Features",
+        "workflow": "Workflow",
+        "showcase": "Function details",
+        "roadmap": "Development plan"
+    },
+    "hero": {
+        "eyebrow": "SWITCHYARD / CAPACITY",
+        "label": "Railway station operation analysis",
+        "title": "Station capacity",
+        "accent": "Modeling and analysis",
+        "description": "The module supports railway station teaching and scheme analysis. Based on station topology, route occupancy and train operation plans, it provides process modeling, constraint solving, bottleneck identification, capacity estimation, and 2D and 3D plan playback.",
+        "secondary": "View module functions",
+        "mediaTitle": "Route design",
+        "mediaCaption": "Screenshot · Route generation, path highlighting and property configuration",
+        "tag1": "Visual modeling",
+        "tag2": "Constraint solving",
+        "tag3": "2D / 3D playback"
+    },
+    "features": {
+        "eyebrow": "CAPABILITIES",
+        "title": "Module functions and scope of analysis",
+        "description": "Modeling, planning, model solving and result analysis are organized around station geometry, operation timing and resource occupancy relationships.",
+        "layout": {
+            "title": "Station modeling",
+            "description": "DWG import and manual drawing support the definition of station geometry, node and track topology, switches, signals and track circuit sections."
+        },
+        "routes": {
+            "title": "Routes & occupancy",
+            "description": "Route search and batch generation support the definition of routes and directly conflicting sections. Section occupancy offsets are specified relative to operation times."
+        },
+        "planning": {
+            "title": "Processes & plans",
+            "description": "Activities, events and precedence constraints describe operation processes. The module supports template reuse within schemes, batch plan generation and CSV occupancy imports."
+        },
+        "solving": {
+            "title": "Model solving",
+            "description": "A solver agent handles duration, event precedence and mutually exclusive section occupancy constraints. Solver presets and saving feasible solutions as plans are supported."
+        },
+        "analysis": {
+            "title": "Bottlenecks & capacity",
+            "description": "Operation plans and section occupancy parameters provide the basis for occupancy statistics, bottleneck utilization, capacity estimates and summaries by route category."
+        },
+        "playback": {
+            "title": "2D & 3D playback",
+            "description": "Existing plans can be replayed for individual trains or the entire station. Arrivals, dwelling and departures are displayed to support review of operation timing and spatial relationships."
+        }
+    },
+    "workflow": {
+        "eyebrow": "WORKFLOW",
+        "title": "Modeling and analysis workflow",
+        "description": "Data are organized by calculation instance, station scheme and operation plan. Process and train templates are shared within a scheme; solving, analysis and playback apply to the selected plan.",
+        "steps": [
+            { "title": "Station modeling", "description": "A station scheme defines geometry, topology and equipment properties within a calculation instance." },
+            { "title": "Operation planning", "description": "Routes, section occupancy parameters and process templates form the basis for generating or importing train plans." },
+            { "title": "Constraint solving", "description": "An available agent solves existing train operations using a solver preset. Validated feasible solutions are saved as saturated plans." },
+            { "title": "Analysis and playback", "description": "Occupancy and bottleneck utilization are calculated, capacity estimates are summarized, and plans are reviewed through 2D or 3D playback." }
+        ]
+    },
+    "showcase": {
+        "eyebrow": "FUNCTIONAL DESCRIPTION",
+        "title": "Main functions and data relationships",
+        "description": "Station schemes and operation plans link the representation of spatial structure, operation constraints, section occupancy and train movements.",
+        "layout": {
+            "label": "01 / STATION & ROUTES",
+            "title": "Station topology and route modeling",
+            "description": "Nodes and tracks describe station topology and are associated with equipment, track circuit sections and routes. These data support resource configuration and section occupancy analysis.",
+            "points": ["DWG import and station geometry editing", "Route endpoint configuration and candidate path search", "Traversed and directly conflicting section definitions"],
+            "images": {
+                "station": {
+                    "title": "Station layout",
+                    "caption": "Screenshot · Station topology, equipment and track circuit sections"
+                }
+            }
+        },
+        "planning": {
+            "label": "02 / OPERATION PLANNING",
+            "title": "Process modeling and plan generation",
+            "description": "Activities and events represent operation processes, with duration ranges, precedence and alternative resources specified as constraints. Process templates are instantiated as train operation plans.",
+            "points": ["Shared process and train templates within a station scheme", "Batch operation generation by train count and time range", "CellOccupancy CSV import and section matching preview"],
+            "images": {
+                "process": {
+                    "title": "Operation process editor",
+                    "caption": "Screenshot · Activities, events and precedence constraints"
+                },
+                "plan": {
+                    "title": "Train operation plan",
+                    "caption": "Screenshot · Operation details and generated plans"
+                }
+            }
+        },
+        "analysis": {
+            "label": "03 / CAPACITY ANALYSIS",
+            "title": "Section occupancy and capacity analysis",
+            "description": "Operation times and section occupancy offsets determine occupancy intervals. Route operation counts and bottleneck utilization support capacity estimates for a specified observation period and allowance coefficient.",
+            "points": ["Operation occupancy displayed by time and track circuit section", "Route operation counts, occupancy time and utilization statistics", "Capacity estimates and category summaries under consistent assumptions"],
+            "images": {
+                "occupancy": {
+                    "title": "Operation chart and section occupancy",
+                    "caption": "Screenshot · Occupancy intervals across track circuit sections"
+                },
+                "capacity": {
+                    "title": "Capacity category summary",
+                    "caption": "Screenshot · Route categories, operation counts and capacity estimates"
+                }
+            }
+        },
+        "playback": {
+            "label": "04 / SIMULATION PLAYBACK",
+            "title": "2D and 3D operation plan playback",
+            "description": "Existing operation plans and station paths determine the display of train movements, dwelling and route occupancy in 2D and 3D views, supporting review of operation timing and spatial relationships.",
+            "points": ["Individual train and whole-station operation playback", "Playback, pause, speed adjustment and time selection", "Comparison of movement details and occupancy time charts"],
+            "images": {
+                "twoDimensional": {
+                    "title": "2D operation playback",
+                    "caption": "Animation · 2D station layout, train positions and route occupancy"
+                },
+                "threeDimensional": {
+                    "title": "3D operation playback",
+                    "caption": "Animation · 3D station layout and train operating states"
+                }
+            }
+        }
+    },
+    "roadmap": {
+        "eyebrow": "DEVELOPMENT PLAN",
+        "title": "Development phases and objectives",
+        "description": "Development is organized into three phases: user interaction and visualization, solver integration, and simulation engine development. The long-term plan covers unified interfaces and adaptation to different railway systems.",
+        "preview": "The Phase 1 Preview is expected to be available around the end of 2026.",
+        "phases": [
+            {
+                "label": "Phase 1",
+                "title": "User interaction and visualization",
+                "description": "An interactive station operation environment based on manual modeling and operation planning.",
+                "points": ["Graphical station layout drawing", "Manual train operation planning", "2D and 3D visualization"]
+            },
+            {
+                "label": "Phase 2",
+                "title": "Solvers and automatic plan generation",
+                "description": "Integration of algorithms for station operation planning and capacity calculation to generate operation plans automatically.",
+                "points": ["Station operation planning solver integration", "Station capacity calculation solver integration", "Automatic operation plan generation"]
+            },
+            {
+                "label": "Phase 3",
+                "title": "Traction calculation and simulation engine",
+                "description": "Integration of train traction calculation, signaling and related functions to form a station operation simulation engine.",
+                "points": ["Train traction calculation integration", "Signaling function integration", "Station operation simulation engine development"]
+            }
+        ],
+        "outlook": {
+            "label": "LONG-TERM PLAN",
+            "title": "Unified interfaces and system compatibility",
+            "description": "Unified interfaces are planned to accommodate different rolling stock types, train control methods and signaling systems."
+        }
+    },
+    "media": {
+        "image": "Image placeholder",
+        "video": "Video placeholder",
+        "pending": "Interface media pending",
+        "ratio": "16:9 display area"
+    },
+    "cta": {
+        "eyebrow": "DATA REQUIREMENTS",
+        "title": "Application conditions and data requirements",
+        "description": "Capacity analysis requires station topology, route definitions, section occupancy parameters and train operation plans. Comparisons between schemes or plans require a consistent observation period and allowance coefficient.",
+        "note": "Model solving is performed through CapacityAgent. Saturated plan solving applies to existing trains and operations. Capacity estimates depend on plan data, occupancy parameters and statistical settings."
+    },
+    "footer": "SwitchYard · Rail yard & hub teaching toolkit"
+}

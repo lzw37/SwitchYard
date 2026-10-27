@@ -1,4 +1,219 @@
 {
+    "stationCapacityReport": {
+        "export": "导出 Word 报告",
+        "hint": "导出当前方案和计划的中文通过能力分析报告，含过程、计划、占用、瓶颈与能力汇总，以及 SVG 矢量图。请先完成数据加载和编辑。",
+        "success": "车站通过能力分析报告已生成，正在下载。",
+        "failed": "报告导出失败。请检查网络并刷新作业计划和图表后重试。"
+    },
+    "resourceConflicts": {
+        "show": "显示资源冲突",
+        "hint": "同时显示大表折线和资源占用块的冲突。同一轨道电路占用时间重叠的作业以同色外发光标记。",
+        "with": "与以下列车作业冲突：",
+        "detail": "{train} · {movement}｜{cell}｜重叠 {start} – {end}"
+    },
+    "capacityGantt": {
+        "toolbar": "占用图功能区",
+        "rowLegend": "行类型图例",
+        "rowKinds": { "track": "具名股道", "cell": "其他轨道电路区段" },
+        "fit": "自适应缩放",
+        "fitHint": "将图形撑满窗口并随窗口变化调整；手动缩放可退出自适应",
+        "scaleX": "X 缩放",
+        "scaleY": "Y 缩放",
+        "refresh": "刷新",
+        "dragHint": "每次仅调整当前占用块，拖动两端调整占用起止时间；松开后自动保存",
+        "trackDragHint": "横向拖动调整占用时间；上下拖动停留事件可更换股道，并自动匹配前后进路",
+        "invalidTrackTarget": "只能移至明确对应一个股道的轨道电路区段，已恢复原位置。",
+        "startHandle": "调整当前区段占用开始时间",
+        "endHandle": "调整当前区段占用结束时间",
+        "saveSuccess": "当前区段占用已更新",
+        "saveFailed": "保存区段占用时刻失败，已恢复原时刻"
+    },
+    "stationPlanView": {
+        "colors": {
+            "mode": "线条配色",
+            "modes": {
+                "process": "按作业过程编排",
+                "routeType": "按进路类型",
+                "trainType": "按列车种类"
+            },
+            "legend": "线条配色图例",
+            "change": "修改“{name}”的线条颜色",
+            "constraint": "次序约束",
+            "unnamedProcess": "未命名作业过程",
+            "unassigned": {
+                "process": "未关联作业过程",
+                "routeType": "未指定进路类型",
+                "trainType": "未指定列车种类"
+            },
+            "routeTypes": {
+                "Arrival": "接车",
+                "Departure": "发车",
+                "Shunting": "调车",
+                "Locomotive": "机车出入段",
+                "Dwelling": "停留"
+            }
+        },
+        "dwelling": {
+            "menuLabel": "停留活动操作",
+            "passToStop": "通过变到开",
+            "stopToPass": "到开变通过",
+            "passToStopHint": "保留停留起点时刻，将终点后移 2 分钟。",
+            "stopToPassHint": "将停留起点和终点都对齐到两者中较早的时刻。",
+            "saved": "停留活动时刻已更新"
+        },
+        "rowLegend": "行类型图例",
+        "rowKinds": { "track": "股道", "node": "节点" },
+        "fromProcess": {
+            "open": "从作业过程新增列车",
+            "title": "从作业过程新增列车",
+            "description": "选择已保存的作业过程，为各活动确认备选进路，再预览并生成一列车。过程中的活动、时长、固定事件和次序约束全部保留。",
+            "source": "作业过程",
+            "selectSource": "选择一个已保存的作业过程",
+            "reload": "重新加载过程与备选项",
+            "loadingSources": "正在加载作业过程和站场资源",
+            "emptySources": "当前车站方案没有已保存的作业过程，请先在作业过程编排中创建并保存。",
+            "originTime": "过程基准时刻",
+            "endTime": "排布最晚结束时刻",
+            "timeRangeHint": "基准时刻对应过程的相对零时刻。支持跨日和小数秒；结束时刻不晚于基准时刻时按次日处理，最长支持到第 7 天末。各活动时刻由后端按完整约束推算。",
+            "activities": "过程活动",
+            "duration": "时长范围（分钟）",
+            "route": "活动进路",
+            "fixedSelection": "作业过程中已固定",
+            "selectRoute": "从此活动的备选进路中选择",
+            "missingChoices": "缺少有效备选项，请检查作业过程和站场资源。",
+            "preview": "检查约束并预览",
+            "previewStale": "输入已变化或尚未预览，请重新检查约束后生成。",
+            "previewReady": "当前输入已通过过程约束检查，可以生成列车。",
+            "previewStart": "开始时刻",
+            "previewEnd": "结束时刻",
+            "previewRoute": "预览进路",
+            "validation": "请选择过程，填写车次与有效时间范围，并为各活动选择有效的进路。",
+            "constraintErrors": "过程约束检查或生成未通过",
+            "warnings": "生成说明",
+            "unpreviewed": "待预览",
+            "loadFailed": "加载作业过程或备选资源失败，请重试。",
+            "invalidResponse": "服务器返回的列车或过程约束数据不完整，请刷新确认结果。",
+            "failed": "检查或生成失败，请调整选择后重试。",
+            "saved": "已按作业过程生成列车并保存完整过程约束"
+        },
+        "creation": {
+            "title": "点选新增列车作业进路",
+            "description": "核对各作业的节点、时刻和进路。匹配不到的进路留空，也可直接生成列车；该作业在选定进路前不生成 Cell 占用。",
+            "startPicking": "点选新增列车",
+            "pickStart": "作业 {index}：点选起点及开始时刻",
+            "pickEnd": "作业 {index}：点选终点及结束时刻",
+            "repickStart": "重新点选该作业的起点及开始时刻",
+            "repickEnd": "重新点选该作业的终点及结束时刻",
+            "pickCanvasLabel": "点选作业节点和时刻",
+            "pickHint": "按起点、终点依次点选，每两个点组成一个作业；横坐标决定时刻。按 Esc 退出点选。",
+            "pickedPoint": "点 {index} · {node} · {time}",
+            "undoPoint": "撤回上一点",
+            "finishPicking": "完成点选",
+            "returnToDialog": "返回作业列表",
+            "trainNumber": "车次",
+            "trainName": "列车名称",
+            "trainType": "列车类型",
+            "movements": "作业列表",
+            "movementName": "作业名称",
+            "start": "起点 / 开始时刻",
+            "end": "终点 / 结束时刻",
+            "node": "节点",
+            "time": "时刻",
+            "timePlaceholder": "HH:mm[:ss] 或 D+1 HH:mm[:ss]",
+            "timeHint": "支持跨日和小数秒",
+            "route": "进路",
+            "selectRoute": "选择或搜索进路",
+            "unmatched": "未选择进路，可提交",
+            "matchedRoutes": "匹配进路",
+            "otherRoutes": "其他进路",
+            "repick": "在图中重选",
+            "addMovement": "新增作业",
+            "deleteMovement": "删除作业",
+            "moveUp": "上移",
+            "moveDown": "下移",
+            "cancel": "取消",
+            "confirm": "生成列车",
+            "validation": "请填写车次，并为每条作业填写完整的起止节点和有效时刻。",
+            "defaultMovement": "作业 {index}",
+            "invalidDraft": "请填写车次和至少一条完整作业，检查各作业的起止节点与时刻。最多支持 1000 条作业。",
+            "tooManyMovements": "最多支持 1000 条作业，请完成点选后继续。",
+            "invalidResponse": "服务器返回的列车数据不完整，请刷新确认保存结果。",
+            "saveFailed": "生成列车失败，已保留草稿供修改或重试。",
+            "saved": "列车及全部作业已生成"
+        },
+        "toolbar": "作业计划大表功能区",
+        "chartLabel": "作业计划大表，粗线表示活动，细线表示次序约束",
+        "lineMode": "连线模式",
+        "straightMode": "直线",
+        "orthogonalMode": "折线",
+        "lineModeHint": "折线的水平段位于非股道节点行；两端均为股道节点时保留直线。",
+        "showEventTimes": "显示作业时刻",
+        "eventTimesHint": "在事件附近显示当前作业时刻的分钟个位数字，例如 08:37 显示 7、08:40 显示 0。",
+        "shiftFollowing": "联动重合抓手及后续时刻",
+        "singleEndpoint": "仅当前时刻（Ctrl）",
+        "trackDragHint": "选中列车后，上下拖动停留作业可换股道，共用锚的进路一起调整；可在配置中添加目标股道。",
+        "trackDragPreview": "移至 {track}，松开后重设关联作业进路",
+        "trackDropInvalid": "只能移到股道行，当前调整未保存",
+        "trackHandleLabel": "上下拖动 {movement}，调整当前股道 {track}",
+        "trackEditSaved": "股道及关联 Movement 进路已更新",
+        "axis": "股道 / 节点",
+        "node": "车站节点",
+        "configure": "配置显示内容与顺序",
+        "settingsHint": "同一股道的两个端点合并显示。勾选需要显示的股道或节点，用“上移”“下移”调整从上到下的顺序。作业使用的节点始终显示，配置随当前作业计划保存。",
+        "displayOrder": "显示内容与顺序（从上到下）",
+        "moveUp": "上移",
+        "moveDown": "下移",
+        "expandTrack": "双击股道名称展开两个端点",
+        "collapseTrack": "双击股道名称收起两个端点",
+        "unresolvedMovements": "有 {count} 个作业缺少可用的起终节点或作业时刻，暂无法绘制，请检查作业进路和时刻配置。",
+        "usedNode": "当前作业使用的节点",
+        "selectAll": "全选",
+        "clearSelection": "清空",
+        "saveSettings": "保存配置",
+        "settingsSaved": "作业计划大表显示配置已保存",
+        "saveSettingsFailed": "保存显示配置失败，请重试",
+        "loadSettingsFailed": "显示配置加载失败，请刷新后重试",
+        "startTime": "作业计划大表开始时间",
+        "endTime": "作业计划大表结束时间",
+        "summary": "{trains} 列车，{rows} 项股道 / 节点",
+        "trainLegend": "点击作业进路或车次可多选；按 Esc 或点击图面空白处取消全部选择；悬停作业进路临时加粗",
+        "trainLine": "列车作业进路 {train}",
+        "startHandle": "调整 {train} 的 {movement} 开始时刻",
+        "endHandle": "调整 {train} 的 {movement} 结束时刻",
+        "alignStartHint": "双击以当前开始事件为基准，按固定间隔对齐关联事件，并平移其后续事件",
+        "alignEndHint": "双击以当前结束事件为基准，按固定间隔对齐关联事件，并平移其后续事件",
+        "movementInfo": {
+            "route": "作业进路",
+            "unnamedRoute": "未命名进路",
+            "conflicts": "冲突信息",
+            "conflictDetail": "{train}-{route}-{cell}（{start} – {end}）"
+        },
+        "handleInfo": {
+            "trainNumber": "车次号",
+            "movement": "作业 Movement",
+            "node": "节点",
+            "startTime": "开始时刻",
+            "endTime": "结束时刻"
+        },
+        "editSaved": "Movement 作业时刻已保存",
+        "editSaveFailed": "保存失败，已恢复原作业计划",
+        "undo": "撤销 (Ctrl+Z)",
+        "redo": "重做 (Ctrl+Y)",
+        "historyHint": "最多保留 20 个调整动作；撤销后执行新调整会清除重做记录",
+        "historyCount": "可撤销 {undo} 个动作，可重做 {redo} 个动作",
+        "undoSaved": "已撤销调整并保存到作业计划",
+        "redoSaved": "已重做调整并保存到作业计划",
+        "historySaveFailed": "撤销或重做保存失败，当前计划和动作栈保持原状",
+        "editErrors": {
+            "missingTrackRoute": "无法移至 {track}：{movements} 找不到对应进路，未修改作业计划。停留作业需要该股道的停留进路。",
+            "stale": "作业计划已变化，请刷新后重试",
+            "alignmentConflict": "无法同时保持固定间隔和各分支的平移；请检查相关事件与次序。本次未修改作业计划。"
+        },
+        "emptyRows": "暂无可显示的作业节点，可在“配置显示内容与顺序”中选择股道或节点",
+        "emptyTrains": "当前节点没有列车轨迹",
+        "emptyNodes": "暂无可选车站节点",
+        "note": "同一股道两端默认合并在一条横线上，双击左侧股道名称展开，再次双击收起。每列车按 Movement 顺序连接起终节点，线段两端对应作业开始、结束时刻。拖动抓手或按左右方向键，默认将当前时刻、同列车完全重合的抓手及后续时刻一起平移；按住 Ctrl 只改当前时刻。重合关系在拖动开始时确定，途中经过其他抓手不会加入联动。移动开始抓手时，该作业的结束时刻也一起移动。双击抓手保留当前事件时刻，按严格次序的规定间隔对齐关联事件，再沿活动起终点和次序关系平移其后续事件；无严格次序时不作修改。修改自动保存，支持撤销；抓手重合时可用 Tab 切换。开头、结尾的斜线标注车次号。"
+    },
     "login": {
         "title": "用户登录",
         "usernamePlaceholder": "请输入用户名",
@@ -43,7 +258,7 @@
             "usernameRequired": "请输入用户名",
             "usernameLength": "用户名长度应在 3-50 个字符之间",
             "passwordRequired": "请输入密码",
-            "passwordLength": "密码长度应至少为 6 个字符",
+            "passwordLength": "密码长度至少为 6 位",
             "emailInvalid": "请输入正确的邮箱地址",
             "roleRequired": "请选择角色",
             "confirmRequired": "请再次输入密码",
@@ -55,40 +270,70 @@
         "networkError": "网络错误，请稍后重试"
     },
     "userManager": {
-        "searchPlaceholder": "搜索用户名或邮箱",
+        "searchPlaceholder": "搜索 ID、用户名、邮箱或角色",
         "refresh": "刷新",
         "columns": {
             "username": "用户名",
             "email": "邮箱",
             "role": "角色",
-            "active": "可用",
-            "actions": "操作"
+            "active": "激活状态",
+            "actions": "操作",
+            "createdAt": "创建时间",
+            "row": "行号",
+            "status": "状态",
+            "error": "错误信息",
+            "userId": "用户 ID"
         },
         "actions": {
             "edit": "编辑",
             "setRole": "设置角色",
-            "delete": "删除"
+            "delete": "删除",
+            "create": "新增用户",
+            "import": "导入用户",
+            "downloadTemplate": "下载导入模板",
+            "resetPassword": "重置密码",
+            "confirmReset": "确认重置"
         },
         "dialogs": {
             "editTitle": "编辑用户",
             "setRoleTitle": "设置角色",
-            "rolePlaceholder": "选择角色"
+            "rolePlaceholder": "选择角色",
+            "importResults": "批量导入结果",
+            "deleteTitle": "确认删除"
         },
         "buttons": {
             "cancel": "取消",
             "save": "保存"
         },
         "messages": {
-            "loadFailed": "加载用户失败",
-            "saveSuccess": "用户信息已保存",
-            "saveFailed": "保存失败",
+            "loadFailed": "加载用户列表失败",
+            "saveSuccess": "用户更新成功",
+            "saveFailed": "更新用户失败",
             "roleUpdated": "角色已更新",
             "roleUpdateFailed": "设置角色失败",
             "statusUpdated": "状态已更新",
             "statusUpdateFailed": "更新状态失败",
             "deleteConfirm": "确定删除用户 {username} 吗？此操作不可恢复。",
             "deleted": "用户已删除",
-            "deleteFailed": "删除失败"
+            "deleteFailed": "删除用户失败",
+            "credentialsRequired": "用户名和密码不能为空",
+            "createFailed": "创建用户失败",
+            "requiredFields": "ID、用户名和角色不能为空",
+            "cannotDeleteSelf": "不能删除当前登录账号",
+            "newPasswordRequired": "新密码不能为空",
+            "passwordReset": "密码重置成功，用户下次登录将被要求修改密码",
+            "passwordResetFailed": "重置密码失败",
+            "importFailed": "导入失败",
+            "downloadFailed": "下载模板失败",
+            "importSummary": "导入完成：成功 {success} 条，失败 {failed} 条，共 {total} 条"
+        },
+        "states": {
+            "active": "已激活",
+            "inactive": "未激活",
+            "activeOption": "1 - 已激活",
+            "inactiveOption": "0 - 未激活",
+            "success": "成功",
+            "failed": "失败"
         }
     },
     "userInfo": {
@@ -112,7 +357,9 @@
             "saveSuccess": "用户信息已保存",
             "saveFailed": "保存失败",
             "passwordIncomplete": "请输入完整的密码信息",
-            "passwordMismatch": "两次输入的密码不一致"
+            "passwordMismatch": "两次输入的密码不一致",
+            "passwordChangeRequired": "首次登录或密码重置后，请先修改密码",
+            "passwordChangeFirst": "请先完成密码修改"
         }
     },
     "common": {
@@ -141,7 +388,32 @@
             "zh": "中文",
             "en": "EN"
         },
-        "networkError": "网络错误，请稍后重试"
+        "networkError": "网络错误，请稍后重试",
+        "actions": {
+            "add": "新增",
+            "edit": "编辑",
+            "delete": "删除",
+            "save": "保存",
+            "cancel": "取消",
+            "close": "关闭",
+            "refresh": "刷新",
+            "copy": "复制",
+            "reset": "重置",
+            "expand": "展开",
+            "collapse": "收起",
+            "more": "更多",
+            "create": "创建",
+            "back": "返回",
+            "download": "下载",
+            "upload": "上传",
+            "confirm": "确认"
+        },
+        "resize": {
+            "horizontal": "调整面板宽度",
+            "vertical": "调整面板高度",
+            "reset": "重置面板尺寸"
+        },
+        "unknownError": "未知错误"
     },
     "axios": {
         "noPermission": "没有权限访问该资源",
@@ -152,7 +424,37 @@
         "networkError": "网络错误，请检查网络连接",
         "requestConfigError": "请求配置错误"
     },
+    "units": {
+        "m_s": "m/s",
+        "kg_s2_m4": "kg·s²/m⁴",
+        "deg_c": "°C",
+        "m_s2": "m/s²"
+    },
     "hump": {
+        "referenceMissing": {
+            "message": "引用对象不存在或已被删除：{items}。请重新添加或修改方案中的{targets}再试。",
+            "fallback": "引用对象不存在或已被删除，请重新添加或重新选择后再试。",
+            "item": "{label}（{value}）",
+            "separator": "；",
+            "targetSeparator": "、",
+            "valueEmpty": "未填写",
+            "labels": {
+                "wagonType": "车辆类型",
+                "operationCondition": "计算条件",
+                "slopeLine": "溜放线",
+                "humpCalculation": "驼峰计算",
+                "humpScheme": "驼峰方案",
+                "headwayCheckScheme": "追踪间隔检算方案",
+                "flatPosition": "平面位置点",
+                "flatSegment": "平面区间",
+                "switchBindingPosition": "道岔绑定位置点",
+                "switchBindingSegment": "道岔绑定平面区间",
+                "retarderBindingSegment": "减速器绑定平面区间",
+                "slopePosition": "纵断面位置点",
+                "slopeSegment": "纵断面区间",
+                "unknown": "未知对象"
+            }
+        },
         "selectLine": "请选择线路",
         "load": "加载",
         "tabs": {
@@ -265,7 +567,8 @@
             "deleteRetarderConfirm": "确定要删除当前减速器吗？",
             "deleteRetarderConfirmTitle": "删除确认",
             "duplicatePositionID": "控制点ID不能重复，请修改重复的ID（{id}）后再更新区段列表。",
-            "duplicatePositionIDTitle": "警告"
+            "duplicatePositionIDTitle": "警告",
+            "saveFlatLayoutError": "保存平面布置失败"
         },
         "calcCondition": {
             "new": "新建",
@@ -294,7 +597,7 @@
                 "yardAvgVelocity": "调车场平均速度",
                 "windVelocity": "风速",
                 "windDirection": "风向",
-                "airDensity": "空气密度",
+                "airDensity": "气流密度",
                 "temperature": "气温",
                 "gravity": "重力加速度",
                 "retarderActivation": "减速器启动阈值",
@@ -305,7 +608,7 @@
                 "chooseCondition": "请选择运行条件",
                 "conditionName": "例如：标准计算条件",
                 "chooseWagon": "请选择车辆类型",
-                "jsonExample": "JSON格式，例如：{}"
+                "jsonExample": "JSON格式，例如：{'{'}{'}'}"
             },
             "options": {
                 "other": "其他",
@@ -417,6 +720,7 @@
                 "deleteFailed": "删除检算实例失败",
                 "saveConfigSuccess": "已保存当前检算配置",
                 "saveConfigFailed": "保存检算配置失败",
+                "refreshFailed": "检算配置已保存，但结果刷新失败",
                 "loadConditionsFailed": "加载钩车条件失败",
                 "confirmSlopeConfig": "请先确保纵断面方案和溜放线已配置"
             }
@@ -479,7 +783,12 @@
             "buttons": {
                 "resetView": "重置视角"
             }
-        }
+        },
+        "chooseType": "请选择类型",
+        "chooseDirection": "请选择方向",
+        "chooseSide": "请选择侧向",
+        "frogNumber": "辙叉号码",
+        "chooseFrogNumber": "请选择辙叉号码"
     },
     "humpChart": {
         "velocityTitle": "速度-距离曲线",
@@ -525,7 +834,9 @@
             "1": "1 号线",
             "2": "2 号线",
             "3": "3 号线"
-        }
+        },
+        "title": "驼峰纵断面设计",
+        "tutorial": "教学视频"
     },
     "home": {
         "brand": "SwitchYard",
@@ -544,45 +855,85 @@
         },
         "hero": {
             "subtitle": "铁路站场与枢纽教学工具包",
-            "description": "提供驼峰作业计算、列车溜放仿真、站场布局设计等功能",
+            "description": "围绕驼峰纵断面设计与车站能力计算，开展建模、计算分析及二维、三维可视化",
             "btnHump": "驼峰纵断面",
+            "btnCapacity": "通过能力 Capacity",
+            "btnSketchLayout": "布置图分析",
             "btnSource": "查看源码"
         },
         "features": {
             "title": "核心功能",
-            "subtitle": "专业的铁路站场教学与仿真平台",
-            "cards": {
-                "layout": {
-                    "title": "站场布局",
-                    "desc": "可视化站场平纵断面图，直观展示驼峰站场结构"
+            "subtitle": "面向铁路站场教学与方案分析，设置驼峰纵断面设计和能力计算两类功能",
+            "modules": {
+                "hump": {
+                    "title": "驼峰纵断面设计",
+                    "description": "以驼峰平面布置、车辆参数及计算条件为基础，进行纵断面方案设计与车辆溜放过程分析。",
+                    "link": "进入驼峰纵断面设计",
+                    "items": {
+                        "profile": {
+                            "title": "平纵断面与坡度方案",
+                            "description": "建立驼峰平面布置与溜放线路，设置坡段长度和坡度，绘制纵断面方案。"
+                        },
+                        "energy": {
+                            "title": "车辆参数与能高计算",
+                            "description": "配置车辆参数、计算条件及减速器工作状态，计算阻力能高和动能高，分析溜放过程中的能量变化。"
+                        },
+                        "headway": {
+                            "title": "溜放曲线与间隔检验",
+                            "description": "计算速度、时间随溜放距离的变化曲线，检验前后钩车的追踪间隔，辅助评价纵断面方案。"
+                        },
+                        "simulation": {
+                            "title": "二维与三维溜放仿真",
+                            "description": "依据溜放计算结果，在二维和三维场景中展示车辆运行过程，对照线路位置与运行时序。"
+                        }
+                    }
                 },
-                "slope": {
-                    "title": "坡度设计",
-                    "desc": "驼峰坡度设计与优化，科学计算坡度参数"
+                "capacity": {
+                    "title": "能力计算",
+                    "description": "以站场拓扑、作业时序与区段占用为基础，开展车站作业计划编制、通过能力估算及瓶颈分析。",
+                    "preview": "分期开发中 · 第一期 Preview 预计于 2026 年底左右上线。",
+                    "link": "查看能力计算功能介绍",
+                    "items": {
+                        "layout": {
+                            "title": "站场拓扑与进路建模",
+                            "description": "绘制车站布置图，定义线路、道岔、信号机与轨道电路区段，建立进路及资源占用关系。"
+                        },
+                        "planning": {
+                            "title": "作业过程与计划编制",
+                            "description": "以活动、事件及次序约束描述作业过程，支持手工编制计划，并在后续阶段接入求解算法实现计划自动生成。"
+                        },
+                        "analysis": {
+                            "title": "区段占用与通过能力分析",
+                            "description": "依据作业计划统计区段占用时间与利用率，识别瓶颈区段，估算通过能力并按进路分类汇总。"
+                        },
+                        "playback": {
+                            "title": "二维与三维作业回放",
+                            "description": "展示列车接车、停留及发车过程，结合进路占用核对作业计划的时间与空间关系。"
+                        }
+                    }
                 },
-                "sim": {
-                    "title": "溜放仿真",
-                    "desc": "车辆溜放过程动态模拟，实时观察车辆运行"
-                },
-                "velocity": {
-                    "title": "速度曲线",
-                    "desc": "车辆速度-时间曲线计算与分析展示"
-                },
-                "time": {
-                    "title": "时间曲线",
-                    "desc": "车辆位移-时间曲线分析，精确计算运行时间"
-                },
-                "energy": {
-                    "title": "能量计算",
-                    "desc": "阻力能耗高度、动能高度精确计算"
-                },
-                "wagon": {
-                    "title": "车辆参数",
-                    "desc": "车辆概念及参数设置，灵活配置车辆信息"
-                },
-                "safety": {
-                    "title": "安全检验",
-                    "desc": "追踪间隔时间安全检验，确保作业安全"
+                "sketchlayout": {
+                    "title": "布置图分析",
+                    "description": "绘制设施与作业进路，编排作业流程，评估作业关系与占用冲突。",
+                    "link": "进入布置图分析",
+                    "items": {
+                        "layout": {
+                            "title": "布置图设计",
+                            "description": "多边形设施、出入口与可编辑曲线通道。"
+                        },
+                        "process": {
+                            "title": "作业流程设计",
+                            "description": "按设施顺序编排多套流程，设置数量与作业时间。"
+                        },
+                        "slp": {
+                            "title": "SLP 作业关系",
+                            "description": "根据流程作业量生成分级关系图。"
+                        },
+                        "conflicts": {
+                            "title": "作业冲突分析",
+                            "description": "计算共享设施与交叉通道的占用冲突概率。"
+                        }
+                    }
                 }
             }
         },
@@ -634,8 +985,8 @@
                 "p": "SwitchYard 是一个专为铁路站场与枢纽教学设计的综合工具包。采用现代化的前后端分离架构，为教师和学生提供直观、高效的教学和学习平台。"
             },
             "modules": {
-                "title": "丰富的功能模块",
-                "p": "系统涵盖驼峰作业计算、列车溜放仿真、站场布局设计等核心功能，支持完整的驼峰作业流程模拟和分析。"
+                "title": "两类核心功能",
+                "p": "系统围绕驼峰纵断面设计与能力计算组织功能。驼峰模块用于纵断面方案、能高及溜放过程分析；能力计算模块按阶段开发，面向站场建模、作业计划编制、区段占用与通过能力分析。"
             },
             "open": {
                 "title": "开源与协作",
@@ -658,6 +1009,11 @@
         "footer": {
             "copy": "© 2026 SwitchYard. All rights reserved.",
             "tagline": "铁路站场与枢纽教学工具包"
+        },
+        "stats": {
+            "features": "核心功能",
+            "technology": "技术栈",
+            "openSource": "开源"
         }
     },
 
@@ -719,10 +1075,16 @@
             "enabled": "\u542f\u7528",
             "output": "\u8f93\u51fa",
             "totalEnergyHeight": "\u603b\u80fd\u9ad8",
+            "slopeHeight": "坡高",
+            "resistanceEnergyHeight": "阻力能高",
+            "kineticEnergyHeight": "动能高",
             "notConfigured": "\u672a\u914d\u7f6e"
         },
         "contextMenu": {
             "deleteNode": "删除节点"
+        },
+        "messages": {
+            "holdAltToMoveHorizontally": "按住Alt可左右移动"
         }
     },
     "humpSlopeDesigner": {
@@ -754,10 +1116,11 @@
         "windSpeed": "风速：",
         "headWind": "逆风",
         "tailWind": "顺风",
-        "airDensity": "空气密度：",
+        "airDensity": "气流密度：",
         "temperature": "温度：",
         "positionPoints": "位置点",
         "positionSegments": "位置区间",
+        "energyHeight": "能高",
         "id": "ID",
         "positionX": "位置X/m",
         "height": "高度/m",
@@ -771,7 +1134,7 @@
         "slopePart": "溜放部分",
         "yard": "调车场:",
         "windSpeedLabel": "风速:",
-        "airDensityLabel": "空气密度:",
+        "airDensityLabel": "气流密度:",
         "temperatureLabel": "温度:",
         "dialog": {
             "schemeManagement": "驼峰方案管理",
@@ -793,6 +1156,7 @@
             "deleteConfirm": "删除确认"
         },
         "table": {
+            "positionID": "位置ID",
             "calculationConditionID": "计算条件ID",
             "schemeId": "方案ID",
             "schemeName": "方案名称",
@@ -802,7 +1166,16 @@
             "operationCondition": "运行条件",
             "slopeLine": "溜放线",
             "humpScheme": "驼峰方案",
-            "retarderStatus": "减速器状态"
+            "retarderStatus": "减速器状态",
+            "operationConditionID": "运行条件 ID"
+        },
+        "energyHeightTable": {
+            "positionID": "位置ID",
+            "positionX": "位置X/m",
+            "height": "高度H/m",
+            "resistanceEnergyHeight": "阻力能高/m",
+            "kineticEnergyHeight": "动能高/m",
+            "instantaneousVelocity": "瞬时溜放速度/(m/s)"
         },
         "placeholder": {
             "selectWagonType": "选择车辆类型",
@@ -823,6 +1196,7 @@
             "error": "错误",
             "selectInstanceAndScheme": "请先选择实例和纵断面方案",
             "slopeLayoutNotExist": "纵断面数据不存在",
+            "emptyHumpScheme": "当前驼峰方案为空，请点击横坐标轴下方的“+”创建驼峰纵断面变坡点",
             "slopeLayoutSaveSuccess": "纵断面保存成功",
             "slopeLayoutSaveFailed": "保存纵断面失败，请稍后重试"
         },
@@ -858,7 +1232,7 @@
             "saveError": "减速器工作状态保存失败"
         },
         "resistanceDetail": {
-            "title": "阻力能高 (x = {x} m)",
+            "title": "阻力能高",
             "total": "总阻力能高",
             "loading": "加载中...",
             "row": {
@@ -881,7 +1255,8 @@
                 "selectFirst": "请先选择实例、纵断面方案和计算条件",
                 "loadDetailFailed": "加载阻力能高分项明细失败"
             }
-        }
+        },
+        "createCondition": "请新建计算条件"
     },
     "humpInstance": {
         "buttons": {
@@ -891,7 +1266,8 @@
             "refresh": "刷新",
             "save": "保存",
             "cancel": "取消",
-            "confirm": "确定"
+            "confirm": "确定",
+            "copy": "复制"
         },
         "columns": {
             "name": "实例名称",
@@ -939,7 +1315,8 @@
             "id": "编号"
         },
         "placeholder": {
-            "owner": "请选择所有者"
+            "owner": "请选择所有者",
+            "newName": "请输入新实例名称"
         },
         "validation": {
             "ownerRequired": "请选择一个实例所有者"
@@ -948,9 +1325,83 @@
             "ownerUnknown": "未分配"
         },
         "messages": {
-            "userLoadError": "加载用户列表失败"
+            "userLoadError": "加载用户列表失败",
+            "copyError": "实例复制失败",
+            "copySuccess": "实例已复制，新实例编号：{id}"
         },
-        "empty": "暂无实例，先新增一个吧。"
+        "empty": "暂无实例，先新增一个吧。",
+        "dialogs": {
+            "copyTitle": "复制驼峰实例"
+        },
+        "copy": {
+            "source": "原实例",
+            "newName": "新实例名称",
+            "defaultName": "{name}副本",
+            "generatedIdHint": "新实例编号将由系统自动生成"
+        }
+    },
+    "capacityInstance": {
+        "buttons": {
+            "create": "新建实例",
+            "copy": "复制",
+            "edit": "编辑",
+            "delete": "删除",
+            "refresh": "刷新",
+            "save": "保存",
+            "cancel": "取消",
+            "confirm": "确定"
+        },
+        "columns": {
+            "name": "实例名称",
+            "owner": "所有者",
+            "createdDate": "创建时间",
+            "isActive": "状态",
+            "actions": "操作"
+        },
+        "status": {
+            "active": "生效",
+            "inactive": "未生效"
+        },
+        "dialogs": {
+            "createTitle": "新建能力计算实例",
+            "editTitle": "编辑能力计算实例",
+            "deleteTitle": "删除确认"
+        },
+        "placeholder": {
+            "name": "请输入实例名称"
+        },
+        "validation": {
+            "nameRequired": "请输入实例名称",
+            "nameLength": "实例名称长度应在2-100个字符之间"
+        },
+        "messages": {
+            "loadError": "加载能力计算实例列表失败",
+            "createSuccess": "创建实例成功",
+            "createError": "创建实例失败",
+            "editSuccess": "编辑实例成功",
+            "editError": "编辑实例失败",
+            "deleteSuccess": "删除实例成功",
+            "deleteError": "删除实例失败",
+            "deleteConfirm": "确定要删除实例 {name} 吗？此操作不可恢复。"
+        }
+    },
+    "capacityInstanceManagement": {
+        "dialogs": {
+            "copyTitle": "复制能力计算实例"
+        },
+        "copy": {
+            "source": "原实例",
+            "newName": "新实例名称",
+            "defaultName": "{name}副本",
+            "generatedIdHint": "新实例编号将由系统自动生成"
+        },
+        "placeholder": {
+            "newName": "请输入新实例名称"
+        },
+        "messages": {
+            "copySuccess": "实例复制成功，新实例编号：{id}",
+            "copyError": "实例复制失败"
+        }
     },
     "capacityMain": {
         "buttons": {
@@ -967,8 +1418,11 @@
         },
         "tabs": {
             "stationLayout": "车站布置图",
+            "routeDesign": "进路设计",
+            "layout3d": "3D",
             "calcParams": "计算参数",
             "operationPlan": "作业计划",
+            "modelSolving": "模型求解",
             "resultAnalysis": "结果分析",
             "simulation": "仿真"
         },
@@ -979,8 +1433,655 @@
             "loadInstancesError": "加载实例列表失败"
         }
     },
+    "modelSolving": {
+        "fields": {
+            "stationScheme": "站场方案",
+            "operationPlan": "作业计划",
+            "status": "状态",
+            "agent": "CapacityAgent",
+            "account": "认证账号",
+            "models": "可用模型",
+            "selectedAgent": "执行 Agent",
+            "model": "求解模型",
+            "workload": "并发任务",
+            "cpu": "CPU",
+            "memory": "内存"
+        },
+        "placeholders": {
+            "stationScheme": "请选择站场方案",
+            "operationPlan": "请选择作业计划",
+            "agent": "请选择在线 Agent",
+            "model": "请选择模型",
+            "input": "生成输入数据后，可在这里检查或编辑 JSON",
+            "result": "求解完成后，结果 JSON 将显示在这里"
+        },
+        "actions": {
+            "generateInput": "生成请求数据",
+            "refreshConnections": "刷新连接",
+            "solve": "发送求解请求",
+            "refreshJob": "刷新任务",
+            "downloadResult": "下载结果 JSON"
+        },
+        "sections": {
+            "connections": "CapacityAgent 连接管理",
+            "job": "当前求解任务",
+            "input": "请求数据 JSON",
+            "result": "求解结果 JSON"
+        },
+        "connection": {
+            "online": "在线",
+            "offline": "离线",
+            "busy": "忙碌",
+            "running": "运行中 {active}/{max}",
+            "full": "槽位已满",
+            "accessDenied": "无权使用",
+            "onlineCount": "在线 {count}"
+        },
+        "resources": {
+            "slots": "任务槽位",
+            "availableSlots": "可用 {count} 个槽位",
+            "cpuUsage": "Agent CPU 使用率",
+            "memoryUsage": "Agent 工作集内存",
+            "perJob": "每任务资源上限",
+            "allocated": "已分配 {cpu} CPU / {memory}"
+        },
+        "empty": {
+            "noAgents": "暂无 CapacityAgent 连接",
+            "noJob": "尚未提交求解任务"
+        },
+        "hints": {
+            "editableJson": "发送前可编辑"
+        },
+        "jobs": {
+            "queued": "等待中",
+            "running": "求解中",
+            "completed": "已完成",
+            "failed": "失败"
+        },
+        "messages": {
+            "loadSchemesFailed": "加载站场方案失败",
+            "loadPlansFailed": "加载作业计划失败",
+            "loadAgentsFailed": "加载 CapacityAgent 连接失败",
+            "inputGenerated": "求解请求数据已生成",
+            "generateInputFailed": "生成求解请求数据失败",
+            "invalidJson": "请求数据不是有效的 JSON",
+            "jobSubmitted": "求解任务已发送",
+            "submitFailed": "发送求解任务失败",
+            "jobCompleted": "模型求解完成，可以下载结果",
+            "jobFailed": "模型求解失败",
+            "refreshJobFailed": "刷新求解任务失败"
+        },
+        "units": {
+            "trains": "列车"
+        },
+        "presets": {
+            "title": "求解预设管理",
+            "fields": {
+                "preset": "求解预设",
+                "name": "预设名称",
+                "description": "说明",
+                "leftTolerance": "允许提前（秒）",
+                "rightTolerance": "允许延后（秒）",
+                "timeLimit": "求解时限（秒）",
+                "threadCount": "求解线程数",
+                "objective": "优化目标"
+            },
+            "sections": {
+                "settings": "模型参数"
+            },
+            "placeholders": {
+                "select": "请选择求解预设",
+                "newPreset": "新建预设"
+            },
+            "actions": {
+                "manage": "管理预设",
+                "new": "新建预设",
+                "delete": "删除预设"
+            },
+            "objectives": {
+                "minEndTime": "最小化作业结束时间",
+                "minDuration": "最小化作业持续时间",
+                "minStartAndEnd": "最小化开始与结束时间"
+            },
+            "messages": {
+                "loadFailed": "加载求解预设失败",
+                "required": "请填写预设名称、CapacityAgent 和模型",
+                "saved": "求解预设已保存",
+                "saveFailed": "保存求解预设失败",
+                "deleteConfirm": "确定删除求解预设“{name}”吗？",
+                "deleted": "求解预设已删除",
+                "deleteFailed": "删除求解预设失败"
+            }
+        }
+    },
+    "operationPlan": {
+        "schemeTemplates": "车站方案共享模板",
+        "actions": {
+            "refresh": "刷新",
+            "add": "新增",
+            "save": "保存",
+            "cancel": "取消",
+            "delete": "删除",
+            "edit": "编辑",
+            "copy": "复制",
+            "moveUp": "上移",
+            "moveDown": "下移",
+            "expand": "展开",
+            "collapse": "收起",
+            "confirm": "确定"
+        },
+        "cellOccupancyImport": {
+            "action": "导入 CellOccupancy",
+            "title": "导入 CellOccupancy 列车作业计划",
+            "description": "按 Cell 匹配已有进路，匹配不到时自动新建进路；Dw 停留作业保留在股道上。请先检查预览，再确认导入。",
+            "defaultPlanName": "CellOccupancy导入",
+            "file": "CellOccupancy CSV 文件",
+            "selectFile": "选择 CSV 文件",
+            "noFile": "尚未选择文件",
+            "fileHint": "UTF-8 编码，最大 5 MB、50,000 条占用记录",
+            "destination": "导入目标",
+            "newPlan": "新建作业计划",
+            "appendPlan": "追加到当前计划",
+            "appendHint": "将列车和作业追加到“{plan}”，保留原有数据。",
+            "preview": "重新预览",
+            "previewing": "正在匹配 Cell 和进路…",
+            "previewStale": "导入设置已更改，正在等待新的预览。请检查更新后的匹配结果。",
+            "confirmImport": "确认导入",
+            "trains": "列车数",
+            "movements": "作业数",
+            "occupancies": "占用记录数",
+            "reusedRoutes": "复用进路数",
+            "newRoutes": "新建进路数",
+            "errors": "请处理以下问题后重新预览",
+            "warnings": "导入提示",
+            "cellMatches": "Cell 匹配",
+            "sourceCell": "CSV 中的 Cell",
+            "matchedCell": "车站 Cell",
+            "selectCell": "请选择对应的已有 Cell",
+            "matchStatus": "匹配状态",
+            "needsSelection": "需要选择",
+            "matched": "已匹配",
+            "routeMatches": "进路匹配预览",
+            "movementType": "作业类型",
+            "route": "进路",
+            "routeAction": "导入操作",
+            "createRoute": "新建进路",
+            "reuseRoute": "复用进路",
+            "csvRequired": "请选择 .csv 文件。",
+            "fileTooLarge": "文件超过 5 MB，请拆分后导入。",
+            "emptyFile": "文件为空，请选择包含占用记录的 CSV。",
+            "readFailed": "无法读取文件，请确认文件为 UTF-8 编码的 CSV。",
+            "previewFailed": "预览失败，请稍后重新预览。",
+            "importFailed": "导入未完成，请检查计划数据并重新预览后再试。",
+            "success": "已导入“{plan}”：{trains} 列车、{movements} 项作业，新建 {routes} 条进路。"
+        },
+        "saturatedPlan": {
+            "actions": {
+                "generate": "生成饱和计划",
+                "generating": "求解中 {progress}%"
+            },
+            "placeholders": {
+                "preset": "选择求解预设"
+            },
+            "messages": {
+                "loadPresetsFailed": "加载求解预设失败",
+                "confirm": "将使用预设“{preset}”对作业计划“{plan}”进行求解，并把结果保存为一个新的作业计划。是否继续？",
+                "generated": "饱和作业计划“{name}”已生成并保存",
+                "generateFailed": "生成饱和作业计划失败",
+                "missingResultPlan": "求解完成，但服务器没有返回新作业计划信息"
+            }
+        },
+        "fields": {
+            "operation": "操作"
+        },
+        "viewSelector": "切换视图",
+        "unnamedStationScheme": "未命名车站方案",
+        "chartMode": {
+            "label": "图表类型",
+            "mesoscopic": "作业计划大表",
+            "microscopic": "资源占用图"
+        },
+        "tabs": {
+            "templateWorkspace": "作业模板",
+            "planList": "计划列表",
+            "trainTemplate": "列车模板",
+            "operationProcess": "作业过程编排",
+            "trainOperationPlan": "列车作业计划",
+            "planCharts": "作业计划图",
+            "trainOperationChart": "资源占用图",
+            "stationPlanView": "作业计划大表",
+            "operationOccupationTimeTable": "作业占用时间表",
+            "operationBottleneckAnalysis": "作业瓶颈分析",
+            "operationThroughputSummary": "能力分类汇总"
+        },
+        "states": {
+            "new": "新建",
+            "editing": "编辑中"
+        },
+        "placeholders": {
+            "autoId": "留空则自动生成"
+        },
+        "empty": {
+            "selectScheme": "请先选择车站方案",
+            "expandTrain": "请先展开一个列车模板"
+        },
+        "planObject": {
+            "label": "作业计划",
+            "empty": "暂无作业计划",
+            "actions": {
+                "manage": "管理"
+            },
+            "fields": {
+                "operationPlanID": "作业计划 ID",
+                "name": "名称",
+                "description": "说明",
+                "sortOrder": "排序"
+            },
+            "dialogs": {
+                "deleteTitle": "删除作业计划"
+            },
+            "manager": {
+                "title": "管理车站作业计划"
+            },
+            "placeholders": {
+                "select": "请选择作业计划",
+                "name": "请输入作业计划名称",
+                "description": "请输入说明"
+            },
+            "messages": {
+                "loadFailed": "加载作业计划失败",
+                "nameRequired": "作业计划名称不能为空",
+                "createSuccess": "作业计划已创建",
+                "createFailed": "创建作业计划失败",
+                "updateSuccess": "作业计划已更新",
+                "updateFailed": "更新作业计划失败",
+                "copySuccess": "作业计划已复制",
+                "copyFailed": "复制作业计划失败",
+                "deleteConfirm": "确定删除作业计划 {name} 吗？该计划下的列车作业和分析结果也会被删除，车站方案的共享模板会保留。",
+                "deleteSuccess": "作业计划已删除",
+                "deleteFailed": "删除作业计划失败"
+            }
+        },
+        "train": {
+            "title": "列车模板",
+            "count": "{count} 个列车模板",
+            "empty": "暂无列车模板",
+            "fromProcess": {
+                "action": "从作业过程生成",
+                "title": "从作业过程生成列车模板",
+                "description": "选择当前车站方案下已保存的作业过程，使用其名称创建共享列车模板，供该方案下的各个作业计划使用。未保存草稿不会出现在列表中。",
+                "sourceLabel": "作业过程模板",
+                "placeholder": "请选择已保存的作业过程模板",
+                "empty": "暂无已保存的作业过程模板，请先在作业过程编排中保存模板。",
+                "mapping": "全部活动都会生成作业模板，最小时长转换为秒。最大时长、并行与间隔、锚等约束仍保留在原作业过程中；生成结果会提示需要补充进路的活动。",
+                "reload": "重新加载",
+                "generate": "生成列车模板",
+                "loadFailed": "加载作业过程模板失败，请重新加载。",
+                "generateFailed": "生成列车模板失败，请检查提示后重试。",
+                "invalidResponse": "服务端未返回有效的列车模板，请刷新列车模板列表确认生成结果。",
+                "success": "已生成列车模板“{name}”，包含 {count} 个作业模板。",
+                "refreshDeferred": "当前有未保存的行内编辑，已保留其内容；完成编辑后请刷新列表查看生成结果。"
+            },
+            "fields": {
+                "trainTemplateID": "模板 ID",
+                "name": "名称",
+                "type": "类型",
+                "number": "数量",
+                "isFixedOperation": "固定作业"
+            },
+            "fixedOperation": {
+                "yes": "是",
+                "no": "否"
+            },
+            "dialogs": {
+                "createTitle": "新增列车模板",
+                "editTitle": "编辑列车模板",
+                "deleteTitle": "删除列车模板"
+            },
+            "placeholders": {
+                "name": "请输入列车模板名称",
+                "type": "请输入列车类型"
+            },
+            "messages": {
+                "loadFailed": "加载列车模板失败",
+                "nameRequired": "列车模板名称不能为空",
+                "createSuccess": "列车模板已创建",
+                "createFailed": "创建列车模板失败",
+                "updateSuccess": "列车模板已更新",
+                "updateFailed": "更新列车模板失败",
+                "deleteConfirm": "确定删除列车模板 {name} 吗？其下属移动模板也会被删除。",
+                "deleteSuccess": "列车模板已删除",
+                "deleteFailed": "删除列车模板失败"
+            }
+        },
+        "movement": {
+            "title": "移动模板",
+            "count": "{train} 下共有 {count} 个移动模板",
+            "empty": "暂无移动模板",
+            "fields": {
+                "movementID": "移动 ID",
+                "name": "名称",
+                "routeIDList": "进路列表",
+                "minDuration": "最小时长"
+            },
+            "dialogs": {
+                "createTitle": "新增移动模板",
+                "editTitle": "编辑移动模板",
+                "deleteTitle": "删除移动模板"
+            },
+            "placeholders": {
+                "name": "请输入移动模板名称",
+                "routeIDList": "请选择进路"
+            },
+            "routePicker": {
+                "title": "选择进路",
+                "openButton": "选择进路",
+                "count": "共有 {count} 条进路",
+                "filterCount": "筛选出 {filtered}/{total} 条进路",
+                "selectionCount": "已选择 {selected}/{total} 条进路",
+                "empty": "暂无进路",
+                "filterEmpty": "没有符合筛选条件的进路",
+                "previewTitle": "站场预览",
+                "previewEmpty": "暂无站场布置图"
+            },
+            "messages": {
+                "loadFailed": "加载移动模板失败",
+                "nameRequired": "移动模板名称不能为空",
+                "createSuccess": "移动模板已创建",
+                "createFailed": "创建移动模板失败",
+                "updateSuccess": "移动模板已更新",
+                "updateFailed": "更新移动模板失败",
+                "deleteConfirm": "确定删除移动模板 {name} 吗？",
+                "deleteSuccess": "移动模板已删除",
+                "deleteFailed": "删除移动模板失败"
+            }
+        },
+        "trainOperationPlan": {
+            "fromProcess": {
+                "title": "从作业过程生成列车作业计划",
+                "appendHint": "在表格中填写每个已保存作业过程的列车数量，0 表示跳过。所有过程使用下方统一时间范围，一次生成的列车总数为 1–1000，追加到当前计划并保留已有列车。",
+                "trainCount": "列车数量（0–1000）",
+                "batchSummary": "共 {processes} 个作业过程，本次生成 {trains} 列车",
+                "distributionHint": "各作业过程的列车起点分别按平均时间槽定位，同一列车内的事件在满足全部约束下尽早发生。严格次序的事件时差等于规定间隔，其他次序的时差大于等于规定间隔；固定时刻和时长范围仍须满足。任一过程不可行或超出总时间范围时，本次所有过程整批拒绝生成。时间支持 24:00 及跨日表示。",
+                "generate": "生成并追加",
+                "generateFailed": "生成列车作业计划失败，请检查提示后重试。",
+                "invalidResponse": "服务端未返回完整生成结果，请刷新列车作业计划确认，避免重复生成。",
+                "success": "已追加 {trains} 列车及 {movements} 个移动，原有列车已保留。",
+                "constraints": "过程约束",
+                "generatedHint": "由作业过程生成，保留原过程约束。支持拖动方块、调整时间和编辑移动。",
+                "catalogFailed": "加载站场名称失败，暂显示对象 ID。",
+                "revision": "来源版本",
+                "origin": "过程时间原点",
+                "activities": "活动",
+                "events": "事件",
+                "precedences": "次序",
+                "savedPrecedencesHint": "这些次序已随列车作业计划保存，保留前后事件、次序类型及规定间隔，用于后续能力求解。严格次序要求时差等于间隔，其他次序要求时差大于等于间隔。修改源作业过程不会改变本计划中的记录。",
+                "anchors": "锚",
+                "duration": "最小 / 最长时长（分）",
+                "candidates": "备选进路",
+                "selected": "选定进路",
+                "endpoints": "开始 → 结束事件",
+                "relativeTime": "原相对时刻（分）",
+                "actualTime": "排定时刻",
+                "nodes": "备选地点",
+                "legacyNode": "原地点记录",
+                "anchorCandidates": "备选锚",
+                "selectedAnchor": "选定锚",
+                "leading": "前序事件",
+                "following": "后序事件",
+                "interval": "事件间隔（分）",
+                "precedenceType": "次序类型",
+                "exactInterval": "严格等于（=）",
+                "minimumInterval": "至少间隔（≥）",
+                "route": "对应停留进路",
+                "routeAnchors": "进路端点锚",
+                "startAnchor": "起点锚",
+                "endAnchor": "终点锚",
+                "types": { "Arrival": "接车", "Departure": "发车", "Shunting": "调车", "Locomotive": "机车出入段", "Dwelling": "停留" }
+            },
+            "empty": "暂无列车作业计划",
+            "timeRange": "总时间范围",
+            "startTime": "开始时间",
+            "endTime": "结束时间",
+            "to": "至",
+            "actions": {
+                "autoGenerate": "自动生成列车作业计划"
+            },
+            "train": {
+                "title": "列车",
+                "count": "{count} 列车",
+                "searchPlaceholder": "搜索车次、名称、列车类型",
+                "searchEmpty": "没有匹配的列车",
+                "batchDelete": "删除所选（{count}）",
+                "fields": {
+                    "id": "列车 ID",
+                    "trainNumber": "车次",
+                    "trainType": "列车类型",
+                    "isFixedOperation": "固定作业"
+                },
+                "dialogs": {
+                    "deleteTitle": "删除列车",
+                    "batchDeleteTitle": "批量删除列车"
+                },
+                "messages": {
+                    "createSuccess": "列车已创建",
+                    "createFailed": "创建列车失败",
+                    "updateSuccess": "列车已更新",
+                    "updateFailed": "更新列车失败",
+                    "deleteConfirm": "确定删除列车 {id} 吗？该列车的移动也会被删除。",
+                    "deleteSuccess": "列车已删除",
+                    "deleteFailed": "删除列车失败",
+                    "batchDeleteConfirm": "确定删除选中的 {count} 列车吗？这些列车的全部移动及过程约束也会被删除。",
+                    "batchDeleteSuccess": "已删除 {count} 列车及其移动和过程约束。",
+                    "batchDeleteFailed": "批量删除失败，列车和选择已保留，请检查提示后重试。",
+                    "batchDeleteInvalidResponse": "服务端未返回完整删除结果，请刷新列表确认，避免重复操作。"
+                }
+            },
+            "movement": {
+                "title": "移动",
+                "count": "{count} 个移动",
+                "expandTrain": "请先展开一列车",
+                "fields": {
+                    "trainID": "列车 ID",
+                    "earliestStartTime": "开始时刻",
+                    "latestEndTime": "结束时刻",
+                    "route": "进路",
+                    "tag": "标签"
+                },
+                "placeholders": {
+                    "route": "请选择进路"
+                },
+                "dialogs": {
+                    "deleteTitle": "删除移动"
+                },
+                "messages": {
+                    "trainRequired": "请先新增或选择一列车",
+                    "createSuccess": "移动已创建",
+                    "createFailed": "创建移动失败",
+                    "updateSuccess": "移动已更新",
+                    "updateFailed": "更新移动失败",
+                    "deleteConfirm": "确定删除移动 {id} 吗？",
+                    "deleteSuccess": "移动已删除",
+                    "deleteFailed": "删除移动失败"
+                }
+            },
+            "messages": {
+                "loadFailed": "加载列车作业计划失败",
+                "generateSuccess": "列车作业计划已生成",
+                "generateFailed": "生成列车作业计划失败"
+            }
+        },
+        "trainOperationChart": {
+            "title": "资源占用图",
+            "recalculate": "重新推算 Cell 占用时间",
+            "recalculateHint": "按数据库中最新的作业起止时刻和轨道电路偏移重新推算当前计划的全部 Cell，占用时刻的人工调整将被覆盖并保存。",
+            "count": "{cellCount} 个轨道电路区段，{barCount} 条占用",
+            "cellAxis": "轨道电路区段",
+            "timeAxis": "时间",
+            "emptyPlan": "暂无列车作业计划",
+            "emptyCells": "暂无轨道电路区段",
+            "emptyOccupations": "暂无占用记录",
+            "messages": {
+                "loadFailed": "加载资源占用图失败",
+                "recalculateSuccess": "已重新推算并保存当前计划的 Cell 占用时间",
+                "recalculateFailed": "重新推算 Cell 占用时间失败"
+            }
+        },
+        "resourceOccupancyCharts": {
+            "defaultName": "资源占用图",
+            "newName": "资源占用图 {number}",
+            "add": "添加资源占用图",
+            "edit": "编辑当前资源占用图",
+            "addTitle": "添加资源占用图",
+            "editTitle": "编辑资源占用图",
+            "name": "图形名称",
+            "namePlaceholder": "请输入图形名称",
+            "nameRequired": "请输入图形名称",
+            "nameTooLong": "图形名称不能超过 100 个字符",
+            "cells": "包含的 Cell",
+            "selectCells": "请选择要显示的 Cell",
+            "order": "已选 Cell 的显示顺序",
+            "orderHint": "使用上移、下移调整图中 Cell 的顺序。未选择 Cell 时保存为空图。",
+            "selectAll": "全选",
+            "clear": "清空",
+            "moveUp": "上移",
+            "moveDown": "下移",
+            "removeCell": "移除此 Cell",
+            "emptySelection": "当前图形未选择 Cell，请编辑图形添加。",
+            "loading": "正在加载图形配置…",
+            "loadFailed": "加载图形配置失败，请重试。",
+            "saveFailed": "保存图形配置失败，修改已保留，请重试。",
+            "retry": "重试",
+            "save": "保存",
+            "cancel": "取消"
+        },
+        "stationPlanCharts": {
+            "defaultName": "作业计划大表",
+            "settingsHint": "每张大表可独立选择股道、节点及其显示顺序。不选择任何股道或节点可保存为空图；端点被隐藏的作业进路段不会显示。",
+            "newName": "作业计划大表 {number}",
+            "add": "添加作业计划大表",
+            "edit": "编辑当前作业计划大表",
+            "addTitle": "添加作业计划大表",
+            "editTitle": "编辑作业计划大表",
+            "name": "图形名称",
+            "namePlaceholder": "请输入图形名称",
+            "nameRequired": "请输入图形名称",
+            "nameTooLong": "图形名称不能超过 100 个字符",
+            "loadFailed": "加载大表配置失败，请重试。",
+            "saveFailed": "保存大表配置失败，修改已保留，请重试。",
+            "retry": "重试",
+            "emptySelection": "当前图形未选择股道或节点，请编辑图形添加。",
+            "chartLimit": "最多可添加 100 张作业计划大表。"
+        },
+        "operationOccupationTimeTable": {
+            "title": "作业占用时间表",
+            "count": "{routeCount} 条进路，{operationCount} 次作业",
+            "empty": "暂无作业占用时间统计",
+            "emptyPlan": "暂无列车作业计划",
+            "totalTime": "总时间(秒)",
+            "totalTimePlaceholder": "请输入",
+            "emptyWasteFactor": "空费系数",
+            "emptyWasteFactorPlaceholder": "请输入",
+            "unitLabel": "显示单位",
+            "unitSeconds": "秒",
+            "unitMinutes": "分钟",
+            "seconds": "{value} 秒",
+            "minutes": "{value} 分钟",
+            "subTables": {
+                "label": "子表{index}",
+                "add": "新增子表",
+                "edit": "编辑子表",
+                "createTitle": "新建作业占用时间子表",
+                "editTitle": "编辑作业占用时间子表",
+                "name": "子表名称",
+                "namePlaceholder": "请输入子表名称",
+                "nameRequired": "请输入子表名称",
+                "cells": "包含的Cell",
+                "cellPlaceholder": "选择显示的Cell",
+                "selectedCount": "已选 {selected}/{total} 个Cell",
+                "selectAll": "全选Cell",
+                "clear": "清空"
+            },
+            "fields": {
+                "sequence": "序号",
+                "routeID": "进路ID",
+                "routeDescription": "进路描述",
+                "operationCount": "作业次数"
+            },
+            "groups": {
+                "fixedOperation": "固定作业",
+                "nonFixedOperation": "非固定作业"
+            },
+            "summary": {
+                "fixedOccupationTime": "固定作业占用时间小计",
+                "totalOccupationTime": "总占用时间",
+                "utilizationK": "利用率K"
+            }
+        },
+        "operationBottleneckAnalysis": {
+            "title": "作业瓶颈分析",
+            "count": "{count} 条进路",
+            "empty": "暂无作业瓶颈分析结果",
+            "emptyPlan": "暂无列车作业计划",
+            "fields": {
+                "routeID": "进路ID",
+                "routeDescription": "进路描述",
+                "operationCount": "进路使用次数",
+                "bottleneckCellName": "进路瓶颈轨道电路区段名称",
+                "bottleneckUtilization": "瓶颈轨道区段利用率",
+                "throughputCapacity": "通过能力"
+            },
+            "summary": {
+                "title": "通过能力分类汇总",
+                "count": "{count} 个分类",
+                "empty": "暂无通过能力汇总结果",
+                "emptyCategories": "请先新增一个分类",
+                "defaultCategoryName": "分类{index}",
+                "selectedRoutes": "已选 {count} 条进路",
+                "unboundRouteEnd": "未绑定进路起终点",
+                "groupFields": {
+                    "startRouteEnd": "起点进路起终点",
+                    "endRouteEnd": "终点进路起终点"
+                },
+                "actions": {
+                    "calculate": "计算",
+                    "addCategory": "新增分类"
+                },
+                "messages": {
+                    "calculateSuccess": "通过能力分类汇总已计算并保存",
+                    "calculateFailed": "计算通过能力分类汇总失败"
+                },
+                "fields": {
+                    "groupText": "分类",
+                    "selectedRoutes": "选择进路",
+                    "routeCount": "进路数",
+                    "operationCount": "进路使用次数",
+                    "capacityTotal": "通过能力合计",
+                    "capacityAverage": "平均通过能力"
+                },
+                "routePicker": {
+                    "title": "选择汇总进路",
+                    "count": "已选择 {selected} 条，当前筛选 {filtered}/{total} 条",
+                    "empty": "暂无可选进路",
+                    "filterEmpty": "没有符合筛选条件的进路",
+                    "filters": {
+                        "keyword": "搜索进路ID或描述",
+                        "startRouteEnd": "按起点进路起终点筛选",
+                        "endRouteEnd": "按终点进路起终点筛选"
+                    }
+                }
+            }
+        }
+    },
     "stationLayout": {
+        "toolbar": {
+            "edit": "编辑工具栏",
+            "view": "查看工具栏",
+            "compact": "简洁模式",
+            "full": "完整模式"
+        },
         "menu": {
+            "stationScheme": "车站方案",
             "file": "文件",
             "loadData": "载入数据",
             "saveData": "保存数据",
@@ -990,15 +2091,71 @@
             "savingToDatabase": "\u6b63\u5728\u4fdd\u5b58\u5230\u6570\u636e\u5e93...",
             "gridSnap": "网格追踪",
             "objectSnap": "对象追踪",
+            "snapDistance": "吸附阈值",
+            "showGrid": "显示网格",
+            "gridSpacing": "网格间距",
             "undo": "撤销",
             "redo": "重做",
             "clearSelection": "清除选择",
-            "deleteSelection": "删除选择"
+            "deleteSelection": "删除选择",
+            "importJson": "导入 JSON",
+            "exportJson": "导出 JSON",
+            "extractDwg": "提取 DWG",
+            "showCellNames": "区段名称"
+        },
+        "placeholders": {
+            "selectInstance": "请先选择车站",
+            "selectStationScheme": "选择车站方案",
+            "createStationScheme": "当前项目暂无车站方案，请先新建车站方案。"
+        },
+        "schemeManager": {
+            "manage": "管理",
+            "title": "车站方案管理",
+            "add": "新建",
+            "create": "新建车站方案",
+            "copy": "复制",
+            "copyName": "{name} 副本",
+            "pendingSave": "待保存",
+            "invalidResponse": "服务器未返回方案 ID",
+            "copySuccess": "车站方案已复制",
+            "copyFailed": "复制车站方案失败",
+            "edit": "编辑",
+            "save": "保存",
+            "cancel": "取消",
+            "delete": "删除",
+            "close": "关闭",
+            "confirm": "确定",
+            "id": "方案 ID",
+            "name": "方案名称",
+            "operation": "操作",
+            "namePlaceholder": "方案名称",
+            "idRequired": "方案 ID 不能为空",
+            "nameRequired": "方案名称不能为空",
+            "createSuccess": "车站方案已新增",
+            "createFailed": "新增车站方案失败",
+            "updateSuccess": "车站方案已更新",
+            "updateFailed": "更新车站方案失败",
+            "deleteSuccess": "车站方案已删除",
+            "deleteFailed": "删除车站方案失败",
+            "deleteTitle": "删除车站方案",
+            "deleteConfirm": "确定删除“{name}”及其全部布置图数据吗？"
         },
         "group": {
             "mode": "模式",
             "drawingObject": "绘图对象",
-            "tools": "工具"
+            "tools": "工具",
+            "curveDisplay": "曲线显示",
+            "displayScale": "显示比例",
+            "selection": "选择",
+            "display": "显示",
+            "panels": "辅助面板",
+            "snapping": "捕捉与网格",
+            "topology": "拓扑",
+            "pathTest": "路径测试"
+        },
+        "scale": {
+            "x": "X",
+            "y": "Y"
         },
         "mode": {
             "select": "选择",
@@ -1012,7 +2169,8 @@
             "insulation": "钢轨绝缘",
             "route": "进路",
             "buffer": "车挡",
-            "platform": "站台"
+            "platform": "站台",
+            "annotation": "注释"
         },
         "tools": {
             "showCrossPoint": "显示交点",
@@ -1020,17 +2178,913 @@
             "snapLine": "处理虚接",
             "separateLine": "线路分段",
             "generateNode": "节点生成",
-            "generateSwitch": "道岔生成"
+            "generateSwitch": "道岔生成",
+            "generateCurve": "曲线生成",
+            "fitFullView": "显示全图",
+            "freeZoom": "自由缩放",
+            "freeZoomHint": "拖拽矩形以缩放至该区域，按 Esc 取消",
+            "mergeNodes": "节点合并",
+            "correctBindings": "修正设备绑定",
+            "searchPath": "路径搜索",
+            "displayStyle": "显示样式"
+        },
+        "curveDisplay": {
+            "arc": "圆弧",
+            "tangent": "切线"
         },
         "messages": {
             "saveSuccess": "保存成功：",
             "saveFailed": "保存失败：",
             "loadFailed": "获取失败：",
-            "loadFromDatabaseSuccess": "已成功从数据库读取",
-            "loadFromDatabaseFailed": "从数据库读取失败：",
-            "saveToDatabaseSuccess": "\u5df2\u6210\u529f\u4fdd\u5b58\u5230\u6570\u636e\u5e93",
-            "saveToDatabaseFailed": "\u4fdd\u5b58\u5230\u6570\u636e\u5e93\u5931\u8d25\uff1a",
-            "emptyLayout": "\u5f53\u524d\u6ca1\u6709\u53ef\u4fdd\u5b58\u7684\u7ad9\u573a\u6570\u636e"
+            "loadSchemesFailed": "加载车站方案失败",
+            "readonly": "当前为只读模式，不能执行写操作"
+        },
+        "panels": {
+            "trackCircuits": "轨道电路区段",
+            "equipment": "设备信息"
+        },
+        "bufferStop": {
+            "types": {
+                "normal": "普通",
+                "ext": "延伸式"
+            },
+            "directions": {
+                "left": "向左",
+                "right": "向右"
+            }
+        },
+        "signal": {
+            "types": {
+                "DepartureSignal": "出站信号机",
+                "HomeSignal": "进站信号机",
+                "ShuntingSignal": "调车信号机",
+                "HumpSignal": "驼峰信号机"
+            },
+            "aspects": "{count} 显示",
+            "poles": {
+                "High": "高柱",
+                "Low": "矮柱"
+            },
+            "directions": {
+                "w": "左上",
+                "e": "右上",
+                "s": "左下",
+                "d": "右下"
+            }
+        },
+        "insulationJoint": {
+            "types": {
+                "normal": "普通",
+                "oversize": "侵限"
+            }
+        },
+        "switch": {
+            "types": {
+                "single": "单开",
+                "slip": "交分道岔",
+                "diamond": "菱形交叉",
+                "symmetric": "对称"
+            }
+        },
+        "topology": {
+            "auto": "自动",
+            "manual": "手动"
+        },
+        "equipment": {
+            "type": "设备类型",
+            "generic": "设备",
+            "batch": "{type} 批处理（{count} 个）",
+            "selectOne": "请选择单个设备",
+            "fields": {
+                "id": "编号",
+                "name": "名称",
+                "type": "类型",
+                "direction": "方向",
+                "bindingNodeID": "绑定节点",
+                "x": "X 坐标",
+                "y": "Y 坐标",
+                "x1": "起点 X 坐标",
+                "y1": "起点 Y 坐标",
+                "x2": "终点 X 坐标",
+                "y2": "终点 Y 坐标",
+                "width": "宽度",
+                "height": "高度",
+                "fromNodeID": "起点节点",
+                "toNodeID": "终点节点",
+                "arrowDirection": "箭头方向",
+                "arrowType": "箭头类型",
+                "branchVectorList": "分支向量列表"
+            }
+        },
+        "editor": {
+            "common": {
+                "normal": "常规",
+                "bold": "加粗",
+                "italic": "斜体",
+                "cancel": "取消",
+                "save": "保存",
+                "delete": "删除",
+                "clear": "清空",
+                "add": "新增",
+                "generate": "生成",
+                "none": "无",
+                "currentScheme": "当前方案",
+                "unknownError": "未知错误"
+            },
+            "rename": {
+                "label": "重命名对象",
+                "hint": "Enter 确认 · Esc 取消"
+            },
+            "styles": {
+                "title": "显示样式配置",
+                "text": "文字",
+                "object": "对象",
+                "size": "大小",
+                "font": "字体",
+                "weight": "粗细",
+                "style": "样式",
+                "color": "颜色",
+                "equipment": "线条与设备",
+                "track": "轨道线条",
+                "curve": "曲线线条",
+                "platform": "站台线条",
+                "strokeWidth": "线条粗细",
+                "reset": "恢复默认",
+                "switchName": "道岔编号",
+                "platformName": "站台名称",
+                "signalName": "信号机名称",
+                "lineName": "线路名称",
+                "cellName": "轨道电路名称",
+                "saved": "显示样式已保存",
+                "saveFailed": "显示样式保存失败：",
+                "invalidLayout": "布置图数据校验失败，无法保存："
+            },
+            "arrows": {
+                "none": "不绘制",
+                "left": "左侧",
+                "right": "右侧",
+                "both": "左右两侧",
+                "passenger": "旅客列车进路",
+                "freight": "货物列车进路",
+                "mixed": "客货列车进路",
+                "outbound": "机车出段",
+                "inbound": "机车入段",
+                "leftInRightOut": "机车出入段（左入右出）",
+                "leftOutRightIn": "机车出入段（左出右入）",
+                "oversize": "超限货物列车进路"
+            },
+            "annotation": {
+                "title": "注释",
+                "angle": "角度"
+            },
+            "cells": {
+                "title": "轨道电路区段（Cell）",
+                "list": "Cell 列表",
+                "info": "Cell 信息",
+                "links": "包含 Link",
+                "autoGenerate": "自动生成",
+                "pickAdd": "点选新增",
+                "removeCurrent": "移除当前",
+                "endpoints": "端点",
+                "idPending": "保存后生成",
+                "idPlaceholder": "保存后由后端生成",
+                "emptyLinks": "当前 Cell 尚未包含 Link",
+                "empty": "请新建或选择一个 Cell",
+                "idRequired": "Cell 保存标识不能为空",
+                "deleteTitle": "删除 Cell",
+                "selectFirst": "请先选择或新建一个 Cell",
+                "linkNotFound": "当前图中未找到该 Link",
+                "noLinks": "当前车站布置图中没有可生成 Cell 的 Link",
+                "overwriteConfirm": "自动生成会覆盖当前 Cell 列表，是否继续？",
+                "generateTitle": "自动生成 Cell",
+                "saved": "Cell 已保存",
+                "saveFailed": "Cell 保存失败：",
+                "name": "名称",
+                "instance": "车站 ID",
+                "scheme": "车站方案 ID",
+                "idExists": "Cell ID {id} 已存在",
+                "deleteConfirm": "确定删除 Cell {name} 吗？",
+                "linkExists": "Link {id} 已在当前 Cell 中",
+                "linkAdded": "已加入 Link {id}",
+                "generated": "已生成 {count} 个 Cell"
+            },
+            "routes": {
+                "title": "路径搜索测试",
+                "start": "起点 Node ID",
+                "end": "终点 Node ID",
+                "pick": "点选",
+                "search": "搜索",
+                "direction": "方向",
+                "path": "路径",
+                "leftToRight": "左向右",
+                "rightToLeft": "右向左",
+                "endpointsRequired": "请输入起点和终点 Node ID",
+                "integerRequired": "Node ID 必须为整数",
+                "searchFailed": "路径搜索失败",
+                "found": "搜索完成，共 {count} 条路径"
+            },
+            "equipment": {
+                "saved": "设备信息已保存",
+                "saveFailed": "设备信息保存失败：",
+                "idRequired": "设备 ID 不能为空",
+                "batchChangeRequired": "请先修改需要批处理的字段",
+                "branchJsonInvalid": "道岔分支向量 JSON 格式不正确",
+                "noLayout": "当前没有可保存的车站布置图数据",
+                "directionHint": "方向：按 w / e / s / d 设置"
+            },
+            "json": {
+                "noLayout": "当前没有可导出的车站布置图数据",
+                "exported": "JSON 文件已导出",
+                "exportFailed": "导出 JSON 文件失败",
+                "fileRequired": "请选择 JSON 格式文件",
+                "imported": "JSON 文件已导入",
+                "importFailed": "导入 JSON 文件失败，请检查文件格式"
+            },
+            "binding": {
+                "title": "修正设备绑定节点",
+                "previous": "原 binding node",
+                "next": "修正为 node",
+                "position": "设备位置",
+                "confirm": "确认修正",
+                "none": "当前没有需要修正绑定节点的设备",
+                "selectFirst": "请先勾选需要修正的设备",
+                "unmatchedSuffix": "，{count} 个设备当前位置没有节点",
+                "fixed": "已修正 {count} 个设备绑定节点{details}",
+                "unmatched": "未修正：{count} 个设备当前位置没有节点",
+                "correct": "设备绑定节点已正确{details}",
+                "skippedSuffix": "，{count} 个设备当前位置没有节点或已不存在",
+                "selectedCorrect": "所选设备绑定节点已正确{details}",
+                "notFixed": "未修正设备绑定节点{details}",
+                "summary": "检测到 {count} 个设备的绑定节点将被修改，请勾选确认需要修正的项。",
+                "skipped": "另有 {count} 个设备当前位置没有节点，已跳过。",
+                "selected": "已选择 {selected} / {total}"
+            },
+            "switches": {
+                "untitled": "未命名道岔",
+                "reconstructTitle": "重构道岔",
+                "reconstruct": "重构",
+                "noChanges": "没有需要生成或重构的道岔",
+                "change": "{name}（节点 {node}：{from} → {to}）",
+                "more": "\n等 {count} 组道岔",
+                "alsoCreate": "\n\n同时将新增生成 {count} 组道岔。",
+                "confirm": "检测到 {count} 组道岔绑定节点的邻接边发生变化，需要重新构造。确认后将保留原道岔 ID，并按当前邻接边重构。{details}{create}",
+                "reconstructed": "重构 {count} 组",
+                "created": "新增 {count} 组",
+                "generated": "道岔生成完成：{details}"
+            },
+            "deleteNodes": {
+                "title": "删除节点及绑定设备",
+                "count": "{type} {count} 个",
+                "more": " 等 {count} 个",
+                "details": "\n\n绑定设备：{details}{more}",
+                "confirm": "所选 {count} 个节点上绑定了 {equipment}。确认删除节点，并一并删除这些绑定设备吗？{details}"
+            },
+            "dwg": {
+                "title": "从DWG文件提取",
+                "file": "DWG 文件",
+                "layer": "图层名称",
+                "layerPlaceholder": "请输入要提取的图层名称",
+                "upload": "上传并提取",
+                "invalidFile": "请选择 DWG 格式文件",
+                "fileRequired": "请先选择 DWG 文件",
+                "noData": "DWG 提取失败：服务器未返回图形数据",
+                "failed": "DWG 提取失败：",
+                "completed": "DWG 提取完成，共生成 {count} 条线段"
+            },
+            "topology": {
+                "repaired": "已根据位置关系自动修复 {count} 处绑定数据，保存后生效。",
+                "repairSaved": "已根据位置关系自动修复 {count} 处绑定数据并保存。",
+                "repairNewEdits": "后端已修复本次保存的数据。当前画布有新的修改，已保留这些修改，请再次保存。",
+                "recheck": "已保存最新拓扑。线路分段、节点生成或节点合并可能已影响设备绑定、道岔/曲线关联、Cell 构成以及既有进路。请使用“修正设备绑定节点”检查设备，并在 Cell 面板中重新检查或生成 Cell；如已配置进路，也请重新校验进路。",
+                "curvesGenerated": "已生成 {count} 条曲线"
+            }
+        }
+    },
+    "stationLayout3d": {
+        "buttons": {
+            "refresh": "刷新布置图",
+            "resetView": "重置视角",
+            "resetDisplayRatio": "恢复 X:Y 坐标比例为 1:1",
+            "resetPlayback": "重置播放",
+            "play": "播放",
+            "pause": "暂停",
+            "editSubTable": "编辑子表",
+            "createSubTable": "新增子表"
+        },
+        "labels": {
+            "showLabels": "显示标签",
+            "displayRatio": "X:Y 坐标比例",
+            "showOccupancy": "占用显示",
+            "trainModel": "车型",
+            "operationPlan": "作业计划",
+            "playbackScope": "范围",
+            "train": "列车",
+            "speed": "速度",
+            "subTableName": "子表名称",
+            "subTableCells": "显示轨道电路区段"
+        },
+        "placeholders": {
+            "selectOperationPlan": "请选择作业计划",
+            "selectTrain": "请选择列车",
+            "allTrains": "全站全部列车",
+            "subTableName": "请输入子表名称",
+            "selectSubTableCells": "请选择要显示的轨道电路区段"
+        },
+        "playbackModes": {
+            "single": "单列车",
+            "all": "全站"
+        },
+        "trainModels": {
+            "auto": "自动 · 按列车类型",
+            "help": "自动识别各作业的动车组或电力机车型号，未识别时使用 CR400AF。选择具体车型可统一预览外观，不影响作业计划。"
+        },
+        "playback": {
+            "selectTrain": "请选择一列列车",
+            "singleSummary": "{train} · {movementCount} 个作业",
+            "allSummary": "{trainCount} 列车 · {routeCount} 条有效进路"
+        },
+        "status": {
+            "notReady": "未就绪",
+            "playing": "播放中",
+            "finished": "已结束",
+            "paused": "已暂停"
+        },
+        "phase": {
+            "waiting": "等待",
+            "selecting": "待选择",
+            "locking": "办理进路",
+            "dwelling": "股道停留",
+            "allActiveWithDwelling": "办理 {locking} / 走行 {moving} / 停留 {dwelling}",
+            "movingWithProgress": "列车走行 {progress}%",
+            "finishedWithCount": "已完成 {finished}/{total}",
+            "allActive": "办理 {locking} / 走行 {moving}"
+        },
+        "gantt": {
+            "title": "计划甘特图",
+            "cellAxis": "轨道电路区段",
+            "summary": "{laneCount} 个区段 · {blockCount} 条占用",
+            "subTableSummary": "{selected}/{total} 个轨道电路区段",
+            "subTableFallbackName": "子表 {index}",
+            "noPlayableWork": "暂无可播放作业",
+            "emptySubTable": "当前子表没有选择轨道电路区段",
+            "emptyOccupation": "当前计划没有可显示的轨道电路区段占用",
+            "emptyAllPlan": "当前作业计划没有包含可解析开始/结束时间的可播放进路",
+            "emptyTrainPlan": "当前列车没有作业计划",
+            "emptyRoute": "当前列车没有可播放的进路"
+        },
+        "dialogs": {
+            "createGanttSubTable": "新建甘特图子表",
+            "editGanttSubTable": "编辑甘特图子表",
+            "cancel": "取消",
+            "confirm": "确认"
+        },
+        "metrics": {
+            "tracks": "轨道",
+            "signals": "信号机",
+            "platforms": "站台"
+        },
+        "messages": {
+            "empty": "当前实例没有可显示的布置图数据",
+            "loadFailed": "加载 3D 布置图失败",
+            "loadOperationPlansFailed": "加载作业计划失败",
+            "loadStationRoutesFailed": "加载进路失败",
+            "loadTrainOperationPlanFailed": "加载列车作业计划失败",
+            "loadRouteTimesFailed": "加载进路占用时间失败",
+            "subTableNameRequired": "请输入子表名称",
+            "trainModelLoadFailed": "列车模型加载失败，请刷新后重试"
+        }
+    },
+    "calculationParameterSets": {
+        "title": "计算参数集",
+        "manage": "管理计算参数集",
+        "actions": "操作",
+        "default": "默认",
+        "useDefault": "使用默认：{name}",
+        "missing": "参数集已失效，使用默认",
+        "create": "新建参数集",
+        "copy": "复制计算参数集",
+        "rename": "重命名",
+        "makeDefault": "设为默认",
+        "delete": "删除",
+        "deleteConfirm": "删除“{name}”及其参数？引用此参数集的列车在下次生成或重算占用时将使用默认参数，已有占用时刻保留。",
+        "name": "参数集名称",
+        "copyFrom": "复制来源",
+        "copySuffix": " 副本",
+        "fallbackHelp": "列车未指定参数集或指定的参数集不存在时，使用该车站方案的默认参数集。",
+        "saved": "计算参数集已保存",
+        "failed": "计算参数集操作失败，请重试",
+        "cancel": "取消",
+        "save": "保存",
+        "refresh": "刷新",
+        "generationTitle": "选择生成列车使用的计算参数",
+        "generate": "生成作业计划"
+    },
+    "calculationParameters": {
+        "batchSet": {
+            "button": "批量设置",
+            "title": "批量设置占用时间",
+            "routeType": "进路类型",
+            "routeCount": "进路数量",
+            "routes": "进路",
+            "routeList": "进路列表 {selected}/{total}",
+            "routeListTitle": "{type} 进路列表",
+            "selectAll": "全选",
+            "selectedCount": "已选 {selected}/{total}",
+            "confirmRoutes": "确定",
+            "apply": "应用设置",
+            "cancel": "取消",
+            "empty": "暂无可设置的进路类型",
+            "emptySelection": "请至少选择一条进路",
+            "selectScheme": "请先选择车站方案",
+            "success": "已批量设置 {routeCount} 条进路，{rowCount} 条占用时间记录",
+            "failed": "批量设置占用时间失败"
+        },
+        "routes": {
+            "title": "进路列表",
+            "occupancyConfigured": "已配置占用时间",
+            "occupancyNotConfigured": "未配置占用时间",
+            "quickFilters": {
+                "type": "类型",
+                "allTypes": "全部",
+                "routeEnd": "起终点",
+                "startRouteEnd": "起点 RouteEnd",
+                "endRouteEnd": "终点 RouteEnd"
+            }
+        },
+        "occupancy": {
+            "title": "占用时间图",
+            "placeholder": "图形化占用时间控件预留",
+            "selectRoute": "请选择进路",
+            "emptyCells": "当前进路没有轨道电路区段",
+            "timeAxis": "时间",
+            "horizontalScale": "横向缩放",
+            "autoFit": "自适应",
+            "startHandle": "调整开始偏移",
+            "endHandle": "调整结束偏移"
+        },
+        "traction": {
+            "button": "牵引计算",
+            "title": "牵引计算",
+            "currentRoute": "当前进路",
+            "sampleTag": "前端样例",
+            "velocityDistance": "速度-距离曲线",
+            "timeDistance": "时间-距离曲线",
+            "linkTimes": "Link 入口/出口时刻",
+            "cellOccupations": "轨道电路区段占用时刻",
+            "noRoute": "请选择进路后进行牵引计算",
+            "fields": {
+                "link": "Link",
+                "length": "长度",
+                "entryTime": "入口时刻",
+                "exitTime": "出口时刻",
+                "speed": "入口/出口速度",
+                "startTime": "开始占用",
+                "endTime": "结束占用",
+                "duration": "时长"
+            }
+        },
+        "manager": {
+            "title": "参数管理",
+            "placeholder": "参数管理框预留",
+            "noRoute": "未选择进路",
+            "createOccupancyTime": "创建占用时间",
+            "saveOccupancyTime": "保存",
+            "emptyRouteTimes": "暂无占用时间记录",
+            "directInterrupt": "直接妨碍",
+            "uniformShift": {
+                "title": "统一偏移",
+                "apply": "应用",
+                "applied": "统一偏移已应用"
+            },
+            "fields": {
+                "cellID": "轨道电路区段",
+                "startShift": "开始偏移",
+                "endShift": "结束偏移"
+            },
+            "messages": {
+                "selectRoute": "请先选择进路",
+                "loadFailed": "加载占用时间失败",
+                "createSuccess": "已创建 {count} 条占用时间记录",
+                "createFailed": "创建占用时间失败",
+                "emptySave": "没有可保存的占用时间记录",
+                "saveSuccess": "占用时间已保存",
+                "saveFailed": "保存占用时间失败"
+            }
+        }
+    },
+    "routeDesign": {
+        "sidebar": {
+            "routeInfo": "进路信息",
+            "endpointInfo": "起终点信息",
+            "basicInfo": "基本信息",
+            "endpoints": "起点与终点",
+            "pathObjects": "线路组成",
+            "operationRules": "作业约束",
+            "endpointTags": "方向与线路标签",
+            "closeAutoGenerate": "关闭自动生成，返回进路编辑"
+        },
+        "toolbar": {
+            "stationRoute": "进路生成",
+            "routeEnd": "进路起终点配置",
+            "layoutDisplay": "平面图显示",
+            "showGrid": "网格",
+            "showNodes": "节点",
+            "curveDisplay": "曲线",
+            "showCellNames": "轨道电路区段名",
+            "displayScale": "比例",
+            "generateInterruptCells": "生成直接妨碍轨道电路区段",
+            "generateDwellingRoutes": "自动生成停留进路"
+        },
+        "stationRoute": {
+            "title": "进路生成",
+            "count": "共 {count} 条",
+            "empty": "暂无进路",
+            "fields": {
+                "instanceID": "InstanceID",
+                "stationSchemeID": "StationSchemeID",
+                "id": "ID",
+                "type": "进路类别",
+                "trainTypes": "列车类型",
+                "description": "进路描述",
+                "nodeList": "途经节点",
+                "linkList": "途经边",
+                "switchList": "途经道岔",
+                "cellList": "途经轨道电路区段",
+                "interruptCellList": "直接妨碍轨道电路区段",
+                "signalList": "途经信号机",
+                "allowanceTags": "许可作业标签",
+                "forbiddenTags": "禁止作业标签",
+                "startNodeID": "起点ID",
+                "endNodeID": "终点ID"
+            },
+            "tableFields": {
+                "startRouteEnd": "起点Tag",
+                "endRouteEnd": "终点Tag"
+            },
+            "types": {
+                "arrival": "接车进路",
+                "departure": "发车进路",
+                "locomotive": "机车出入段进路",
+                "shunting": "调车进路",
+                "dwelling": "停留进路"
+            },
+            "trainTypes": {
+                "PassengerTrain": "旅客列车",
+                "FreightTrain": "货物列车",
+                "PassengerCar": "客车（车体）",
+                "FreightCar": "货车（车体）"
+            },
+            "actions": {
+                "add": "新增",
+                "refresh": "刷新",
+                "pickStart": "点选起点",
+                "pickEnd": "点选终点",
+                "save": "保存",
+                "cancel": "取消",
+                "delete": "删除",
+                "filter": "过滤",
+                "clearFilters": "清除过滤",
+                "generateDescription": "生成描述",
+                "autoGenerate": "自动生成进路",
+                "batchDelete": "批量删除"
+            },
+            "states": {
+                "new": "新增",
+                "picking": "点选中"
+            },
+            "selection": {
+                "count": "已选择 {selected}/{total} 条"
+            },
+            "form": {
+                "newTitle": "新建进路",
+                "editTitle": "当前进路",
+                "emptyTitle": "未选择进路"
+            },
+            "directions": {
+                "leftToRight": "左向右",
+                "rightToLeft": "右向左"
+            },
+            "placeholders": {
+                "trainTypes": "请选择列车类型（可多选）",
+                "autoId": "留空则自动生成",
+                "selectRouteItems": "输入名称或 ID 筛选后选择",
+                "selectRouteTags": "选择或输入标签"
+            },
+            "filter": {
+                "type": "按进路类别过滤",
+                "startNode": "按起点ID过滤",
+                "endNode": "按终点ID过滤",
+                "node": "按途经节点过滤",
+                "link": "按途经边过滤",
+                "cell": "按途经轨道电路区段过滤",
+                "switch": "按途经道岔过滤",
+                "signal": "按途经信号机过滤",
+                "empty": "没有符合过滤条件的进路",
+                "count": "显示 {filtered}/{total} 条"
+            },
+            "searchDialog": {
+                "title": "选择搜索到的进路",
+                "count": "共搜索到 {count} 条候选进路",
+                "empty": "暂无候选进路",
+                "direction": "方向",
+                "cellCount": "轨道电路区段数量",
+                "linkCount": "边数量",
+                "signalCount": "信号机数量",
+                "useRoute": "使用此进路",
+                "cellSummary": "{count} 个轨道电路区段",
+                "linkSummary": "{count} 条边",
+                "signalSummary": "{count} 架信号机"
+            },
+            "messages": {
+                "selectScheme": "请先选择车站方案",
+                "pickStart": "请在图中点选进路起点 Node",
+                "pickEnd": "请在图中点选进路终点 Node",
+                "startPicked": "已选择起点 Node {nodeId}",
+                "endPicked": "已选择终点 Node {nodeId}",
+                "nodeIdMustBeInteger": "Node ID 必须为整数",
+                "searchSuccess": "搜索完成，共 {count} 条候选进路",
+                "searchEmpty": "未搜索到可用进路",
+                "searchFailed": "进路搜索失败",
+                "selectCandidate": "请先选择一条候选进路",
+                "candidateApplied": "已带入候选进路，请补充进路字段后保存",
+                "startEndRequired": "StartNodeID 和 EndNodeID 不能为空",
+                "typeRequired": "进路类别不能为空",
+                "descriptionGenerated": "进路描述已生成",
+                "descriptionGenerateFailed": "生成进路描述失败",
+                "idRequired": "ID 不能为空",
+                "loadFailed": "加载进路失败",
+                "createSuccess": "进路已新增",
+                "createFailed": "新增进路失败",
+                "updateSuccess": "进路已更新",
+                "updateFailed": "更新进路失败",
+                "deleteTitle": "删除进路",
+                "deleteConfirm": "确定删除进路“{id}”吗？",
+                "deleteSuccess": "进路已删除",
+                "deleteFailed": "删除进路失败",
+                "batchDeleteRequired": "请先勾选要删除的进路",
+                "batchDeleteTitle": "批量删除进路",
+                "batchDeleteConfirm": "确定删除已勾选的 {count} 条进路吗？",
+                "batchDeleteSuccess": "已批量删除 {count} 条进路",
+                "batchDeletePartial": "批量删除完成：成功 {deleted} 条，失败 {failed} 条",
+                "interruptCellsGenerated": "已生成 {count} 条进路的直接妨碍轨道电路区段",
+                "interruptCellsGenerateFailed": "生成直接妨碍轨道电路区段失败",
+                "dwellingRoutesGenerated": "停留进路生成完成：新增 {created} 条，跳过已有 {skipped} 条，无效 Link {invalid} 条",
+                "dwellingRoutesGenerateFailed": "自动生成停留进路失败"
+            }
+        },
+        "autoRoute": {
+            "title": "进路自动生成",
+            "count": "{start} 个起点，{end} 个终点，共 {pairs} 组",
+            "fields": {
+                "startNodes": "起点框",
+                "endNodes": "终点框"
+            },
+            "actions": {
+                "pickStart": "点选起点 Node",
+                "pickEnd": "点选终点 Node",
+                "generate": "自动生成",
+                "clear": "清空"
+            },
+            "placeholders": {
+                "selectNodes": "通过点选图中对象添加 Node"
+            },
+            "typeDescriptions": {
+                "arrival": "接车",
+                "departure": "发车",
+                "shunting": "调车",
+                "locomotive": "机车出入段"
+            },
+            "generatedDescription": "自{start}往{end}的{type}进路",
+            "messages": {
+                "pickStart": "请在图中点选要加入起点框的 Node",
+                "pickEnd": "请在图中点选要加入终点框的 Node",
+                "startPicked": "已添加起点 Node {nodeId}",
+                "endPicked": "已添加终点 Node {nodeId}",
+                "duplicateNode": "Node {nodeId} 已在当前框内",
+                "startEndRequired": "起点框和终点框都至少需要一个 Node",
+                "noValidPairs": "没有可生成的起终点组合",
+                "generatingPair": "正在处理 {current}/{total}: {start} -> {end}",
+                "generateFinished": "自动生成完成：新增 {created} 条，未找到 {noRoute} 组，失败 {failed} 组，跳过 {skipped} 组",
+                "generateEmpty": "未生成进路：未找到 {noRoute} 组，失败 {failed} 组，跳过 {skipped} 组",
+                "missingRouteEndTag": "【】"
+            }
+        },
+        "routeEnd": {
+            "title": "进路起终点配置",
+            "count": "共 {count} 个",
+            "empty": "暂无进路起终点",
+            "fields": {
+                "instanceID": "InstanceID",
+                "stationSchemeID": "StationSchemeID",
+                "id": "ID",
+                "bindingNodeID": "绑定节点",
+                "type": "起终点类型",
+                "segmentTag": "区间/方向标签",
+                "sidingTag": "股道/线路标签"
+            },
+            "actions": {
+                "add": "新增",
+                "refresh": "刷新",
+                "pickNode": "点选 Node",
+                "save": "保存",
+                "cancel": "取消",
+                "delete": "删除",
+                "autoConfigure": "自动配置",
+                "batchDelete": "批量删除",
+                "filter": "过滤",
+                "clearFilters": "清除过滤"
+            },
+            "states": {
+                "new": "新增",
+                "picking": "点选中"
+            },
+            "form": {
+                "newTitle": "新建进路起终点",
+                "editTitle": "当前进路起终点",
+                "emptyTitle": "未选择进路起终点"
+            },
+            "types": {
+                "stationEntrance": "车站入口",
+                "stationExit": "车站出口",
+                "stationEntranceAndExit": "车站出入口",
+                "departureSignal": "出站信号机",
+                "shuntingSignal": "调车信号机",
+                "locomotiveDepot": "机务段",
+                "locomotiveWaitingLine": "机待线",
+                "bufferStop": "车挡",
+                "others": "其他"
+            },
+            "placeholders": {
+                "autoId": "留空则自动生成"
+            },
+            "filter": {
+                "type": "按起终点类型过滤",
+                "empty": "没有符合过滤条件的进路起终点",
+                "count": "显示 {filtered}/{total} 个"
+            },
+            "messages": {
+                "selectScheme": "请先选择车站方案",
+                "pickNode": "请在图中点选一个 Node",
+                "nodePicked": "已选择 Node {nodeId}",
+                "bindingNodeRequired": "绑定节点不能为空",
+                "idRequired": "ID 不能为空",
+                "loadFailed": "加载进路起终点失败",
+                "createSuccess": "进路起终点已新增",
+                "createFailed": "新增进路起终点失败",
+                "updateSuccess": "进路起终点已更新",
+                "updateFailed": "更新进路起终点失败",
+                "deleteTitle": "删除进路起终点",
+                "deleteConfirm": "确定删除进路起终点“{id}”吗？",
+                "deleteSuccess": "进路起终点已删除",
+                "deleteFailed": "删除进路起终点失败",
+                "batchDeleteRequired": "请先勾选要删除的进路起终点",
+                "batchDeleteTitle": "批量删除进路起终点",
+                "batchDeleteConfirm": "确定删除已勾选的 {count} 个进路起终点吗？",
+                "batchDeleteSuccess": "已批量删除 {count} 个进路起终点",
+                "batchDeletePartial": "批量删除完成：成功 {deleted} 个，失败 {failed} 个",
+                "autoConfigureTitle": "自动配置进路起终点",
+                "autoConfigureConfirm": "将按进站/出站/调车信号机和车挡补齐 {count} 个进路起终点，跳过 {skipped} 个已配置或不可用位置。是否继续？",
+                "autoConfigureNoEquipment": "未找到可用于自动配置的进站、出站、调车信号机或车挡",
+                "autoConfigureNoCandidates": "没有需要新增的进路起终点，已跳过 {skipped} 个位置",
+                "autoConfigureSuccess": "自动配置完成：新增 {created} 个，跳过 {skipped} 个",
+                "autoConfigurePartial": "自动配置完成：新增 {created} 个，失败 {failed} 个，跳过 {skipped} 个"
+            }
+        },
+        "messages": {
+            "loadFailed": "加载进路设计布置图失败"
+        }
+    },
+    "operationSimulation": {
+        "views": {
+            "label": "显示模式",
+            "planar": "平面",
+            "threeDimensional": "3D",
+            "renderError": "无法初始化 3D 场景，请切换至平面视图。"
+        },
+        "playbackTitle": "仿真播放",
+        "movementSequence": "作业序列",
+        "currentRoute": "当前进路",
+        "phase": "阶段",
+        "progress": "进度",
+        "formation": "编组",
+        "carCount": "{count} 节",
+        "routeCount": "{count} 条进路",
+        "activeRoutes": "{count} 条进路进行中",
+        "waitingNext": "等待下一条进路",
+        "moving": "运行中",
+        "completed": "已完成",
+        "pending": "待开始",
+        "loadingLayout": "正在加载布置图…",
+        "emptyLayout": "暂无布置图数据",
+        "loadLayoutFailed": "加载布置图失败",
+        "loadSchemesFailed": "加载车站方案失败",
+        "train": "列车",
+        "route": "进路",
+        "time": "时间",
+        "status": "状态",
+        "trainOverlay": "作业仿真列车：当前 {count} 列"
+    },
+    "noPermission": {
+        "message": "无权限访问该页面",
+        "home": "返回首页",
+        "signIn": "去登录"
+    },
+    "course": {
+        "title": "铁路站场与枢纽课程",
+        "directory": "课程目录",
+        "emptyChapters": "暂无章节",
+        "emptySections": "暂无小节",
+        "selectContent": "请选择课程内容",
+        "loadingGuide": "正在读取学习指导…",
+        "keyPoints": "重点知识",
+        "emptyKeyPoints": "暂无重点知识",
+        "difficultPoints": "难点知识",
+        "emptyDifficultPoints": "暂无难点知识",
+        "video": "讲解视频",
+        "videoNumber": "视频 {index}",
+        "emptyVideo": "本节暂无视频",
+        "slides": "课件",
+        "page": "第 {page} 页",
+        "emptyPdf": "本节暂无 PDF",
+        "renderingSlides": "正在渲染课件…",
+        "emptyPreview": "暂无可预览内容",
+        "previousPage": "上一页",
+        "nextPage": "下一页",
+        "thumbnail": "缩略图 {page}",
+        "emptyPdfPages": "PDF 中没有可显示的页面",
+        "pdfRenderFailed": "PDF 渲染失败：{error}",
+        "quiz": {
+            "title": "习题练习",
+            "loading": "正在加载习题…",
+            "answered": "已答 {answered}/{total} 题",
+            "score": "得分 {correct}/{total}",
+            "grade": "评分并查看答案",
+            "empty": "暂无可用题目",
+            "answerPlaceholder": "请输入答案",
+            "similarity": "相似度：{percent}%",
+            "answer": "标准答案",
+            "loadFailed": "习题加载失败：{error}",
+            "correct": "正确",
+            "partial": "基本正确",
+            "wrong": "错误"
+        }
+    },
+    "frontend": {
+        "version": "版本：{version}",
+        "aboutPage": "关于 SwitchYard",
+        "bottomMenu": "底部菜单",
+        "copyName": "{name}副本",
+        "signalTypePlaceholder": "请选择信号机类型",
+        "nodePlaceholder": "请选择节点",
+        "frogNumbers": {
+            "single9": "9号单开",
+            "single12": "12号单开",
+            "symmetric6": "6号对称",
+            "symmetric65": "6.5号对称道岔"
+        },
+        "positionChange": {
+            "affected": "检测到 Position ID 变化，这将影响 {count} 个区段。是否删除受影响的区段？",
+            "confirm": "检测到 Position ID 变化，是否继续？"
+        }
+    },
+    "operationProcess": {
+        "defaults": {
+            "newTemplate": "新建作业过程模板",
+            "exampleName": "接车—停留—发车（含机车与调车协同）",
+            "exampleDescription": "五类活动示例。时刻从模板起点起算，单位为分钟；次序间隔为最小间隔。可编辑后另存为当前车站方案共享的过程模板。",
+            "trackName": "轨道 {id}",
+            "anchorName": "{name}锚",
+            "startEvent": "{name}开始",
+            "endEvent": "{name}结束",
+            "nodes": {
+                "westEntrance": "西咽喉入口",
+                "trackWest": "Ⅰ道西端",
+                "trackEast": "Ⅰ道东端",
+                "eastExit": "东咽喉出口",
+                "depotExit": "机务段出口",
+                "headshuntEnd": "牵出线端"
+            },
+            "tracks": {
+                "westThroat": "西咽喉",
+                "arrivalDeparture": "Ⅰ道（到发线）",
+                "eastThroat": "东咽喉",
+                "locomotive": "机车走行线",
+                "headshunt": "牵出线"
+            },
+            "routes": {
+                "arrival": "西咽喉 → Ⅰ道接车",
+                "departure": "Ⅰ道 → 东咽喉发车",
+                "shunting": "牵出线 → Ⅰ道调车",
+                "locomotive": "机务段 → 牵出线",
+                "dwelling": "Ⅰ道停留进路"
+            },
+            "activities": {
+                "arrival": "列车接入",
+                "dwelling": "站内停留 / 技术作业",
+                "departure": "列车发出",
+                "locomotive": "机车出段",
+                "shunting": "调车转线"
+            }
         }
     }
 }

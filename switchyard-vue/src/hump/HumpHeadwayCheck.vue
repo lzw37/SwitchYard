@@ -157,6 +157,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import HumpVelocityCurve from './HumpVelocityCurve.vue'
 import HumpTimeCurve from './HumpTimeCurve.vue'
 import { useI18n } from 'vue-i18n'
+import { getHumpMissingReferenceMessage } from '@/utils/humpMissingReference'
 
 const { t } = useI18n()
 
@@ -1109,13 +1110,12 @@ const handleExecuteHeadwayCheck = async () => {
         }
 
         if (speedProfileFailed || runningTimeFailed) {
-            if (speedProfileFailed && runningTimeFailed) {
-                ElMessage.error('检算配置已保存，但速度-距离与时间-距离曲线计算失败')
-            } else if (speedProfileFailed) {
-                ElMessage.error('检算配置已保存，但速度-距离曲线计算失败')
-            } else {
-                ElMessage.error('检算配置已保存，但时间-距离曲线计算失败')
-            }
+            const calculationError = speedProfileResult.status === 'rejected'
+                ? speedProfileResult.reason
+                : runningTimeResult.status === 'rejected'
+                    ? runningTimeResult.reason
+                    : undefined
+            ElMessage.error(getHumpMissingReferenceMessage(calculationError, 'hump.headway.messages.refreshFailed'))
             return
         }
 
@@ -1123,10 +1123,10 @@ const handleExecuteHeadwayCheck = async () => {
     } catch (error) {
         if (configurationSaved) {
             console.error('检算配置保存成功，但刷新结果失败:', error)
-            ElMessage.error('检算配置已保存，但结果刷新失败')
+            ElMessage.error(getHumpMissingReferenceMessage(error, 'hump.headway.messages.refreshFailed'))
         } else {
             console.error('保存检算配置失败:', error)
-            ElMessage.error(t('hump.headway.messages.saveConfigFailed'))
+            ElMessage.error(getHumpMissingReferenceMessage(error, 'hump.headway.messages.saveConfigFailed'))
         }
     } finally {
         headwayCheckExecuting.value = false

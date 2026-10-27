@@ -1,0 +1,422 @@
+#layout-editor-svg {
+    background-color: #31363f;
+    display: block;
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+}
+
+#layout-editor-svg text,
+#layout-editor-svg tspan {
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+}
+
+.name-selected {
+    stroke: #31363f;
+    stroke-width: 3px;
+    paint-order: stroke fill;
+}
+
+.inline-rename {
+    overflow: visible;
+}
+
+.inline-rename-content {
+    font: 13px Arial, "Microsoft YaHei", sans-serif;
+}
+
+.inline-rename-input {
+    box-sizing: border-box;
+    width: 100%;
+    height: 32px;
+    padding: 4px 8px;
+    color: #172033;
+    background: #fff;
+    border: 2px solid #409eff;
+    border-radius: 4px;
+    outline: none;
+    box-shadow: 0 2px 8px #0004;
+    font: inherit;
+    user-select: text;
+    -webkit-user-select: text;
+}
+
+.inline-rename-hint {
+    padding: 3px 4px;
+    color: #f1f5f9;
+    background: #172033;
+    border-radius: 0 0 4px 4px;
+    font-size: 11px;
+    white-space: nowrap;
+}
+
+.griddot {
+    fill: #858d9a;
+}
+
+.cursor {
+    fill: none;
+    stroke-width: 1px;
+    stroke: #fefded;
+    pointer-events: none;
+}
+
+.signal-direction-compass {
+    pointer-events: none;
+}
+
+.signal-direction-compass text {
+    fill: #fefded;
+    stroke: rgba(17, 24, 39, 0.92);
+    stroke-width: 5px;
+    paint-order: stroke fill;
+    filter: drop-shadow(0 0 3px rgba(0, 0, 0, 0.95));
+    font-family: Arial, "Microsoft YaHei", sans-serif;
+    font-size: 15px;
+    font-weight: 700;
+    text-anchor: middle;
+    dominant-baseline: middle;
+    user-select: none;
+}
+
+:global(.station-layout-free-zoom),
+:global(.station-layout-free-zoom *) {
+    cursor: crosshair !important;
+}
+
+.selection-box.free-zoom-box {
+    stroke-width: 2px;
+}
+
+.selection-box {
+    fill: rgba(64, 158, 255, 0.14);
+    stroke: #409eff;
+    stroke-width: 1px;
+    stroke-dasharray: 6, 4;
+    pointer-events: none;
+}
+
+.drawing-hint {
+    pointer-events: none;
+}
+
+.drawing-hint rect {
+    fill: rgba(17, 24, 39, 0.82);
+    stroke: rgba(254, 253, 237, 0.35);
+    stroke-width: 1px;
+}
+
+.drawing-hint text {
+    fill: #fefded;
+    font-size: 13px;
+    font-family: Arial, "Microsoft YaHei", sans-serif;
+    dominant-baseline: middle;
+    user-select: none;
+}
+
+.track {
+    stroke-width: 2px;
+    stroke: #fefded;
+}
+
+.track-temp {
+    stroke: #9cafaa;
+}
+
+.track-hit {
+    stroke-width: 4px;
+}
+
+.track-selected {
+    stroke-width: 4px;
+}
+
+.curve {
+    fill: none;
+    stroke: #ffb347;
+    stroke-width: 4px;
+    stroke-linecap: round;
+    pointer-events: none;
+}
+
+.link-arrow {
+    color: #fefded;
+    fill: #fefded;
+    stroke: none;
+    pointer-events: none;
+}
+
+.link-arrow path {
+    fill: currentColor;
+    stroke: none;
+}
+
+.link-arrow-tail-line {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2px;
+    stroke-linecap: round;
+}
+
+.link-arrow-tail-circle {
+    fill: #31363f;
+    stroke: currentColor;
+    stroke-width: 2px;
+}
+
+.link-arrow-selected {
+    color: var(--equipment-highlight-color, #e2bf6a);
+    fill: var(--equipment-highlight-color, #e2bf6a);
+}
+
+.route-highlight-layer {
+    pointer-events: none;
+}
+
+.route-highlight-line,
+.route-highlight-curve {
+    fill: none;
+    stroke: #ffd600;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    opacity: 0.95;
+}
+
+.route-highlight-node {
+    fill: #ffd600;
+    stroke: #111827;
+    stroke-width: 2px;
+    opacity: 0.95;
+}
+
+.route-highlight-arrow {
+    stroke-width: 1.5px;
+    stroke-linejoin: round;
+    opacity: 0.98;
+}
+
+.cell-name-layer {
+    pointer-events: none;
+}
+
+.cell-name {
+    stroke: rgba(17, 24, 39, 0.95);
+    stroke-width: 4px;
+    paint-order: stroke fill;
+    text-anchor: middle;
+    dominant-baseline: middle;
+    cursor: pointer;
+    pointer-events: auto;
+    user-select: none;
+}
+
+.cell-name:hover,
+.cell-name-hovered {
+    fill: #9ec7e8;
+}
+
+.trackname {
+    fill: #ffffff;
+    stroke: #31363f;
+    stroke-width: 3px;
+    paint-order: stroke;
+    font-size: 10px;
+    text-anchor: middle;
+    dominant-baseline: middle;
+    cursor: pointer;
+    user-select: none;
+}
+
+.anchor {
+    fill: #97e7e1;
+    cursor: move;
+}
+
+.crosspoint {
+    fill: greenyellow;
+}
+
+.crosspoint.rela1 {
+    fill: red;
+}
+
+.crosspoint.rela2 {
+    fill: green;
+}
+
+.crosspoint.rela3 {
+    fill: azure;
+    stroke: red;
+    stroke-width: 2px;
+}
+
+.crosspoint.rela4 {
+    stroke: blue;
+    stroke-width: 2px;
+    fill: azure;
+}
+
+.signal {
+    stroke-width: 2px;
+}
+
+.signal line {
+    stroke: white;
+}
+.signal circle {
+    stroke: black;
+}
+
+.signal ellipse,
+.signal rect,
+.signal path,
+.signal polygon,
+.signal polyline {
+    stroke: black;
+}
+
+.signal-temp {
+    opacity: 0.5;
+}
+
+.signal-selected line,
+.signal-selected circle,
+.signal-selected ellipse,
+.signal-selected rect,
+.signal-selected path,
+.signal-selected polygon,
+.signal-selected polyline {
+    stroke-width: 4px;
+    stroke: var(--equipment-highlight-color, #e2bf6a);
+}
+
+.signalname {
+    fill: white;
+    font-size: 8px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.insulationjoint line {
+    stroke: pink;
+    stroke-width: 3px;
+}
+
+.insulationjoint-selected line {
+    stroke: var(--equipment-highlight-color, #e2bf6a);
+    stroke-width: 6px;
+}
+
+.insulationjoint-temp line {
+    opacity: 0.5;
+}
+
+.bufferstop {
+    cursor: pointer;
+}
+
+.bufferstop-shape line {
+    stroke-linecap: butt;
+    pointer-events: stroke;
+}
+
+.bufferstop-selection {
+    fill: none;
+    stroke: var(--equipment-highlight-color, #e2bf6a);
+    stroke-width: 2px;
+    vector-effect: non-scaling-stroke;
+    pointer-events: none;
+}
+
+.bufferstop-temp {
+    opacity: 0.5;
+}
+
+.tips {
+    opacity: 0.3;
+}
+
+.node {
+    fill: white;
+    opacity: 0.8;
+    cursor: move;
+}
+
+.node-temp {
+    fill: yellow;
+    opacity: 0.6;
+}
+
+.node-selected {
+    fill: #e2bf6a;
+    stroke-width: 2px;
+    stroke: #b8924d;
+}
+
+.perpendicular {
+    fill: white;
+}
+
+.switchbranch {
+    stroke: aqua;
+    stroke-width: 5px;
+}
+
+.switch-selected .switchbranch {
+    stroke: var(--equipment-highlight-color, #e2bf6a);
+}
+
+.switchname {
+    fill: white;
+    stroke: #31363f;
+    stroke-width: 3px;
+    stroke-linejoin: round;
+    paint-order: stroke fill;
+    font-size: 8px;
+}
+
+.platform-temp {
+    fill: none;
+    stroke: skyblue;
+    stroke-dasharray: 10, 5;
+}
+
+.platform rect,
+.platform line {
+    fill: none;
+    stroke: skyblue;
+}
+
+.platform-selected rect,
+.platform-selected line {
+    stroke-width: 3px;
+}
+
+.platformname{
+    dominant-baseline:middle;
+    text-anchor:middle;
+    fill:white;
+    font-size: 10px;
+}
+
+.annotation {
+    cursor: pointer;
+}
+
+.annotation-text {
+    dominant-baseline: middle;
+    text-anchor: middle;
+    pointer-events: auto;
+    user-select: none;
+}
+
+.annotation-text-anchor {
+    cursor: move;
+    fill: #409eff;
+    stroke: #fefded;
+    stroke-width: 1.5px;
+}

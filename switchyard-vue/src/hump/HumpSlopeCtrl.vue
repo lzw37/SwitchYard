@@ -79,8 +79,8 @@
                         <circle class="resistance-circle resistance-shade-clickable" :cx="getX(dataPoint.x)"
                             :cy="getY(orgKineticEnergyY - dataPoint.height)" r="4"
                             @click.stop="handleResistanceShadeClick($event, dataPoint.x)" />
-                        <text v-if="showResistanceNumber" class="resistance-text" :x="getX(dataPoint.x)"
-                            :y="(getY(orgKineticEnergyY - dataPoint.height) + getY(orgKineticEnergyY)) / 2">{{
+                        <text v-if="showResistanceNumber && isSlopeControlPointX(dataPoint.x)" class="resistance-text" :x="getX(dataPoint.x)"
+                            :y="resistanceTextPositions.get(dataPoint.x) ?? ((getY(orgKineticEnergyY - dataPoint.height) + getY(orgKineticEnergyY)) / 2)">{{
                                 dataPoint.height
                             }}m</text>
                         <line class="resistance-vline" :x1="getX(dataPoint.x)"
@@ -103,14 +103,39 @@
                         :y="kineticTextPositions.get(dataPoint.x) ?? ((getY(dataPoint.result.gravitationHeight) + getY(dataPoint.result.gravitationHeight + dataPoint.result.kineticEnergyHeight)) / 2)">{{
                             formatKineticEnergyHeight(dataPoint.result.kineticEnergyHeight)
                         }}m({{ dataPoint.result.velocity }}m/s)</text>
+                    <g v-if="props.elementVisibility?.kinetic && temporaryEnergyHeightMarkers"
+                        class="temporary-energy-height-markers">
+                        <line class="temporary-slope-height-vline"
+                            :x1="temporaryEnergyHeightMarkers.x" :x2="temporaryEnergyHeightMarkers.x"
+                            :y1="temporaryEnergyHeightMarkers.slopeBaseY"
+                            :y2="temporaryEnergyHeightMarkers.slopeTopY"></line>
+                        <text class="temporary-energy-height-marker-text temporary-slope-height-text"
+                            :x="temporaryEnergyHeightMarkers.labelX" :y="temporaryEnergyHeightMarkers.slopeTextY"
+                            :text-anchor="temporaryEnergyHeightMarkers.labelAnchor">
+                            {{ temporaryEnergyHeightMarkers.slopeText }}
+                        </text>
+                        <g v-if="temporaryEnergyHeightMarkers.hasResistance">
+                            <line class="temporary-resistance-height-vline"
+                                :x1="temporaryEnergyHeightMarkers.x" :x2="temporaryEnergyHeightMarkers.x"
+                                :y1="temporaryEnergyHeightMarkers.resistanceTopY"
+                                :y2="temporaryEnergyHeightMarkers.resistanceBaseY"></line>
+                            <text class="temporary-energy-height-marker-text temporary-resistance-height-text"
+                                :x="temporaryEnergyHeightMarkers.labelX" :y="temporaryEnergyHeightMarkers.resistanceTextY"
+                                :text-anchor="temporaryEnergyHeightMarkers.labelAnchor">
+                                {{ temporaryEnergyHeightMarkers.resistanceText }}
+                            </text>
+                        </g>
+                    </g>
                     <line v-if="props.elementVisibility?.kinetic && temporaryKineticEnergyPoint" class="kinetic-vline temporary-kinetic-vline"
                         :x1="getX(temporaryKineticEnergyPoint.x)" :y1="getY(temporaryKineticEnergyPoint.gravitationHeight)"
                         :x2="getX(temporaryKineticEnergyPoint.x)"
                         :y2="getY(temporaryKineticEnergyPoint.gravitationHeight + temporaryKineticEnergyPoint.kineticEnergyHeight)"></line>
-                    <text v-if="props.elementVisibility?.kinetic && temporaryKineticEnergyPoint" class="kinetic-text temporary-kinetic-text"
-                        :x="getX(temporaryKineticEnergyPoint.x)" :y="temporaryKineticTextY">{{
-                            formatKineticEnergyHeight(temporaryKineticEnergyPoint.kineticEnergyHeight)
-                        }}m({{ formatKineticVelocity(temporaryKineticEnergyPoint.velocity) }}m/s)</text>
+                    <text v-if="props.elementVisibility?.kinetic && temporaryEnergyHeightMarkers"
+                        class="temporary-energy-height-marker-text temporary-kinetic-height-text"
+                        :x="temporaryEnergyHeightMarkers.labelX" :y="temporaryEnergyHeightMarkers.kineticTextY"
+                        :text-anchor="temporaryEnergyHeightMarkers.labelAnchor">
+                        {{ temporaryEnergyHeightMarkers.kineticText }}
+                    </text>
                 </g>
                 <g class="points">
                     <g v-for="pos in slopeLayout?.positionList || []"
@@ -180,6 +205,10 @@
             :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }">
             <div class="context-menu-item" @click.stop="deleteContextPos">{{ t('humpSlopeCtrl.contextMenu.deleteNode') }}</div>
         </div>
+        <div v-if="horizontalDragHint.visible" class="horizontal-drag-hint"
+            :style="{ left: horizontalDragHint.x + 'px', top: horizontalDragHint.y + 'px' }">
+            {{ t('humpSlopeCtrl.messages.holdAltToMoveHorizontally') }}
+        </div>
         <el-dialog v-model="showRetarderStatusDialog" :title="t('humpSlopeCtrl.dialog.retarderSettings')" width="420px"
             :close-on-click-modal="false" append-to-body>
             <div v-if="editingRetarderStatus">
@@ -247,6 +276,7 @@ type TemporaryKineticEnergyPoint = {
     x: number
     gravitationHeight: number
     kineticEnergyHeight: number
+    resistanceEnergyHeight: number | null
     velocity: number
 }
 
@@ -363,6 +393,12 @@ const showResistanceNumber = computed(() => props.elementVisibility?.resistanceN
 const showKineticNumber = computed(() => props.elementVisibility?.kineticNumber ?? true);
 const showPointHeightNumber = computed(() => props.elementVisibility?.pointHeightNumber ?? true);
 const showCursorPositionLabel = computed(() => props.elementVisibility?.cursorPositionLabel ?? true);
+const controlPointXTolerance = 1e-6;
+const slopeControlPointXs = computed(() => {
+    return (props.slopeLayout?.positionList || [])
+        .map(position => Number(position.x))
+        .filter(x => Number.isFinite(x));
+});
 const draggingId = ref<string | null>(null);
 const startMouseY = ref(0);
 const startHeight = ref(0);
@@ -376,12 +412,21 @@ const touchStartClientX = ref(0);
 const touchStartClientY = ref(0);
 const touchCurrentClientX = ref(0);
 const touchCurrentClientY = ref(0);
+const didDragChange = ref(false);
+const touchHorizontalDragActivated = ref(false);
+const horizontalDragHintShown = ref(false);
+const horizontalDragHint = ref({ visible: false, x: 0, y: 0 });
+const horizontalDragHintTimer = ref<ReturnType<typeof setTimeout> | null>(null);
 
 function notifyControlPointChanged() {
     emit('control-point-drag-end');
 }
 const touchLongPressDelay = 550;
 const touchMoveThreshold = 8;
+const touchHorizontalActivationThreshold = 12;
+const mouseHorizontalHintThreshold = 12;
+const horizontalDragHintDuration = 1400;
+const horizontalDragHintOffset = 12;
 const longPressActivatedId = ref<string | null>(null);
 const touchLongPressTriggered = ref(false);
 const contextMenu = ref<{ visible: boolean; x: number; y: number; posId: string }>({ visible: false, x: 0, y: 0, posId: '' });
@@ -391,6 +436,37 @@ function clearTouchLongPressTimer() {
         clearTimeout(touchLongPressTimer.value);
         touchLongPressTimer.value = null;
     }
+}
+
+function resetTouchLongPressState() {
+    longPressActivatedId.value = null;
+    touchLongPressTriggered.value = false;
+    touchHorizontalDragActivated.value = false;
+}
+
+function clearHorizontalDragHintTimer() {
+    if (horizontalDragHintTimer.value) {
+        clearTimeout(horizontalDragHintTimer.value);
+        horizontalDragHintTimer.value = null;
+    }
+}
+
+function hideHorizontalDragHint() {
+    clearHorizontalDragHintTimer();
+    horizontalDragHint.value.visible = false;
+}
+
+function showHorizontalDragHint(clientX: number, clientY: number) {
+    clearHorizontalDragHintTimer();
+    horizontalDragHint.value = {
+        visible: true,
+        x: Math.max(8, Math.min(window.innerWidth - 200, clientX + horizontalDragHintOffset)),
+        y: Math.max(8, Math.min(window.innerHeight - 40, clientY + horizontalDragHintOffset))
+    };
+    horizontalDragHintTimer.value = setTimeout(() => {
+        horizontalDragHint.value.visible = false;
+        horizontalDragHintTimer.value = null;
+    }, horizontalDragHintDuration);
 }
 
 function openContextMenuAt(posId: string, x: number, y: number) {
@@ -439,6 +515,10 @@ function getFlatPositionX(positionID: string): number | null {
     const position = props.flatLayout?.positionList?.find(pos => pos.id?.toString() === positionID?.toString());
     if (!position) return null;
     return Number.isFinite(position.x) ? position.x : null;
+}
+
+function isSlopeControlPointX(x: number): boolean {
+    return slopeControlPointXs.value.some(controlX => Math.abs(controlX - x) <= controlPointXTolerance);
 }
 
 function normalizeId(value: unknown): string {
@@ -577,8 +657,7 @@ function startTouchDrag(pos: { id: string; height: number; x: number }, event: T
     const touch = event.touches[0];
     if (!touch) return;
     beginDrag(pos, touch.clientX, touch.clientY, false);
-    longPressActivatedId.value = null;
-    touchLongPressTriggered.value = false;
+    resetTouchLongPressState();
     touchStartClientX.value = touch.clientX;
     touchStartClientY.value = touch.clientY;
     touchCurrentClientX.value = touch.clientX;
@@ -588,11 +667,8 @@ function startTouchDrag(pos: { id: string; height: number; x: number }, event: T
         if (!draggingId.value || dragMode.value !== 'vertical') return;
         const target = props.slopeLayout?.positionList?.find(p => p.id === draggingId.value);
         if (!target) return;
-        dragMode.value = 'horizontal';
         longPressActivatedId.value = target.id;
         touchLongPressTriggered.value = true;
-        startMouseX.value = touchCurrentClientX.value;
-        startX.value = target.x;
         clearTouchLongPressTimer();
     }, touchLongPressDelay);
     window.addEventListener('touchmove', onTouchMove, { passive: false });
@@ -602,16 +678,19 @@ function startTouchDrag(pos: { id: string; height: number; x: number }, event: T
 
 function beginDrag(pos: { id: string; height: number; x: number }, clientX: number, clientY: number, isHorizontal: boolean) {
     clearTemporaryKineticEnergyPoint();
+    closeContextMenu();
     draggingId.value = pos.id;
     currentX.value = pos.x;
     currentHeight.value = pos.height;
+    didDragChange.value = false;
+    horizontalDragHintShown.value = false;
+    startMouseX.value = clientX;
+    startMouseY.value = clientY;
     if (isHorizontal) {
         dragMode.value = 'horizontal';
-        startMouseX.value = clientX;
         startX.value = pos.x;
     } else {
         dragMode.value = 'vertical';
-        startMouseY.value = clientY;
         startHeight.value = pos.height;
     }
 }
@@ -621,15 +700,27 @@ function onMouseMove(event: MouseEvent) {
     const target = props.slopeLayout.positionList.find(p => p.id === draggingId.value);
     if (!target) return;
     if (dragMode.value === 'vertical') {
+        const deltaX = event.clientX - startMouseX.value;
         const deltaY = event.clientY - startMouseY.value;
-        const newHeight = startHeight.value - deltaY / scaleY.value;
-        target.height = Math.round(Math.max(0, newHeight) * 1000) / 1000;
-        currentHeight.value = target.height;
+        if (
+            !event.altKey
+            && !horizontalDragHintShown.value
+            && Math.abs(deltaX) >= mouseHorizontalHintThreshold
+            && Math.abs(deltaX) > Math.abs(deltaY)
+        ) {
+            horizontalDragHintShown.value = true;
+            showHorizontalDragHint(event.clientX, event.clientY);
+        }
+        const nextHeight = Math.round(Math.max(0, startHeight.value - deltaY / scaleY.value) * 1000) / 1000;
+        didDragChange.value = didDragChange.value || Math.abs(nextHeight - target.height) > 1e-6;
+        target.height = nextHeight;
+        currentHeight.value = nextHeight;
     } else if (dragMode.value === 'horizontal') {
         const deltaX = event.clientX - startMouseX.value;
-        const newX = startX.value + deltaX / scaleX.value;
-        target.x = Math.round(Math.max(0, newX) * 1000) / 1000;
-        currentX.value = target.x;
+        const nextX = Math.round(Math.max(0, startX.value + deltaX / scaleX.value) * 1000) / 1000;
+        didDragChange.value = didDragChange.value || Math.abs(nextX - target.x) > 1e-6;
+        target.x = nextX;
+        currentX.value = nextX;
     }
     updateKineticEnergyHeights(draggingId.value);  // refresh kinetic profile for dragged point
 
@@ -650,6 +741,8 @@ function onTouchMove(event: TouchEvent) {
     if (!touch) return;
     touchCurrentClientX.value = touch.clientX;
     touchCurrentClientY.value = touch.clientY;
+    const target = props.slopeLayout?.positionList?.find(p => p.id === draggingId.value);
+    if (!target) return;
 
     if (dragMode.value === 'vertical' && touchLongPressTimer.value) {
         const movedX = Math.abs(touch.clientX - touchStartClientX.value);
@@ -659,24 +752,37 @@ function onTouchMove(event: TouchEvent) {
         }
     }
 
+    if (touchLongPressTriggered.value && dragMode.value === 'vertical') {
+        const movedX = touch.clientX - touchStartClientX.value;
+        const movedY = touch.clientY - touchStartClientY.value;
+        if (
+            Math.abs(movedX) >= touchHorizontalActivationThreshold
+            && Math.abs(movedX) > Math.abs(movedY)
+        ) {
+            dragMode.value = 'horizontal';
+            touchHorizontalDragActivated.value = true;
+            touchLongPressTriggered.value = false;
+            startMouseX.value = touch.clientX;
+            startX.value = target.x;
+        }
+        return;
+    }
+
     if (dragMode.value === 'vertical') {
         const deltaY = touch.clientY - startMouseY.value;
-        const newHeight = startHeight.value - deltaY / scaleY.value;
-        const target = props.slopeLayout?.positionList?.find(p => p.id === draggingId.value);
-        if (!target) return;
-        target.height = Math.round(Math.max(0, newHeight) * 1000) / 1000;
-        currentHeight.value = target.height;
+        const nextHeight = Math.round(Math.max(0, startHeight.value - deltaY / scaleY.value) * 1000) / 1000;
+        didDragChange.value = didDragChange.value || Math.abs(nextHeight - target.height) > 1e-6;
+        target.height = nextHeight;
+        currentHeight.value = nextHeight;
     } else {
         const deltaX = touch.clientX - startMouseX.value;
-        const newX = startX.value + deltaX / scaleX.value;
-        const target = props.slopeLayout?.positionList?.find(p => p.id === draggingId.value);
-        if (!target) return;
-        target.x = Math.round(Math.max(0, newX) * 1000) / 1000;
-        currentX.value = target.x;
+        const nextX = Math.round(Math.max(0, startX.value + deltaX / scaleX.value) * 1000) / 1000;
+        didDragChange.value = didDragChange.value || Math.abs(nextX - target.x) > 1e-6;
+        target.x = nextX;
+        currentX.value = nextX;
     }
 
     updateKineticEnergyHeights(draggingId.value);
-    const target = props.slopeLayout?.positionList?.find(p => p.id === draggingId.value);
     if (target?.x === 0 && props.slopeLayout?.positionList) {
         props.slopeLayout.positionList.forEach(p => {
             if (p.id !== draggingId.value) {
@@ -691,7 +797,7 @@ function endDrag() {
     if (!finishedId) return;
 
     clearTouchLongPressTimer();
-    longPressActivatedId.value = null;
+    resetTouchLongPressState();
     window.removeEventListener('mousemove', onMouseMove);
     window.removeEventListener('mouseup', endDrag);
     window.removeEventListener('touchmove', onTouchMove);
@@ -699,11 +805,13 @@ function endDrag() {
     window.removeEventListener('touchcancel', endTouchDrag);
     // updateKineticEnergyHeights(finishedId);
     draggingId.value = null;
-    notifyControlPointChanged();
+    if (didDragChange.value) {
+        notifyControlPointChanged();
+    }
 }
 
 function endTouchDrag(event: TouchEvent) {
-    const shouldOpenContextMenu = touchLongPressTriggered.value;
+    const shouldOpenContextMenu = touchLongPressTriggered.value && !touchHorizontalDragActivated.value;
     const menuPosId = draggingId.value;
     const touch = event.changedTouches?.[0];
     const menuX = touch?.clientX ?? touchCurrentClientX.value;
@@ -910,6 +1018,72 @@ const kineticTextPositions = computed(() => {
     return map;
 });
 
+// Adjust resistance text positions by nearby vertical slots to avoid overlaps.
+const resistanceTextPositions = computed(() => {
+    const map = new Map<number, number>();
+    if (!props.resistanceEnergyHeightData) return map;
+
+    const charWidth = fontSize.value * 0.6;
+    const textHeight = fontSize.value;
+    const gap = 3;
+    const step = textHeight + gap;
+    const placed: { x1: number; x2: number; y1: number; y2: number }[] = [];
+    const chartMinY = marginTop.value + textHeight / 2;
+    const chartMaxY = svgHeight.value - marginBottom.value - textHeight / 2;
+    const offsets = [0];
+
+    for (let i = 1; i <= 20; i += 1) {
+        offsets.push(-i * step, i * step);
+    }
+
+    const visiblePoints = props.resistanceEnergyHeightData
+        .filter(dataPoint => Number.isFinite(dataPoint.x) && Number.isFinite(dataPoint.height) && isSlopeControlPointX(dataPoint.x))
+        .slice()
+        .sort((a, b) => a.x - b.x);
+
+    for (const dataPoint of visiblePoints) {
+        const text = `${dataPoint.height}m`;
+        const width = Math.max(12, text.length * charWidth);
+        const cx = getX(dataPoint.x);
+        const topY = getY(orgKineticEnergyY.value - dataPoint.height);
+        const bottomY = getY(orgKineticEnergyY.value);
+        const baseY = Math.max(chartMinY, Math.min(chartMaxY, (topY + bottomY) / 2));
+        const segmentMinY = Math.max(chartMinY, Math.min(topY, bottomY) + textHeight / 2);
+        const segmentMaxY = Math.min(chartMaxY, Math.max(topY, bottomY) - textHeight / 2);
+
+        const getRect = (y: number) => ({
+            x1: cx - width / 2,
+            x2: cx + width / 2,
+            y1: y - textHeight / 2 - gap / 2,
+            y2: y + textHeight / 2 + gap / 2
+        });
+        const overlaps = (rect: { x1: number; x2: number; y1: number; y2: number }) =>
+            placed.some(p => !(p.x2 < rect.x1 || p.x1 > rect.x2 || p.y2 < rect.y1 || p.y1 > rect.y2));
+        const findOpenSlot = (minY: number, maxY: number) => {
+            for (const offset of offsets) {
+                const y = baseY + offset;
+                if (y < minY || y > maxY) continue;
+                if (!overlaps(getRect(y))) return y;
+            }
+            return null;
+        };
+
+        let ty = segmentMinY <= segmentMaxY ? findOpenSlot(segmentMinY, segmentMaxY) : null;
+        if (ty === null) {
+            ty = findOpenSlot(chartMinY, chartMaxY);
+        }
+        if (ty === null) {
+            ty = baseY;
+        }
+
+        const textY = Math.round(ty * 1000) / 1000;
+        map.set(dataPoint.x, textY);
+        placed.push(getRect(textY));
+    }
+
+    return map;
+});
+
 const resistancePoints = computed(() => {
     if (!props.resistanceEnergyHeightData) return '';
     return props.resistanceEnergyHeightData.map(dataPoint => {
@@ -932,6 +1106,19 @@ type CurveSamplePoint = {
     x: number
     value: number
 }
+
+const resistanceEnergyHeightSeries = computed<CurveSamplePoint[]>(() => {
+    if (!props.resistanceEnergyHeightData?.length) return [];
+
+    return props.resistanceEnergyHeightData
+        .filter(dataPoint => Number.isFinite(dataPoint.x))
+        .map(dataPoint => ({
+            x: dataPoint.x,
+            value: Number(dataPoint.height)
+        }))
+        .filter(point => Number.isFinite(point.value))
+        .sort((a, b) => a.x - b.x);
+});
 
 type RetarderBreakingHeightLabel = {
     key: string
@@ -1133,7 +1320,7 @@ const temporaryKineticTextY = computed(() => {
     const charWidth = fontSize.value * 0.6;
     const textHeight = fontSize.value;
     const step = textHeight + 4;
-    const text = `${formatKineticEnergyHeight(dataPoint.kineticEnergyHeight)}m(${formatKineticVelocity(dataPoint.velocity)}m/s)`;
+    const text = `${t('humpSlopeCtrl.labels.kineticEnergyHeight')} ${formatKineticEnergyHeight(dataPoint.kineticEnergyHeight)}m(${formatKineticVelocity(dataPoint.velocity)}m/s)`;
     const width = Math.max(12, text.length * charWidth);
     const cx = getX(dataPoint.x);
     const baseY = (getY(dataPoint.gravitationHeight) + getY(dataPoint.gravitationHeight + dataPoint.kineticEnergyHeight)) / 2;
@@ -1169,6 +1356,43 @@ const temporaryKineticTextY = computed(() => {
     }
 
     return Math.round(Math.max(marginTop.value + textHeight, ty) * 1000) / 1000;
+});
+
+const temporaryEnergyHeightMarkers = computed(() => {
+    const dataPoint = temporaryKineticEnergyPoint.value;
+    if (!dataPoint) return null;
+
+    const x = getX(dataPoint.x);
+    const labelOffset = 8;
+    const labelAnchor = x + 120 <= svgWidth.value - marginRight.value ? 'start' : 'end';
+    const labelX = labelAnchor === 'start' ? x + labelOffset : x - labelOffset;
+    const clampTextY = (y: number) => Math.max(
+        marginTop.value + fontSize.value,
+        Math.min(svgHeight.value - marginBottom.value - 4, y)
+    );
+    const slopeTopY = getY(dataPoint.gravitationHeight);
+    const slopeBaseY = getY(0);
+    const resistanceHeight = dataPoint.resistanceEnergyHeight;
+    const hasResistance = resistanceHeight !== null && Number.isFinite(resistanceHeight);
+    const resistanceTopY = hasResistance ? getY(orgKineticEnergyY.value - resistanceHeight) : 0;
+    const resistanceBaseY = hasResistance ? getY(orgKineticEnergyY.value) : 0;
+
+    return {
+        x,
+        labelX,
+        labelAnchor,
+        slopeTopY,
+        slopeBaseY,
+        kineticTextY: temporaryKineticTextY.value,
+        kineticText: `${t('humpSlopeCtrl.labels.kineticEnergyHeight')} ${formatKineticEnergyHeight(dataPoint.kineticEnergyHeight)}m(${formatKineticVelocity(dataPoint.velocity)}m/s)`,
+        slopeTextY: clampTextY((slopeTopY + slopeBaseY) / 2),
+        slopeText: `${t('humpSlopeCtrl.labels.slopeHeight')} ${formatKineticEnergyHeight(dataPoint.gravitationHeight)}m`,
+        hasResistance,
+        resistanceTopY,
+        resistanceBaseY,
+        resistanceTextY: hasResistance ? clampTextY((resistanceTopY + resistanceBaseY) / 2) : 0,
+        resistanceText: hasResistance ? `${t('humpSlopeCtrl.labels.resistanceEnergyHeight')} ${formatKineticEnergyHeight(resistanceHeight)}m` : ''
+    };
 });
 
 const retarderBreakingHeightLabels = computed<RetarderBreakingHeightLabel[]>(() => {
@@ -1328,6 +1552,7 @@ function handleTemporaryKineticAreaClick(event: MouseEvent) {
 
     const gravitationHeight = getSlopeHeightAtX(x);
     const breakingDisplayHeight = interpolateSeriesValue(breakingDisplaySeries.value, x);
+    const resistanceEnergyHeight = interpolateSeriesValue(resistanceEnergyHeightSeries.value, x);
     if (gravitationHeight === null || breakingDisplayHeight === null) return;
 
     const rawKineticEnergyHeight = breakingDisplayHeight - gravitationHeight;
@@ -1341,6 +1566,7 @@ function handleTemporaryKineticAreaClick(event: MouseEvent) {
         x: Math.round(x * 1000) / 1000,
         gravitationHeight: Math.round(gravitationHeight * 1000) / 1000,
         kineticEnergyHeight: Math.round(rawKineticEnergyHeight * 1000) / 1000,
+        resistanceEnergyHeight: resistanceEnergyHeight === null ? null : Math.round(Math.max(0, resistanceEnergyHeight) * 1000) / 1000,
         velocity: Math.round(Math.sqrt(2 * g * rawKineticEnergyHeight) * 100) / 100
     };
 }
@@ -1478,6 +1704,7 @@ watch(() => props.elementVisibility?.kinetic, (visible) => {
 
 onBeforeUnmount(() => {
     clearTouchLongPressTimer();
+    hideHorizontalDragHint();
     window.removeEventListener('mousemove', onMouseMove);
     window.removeEventListener('mouseup', endDrag);
     window.removeEventListener('touchmove', onTouchMove);
@@ -1535,6 +1762,22 @@ defineExpose({
     stroke-width: 1px;
     opacity: 0.6;
     pointer-events: none;
+}
+
+.horizontal-drag-hint {
+    position: fixed;
+    z-index: 3000;
+    max-width: 240px;
+    padding: 6px 10px;
+    border: 1px solid rgba(31, 42, 68, 0.18);
+    border-radius: 4px;
+    background: rgba(31, 42, 68, 0.94);
+    color: #ffffff;
+    font-size: 13px;
+    line-height: 1.4;
+    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.18);
+    pointer-events: none;
+    white-space: nowrap;
 }
 
 .cursor-slope-label-caption {
@@ -1764,12 +2007,49 @@ defineExpose({
 }
 
 .temporary-kinetic-vline,
-.temporary-kinetic-text {
+.temporary-kinetic-height-text {
     opacity: 0.9;
 }
 
 .temporary-kinetic-vline {
+    stroke-width: 2px;
     stroke-dasharray: 4 2;
+}
+
+.temporary-slope-height-vline {
+    stroke: darkred;
+    stroke-width: 2px;
+    stroke-dasharray: 4 2;
+    opacity: 0.85;
+    pointer-events: none;
+}
+
+.temporary-resistance-height-vline {
+    stroke: #4988C4;
+    stroke-width: 2px;
+    stroke-dasharray: 4 2;
+    opacity: 0.85;
+    pointer-events: none;
+}
+
+.temporary-energy-height-marker-text {
+    font-size: 12px;
+    font-weight: 600;
+    dominant-baseline: middle;
+    user-select: none;
+    pointer-events: none;
+}
+
+.temporary-slope-height-text {
+    fill: darkred;
+}
+
+.temporary-resistance-height-text {
+    fill: #306fa8;
+}
+
+.temporary-kinetic-height-text {
+    fill: #016B61;
 }
 
 .addpointbar {

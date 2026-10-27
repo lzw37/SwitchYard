@@ -22,7 +22,7 @@
                         </el-select>
                         <el-button type="primary" size="small" @click="showConditionManager = true">...</el-button>
                     </div>
-                    <el-button class="execute-btn" type="primary" size="small" @click="executeCalculation"
+                    <el-button class="execute-btn" type="primary" size="small" @click="executeCalculation()"
                         :loading="calculationExecuting" :disabled="calculationExecuting">
                         {{ calculationExecuting ? t('humpSlopeDesigner.calculation.executing') :
                             t('humpSlopeDesigner.calculation.executeButton') }}
@@ -94,7 +94,7 @@
             </span>
             <span class="condition-item">
                 <span class="condition-label">{{ t('humpSlopeDesigner.airDensity') }}</span>
-                <span class="condition-value">{{ currentCalculateCondition.airDensity }}kg/m³</span>
+                <span class="condition-value">{{ currentCalculateCondition.airDensity }} {{ t('units.kg_s2_m4') }}</span>
             </span>
             <span class="condition-item">
                 <span class="condition-label">{{ t('humpSlopeDesigner.temperature') }}</span>
@@ -112,11 +112,17 @@
                 @wheel-scale-x="handleWheelScaleX" @update-retarder-status-list="handleInlineRetarderStatusUpdate"
                 @resistance-click="handleResistanceClick"
                 @control-point-drag-end="handleControlPointDragEnd" />
+            <div v-if="shouldShowCreateCalculationNotice" class="empty-calculation-condition-notice">
+                {{ t('humpSlopeDesigner.createCondition') }}
+            </div>
+            <div v-if="isCurrentHumpSchemeEmpty" class="empty-slope-layout-notice">
+                {{ t('humpSlopeDesigner.messages.emptyHumpScheme') }}
+            </div>
             <HumpSlopeSketchBlock ref="humpSlopeSketchBlockRef" v-model:slope-layout="slopeLayout" style="height:auto"
                 :global-scale-x="globalScaleX" :global-cursor-x="globalCursorX"
                 :horizontal-scroll-left="horizontalScrollLeft" @updateGlobalCursorX="updateGlobalCursorX"
                 @horizontal-scroll="syncHorizontalScroll" />
-            <HumpLayoutCtrl ref="humpLayoutCtrlRef" v-model:flat-layout="flatLayout" :is-toolbar-display="false"
+            <HumpLayoutCtrl v-if="flatLayout" ref="humpLayoutCtrlRef" v-model:flat-layout="flatLayout" :is-toolbar-display="false"
                 style="height:auto" :global-scale-x="globalScaleX" :global-cursor-x="globalCursorX"
                 @update:global-cursor-x="updateGlobalCursorX" @horizontal-scroll="syncHorizontalScroll" />
         </div>
@@ -158,7 +164,7 @@
                 <el-tabs v-model="activeTab" @tab-click="handleTabClick">
                     <el-tab-pane :label="t('humpSlopeDesigner.positionPoints')" name="vposition">
                         <el-table :data="slopeLayout?.positionList || []" style="width: 100%">
-                            <el-table-column prop="id" :label="t('humpSlopeDesigner.table.calculationConditionID')"
+                            <el-table-column prop="id" :label="t('humpSlopeDesigner.table.positionID')"
                                 width="100"></el-table-column>
                             <el-table-column prop="x" :label="t('humpSlopeDesigner.positionX')" width="140">
                                 <template #default="{ row }">
@@ -190,20 +196,65 @@
                                 width="120"></el-table-column>
                         </el-table>
                     </el-tab-pane>
+                    <el-tab-pane :label="t('humpSlopeDesigner.energyHeight')" name="energyHeight">
+                        <el-table :data="energyHeightTableRows" class="energy-height-table" style="width: 100%">
+                            <el-table-column prop="positionID" :label="t('humpSlopeDesigner.energyHeightTable.positionID')"
+                                width="110"></el-table-column>
+                            <el-table-column :label="t('humpSlopeDesigner.energyHeightTable.positionX')"
+                                width="115">
+                                <template #default="{ row }">
+                                    {{ formatEnergyTableNumber(row.x) }}
+                                </template>
+                            </el-table-column>
+                            <el-table-column :label="t('humpSlopeDesigner.energyHeightTable.height')" width="110">
+                                <template #default="{ row }">
+                                    {{ formatEnergyTableNumber(row.height) }}
+                                </template>
+                            </el-table-column>
+                            <el-table-column :label="t('humpSlopeDesigner.energyHeightTable.resistanceEnergyHeight')"
+                                width="130">
+                                <template #default="{ row }">
+                                    {{ formatEnergyTableNumber(row.resistanceEnergyHeight) }}
+                                </template>
+                            </el-table-column>
+                            <el-table-column :label="t('humpSlopeDesigner.energyHeightTable.kineticEnergyHeight')"
+                                width="120">
+                                <template #default="{ row }">
+                                    {{ formatEnergyTableNumber(row.kineticEnergyHeight) }}
+                                </template>
+                            </el-table-column>
+                            <el-table-column :label="t('humpSlopeDesigner.energyHeightTable.instantaneousVelocity')"
+                                width="170">
+                                <template #default="{ row }">
+                                    {{ formatEnergyTableNumber(row.velocity, 2) }}
+                                </template>
+                            </el-table-column>
+                        </el-table>
+                    </el-tab-pane>
                 </el-tabs>
             </div>
         </div>
-        <div class="side-menu-bottom">BOTTOM MENU</div>
+        <div class="side-menu-bottom">{{ t('frontend.bottomMenu') }}</div>
 
         <!-- 阻力能高分项浮窗 -->
         <div v-if="resistanceDetailPopover.visible" class="resistance-detail-popover"
             :style="{ left: resistanceDetailPopover.x + 'px', top: resistanceDetailPopover.y + 'px' }"
             @click.stop>
             <div class="resistance-detail-header">
-                <span class="resistance-detail-title">{{ t('humpSlopeDesigner.resistanceDetail.title', { x: resistanceDetailPopover.detail?.x ?? '-' }) }}</span>
+                <span class="resistance-detail-title">{{ t('humpSlopeDesigner.resistanceDetail.title') }}</span>
                 <span class="resistance-detail-close" @click="closeResistanceDetail">×</span>
             </div>
-            <div class="resistance-detail-body" v-if="resistanceDetailPopover.detail">
+            <div class="resistance-detail-x-editor">
+                <span class="resistance-detail-label">x=</span>
+                <el-input-number v-model="resistanceDetailXInput" class="resistance-detail-x-input" size="small"
+                    :controls="false" :precision="3" :min="0" @keydown.enter.prevent="confirmResistanceDetailX" />
+                <span class="resistance-detail-unit">m</span>
+                <el-button size="small" type="primary" :loading="resistanceDetailLoading"
+                    :disabled="!isResistanceDetailXValid" @click="confirmResistanceDetailX">
+                    {{ t('humpSlopeDesigner.buttons.confirm') }}
+                </el-button>
+            </div>
+            <div class="resistance-detail-body" v-if="resistanceDetailPopover.detail && !resistanceDetailLoading">
                 <div class="resistance-detail-row">
                     <span class="resistance-detail-label">{{ t('humpSlopeDesigner.resistanceDetail.total') }}</span>
                     <span class="resistance-detail-value resistance-detail-total">
@@ -299,7 +350,7 @@
 
         <!-- 计算条件管理对话框 -->
         <el-dialog v-model="showConditionManager" :title="t('humpSlopeDesigner.dialog.conditionManagement')" width="90%"
-            :close-on-click-modal="false" @open="loadDropdownData">
+            :close-on-click-modal="false" @open="loadDropdownData" @closed="handleConditionManagerClosed">
             <div style="margin-bottom: 16px;">
                 <el-button type="primary" @click="handleAddCalculation">{{ t('humpSlopeDesigner.buttons.addCondition')
                     }}</el-button>
@@ -442,11 +493,12 @@
 <script setup lang="ts">
 import HumpSlopeCtrl from './HumpSlopeCtrl.vue';
 import HumpSlopeSketchBlock from './HumpSlopeSketchBlock.vue';
-import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import HumpLayoutCtrl from './HumpLayoutCtrl.vue';
 import axios from '@/utils/axios';
+import { getHumpMissingReferenceMessage } from '@/utils/humpMissingReference';
 import { FlatLayout, SlopeLayout, CurveDirections } from './humplayoutctrl';
 
 // 定义 props
@@ -508,6 +560,38 @@ type BreakingEnergyHeightPoint = {
     display: boolean
 }
 
+type KineticEnergyHeightResult = {
+    positionID?: string
+    PositionID?: string
+    orgKineticEnergyHeight?: number
+    OrgKineticEnergyHeight?: number
+    gravitationHeight?: number
+    GravitationHeight?: number
+    resistanceHeight?: number
+    ResistanceHeight?: number
+    breakingHeight?: number
+    BreakingHeight?: number
+    kineticEnergyHeight?: number
+    KineticEnergyHeight?: number
+    velocity?: number
+    Velocity?: number
+}
+
+type KineticEnergyHeightPoint = {
+    x: number
+    X?: number
+    result: KineticEnergyHeightResult
+}
+
+type EnergyHeightTableRow = {
+    positionID: string
+    x: number
+    height: number
+    resistanceEnergyHeight: number | null
+    kineticEnergyHeight: number | null
+    velocity: number | null
+}
+
 const humpSchemes = ref<HumpScheme[]>([])
 const currentHumpSchemeID = ref("");
 
@@ -556,6 +640,8 @@ const getCalculationDisplayLabel = (calculation: HumpCalculation) => {
 // 方案管理相关状态
 const showSchemeManager = ref(false)
 const showConditionManager = ref(false)
+const conditionManagerRefreshPending = ref(false)
+const suppressCalculationSelectionReload = ref(false)
 const tableLoading = ref(false)
 const editingIndex = ref(-1)
 const editingScheme = ref<HumpScheme>({ id: '', instanceID: '', name: '' })
@@ -621,7 +707,7 @@ function handleWheelScaleX(payload: { scaleX: number, scrollLeft: number }) {
 }
 
 const resistanceEnergyHeightData = ref<{ x: number, height: number }[] | null>(null);
-const kineticEnergyHeightData = ref<{ x: number, result: any }[] | null>(null);
+const kineticEnergyHeightData = ref<KineticEnergyHeightPoint[] | null>(null);
 const breakingEnergyHeightData = ref<BreakingEnergyHeightPoint[] | null>(null);
 
 const selectedCondition = ref('condition1');
@@ -647,6 +733,107 @@ const clearEnergyHeightData = () => {
     kineticEnergyHeightData.value = null
     breakingEnergyHeightData.value = null
     closeResistanceDetail()
+}
+
+function getObjectValue(source: unknown, ...keys: string[]): unknown {
+    if (!source || typeof source !== 'object') return undefined
+    const record = source as Record<string, unknown>
+    for (const key of keys) {
+        if (record[key] !== undefined && record[key] !== null) {
+            return record[key]
+        }
+    }
+    return undefined
+}
+
+function normalizeTableID(value: unknown): string {
+    return value === undefined || value === null ? '' : String(value)
+}
+
+function toFiniteNumberOrNull(value: unknown): number | null {
+    if (value === undefined || value === null || value === '') return null
+    const numericValue = Number(value)
+    return Number.isFinite(numericValue) ? numericValue : null
+}
+
+function getKineticResultNumber(result: KineticEnergyHeightResult | undefined, ...keys: string[]): number | null {
+    return toFiniteNumberOrNull(getObjectValue(result, ...keys))
+}
+
+function findKineticEnergyPoint(positionPointID: string, x: unknown): KineticEnergyHeightPoint | undefined {
+    const data = kineticEnergyHeightData.value || []
+    const idMatchedPoint = data.find(point => {
+        const pointPositionID = normalizeTableID(getObjectValue(point.result, 'positionID', 'PositionID'))
+        return pointPositionID !== '' && pointPositionID === positionPointID
+    })
+    if (idMatchedPoint) return idMatchedPoint
+
+    const targetX = toFiniteNumberOrNull(x)
+    if (targetX === null) return undefined
+
+    return data.find(point => {
+        const pointX = toFiniteNumberOrNull(getObjectValue(point, 'x', 'X'))
+        return pointX !== null && Math.abs(pointX - targetX) < 1e-6
+    })
+}
+
+const energyHeightTableRows = computed<EnergyHeightTableRow[]>(() => {
+    return (slopeLayout.value?.positionList || []).map(position => {
+        const positionPointID = normalizeTableID(position.id)
+        const kineticPoint = findKineticEnergyPoint(positionPointID, position.x)
+        const result = kineticPoint?.result
+        const positionID = normalizeTableID(getObjectValue(result, 'positionID', 'PositionID')) || positionPointID
+
+        return {
+            positionID,
+            x: toFiniteNumberOrNull(position.x) ?? 0,
+            height: toFiniteNumberOrNull(position.height) ?? 0,
+            resistanceEnergyHeight: getKineticResultNumber(result, 'resistanceHeight', 'ResistanceHeight'),
+            kineticEnergyHeight: getKineticResultNumber(result, 'kineticEnergyHeight', 'KineticEnergyHeight'),
+            velocity: getKineticResultNumber(result, 'velocity', 'Velocity')
+        }
+    })
+})
+
+const isCurrentHumpSchemeEmpty = computed(() => {
+    if (!currentHumpSchemeID.value || !slopeLayout.value) return false
+    return getSlopeControlPointCount() <= 1
+})
+
+const shouldShowCreateCalculationNotice = computed(() => {
+    return Boolean(
+        props.selectedInstanceId &&
+        currentHumpSchemeID.value &&
+        !handlingSchemeSelectionChange.value &&
+        humpCalculations.value.length === 0
+    )
+})
+
+function getSlopeControlPointCount() {
+    return Array.isArray(slopeLayout.value?.positionList) ? slopeLayout.value.positionList.length : 0
+}
+
+function shouldSkipCalculationForEmptyScheme(options: { notify?: boolean } = {}) {
+    if (!currentHumpSchemeID.value || getSlopeControlPointCount() > 1) {
+        return false
+    }
+
+    if (options.notify) {
+        ElMessage.warning({
+            message: t('humpSlopeDesigner.messages.emptyHumpScheme'),
+            duration: 2500
+        })
+    }
+    clearEnergyHeightData()
+    calculationExecuting.value = false
+    return true
+}
+
+function formatEnergyTableNumber(value: unknown, precision = 3): string {
+    if (value === undefined || value === null || value === '') return '--'
+    const numericValue = Number(value)
+    if (!Number.isFinite(numericValue)) return '--'
+    return numericValue.toFixed(precision)
 }
 
 const setAllEnergyLinesVisible = async (visible: boolean) => {
@@ -737,7 +924,9 @@ const elementVisibility = computed(() => {
 });
 
 // 加载纵断面设计数据
-const loadSlopeLayout = async () => {
+const loadSlopeLayout = async (options: { showErrorMessage?: boolean } = {}) => {
+    const { showErrorMessage = true } = options
+
     if (!props.selectedInstanceId || !currentHumpSchemeID.value) {
         slopeLayout.value = null
         return
@@ -751,11 +940,19 @@ const loadSlopeLayout = async () => {
             }
         })
         if (response.data) {
-            slopeLayout.value = response.data as SlopeLayout
+            const layout = response.data as SlopeLayout
+            layout.positionList = layout.positionList || []
+            layout.positionSegmentList = layout.positionSegmentList || []
+            slopeLayout.value = layout
             console.log('Slope layout loaded:', slopeLayout.value)
+        } else {
+            slopeLayout.value = new SlopeLayout()
         }
     } catch (error) {
         console.error('加载纵断面设计数据失败:', error)
+        if (showErrorMessage) {
+            ElMessage.error(getHumpMissingReferenceMessage(error, 'humpSlopeDesigner.messages.calculationUnknownError'))
+        }
         slopeLayout.value = null
     }
 }
@@ -862,6 +1059,9 @@ async function runCurrentEnergyHeightCalculation() {
     if (!currentCalculation || !props.selectedInstanceId || !currentHumpSchemeID.value || !currentHumpCalculationID.value) {
         return false
     }
+    if (shouldSkipCalculationForEmptyScheme()) {
+        return false
+    }
 
     const requestData = buildEnergyHeightRequestData(currentCalculation)
     console.log('执行驼峰计算，请求参数:', requestData)
@@ -893,6 +1093,12 @@ async function recalculateAndShowAllEnergyLines(options: { hideFirst?: boolean }
         }
         return
     }
+    if (shouldSkipCalculationForEmptyScheme()) {
+        if (refreshSequence === energyHeightRefreshSequence) {
+            calculationExecuting.value = false
+        }
+        return
+    }
 
     try {
         calculationExecuting.value = true
@@ -905,7 +1111,7 @@ async function recalculateAndShowAllEnergyLines(options: { hideFirst?: boolean }
         await showAllEnergyLinesAfterRecalculation()
     } catch (error: any) {
         console.error('自动刷新能高线失败:', error)
-        const errorMessage = error.response?.data?.message || error.message || t('humpSlopeDesigner.messages.calculationUnknownError')
+        const errorMessage = getHumpMissingReferenceMessage(error, 'humpSlopeDesigner.messages.calculationUnknownError')
         ElMessage.error(`${t('humpSlopeDesigner.messages.calculationFailed')}: ${errorMessage}`)
     } finally {
         if (refreshSequence === energyHeightRefreshSequence) {
@@ -940,6 +1146,7 @@ async function loadResistanceEnergyHeight() {
         }
     } catch (error) {
         console.error("加载阻力能高度数据失败:", error);
+        ElMessage.error(getHumpMissingReferenceMessage(error, 'humpSlopeDesigner.messages.calculationUnknownError'))
     }
 }
 
@@ -996,6 +1203,14 @@ const resistanceDetailPopover = ref<{
     y: number
     detail: ResistanceEnergyHeightDetailDto | null
 }>({ visible: false, x: 0, y: 0, detail: null })
+const resistanceDetailXInput = ref<number | undefined>(undefined)
+const resistanceDetailLoading = ref(false)
+let resistanceDetailRequestSequence = 0
+
+const isResistanceDetailXValid = computed(() => {
+    const x = Number(resistanceDetailXInput.value)
+    return Number.isFinite(x) && x >= 0
+})
 
 function formatHeight(value: unknown): string {
     const v = Number(value)
@@ -1012,6 +1227,9 @@ function formatNumber(value: unknown): string {
 }
 
 function closeResistanceDetail() {
+    resistanceDetailRequestSequence += 1
+    resistanceDetailXInput.value = undefined
+    resistanceDetailLoading.value = false
     resistanceDetailPopover.value = { visible: false, x: 0, y: 0, detail: null }
 }
 
@@ -1074,13 +1292,58 @@ const curveFormulaParams = computed(() => {
     }
 })
 
+async function loadResistanceEnergyHeightDetail(xValue: number, options: { closeOnError?: boolean } = {}) {
+    const x = Number(xValue)
+    if (!Number.isFinite(x) || x < 0) return
+
+    if (!props.selectedInstanceId || !currentHumpSchemeID.value || !currentHumpCalculationID.value) {
+        ElMessage.warning(t('humpSlopeDesigner.resistanceDetail.messages.selectFirst'))
+        return
+    }
+    const currentCalculation = getCurrentCalculation()
+    if (!currentCalculation) return
+
+    const requestSequence = ++resistanceDetailRequestSequence
+    resistanceDetailLoading.value = true
+
+    try {
+        const response = await axios.post(`/hump/getresistanceenergyheightdetail`, buildEnergyHeightLineParams(currentCalculation), {
+            params: { x }
+        })
+        if (requestSequence !== resistanceDetailRequestSequence || !resistanceDetailPopover.value.visible) return
+        if (response.data) {
+            const detail = response.data as ResistanceEnergyHeightDetailDto
+            resistanceDetailPopover.value.detail = detail
+            const detailX = Number(detail.x)
+            resistanceDetailXInput.value = Number.isFinite(detailX) ? detailX : x
+        }
+    } catch (error) {
+        console.error('Failed to load resistance energy height detail:', error)
+        ElMessage.error(getHumpMissingReferenceMessage(error, 'humpSlopeDesigner.resistanceDetail.messages.loadDetailFailed'))
+        if (options.closeOnError) {
+            closeResistanceDetail()
+        }
+    } finally {
+        if (requestSequence === resistanceDetailRequestSequence) {
+            resistanceDetailLoading.value = false
+        }
+    }
+}
+
+async function confirmResistanceDetailX() {
+    if (!isResistanceDetailXValid.value || resistanceDetailLoading.value) return
+    await loadResistanceEnergyHeightDetail(Number(resistanceDetailXInput.value))
+}
+
 function handleResistanceClick(payload: { x: number, clientX: number, clientY: number }) {
     if (!props.selectedInstanceId || !currentHumpSchemeID.value || !currentHumpCalculationID.value) {
         ElMessage.warning(t('humpSlopeDesigner.resistanceDetail.messages.selectFirst'))
         return
     }
-    const currentCalculation = humpCalculations.value.find(calc => calc.id === currentHumpCalculationID.value)
+    const currentCalculation = getCurrentCalculation()
     if (!currentCalculation) return
+    const x = Number(payload.x)
+    if (!Number.isFinite(x) || x < 0) return
 
     // 弹出位置：相对视口的固定坐标。向右下方稍微偏移以避免遮挡光标点。
     const popoverWidth = 320
@@ -1097,31 +1360,10 @@ function handleResistanceClick(payload: { x: number, clientX: number, clientY: n
         }
     }
 
+    resistanceDetailXInput.value = Math.round(x * 1000) / 1000
     resistanceDetailPopover.value = { visible: true, x: left, y: top, detail: null }
 
-    const requestBody = {
-        instanceID: props.selectedInstanceId,
-        humpSchemeID: currentHumpSchemeID.value,
-        id: currentCalculation.id,
-        slopeLineID: currentCalculation.slopeLineID,
-        wagonTypeName: currentCalculation.wagonType,
-        operationConditionID: currentCalculation.operationConditionID,
-        retarderStatusID: null,
-        retarderStatusList: currentCalculation.retarderStatusList || [],
-        wagon: { typeName: currentCalculation.wagonType }
-    }
-
-    axios.post(`/hump/getresistanceenergyheightdetail`, requestBody, {
-        params: { x: payload.x }
-    }).then(response => {
-        if (response.data) {
-            resistanceDetailPopover.value.detail = response.data as ResistanceEnergyHeightDetailDto
-        }
-    }).catch(error => {
-        console.error('加载阻力能高分项明细失败:', error)
-        ElMessage.error(t('humpSlopeDesigner.resistanceDetail.messages.loadDetailFailed'))
-        closeResistanceDetail()
-    })
+    void loadResistanceEnergyHeightDetail(x, { closeOnError: true })
 }
 
 // 加载动能高线
@@ -1146,10 +1388,11 @@ async function loadKineticEnergyHeight() {
         if (!isCurrentEnergyHeightRequest(requestKey)) return
         if (response.data) {
             console.log('Kinetic energy height data loaded:', response.data);
-            kineticEnergyHeightData.value = response.data as { x: number, result: any }[];
+            kineticEnergyHeightData.value = response.data as KineticEnergyHeightPoint[];
         }
     } catch (error) {
         console.error("加载动能高度数据失败:", error);
+        ElMessage.error(getHumpMissingReferenceMessage(error, 'humpSlopeDesigner.messages.calculationUnknownError'))
     }
 }
 
@@ -1204,6 +1447,7 @@ async function loadBreakingEnergyHeight() {
         console.log('Breaking energy height data loaded:', breakingEnergyHeightData.value);
     } catch (error) {
         console.error("Failed to load breaking energy height data:", error);
+        ElMessage.error(getHumpMissingReferenceMessage(error, 'humpSlopeDesigner.messages.calculationUnknownError'))
     }
 }
 
@@ -1305,6 +1549,64 @@ const loadHumpCalculations = async (options: { preserveSelection?: boolean, relo
     }
 }
 
+// 弹窗内改动计算条件时，延后到关闭弹窗后统一刷新图形和能高数据。
+const reloadHumpCalculationsWithoutSelectionSideEffects = async (
+    options: { preserveSelection?: boolean, reloadDropdowns?: boolean } = {}
+) => {
+    suppressCalculationSelectionReload.value = true
+    try {
+        await loadHumpCalculations(options)
+        await nextTick()
+    } finally {
+        suppressCalculationSelectionReload.value = false
+    }
+}
+
+const clearCurrentCalculationDependentData = () => {
+    flatLayout.value = null
+    clearEnergyHeightData()
+    currentCalculateCondition.value = defaultCalculateCondition()
+    calculationExecuting.value = false
+}
+
+const refreshCurrentCalculationOperations = async (options: {
+    reloadCalculations?: boolean
+    preserveSelection?: boolean
+    reloadDropdowns?: boolean
+    hideFirst?: boolean
+} = {}) => {
+    const {
+        reloadCalculations = false,
+        preserveSelection = true,
+        reloadDropdowns = true,
+        hideFirst = true
+    } = options
+
+    invalidateEnergyHeightRefresh()
+    if (hideFirst) {
+        await hideAllEnergyLinesForRecalculation()
+    }
+
+    if (reloadCalculations) {
+        await reloadHumpCalculationsWithoutSelectionSideEffects({
+            preserveSelection,
+            reloadDropdowns
+        })
+    }
+
+    const currentCalculation = getCurrentCalculation()
+    if (!props.selectedInstanceId || !currentHumpSchemeID.value || !currentHumpCalculationID.value || !currentCalculation) {
+        clearCurrentCalculationDependentData()
+        return
+    }
+
+    await Promise.all([
+        loadFlatLayout({ showErrorMessage: false }),
+        updateCurrentCalculateCondition()
+    ])
+    await recalculateAndShowAllEnergyLines({ hideFirst: false })
+}
+
 // 加载驼峰方案数据
 const loadHumpSchemes = async (options: { preserveSelection?: boolean } = {}) => {
     if (!props.selectedInstanceId) {
@@ -1404,14 +1706,10 @@ watch(currentHumpSchemeID, async (newSchemeId, oldSchemeId) => {
         handlingSchemeSelectionChange.value = true
         try {
             await Promise.all([
-                loadSlopeLayout(),
+                loadSlopeLayout({ showErrorMessage: false }),
                 loadHumpCalculations()
             ])
-            await Promise.all([
-                loadFlatLayout(),
-                updateCurrentCalculateCondition()
-            ])
-            await recalculateAndShowAllEnergyLines({ hideFirst: false })
+            await refreshCurrentCalculationOperations({ hideFirst: false })
         } finally {
             handlingSchemeSelectionChange.value = false
         }
@@ -1424,7 +1722,7 @@ watch(currentHumpSchemeID, async (newSchemeId, oldSchemeId) => {
 // 监听 currentHumpCalculationID 变化
 watch(currentHumpCalculationID, async (newCalculationId, oldCalculationId) => {
     console.log('Current hump calculation changed from', oldCalculationId, 'to', newCalculationId)
-    if (handlingSchemeSelectionChange.value) {
+    if (handlingSchemeSelectionChange.value || suppressCalculationSelectionReload.value) {
         return
     }
 
@@ -1432,13 +1730,9 @@ watch(currentHumpCalculationID, async (newCalculationId, oldCalculationId) => {
     await hideAllEnergyLinesForRecalculation()
 
     if (newCalculationId && props.selectedInstanceId) {
-        await Promise.all([
-            loadFlatLayout(),
-            updateCurrentCalculateCondition()
-        ])
-        await recalculateAndShowAllEnergyLines({ hideFirst: false })
+        await refreshCurrentCalculationOperations({ hideFirst: false })
     } else {
-        calculationExecuting.value = false
+        clearCurrentCalculationDependentData()
     }
 })
 
@@ -1488,8 +1782,11 @@ const updateCurrentCalculateCondition = async () => {
 }
 
 // 加载平面布置图数据 
-const loadFlatLayout = async () => {
-    if (!props.selectedInstanceId) {
+const loadFlatLayout = async (options: { showErrorMessage?: boolean } = {}) => {
+    const { showErrorMessage = true } = options
+
+    const currentCalculation = getCurrentCalculation()
+    if (!props.selectedInstanceId || !currentHumpCalculationID.value || !currentCalculation?.slopeLineID) {
         flatLayout.value = null
         return
     }
@@ -1501,16 +1798,12 @@ const loadFlatLayout = async () => {
         })
         const slopeLines = slopeLinesResponse.data || []
 
-        const currentCal = humpCalculations.value.filter(calc => calc.id === currentHumpCalculationID.value)[0] // 过滤出与第一条溜放线相关的计算条件
-        const currentSlopeLineID = currentCal?.slopeLineID
-
-        // 如果有溜放线，使用第一条线获取平面图
+        // 有当前计算条件时，只载入它绑定的溜放线展开图。
         if (slopeLines.length > 0) {
-            const slopeLineID = slopeLines[0].id
             const response = await axios.get('/Hump/GetFlatLayout', {
                 params: {
                     instanceID: props.selectedInstanceId,
-                    slopeLineID: currentSlopeLineID || slopeLineID // 优先使用与计算条件相关的溜放线ID
+                    slopeLineID: currentCalculation.slopeLineID
                 }
             })
 
@@ -1531,12 +1824,18 @@ const loadFlatLayout = async () => {
         }
     } catch (error) {
         console.error('加载平面展开图数据失败:', error)
+        if (showErrorMessage) {
+            ElMessage.error(getHumpMissingReferenceMessage(error, 'humpSlopeDesigner.messages.calculationUnknownError'))
+        }
         flatLayout.value = null
     }
 }
 
 function handleTabClick(tab: any) {
-    // 可以添加切换tab的逻辑
+    const tabName = String(tab?.paneName ?? tab?.props?.name ?? tab?.name ?? '')
+    if (tabName === 'energyHeight' && !kineticEnergyHeightData.value) {
+        void loadKineticEnergyHeight()
+    }
 }
 
 function toggleLeft() {
@@ -1547,14 +1846,9 @@ function toggleRight() {
     rightVisible.value = !rightVisible.value;
 }
 
-onMounted(() => {
-    loadSlopeLayout();
-    loadFlatLayout();
-    loadHumpSchemes();
-});
 
 // 驼峰计算方法
-const executeCalculation = async () => {
+const executeCalculation = async (options: { showSuccessDialog?: boolean } = {}) => {
     if (!props.selectedInstanceId || !currentHumpSchemeID.value || !currentHumpCalculationID.value) {
         ElMessageBox.alert(t('humpSlopeDesigner.messages.selectInstanceSchemeCondition'), t('humpSlopeDesigner.messages.tip'), {
             confirmButtonText: t('humpSlopeDesigner.buttons.confirm'),
@@ -1570,6 +1864,9 @@ const executeCalculation = async () => {
             confirmButtonText: t('humpSlopeDesigner.buttons.confirm'),
             type: 'error'
         })
+        return
+    }
+    if (shouldSkipCalculationForEmptyScheme({ notify: true })) {
         return
     }
 
@@ -1590,14 +1887,16 @@ const executeCalculation = async () => {
         const response = await axios.post('/Hump/ExecuteEnergyHeightCalculation', requestData)
 
         if (response.status === 200) {
-            await ElMessageBox.alert(
-                t('humpSlopeDesigner.messages.calculationCompleted'),
-                t('humpSlopeDesigner.messages.calculationCompletedTitle'),
-                {
-                    confirmButtonText: t('humpSlopeDesigner.buttons.confirm'),
-                    type: 'success'
-                }
-            )
+            if (options.showSuccessDialog ?? true) {
+                await ElMessageBox.alert(
+                    t('humpSlopeDesigner.messages.calculationCompleted'),
+                    t('humpSlopeDesigner.messages.calculationCompletedTitle'),
+                    {
+                        confirmButtonText: t('humpSlopeDesigner.buttons.confirm'),
+                        type: 'success'
+                    }
+                )
+            }
             console.log('驼峰计算完成:', response.data)
 
             // 重新加载相关数据
@@ -1613,7 +1912,7 @@ const executeCalculation = async () => {
         }
     } catch (error: any) {
         console.error('驼峰计算失败:', error)
-        const errorMessage = error.response?.data?.message || error.message || t('humpSlopeDesigner.messages.calculationUnknownError')
+        const errorMessage = getHumpMissingReferenceMessage(error, 'humpSlopeDesigner.messages.calculationUnknownError')
         await ElMessageBox.alert(
             `${t('humpSlopeDesigner.messages.calculationFailed')}: ${errorMessage}`,
             t('humpSlopeDesigner.messages.calculationFailed'),
@@ -1651,6 +1950,7 @@ const handleControlPointDragEnd = async () => {
     }
 
     // 2. 执行计算（静默，不弹对话框）
+    if (shouldSkipCalculationForEmptyScheme()) return
     if (!currentHumpCalculationID.value) return
     const currentCalculation = humpCalculations.value.find(calc => calc.id === currentHumpCalculationID.value)
     if (!currentCalculation) return
@@ -1690,7 +1990,11 @@ const handleAddScheme = async () => {
         tableLoading.value = true
         const response = await axios.post('/Hump/CreateHumpScheme', newScheme)
         if (response.data) {
+            const createdSchemeID = response.data?.id || response.data?.ID || ""
             await loadHumpSchemes() // 重新加载列表
+            if (createdSchemeID) {
+                currentHumpSchemeID.value = createdSchemeID
+            }
             console.log(t('humpSlopeDesigner.scheme.createSuccess'))
         }
     } catch (error) {
@@ -1772,7 +2076,7 @@ const handleCopyScheme = async (scheme: HumpScheme) => {
         tableLoading.value = true
         const response = await axios.post('/Hump/CopyHumpScheme', {
             SourceHumpSchemeID: scheme.id,
-            NewName: `${scheme.name}副本`
+            NewName: t('frontend.copyName', { name: scheme.name })
         })
         if (response.status === 200) {
             await loadHumpSchemes()
@@ -1814,7 +2118,8 @@ const handleAddCalculation = async () => {
         calculationTableLoading.value = true
         const response = await axios.post('/Hump/CreateHumpCalculation', newCalculation)
         if (response.data) {
-            await loadHumpCalculations() // 重新加载列表
+            conditionManagerRefreshPending.value = true
+            await reloadHumpCalculationsWithoutSelectionSideEffects({ preserveSelection: true }) // 重新加载列表
             console.log(t('humpSlopeDesigner.condition.createSuccess'))
         }
     } catch (error) {
@@ -1856,7 +2161,8 @@ const handleSaveCalculation = async () => {
         }
         const response = await axios.put('/Hump/EditHumpCalculation', apiRequest)
         if (response.status === 200) {
-            await loadHumpCalculations() // 重新加载列表
+            conditionManagerRefreshPending.value = true
+            await reloadHumpCalculationsWithoutSelectionSideEffects({ preserveSelection: true }) // 重新加载列表
             handleCancelCalculationEdit()
             console.log(t('humpSlopeDesigner.condition.updateSuccess'))
         }
@@ -1888,7 +2194,8 @@ const handleDeleteCalculation = async (calculation: HumpCalculation) => {
             }
         })
         if (response.status === 200) {
-            await loadHumpCalculations() // 重新加载列表
+            conditionManagerRefreshPending.value = true
+            await reloadHumpCalculationsWithoutSelectionSideEffects({ preserveSelection: true }) // 重新加载列表
             console.log(t('humpSlopeDesigner.condition.deleteSuccess'))
         }
     } catch (error) {
@@ -1909,6 +2216,19 @@ const loadDropdownData = async () => {
         loadOperationConditions(),
         loadSlopeLines()
     ])
+}
+
+const handleConditionManagerClosed = async () => {
+    if (!conditionManagerRefreshPending.value) {
+        return
+    }
+
+    conditionManagerRefreshPending.value = false
+    await refreshCurrentCalculationOperations({
+        reloadCalculations: true,
+        preserveSelection: true,
+        hideFirst: true
+    })
 }
 
 const handleCancelCalculationEdit = () => {
@@ -1949,6 +2269,7 @@ const handleEditRetarderStatus = async (calculation: HumpCalculation) => {
             }))
         } catch (error) {
             console.error('加载减速器列表失败:', error)
+            ElMessage.error(getHumpMissingReferenceMessage(error, 'humpSlopeDesigner.retarderStatus.saveError'))
         } finally {
             retarderOptionsLoading.value = false
         }
@@ -2001,6 +2322,7 @@ const handleInlineRetarderStatusUpdate = async (retarderStatusList: RetarderStat
             }))
         }
         await axios.put('/Hump/EditHumpCalculation', apiRequest)
+        await executeCalculation({ showSuccessDialog: false })
     } catch (error) {
         calc.retarderStatusList = backupList
         console.error('保存减速器状态失败:', error)
@@ -2031,7 +2353,8 @@ const handleSaveRetarderStatus = async () => {
         }
         const response = await axios.put('/Hump/EditHumpCalculation', apiRequest)
         if (response.status === 200) {
-            await loadHumpCalculations()
+            conditionManagerRefreshPending.value = true
+            await reloadHumpCalculationsWithoutSelectionSideEffects({ preserveSelection: true })
             showRetarderStatusDialog.value = false
             ElMessage.success(t('humpSlopeDesigner.retarderStatus.saveSuccess'))
         }
@@ -2086,6 +2409,24 @@ const handleSaveRetarderStatus = async () => {
 
 .resistance-detail-body {
     padding: 6px 0;
+}
+
+.resistance-detail-x-editor {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    border-bottom: 1px solid #eaecef;
+}
+
+.resistance-detail-x-input {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.resistance-detail-unit {
+    color: #57606a;
+    font-size: 12px;
 }
 
 .resistance-detail-row {
@@ -2204,6 +2545,46 @@ const handleSaveRetarderStatus = async () => {
     background-color: #ffffff;
     position: relative;
     /* display: flex; */
+}
+
+.empty-slope-layout-notice {
+    position: absolute;
+    top: 58px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 6;
+    max-width: min(92vw, 560px);
+    padding: 8px 14px;
+    border: 1px solid #c8d5e8;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.95);
+    color: #1f2a44;
+    font-size: 14px;
+    line-height: 1.4;
+    text-align: center;
+    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.12);
+    pointer-events: none;
+}
+
+.empty-calculation-condition-notice {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 8;
+    min-width: 180px;
+    max-width: min(90vw, 420px);
+    padding: 14px 22px;
+    border: 1px solid #c8d5e8;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.96);
+    color: #1f2a44;
+    font-size: 16px;
+    font-weight: 600;
+    line-height: 1.4;
+    text-align: center;
+    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.14);
+    pointer-events: none;
 }
 
 .side-menu-left {

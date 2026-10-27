@@ -1,7 +1,9 @@
 <template>
     <div>
         <div class="wagon-toolbar">
-            <el-button @click="addNewWagon" type="primary" size="small">{{ t('wagon.new') }}</el-button>
+            <el-button @click="addNewWagon" type="primary" size="small">
+                {{ t('hump.buttons.add') }}
+            </el-button>
         </div>
         <el-table :data="wagonData" style="width: 100%;">
             <el-table-column prop="typeName" :label="t('wagon.typeName')" width="120">
@@ -64,7 +66,7 @@
             </el-table-column>
             <el-table-column :label="t('wagon.actionsLabel')" width="200">
                 <template #default="scope">
-                    <el-button v-if="!scope.row.isEditing" @click="editRow(scope.$index)" size="small">{{
+                    <el-button v-if="!scope.row.isEditing" @click="editRow(scope.$index)" size="small" type="primary">{{
                         t('wagon.actions.edit') }}</el-button>
                     <el-button v-if="scope.row.isEditing" @click="saveRow(scope.$index)" size="small" type="primary"
                         :loading="scope.row.saving" :disabled="scope.row.saving">{{
@@ -369,7 +371,7 @@ onMounted(() => {
 <style scoped lang="css">
 .wagon-toolbar {
     display: flex;
-    justify-content: flex-end;
+    justify-content: flex-start;
     margin-bottom: 12px;
 }
 </style>

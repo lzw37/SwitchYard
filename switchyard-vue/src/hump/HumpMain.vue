@@ -1,5 +1,14 @@
 <template>
     <section class="hump-main">
+        <header class="page-header">
+            <span class="page-header-brand">SwitchYard.Hump</span>
+            <span class="page-header-sep"></span>
+            <span class="page-header-title">{{ t('humpMain.title') }}</span>
+            <a class="page-header-video-link" href="https://www.bilibili.com/video/BV1gMRmBRER9" target="_blank"
+                rel="noopener noreferrer">
+                {{ t('humpMain.tutorial') }}
+            </a>
+        </header>
         <div ref="tabsHostRef" class="hump-tabs-wrapper">
             <div class="hump-main-toolbar">
                 <div class="left-controls">
@@ -100,9 +109,8 @@
                     <el-empty v-else :description="t('humpMain.placeholders.selectInstance')" />
                 </el-tab-pane>
                 <el-tab-pane :label="getTabLabel('simulation3d')" name="simulation3d" lazy>
-                    <HumpSim3D v-if="hasSelectedInstance" :selectedInstanceId="selectedLine"
-                        :activation-key="tabActivationKeys.simulation3d" />
-                    <el-empty v-else :description="t('humpMain.placeholders.selectInstance')" />
+                    <HumpSim3D v-if="activeTab === 'simulation3d' && hasSelectedInstance" :selectedInstanceId="selectedLine" />
+                    <el-empty v-else-if="activeTab === 'simulation3d'" :description="t('humpMain.placeholders.selectInstance')" />
                 </el-tab-pane>
             </el-tabs>
         </div>
@@ -114,7 +122,7 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, onMounted, computed, nextTick, onBeforeUnmount, watch } from 'vue'
+import { ref, onMounted, computed, defineAsyncComponent, nextTick, onBeforeUnmount, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import axios from '@/utils/axios'
@@ -126,8 +134,9 @@ import Wagon from './Wagon.vue';
 import HumpCalculationCondition from './HumpCalculationCondition.vue';
 import HumpHeadwayCheck from './HumpHeadwayCheck.vue';
 import HumpSim from './HumpSim.vue';
-import HumpSim3D from './HumpSim3D.vue';
 import HumpInstanceManager from './HumpInstanceManager.vue';
+
+const HumpSim3D = defineAsyncComponent(() => import('./HumpSim3D.vue'))
 
 const router = useRouter()
 const { t, locale } = useI18n()
@@ -143,7 +152,7 @@ interface HumpInstance {
     isActive: number
 }
 
-type MainTabName = 'plan' | 'vehicle' | 'profile' | 'release' | 'simulation' | 'simulation3d'
+type RefreshableTabName = 'plan' | 'vehicle' | 'profile' | 'release' | 'simulation'
 
 const activeTab = ref('plan')
 const selectedLine = ref<string | null>(null)
@@ -154,13 +163,12 @@ const tabsHostRef = ref<HTMLElement | null>(null)
 const tabSlotRef = ref<HTMLElement | null>(null)
 const tabMeasureRef = ref<HTMLElement | null>(null)
 const tabsInDropdown = ref(false)
-const tabActivationKeys = ref<Record<MainTabName, number>>({
+const tabActivationKeys = ref<Record<RefreshableTabName, number>>({
     plan: 0,
     vehicle: 0,
     profile: 0,
     release: 0,
     simulation: 0,
-    simulation3d: 0,
 })
 const activeLines = computed(() => lines.value.filter((item) => Number(item.isActive) === 1))
 const hasSelectedInstance = computed(() => Boolean(selectedLine.value))
@@ -192,7 +200,7 @@ const getTabLabel = (tabName: string) => {
     return mainTabs.value.find((tab) => tab.name === tabName)?.label || tabName
 }
 
-const bumpTabActivationKey = (tabName: MainTabName) => {
+const bumpTabActivationKey = (tabName: RefreshableTabName) => {
     tabActivationKeys.value[tabName] += 1
 }
 
@@ -316,8 +324,8 @@ watch(currentLocale, () => {
 })
 
 watch(activeTab, (newTab, oldTab) => {
-    if (!newTab || newTab === oldTab) return
-    bumpTabActivationKey(newTab as MainTabName)
+    if (!newTab || newTab === oldTab || newTab === 'simulation3d') return
+    bumpTabActivationKey(newTab as RefreshableTabName)
 })
 </script>
 
@@ -325,11 +333,64 @@ watch(activeTab, (newTab, oldTab) => {
 .hump-main {
     width: 100%;
     min-height: 100dvh;
-    padding: 24px;
+    padding: 0 24px 24px;
     background-color: white;
     box-sizing: border-box;
     overflow-x: hidden;
     overflow-y: auto;
+}
+
+.page-header {
+    height: 32px;
+    line-height: 28px;
+    margin: 0 -24px 10px;
+    padding: 0 20px;
+    background: linear-gradient(90deg, #1a3860 0%, #254e8e 55%, #3568b0 100%);
+    display: flex;
+    align-items: center;
+    /* justify-content: center; */
+    gap: 0;
+    user-select: none;
+    flex-shrink: 0;
+}
+
+.page-header-brand {
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-weight: 700;
+    font-size: 15px;
+    color: #ffffff;
+    letter-spacing: 0.03em;
+}
+
+.page-header-sep {
+    display: inline-block;
+    width: 1px;
+    height: 13px;
+    background: rgba(255, 255, 255, 0.3);
+    margin: 0 10px;
+    flex-shrink: 0;
+}
+
+.page-header-title {
+    color: #aecfe8;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+}
+
+.page-header-video-link {
+    margin-left: auto;
+    color: #ffffff;
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 32px;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.page-header-video-link:hover {
+    color: #d7ebff;
+    text-decoration: underline;
 }
 
 .hump-tabs-wrapper {
@@ -560,7 +621,11 @@ el-card {
 
 @media (max-width: 768px) {
     .hump-main {
-        padding: 12px;
+        padding: 0 12px 12px;
+    }
+
+    .page-header {
+        margin: 0 -12px 8px;
     }
 
     .hump-main-toolbar {

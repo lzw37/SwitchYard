@@ -6,7 +6,11 @@
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
 
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@switchyard/station-layout": ["../SwitchYard.StationLayout/frontend/src/index.ts"],
+      "vue": ["./node_modules/vue"],
+      "element-plus": ["./node_modules/element-plus"],
+      "@element-plus/icons-vue": ["./node_modules/@element-plus/icons-vue"]
     }
   }
 }

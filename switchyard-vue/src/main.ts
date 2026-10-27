@@ -7,6 +7,7 @@ import pinia from "./stores";
 import { useAuthStore } from "./stores/auth";
 import ElementPlus from "element-plus";
 import "element-plus/dist/index.css";
+import "./assets/workspace.css";
 import "./utils/axios"; // Initialize axios interceptors globally.
 import i18n from "./i18n";
 

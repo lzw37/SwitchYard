@@ -1,0 +1,85 @@
+# Run from the repository root with --env-file .env.docker.
+# MySQL is an existing external service; this file does not create databases.
+name: ${COMPOSE_PROJECT_NAME:-switchyard}
+
+x-service: &service
+  platform: linux/${SWITCHYARD_ARCH:-amd64}
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+  api:
+    <<: *service
+    image: switchyard-api:${SWITCHYARD_IMAGE_TAG:-local}-${SWITCHYARD_ARCH:-amd64}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      WebApi__Hosts__0: http://0.0.0.0:8080
+      Jwt__SecretKey: ${SWITCHYARD_JWT_KEY:?Set SWITCHYARD_JWT_KEY in .env.docker}
+      # Same-origin deployment needs no CORS entry. No historic origins are inherited.
+      Cors__AllowedOrigins__0: ${SWITCHYARD_CORS_ORIGIN:-}
+      HumpDatabase__MysqlConfig__Host: ${SWITCHYARD_DB_HOST:-host.docker.internal}
+      HumpDatabase__MysqlConfig__Port: ${SWITCHYARD_DB_PORT:-3306}
+      HumpDatabase__MysqlConfig__Database: ${SWITCHYARD_HUMP_DB:-hump}
+      HumpDatabase__MysqlConfig__Username: ${SWITCHYARD_DB_USER:?Set SWITCHYARD_DB_USER in .env.docker}
+      HumpDatabase__MysqlConfig__Password: ${SWITCHYARD_DB_PASSWORD:?Set SWITCHYARD_DB_PASSWORD in .env.docker}
+      HumpDatabase__MysqlConfig__SslMode: ${SWITCHYARD_DB_SSL_MODE:-Preferred}
+      CapacityDatabase__MysqlConfig__Host: ${SWITCHYARD_DB_HOST:-host.docker.internal}
+      CapacityDatabase__MysqlConfig__Port: ${SWITCHYARD_DB_PORT:-3306}
+      CapacityDatabase__MysqlConfig__Database: ${SWITCHYARD_CAPACITY_DB:-capacity}
+      CapacityDatabase__MysqlConfig__Username: ${SWITCHYARD_DB_USER:?Set SWITCHYARD_DB_USER in .env.docker}
+      CapacityDatabase__MysqlConfig__Password: ${SWITCHYARD_DB_PASSWORD:?Set SWITCHYARD_DB_PASSWORD in .env.docker}
+      CapacityDatabase__MysqlConfig__SslMode: ${SWITCHYARD_DB_SSL_MODE:-Preferred}
+      SketchLayoutDatabase__MysqlConfig__Host: ${SWITCHYARD_DB_HOST:-host.docker.internal}
+      SketchLayoutDatabase__MysqlConfig__Port: ${SWITCHYARD_DB_PORT:-3306}
+      SketchLayoutDatabase__MysqlConfig__Database: ${SWITCHYARD_SKETCHLAYOUT_DB:-sketchlayout}
+      SketchLayoutDatabase__MysqlConfig__Username: ${SWITCHYARD_DB_USER:?Set SWITCHYARD_DB_USER in .env.docker}
+      SketchLayoutDatabase__MysqlConfig__Password: ${SWITCHYARD_DB_PASSWORD:?Set SWITCHYARD_DB_PASSWORD in .env.docker}
+      SketchLayoutDatabase__MysqlConfig__SslMode: ${SWITCHYARD_DB_SSL_MODE:-Preferred}
+    # On Linux this maps the host name to Docker's host gateway as on Docker Desktop.
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    volumes:
+      - api-data:/data
+      - api-logs:/app/logs
+      - api-local-data:/app/LocalData
+      - migration-backups:/app/migration-backups
+      - data-protection-keys:/home/app/.aspnet/DataProtection-Keys
+      - type: bind
+        source: ${SWITCHYARD_COURSE_PATH:-./switchyardvid}
+        target: /data/course
+        read_only: true
+        bind:
+          create_host_path: false
+    stop_grace_period: 30s
+
+  frontend:
+    <<: *service
+    image: switchyard-web:${SWITCHYARD_IMAGE_TAG:-local}-${SWITCHYARD_ARCH:-amd64}
+    build:
+      context: .
+      dockerfile: switchyard-vue/Dockerfile
+    environment:
+      # Only Nginx uses this Docker-network URL; browsers use the frontend origin.
+      SWITCHYARD_BACKEND_URL: http://api:8080
+      # Public API root, without /api; empty follows the browser's current origin.
+      SWITCHYARD_API_BASE_URL: ${SWITCHYARD_API_BASE_URL:-}
+    ports:
+      # Docker forwards this host port directly to the frontend container's Nginx.
+      - "${SWITCHYARD_HTTP_BIND:-0.0.0.0}:${SWITCHYARD_HTTP_PORT:-8080}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  api-data:
+  api-logs:
+  api-local-data:
+  migration-backups:
+  data-protection-keys:
