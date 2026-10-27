@@ -1,6 +1,7 @@
 <script setup>
 import { createStationLayoutTranslator } from "../messages";
 import { remapStationLayoutIds } from "../layoutJson";
+import { getCircularArcBounds } from "../arcBounds";
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import {
     DEFAULT_BUFFER_STOP_DIRECTION,
@@ -665,8 +666,74 @@ function scrollDataRectIntoView(rect, options = {}) {
 
 function getFullViewRect(options = {}) {
     const screenMargin = Math.max(0, toFiniteNumber(options.screenMargin ?? 0));
-    const rect = buildCanvasContentRect(screenMargin);
+    const rect = buildCanvasContentRect(screenMargin, props.actualCoordinatePreview, true);
     return isCanvasContentRectEmpty(rect) ? null : { ...rect };
+}
+
+function getFullViewDecorations() {
+    const decorations = displaySwitches.value.map(sw => {
+        // Branches are ten pixels long. Their direction in the current view may
+        // be distorted by independent X/Y zoom; Fit All restores equal scales.
+        const bounds = { minX: 0, maxX: 0, minY: 0, maxY: 0 };
+        for (const vector of sw.branchVectorList || []) {
+            const x = toFiniteNumber(vector.x);
+            const y = toFiniteNumber(vector.y);
+            const length = Math.hypot(x, y);
+            const dx = length > 0 ? x / length * 10 : 0;
+            const dy = length > 0 ? y / length * 10 : -10;
+            bounds.minX = Math.min(bounds.minX, dx);
+            bounds.maxX = Math.max(bounds.maxX, dx);
+            bounds.minY = Math.min(bounds.minY, dy);
+            bounds.maxY = Math.max(bounds.maxY, dy);
+        }
+        return { x: toFiniteNumber(sw.position?.x), y: toFiniteNumber(sw.position?.y), ...bounds };
+    });
+    const svg = svgRef.value;
+    const matrix = svg?.getCTM?.();
+    if (!matrix) return decorations;
+    const inverse = matrix.inverse();
+    // Text and equipment keep their pixel size when the track coordinates zoom.
+    // Measure their offsets from data anchors once, then fit at any scale without
+    // carrying over the old zoom or reserving a large margin around every edge.
+    for (const element of svg.querySelectorAll("[data-fit-x][data-fit-y]")) {
+        const x = Number(element.getAttribute("data-fit-x"));
+        const y = Number(element.getAttribute("data-fit-y"));
+        if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+        if (svg.ownerDocument.defaultView.getComputedStyle(element).display === "none") continue;
+        const box = element.getBBox();
+        const elementMatrix = element.getCTM();
+        if (!elementMatrix || (box.width === 0 && box.height === 0)) continue;
+        const transform = inverse.multiply(elementMatrix);
+        const corners = [
+            [box.x, box.y], [box.x + box.width, box.y],
+            [box.x, box.y + box.height], [box.x + box.width, box.y + box.height],
+        ].map(([px, py]) => ({
+            x: transform.a * px + transform.c * py + transform.e - screenX(x),
+            y: transform.b * px + transform.d * py + transform.f - screenY(y),
+        }));
+        decorations.push({
+            x, y,
+            minX: Math.min(...corners.map(point => point.x)),
+            maxX: Math.max(...corners.map(point => point.x)),
+            minY: Math.min(...corners.map(point => point.y)),
+            maxY: Math.max(...corners.map(point => point.y)),
+        });
+    }
+    return decorations;
+}
+
+function fullViewScreenRect(rect, decorations, scale, strokeMargin = 0) {
+    const bounds = {
+        minX: rect.minX * scale - strokeMargin, maxX: rect.maxX * scale + strokeMargin,
+        minY: rect.minY * scale - strokeMargin, maxY: rect.maxY * scale + strokeMargin,
+    };
+    for (const decoration of decorations) {
+        bounds.minX = Math.min(bounds.minX, decoration.x * scale + decoration.minX);
+        bounds.maxX = Math.max(bounds.maxX, decoration.x * scale + decoration.maxX);
+        bounds.minY = Math.min(bounds.minY, decoration.y * scale + decoration.minY);
+        bounds.maxY = Math.max(bounds.maxY, decoration.y * scale + decoration.maxY);
+    }
+    return bounds;
 }
 
 function measureViewport(viewport, includeScrollbars = true) {
@@ -694,14 +761,55 @@ function fitFullView(viewport, applyScale) {
     const rect = getFullViewRect({ screenMargin: 0 });
     if (!rect) return false;
     const { width, height } = size;
-    const margin = Math.min(80, width / 4, height / 4);
-    const scale = Math.min(4,
+    const margin = Math.min(16, width / 4, height / 4);
+    let scale = Math.min(4,
         (width - margin * 2) / Math.max(1, rect.maxX - rect.minX),
         (height - margin * 2) / Math.max(1, rect.maxY - rect.minY));
     if (!Number.isFinite(scale) || scale <= 0) return false;
 
-    const centerX = (rect.minX + rect.maxX) / 2;
-    const centerY = (rect.minY + rect.maxY) / 2;
+    const decorations = getFullViewDecorations();
+    // SVG getBBox omits stroke widths, including thick selected tracks.
+    let strokeMargin = 0;
+    for (const line of displayTracks.value) strokeMargin = Math.max(strokeMargin, trackDisplayStyle(line).strokeWidth / 2);
+    if (displayedCurves.value.length) strokeMargin = Math.max(strokeMargin, curveDisplayStyle().strokeWidth / 2);
+    for (const platform of platforms.value) strokeMargin = Math.max(strokeMargin, platformLineDisplayStyle(platform.id).strokeWidth / 2);
+    const boundsAtScale = value => fullViewScreenRect(rect, decorations, value, strokeMargin);
+    const fits = bounds => bounds.maxX - bounds.minX <= width - margin * 2 &&
+        bounds.maxY - bounds.minY <= height - margin * 2;
+    let bounds = boundsAtScale(scale);
+    if (!fits(bounds)) {
+        let lower = 0;
+        let upper = scale;
+        if (!fits(boundsAtScale(lower))) {
+            // Opposing labels can overlap as zoom increases: the required box
+            // is convex, but need not grow monotonically from scale zero.
+            const extent = value => {
+                const box = boundsAtScale(value);
+                return Math.max((box.maxX - box.minX) / (width - margin * 2),
+                    (box.maxY - box.minY) / (height - margin * 2));
+            };
+            let start = 0;
+            let end = scale;
+            for (let iteration = 0; iteration < 60; iteration += 1) {
+                const left = start + (end - start) / 3;
+                const right = end - (end - start) / 3;
+                if (extent(left) <= extent(right)) end = right;
+                else start = left;
+            }
+            lower = (start + end) / 2;
+        }
+        if (fits(boundsAtScale(lower))) {
+            for (let iteration = 0; iteration < 40; iteration += 1) {
+                const middle = (lower + upper) / 2;
+                if (fits(boundsAtScale(middle))) lower = middle;
+                else upper = middle;
+            }
+            if (lower > 0) scale = lower;
+        }
+        bounds = boundsAtScale(scale);
+    }
+    const centerX = (bounds.minX + bounds.maxX) / 2 / scale;
+    const centerY = (bounds.minY + bounds.maxY) / 2 / scale;
     // Rebuild display bounds rather than repeatedly expanding the old canvas.
     // Coordinates in the saved layout and grid origin remain untouched.
     canvasBounds.value = {
@@ -1328,28 +1436,29 @@ function includePositionInCanvasContentRect(rect, item, screenMargin = canvasEle
     includePointInCanvasContentRect(rect, item?.position, screenMargin);
 }
 
-function buildCanvasContentRect(screenMargin = canvasElementScreenMargin, preview = props.actualCoordinatePreview) {
+function buildCanvasContentRect(screenMargin = canvasElementScreenMargin, preview = props.actualCoordinatePreview, visibleOnly = false) {
     const rect = createEmptyCanvasContentRect();
 
-    for (const line of (preview ? displayTracks.value : tracks.value)) {
+    for (const line of (visibleOnly ? renderedTrackSegments.value : preview ? displayTracks.value : tracks.value)) {
         includeDataRectInCanvasContentRect(rect, line.x1, line.y1, line.x2, line.y2, screenMargin);
     }
-    for (const curve of (preview ? displayCurves.value : curves.value)) {
-        includePointInCanvasContentRect(rect, curve.start, screenMargin);
-        includePointInCanvasContentRect(rect, curve.end, screenMargin);
-        if (curve.center) {
-            const radius = Math.max(0, toFiniteNumber(curve.radius));
-            includeDataRectInCanvasContentRect(
-                rect,
-                toFiniteNumber(curve.center.x) - radius,
-                toFiniteNumber(curve.center.y) - radius,
-                toFiniteNumber(curve.center.x) + radius,
-                toFiniteNumber(curve.center.y) + radius,
-                screenMargin
-            );
+    for (const curve of (visibleOnly ? displayedCurves.value : preview ? displayCurves.value : curves.value)) {
+        if (visibleOnly) {
+            const bounds = getCircularArcBounds(curve, defaultCurveRadius);
+            includeDataRectInCanvasContentRect(rect, bounds.minX, bounds.minY, bounds.maxX, bounds.maxY, screenMargin);
+        } else {
+            // Preserve legacy grid-origin inference and editing canvas expansion.
+            includePointInCanvasContentRect(rect, curve.start, screenMargin);
+            includePointInCanvasContentRect(rect, curve.end, screenMargin);
+            if (curve.center) {
+                const radius = Math.max(0, toFiniteNumber(curve.radius));
+                includeDataRectInCanvasContentRect(rect,
+                    toFiniteNumber(curve.center.x) - radius, toFiniteNumber(curve.center.y) - radius,
+                    toFiniteNumber(curve.center.x) + radius, toFiniteNumber(curve.center.y) + radius, screenMargin);
+            }
         }
     }
-    for (const node of (preview ? displayNodes.value : nodes.value)) {
+    for (const node of (visibleOnly && !props.showNodes ? [] : preview ? displayNodes.value : nodes.value)) {
         includePointInCanvasContentRect(rect, node, screenMargin);
     }
     for (const signal of (preview ? displaySignals.value : signals.value)) {
@@ -5975,6 +6084,7 @@ defineExpose({
                 @mousedown.stop @click.stop="handleLineClick($event, segment.line.id)"
                 @dblclick.stop.prevent="beginInlineRename($event, 'link', segment.line.id)" />
             <text v-for="lineName in lineNameViews" v-show="getLineName(lineName.line)" :key="`line-name-${lineName.id}`"
+                :data-fit-x="lineName.x" :data-fit-y="lineName.y"
                 class="trackname" :class="{ 'name-selected': isLineHighlighted(lineName.line.id) }"
                 :style="textDisplayStyle('lineName', isLineHighlighted(lineName.line.id), elementHighlightColor('link', lineName.line.id))" :x="screenX(lineName.x)"
                 :y="screenY(lineName.y)" @mouseenter="setHoveredElement('link', lineName.line.id)"
@@ -6016,6 +6126,7 @@ defineExpose({
 
         <g v-if="props.showNodes" id="nodegroup">
             <circle v-for="node in displayNodes" :id="node.id" :key="`node-${node.id}`" class="node snapobj"
+                :data-fit-x="node.x" :data-fit-y="node.y"
                 :class="{ 'node-selected': isNodeHighlighted(node.id), 'node-actual-coordinate': props.actualCoordinatePreview && !props.readonly }"
                 :cx="screenX(node.x)" :cy="screenY(node.y)"
                 :r="editorDisplayStyles.node.radius" :style="nodeDisplayStyle(node.id)"
@@ -6045,6 +6156,7 @@ defineExpose({
 
         <g v-if="props.showCellNames && cellNameViews.length > 0" id="cell-name-layer" class="cell-name-layer">
             <text v-for="cellName in cellNameViews" :key="`cell-name-${cellName.key}`" class="cell-name"
+                :data-fit-x="cellName.x" :data-fit-y="cellName.y"
                 :class="{ 'cell-name-hovered': isElementHovered('cellName', cellName.key) }"
                 :style="textDisplayStyle('cellName', isElementHovered('cellName', cellName.key), hoverHighlightColor)"
                 :x="screenX(cellName.x)" :y="screenY(cellName.y)"
@@ -6058,6 +6170,7 @@ defineExpose({
 
         <g id="signalgroup">
             <g v-for="signal in displaySignals" :id="String(signal.id)" :key="`signal-${signal.id}`"
+                :data-fit-x="signal.position?.x" :data-fit-y="signal.position?.y"
                 :class="['signal', signalStyleClass(signal), { 'signal-selected': isSignalHighlighted(signal.id) }]"
                 :transform="signalTransform(signal)" :style="elementHighlightStyle('signal', signal.id)"
                 @mouseenter="setHoveredElement('signal', signal.id)"
@@ -6069,6 +6182,7 @@ defineExpose({
                     :key="`signal-element-${signal.id}-${index}`" v-bind="element.attrs" />
             </g>
             <text v-for="signal in displaySignals" v-show="getEquipmentDisplayName(signal, 'SIGNAL')"
+                :data-fit-x="signal.position?.x" :data-fit-y="signal.position?.y"
                 :key="`signal-name-${signal.id}`" class="signalname"
                 :class="{ 'name-selected': isSignalHighlighted(signal.id) }"
                 :style="textDisplayStyle('signalName', isSignalHighlighted(signal.id), elementHighlightColor('signal', signal.id))"
@@ -6092,6 +6206,7 @@ defineExpose({
 
         <g id="insulationjointgroup">
             <g v-for="ij in displayInsulationJoints" :id="String(ij.id)" :key="`ij-${ij.id}`"
+                :data-fit-x="ij.position?.x" :data-fit-y="ij.position?.y"
                 class="insulationjoint insulationjoint-normal"
                 :class="{ 'insulationjoint-selected': isInsulationJointHighlighted(ij.id) }"
                 :transform="`translate(${screenX(ij.position?.x)},${screenY(ij.position?.y)})`"
@@ -6111,6 +6226,7 @@ defineExpose({
 
         <g id="bufferstopgroup">
             <g v-for="bufferStop in displayBufferStops" :id="String(bufferStop.id)" :key="`buffer-stop-${bufferStop.id}`"
+                :data-fit-x="bufferStop.position?.x" :data-fit-y="bufferStop.position?.y"
                 :class="['bufferstop', bufferStopStyleClass(bufferStop), { 'bufferstop-selected': isBufferStopHighlighted(bufferStop.id) }]"
                 :transform="bufferStopTransform(bufferStop)"
                 @mouseenter="setHoveredElement('bufferStop', bufferStop.id)"
@@ -6152,6 +6268,7 @@ defineExpose({
                     :x2="switchBranch(sw, lineVec).x2" :y2="switchBranch(sw, lineVec).y2"
                     :style="switchBranchDisplayStyle(sw.id)" />
                 <text class="switchname" :class="{ 'name-selected': isSwitchHighlighted(sw.id) }"
+                    :data-fit-x="sw.position?.x" :data-fit-y="sw.position?.y"
                     :style="textDisplayStyle('switchName', isSwitchHighlighted(sw.id), elementHighlightColor('switch', sw.id))" x="4" y="-4">
                     {{ getEquipmentDisplayName(sw, "SWITCH") }}
                 </text>
@@ -6168,6 +6285,8 @@ defineExpose({
                 <rect :x="screenX(platform.x)" :y="screenY(platform.y)" :width="screenDeltaX(platform.width)"
                     :height="screenDeltaY(platform.height)" :style="platformLineDisplayStyle(platform.id)" />
                 <text class="platformname" :x="screenCenterX(platform.x, platform.width)"
+                    :data-fit-x="toFiniteNumber(platform.x) + toFiniteNumber(platform.width) / 2"
+                    :data-fit-y="toFiniteNumber(platform.y) + toFiniteNumber(platform.height) / 2"
                     :y="screenCenterY(platform.y, platform.height)"
                     :class="{ 'name-selected': isPlatformHighlighted(platform.id) }"
                     :style="textDisplayStyle('platformName', isPlatformHighlighted(platform.id), elementHighlightColor('platform', platform.id))">
@@ -6188,6 +6307,7 @@ defineExpose({
                 @mouseleave="clearHoveredElement('annotation', annotation.id)"
                 @mousedown="handleAnnotationClick($event, annotation.id)">
                 <text class="annotation-text" x="0" y="0" :font-family="annotation.fontFamily"
+                    :data-fit-x="annotation.position?.x" :data-fit-y="annotation.position?.y"
                     @dblclick.stop.prevent="beginInlineRename($event, 'annotation', annotation.id)"
                     :font-size="annotation.fontSize" :font-weight="annotation.fontWeight" :font-style="annotation.fontStyle"
                     :class="{ 'name-selected': isAnnotationHighlighted(annotation.id) }"
@@ -6202,6 +6322,7 @@ defineExpose({
 
         <g v-if="props.actualCoordinatePreview && props.showNodes" class="node-coordinate-labels">
             <text v-for="node in displayNodes" :key="`node-coordinate-${node.id}`" class="node-coordinate-label"
+                :data-fit-x="node.x" :data-fit-y="node.y"
                 :x="screenX(node.x)" :y="screenY(node.y) + editorDisplayStyles.node.radius + 11">
                 {{ node.x }}
             </text>
