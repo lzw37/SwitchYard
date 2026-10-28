@@ -11,7 +11,8 @@ import { useCalculationParameterSets } from '@/capacity/calculationParameterSets
 import { buildTractionOccupancyUpdates, mergeTractionOccupancyTimes } from './tractionOccupancy'
 import { switchyardStationLayoutGateway as gateway } from '@/capacity/switchyardStationLayoutGateway'
 import TractionCharts from './TractionCharts.vue'
-import { withBrakingApproach, withDepartureSection, extensionSpeedLimits, tractionModeForRoute, rotatingMassCoefficientFromFactor, summarizeTractionResult, formatTractionDuration, cellTerminalStopTime, cellOccupancyEndTime } from './tractionCalculation'
+import TractionRunSummary from './TractionRunSummary.vue'
+import { calculatedTractionProfile, withDepartureSection, extensionSpeedLimits, tractionModeForRoute, rotatingMassCoefficientFromFactor, summarizeTractionResult, cellTerminalStopTime, cellOccupancyEndTime } from './tractionCalculation'
 import TrainParametersDialog from './TrainParametersDialog.vue'
 import TractionSetsDialog from './TractionSetsDialog.vue'
 import TractionRouteResultsDialog from './TractionRouteResultsDialog.vue'
@@ -151,21 +152,12 @@ const resultProfile = computed(() => calculation.value?.request.profile ?? null)
 const runSummary = computed(() => calculation.value ? summarizeTractionResult(calculation.value.result,
     calculation.value.request.profile, calculation.value.request.signal) : null)
 const approachDistanceM = computed(() => runSummary.value?.brakingDistanceM ?? 0)
-const occupancySummaryTitle = computed(() => {
-    const summary = runSummary.value
-    if (!summary) return undefined
-    if (!summary.longestOccupancy) return ui('暂无可确定总占用时间的区段', 'No circuit has a known total occupancy time')
-    const { cell, durationS } = summary.longestOccupancy
-    return `${cell.label} · ${durationS.toFixed(1)} s` + (summary.unknownOccupancyCount
-        ? ui('（仅统计时刻完整的区段）', ' (circuits with complete timing only)') : '')
-})
 const chartExtensionSpeeds = computed(() => extensionSpeedLimits(calculation.value?.request.train ?? train,
     calculation.value?.request.options ?? run))
 const chartDepartureDistanceM = computed(() => calculation.value ? result.value?.departureSectionLengthM ?? 0
     : run.mode === 'departure' || run.mode === 'through' ? run.departureSectionLengthM ?? 0 : 0)
 const chartProfile = computed(() => resultProfile.value && calculation.value
-    ? withBrakingApproach(withDepartureSection(resultProfile.value, chartDepartureDistanceM.value, chartExtensionSpeeds.value.departureSectionMaxSpeedKmh),
-        approachDistanceM.value, chartExtensionSpeeds.value.brakingMaxSpeedKmh)
+    ? calculatedTractionProfile(calculation.value)
     : profile.value ? withDepartureSection(profile.value, chartDepartureDistanceM.value, chartExtensionSpeeds.value.departureSectionMaxSpeedKmh) : null)
 const chartLimitPoints = computed(() => {
     if (!canEditLimits.value || !profile.value) return undefined
@@ -987,14 +979,7 @@ onBeforeUnmount(() => { flushWorkspaceSave(); disposed = true; workspaceDataVers
         <div v-if="workspaceError" class="workspace-save-error" role="alert"><span>{{ workspaceError }}</span><el-button size="small" @click="workspaceConflict || !workspaceReady ? reloadWorkspace() : saveParameters()">{{ workspaceConflict || !workspaceReady ? ui('重新载入', 'Reload') : ui('重试保存', 'Retry save') }}</el-button></div>
         <div class="traction-body">
             <main class="plot-workspace" :aria-busy="calculationPending">
-                <div class="summary-strip" role="region" :aria-label="ui('运行摘要', 'Run summary')" tabindex="0">
-                    <div v-if="result && !resultMatchesInputs" class="pending-result" role="status" :title="resultRouteLabel"><span>{{ ui('待计算 · 上次结果', 'Pending · Last result') }} · {{ resultRouteLabel }}</span></div>
-                    <div><span>{{ ui('制动距离', 'Braking distance') }}</span><strong>{{ runSummary?.brakingDistanceM.toFixed(1) ?? '—' }} <small>m</small></strong></div>
-                    <div><span>{{ ui('进路长度', 'Route length') }}</span><strong>{{ (runSummary?.routeLengthM ?? profile?.lengthM)?.toFixed(1) ?? '—' }} <small>m</small></strong></div>
-                    <div :title="ui('实际计算速度', 'Actual calculated speeds')"><span>{{ ui('入口速度/出口速度', 'Entry/exit speed') }}</span><strong>{{ runSummary?.entrySpeedKmh?.toFixed(1) ?? '—' }} / {{ runSummary?.exitSpeedKmh?.toFixed(1) ?? '—' }} <small>km/h</small></strong></div>
-                    <div><span>{{ ui('全程时间（含接近）', 'Journey time incl. approach') }}</span><strong>{{ formatTractionDuration(runSummary?.journeyTimeS) }}</strong></div>
-                    <div :title="occupancySummaryTitle"><span>{{ ui('占用时间（最小间隔）', 'Occupancy time (minimum interval)') }}</span><strong class="cyan">{{ formatTractionDuration(runSummary?.longestOccupancy?.durationS) }}</strong></div>
-                </div>
+                <TractionRunSummary :summary="runSummary" :route-length-m="profile?.lengthM" :pending-route-label="result && !resultMatchesInputs ? resultRouteLabel : undefined" />
                 <div v-if="calculationLoadError" class="result-notice" role="alert"><span>{{ ui('已保存的计算结果加载失败。', 'Could not load the saved calculation.') }}</span><el-button size="small" @click="loadWorkspaceData">{{ ui('重新载入', 'Reload') }}</el-button></div>
                 <div v-if="calculationError" class="result-notice calculation-error" role="alert"><strong>{{ errorTitle }}</strong><span>{{ errorMessages.join(' · ') }}</span></div>
                 <div v-if="reducedSpeedMessages.length" class="result-notice" role="status"><span v-for="message in reducedSpeedMessages" :key="message">{{ message }}</span></div>
@@ -1116,7 +1101,6 @@ onBeforeUnmount(() => { flushWorkspaceSave(); disposed = true; workspaceDataVers
 <style scoped>
 .result-notice { display:flex; flex:none; align-items:center; flex-wrap:wrap; gap:6px 16px; padding:8px 2px; color:#f3c578; font-size:12px; max-height:96px; overflow:auto; }
 .result-notice.calculation-error { color:#ff9c9c; }
-.summary-strip .pending-result span { color:#f3c578; }
 .workspace-save-error { display:flex; gap:12px; align-items:center; flex-shrink:0; padding:8px 14px; color:var(--el-color-danger); background:var(--el-color-danger-light-9); font-size:12px; }
 .workspace-save-error span { flex:1; min-width:0; overflow-wrap:anywhere; }
 .train-preset-select { width:100%; }
@@ -1130,7 +1114,6 @@ onBeforeUnmount(() => { flushWorkspaceSave(); disposed = true; workspaceDataVers
 .calculation-set-select { width:175px; }
 .route-controls { display:flex; flex-wrap:wrap; align-items:center; gap:14px; flex:1; min-width:0; }.route-control { display:flex; align-items:center; gap:6px; min-width:0; }.route-control>span { flex:none; color:var(--sy-text-secondary,#65748b); font-size:12px; white-space:nowrap; }.scheme-select { width:140px; }.route-select { width:200px; }.continuation-select { width:180px; }
 .traction-body { display:flex; flex:1; min-height:0; overflow:hidden; }.plot-workspace { display:flex; flex-direction:column; background:#0d1422; color:#dce5f5; flex:1; min-width:0; min-height:0; overflow:hidden; padding:0 14px 12px; }
-.summary-strip { display:flex; flex:none; align-items:center; justify-content:space-between; gap:18px; height:46px; min-height:0; overflow:auto; overscroll-behavior:contain; border-bottom:1px solid #243046; margin-bottom:10px; padding:0 2px; white-space:nowrap; }.summary-strip>div { display:flex; flex:none; align-items:baseline; gap:8px; }.summary-strip span { color:#8e9db4; font-size:11px; }.summary-strip strong { color:#edf4ff; font-size:17px; font-variant-numeric:tabular-nums; font-weight:550; }.summary-strip small { font-size:10px; font-weight:400; color:#90a0b9; }.summary-strip .cyan { color:#4fe3d0; }
 .parameter-panel { width:350px; flex:none; overflow:auto; background:var(--sy-surface,#fff); border-left:1px solid var(--sy-border,#dce3ed); }.parameter-heading { padding:18px 18px 12px; display:flex; justify-content:space-between; align-items:center; }.parameter-heading span { font-size:10px; padding:3px 7px; color:#087b6b; background:#e7f7f2; border-radius:10px; }.run-parameters { padding:0 18px 16px; }.field-label { display:block; font-size:11px; color:#65748b; margin:8px 0; }.field-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px 10px; margin-top:14px; }.field-grid label { min-width:0; display:flex; flex-direction:column; gap:6px; font-size:11px; color:#65748b; }.field-grid :deep(.el-input-number) { width:100%; }.parameter-panel :deep(.el-collapse) { border-top-color:#e8edf4; }.parameter-panel :deep(.el-collapse-item__header) { padding:0 18px; font-size:12px; font-weight:600; letter-spacing:.03em; }.parameter-panel :deep(.el-collapse-item__content) { padding:0 18px 18px; }.help-text { font-size:11px; color:#7b879a; line-height:1.7; margin:12px 0 0; }.parameter-summary { margin:8px 0 12px; color:#7b879a; font-size:11px; line-height:1.7; }.parameter-dialog-button { width:100%; white-space:normal; height:auto; min-height:34px; padding:8px 10px; }.parameter-footer { display:flex; flex-direction:column; gap:10px; padding:18px; }.parameter-footer small { font-size:10px; text-align:center; color:#8995a8; }
 .empty-panel { display:flex; flex:1; min-height:0; overflow:auto; flex-direction:column; justify-content:safe center; align-items:center; text-align:center; gap:12px; padding:40px; color:#c5d1e4; }.empty-panel p { max-width:540px; font-size:13px; line-height:1.8; color:#91a2bd; }.empty-panel small { color:#91a2bd; }.empty-graphic { color:#4cdacb; font-size:70px; }
 .occupancy-target { display:flex; align-items:center; flex-wrap:wrap; gap:10px 18px; margin-bottom:14px; font-size:12px; }.occupancy-target label { display:flex; align-items:center; gap:8px; }.occupancy-target .el-select { width:200px; }.occupancy-route-label { min-width:0; max-width:100%; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; color:var(--el-text-color-secondary); }.occupancy-target [role="alert"] { color:var(--el-color-danger); }
@@ -1139,7 +1122,7 @@ onBeforeUnmount(() => { flushWorkspaceSave(); disposed = true; workspaceDataVers
 .occupancy-offset-route { color:var(--el-text-color-secondary); font-size:12px; }
 .occupancy-offset-value { font-weight:600; }
 @media(min-width:1600px) { .parameter-panel { width:380px; }.plot-workspace { padding:0 20px 16px; } }
-@media(max-width:1150px) { .route-controls { gap:10px; flex-basis:100%; }.scheme-select { width:125px; }.route-select { width:175px; }.continuation-select { width:155px; }.parameter-panel { width:310px; }.plot-workspace { padding:0 10px 10px; }.summary-strip { gap:14px; }.summary-strip>div { gap:5px; } }
-@media(max-width:800px) { .traction-toolbar { padding:8px 10px; }.route-controls { flex-wrap:wrap; flex-basis:100%; gap:8px 12px; }.route-control { flex:1 1 190px; }.route-select,.scheme-select { flex:1; min-width:100px; width:auto; }.traction-body { flex-direction:column; }.plot-workspace { flex:1; }.parameter-panel { width:100%; flex:0 0 28%; min-height:0; border-left:0; border-top:1px solid var(--sy-border,#dce3ed); }.summary-strip { height:42px; }.summary-strip strong { font-size:15px; }.empty-panel { padding:20px; } }
+@media(max-width:1150px) { .route-controls { gap:10px; flex-basis:100%; }.scheme-select { width:125px; }.route-select { width:175px; }.continuation-select { width:155px; }.parameter-panel { width:310px; }.plot-workspace { padding:0 10px 10px; } }
+@media(max-width:800px) { .traction-toolbar { padding:8px 10px; }.route-controls { flex-wrap:wrap; flex-basis:100%; gap:8px 12px; }.route-control { flex:1 1 190px; }.route-select,.scheme-select { flex:1; min-width:100px; width:auto; }.traction-body { flex-direction:column; }.plot-workspace { flex:1; }.parameter-panel { width:100%; flex:0 0 28%; min-height:0; border-left:0; border-top:1px solid var(--sy-border,#dce3ed); }.empty-panel { padding:20px; } }
 .calculation-error p { margin:0; overflow-wrap:anywhere; white-space:pre-wrap; }.stop-row { display:flex; gap:8px; align-items:flex-end; }.stop-row .field-grid { flex:1; min-width:0; }.stop-row>.el-button { margin-bottom:6px; }.add-stop { margin-top:14px; }
 </style>

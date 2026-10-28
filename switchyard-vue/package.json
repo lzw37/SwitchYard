@@ -18,7 +18,7 @@
     "build-only": "vite build",
     "type-check": "vue-tsc --build",
     "check:i18n": "node checks/i18n.mjs",
-    "test:traction": "node --test src/traction/tractionCalculation.test.mjs src/traction/routeProfile.test.mjs src/traction/routeActualCoordinates.test.mjs src/traction/tractionOccupancy.test.mjs src/traction/trainPresets.test.mjs src/traction/tractionWorkspace.test.mjs src/traction/speedLimitPoints.test.mjs src/traction/tractionBatch.test.mjs src/traction/tractionParameterTransfer.test.mjs src/traction/projectTrains.test.mjs src/traction/trainCharacteristicsExcel.test.mjs"
+    "test:traction": "node --test src/traction/tractionCalculation.test.mjs src/traction/routeProfile.test.mjs src/traction/routeActualCoordinates.test.mjs src/traction/tractionOccupancy.test.mjs src/traction/trainPresets.test.mjs src/traction/tractionWorkspace.test.mjs src/traction/speedLimitPoints.test.mjs src/traction/tractionBatch.test.mjs src/traction/tractionParameterTransfer.test.mjs src/traction/projectTrains.test.mjs src/traction/trainCharacteristicsExcel.test.mjs src/traction/useTractionResultPreview.test.mjs"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.2",

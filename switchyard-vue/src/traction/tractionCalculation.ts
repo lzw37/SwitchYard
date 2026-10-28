@@ -297,6 +297,18 @@ export function summarizeTractionResult(result: TractionResult, profile: Tractio
     }
 }
 
+/** Reconstruct chart coordinates from the saved inputs and backend extension distances. */
+export function calculatedTractionProfile(calculation: {
+    request: { profile: TractionRouteProfile; train: TrainParameters; signal: SignalParameters; options: TractionRunOptions }
+    result: TractionResult
+}): TractionRouteProfile {
+    const { request, result } = calculation
+    const speeds = extensionSpeedLimits(request.train, request.options)
+    const summary = summarizeTractionResult(result, request.profile, request.signal)
+    return withBrakingApproach(withDepartureSection(request.profile, result.departureSectionLengthM ?? 0,
+        speeds.departureSectionMaxSpeedKmh), summary.brakingDistanceM, speeds.brakingMaxSpeedKmh)
+}
+
 /** Display elapsed time consistently in the summary strip and circuit labels. */
 export function formatTractionDuration(seconds: number | null | undefined): string {
     if (seconds === null || seconds === undefined || !Number.isFinite(seconds) || seconds < 0) return '--:--'

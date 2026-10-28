@@ -30,6 +30,8 @@ const props = defineProps<{
     editableEndM?: number;
     /** Display-only crop in saved result coordinates; never changes calculation inputs. */
     visibleStartM?: number;
+    /** Fit read-only popup plots into shorter panes while keeping the full axes visible. */
+    compact?: boolean;
     trainLengthM: number;
 }>();
 const emit = defineEmits<{ 'update:limitPoints': [points: SpeedLimitPoint[]] }>();
@@ -98,10 +100,12 @@ const measureCharts = () => {
     availableHeight.value = nextHeight;
     measuredWidth.value = nextWidth;
     // Keep charts useful when a pane is made small; overflow belongs to that pane.
-    speedHeight.value = Math.round(Math.max(144 + speedAxisHeight.value,
+    // Compact panes round down so fractional heading heights cannot create a 1px scrollbar.
+    const roundHeight = props.compact ? Math.floor : Math.round;
+    speedHeight.value = roundHeight(Math.max((props.compact ? 88 : 144) + speedAxisHeight.value,
         speed.clientHeight - heightOf(speed, ".chart-heading") - heightOf(speed, ".chart-inspector"),
     ));
-    timeHeight.value = Math.round(Math.max(240, totalLabelsMinimumHeight.value,
+    timeHeight.value = roundHeight(Math.max(props.compact ? 140 : 240, totalLabelsMinimumHeight.value,
         occupancy.clientHeight - heightOf(occupancy, ".chart-heading"),
     ));
 };
@@ -115,7 +119,7 @@ const resizeSpeedPane = (height: number) => {
     scheduleMeasure();
 };
 const resetSplit = () => {
-    splitRatio.value = 0.5;
+    splitRatio.value = props.compact ? 0.56 : 0.5;
     scheduleMeasure();
 };
 onMounted(() => {
@@ -362,7 +366,7 @@ const circuitAxis = computed(() => {
         return { ...cell, name, label, start, end, center, color: index % 2 ? '#8dbdff' : '#6ddac9' };
     });
 });
-const circuitAxisHeight = computed(() => circuitAxis.value.length ? 38 : 0);
+const circuitAxisHeight = computed(() => circuitAxis.value.length ? (props.compact ? 32 : 38) : 0);
 const circuitY = computed(() => speedBottom.value + 28);
 const joints = computed(() => (props.result?.jointTimes ?? []).filter(joint =>
     joint.positionM >= viewStart.value && joint.positionM <= length.value && finite(joint.headTimeS),
@@ -405,8 +409,8 @@ const deviceLabelLayout = computed(() => {
     });
     return { items, rows: items.some(device => device.labelRow === 1) ? 2 : items.length ? 1 : 0 };
 });
-const speedAxisHeight = computed(() => circuitAxisHeight.value + (deviceLabelLayout.value.rows ? 76 + (deviceLabelLayout.value.rows - 1) * deviceLabelRowHeight : 36));
-const deviceArrowY = computed(() => speedBottom.value + circuitAxisHeight.value + 28);
+const speedAxisHeight = computed(() => circuitAxisHeight.value + (deviceLabelLayout.value.rows ? (props.compact ? 70 : 76) + (deviceLabelLayout.value.rows - 1) * deviceLabelRowHeight : 36));
+const deviceArrowY = computed(() => speedBottom.value + circuitAxisHeight.value + (props.compact ? 24 : 28));
 watch(speedAxisHeight, scheduleMeasure);
 const deviceColor = (type: string) => {
     const normalized = type.toLowerCase();
@@ -585,7 +589,7 @@ const cellTitle = (cell: TractionCellOccupancy, total = cellTotalOccupancyInterv
 </script>
 
 <template>
-    <div ref="chartRoot" class="traction-charts" :data-view-start="viewStart" :data-view-end="length" @click="handleSpeedClick">
+    <div ref="chartRoot" class="traction-charts" :class="{ compact }" :data-view-start="viewStart" :data-view-end="length" @click="handleSpeedClick">
         <section ref="speedPane" class="chart-panel chart-pane speed-pane" :style="{ flexBasis: speedPaneHeight + 'px' }" @pointerleave="hoverPosition = null">
             <header class="chart-heading">
                 <div>
@@ -700,7 +704,7 @@ const cellTitle = (cell: TractionCellOccupancy, total = cellTotalOccupancyInterv
             :model-value="speedPaneHeight"
             :min="minimumPaneHeight"
             :max="maximumSpeedPaneHeight"
-            :reset-value="paneSpace / 2"
+            :reset-value="paneSpace * (compact ? 0.56 : 0.5)"
             :label="ui('调整上下图表高度', 'Resize speed and occupancy charts')"
             @update:model-value="resizeSpeedPane"
             @reset="resetSplit"
@@ -907,4 +911,9 @@ const cellTitle = (cell: TractionCellOccupancy, total = cellTotalOccupancyInterv
     .chart-inspector { gap: 12px; padding-inline: 12px; }
     .inspector-cell { margin-left: 0; }
 }
+.compact .chart-heading { flex-direction:row; align-items:center; gap:6px 12px; padding:8px 12px 4px; }
+.compact .chart-heading h3 { font-size:13px; white-space:nowrap; }
+.compact .chart-legend { max-width:none; gap:4px 10px; font-size:10px; }
+.compact .legend-line { width:16px; }
+.compact .chart-inspector { height:28px; min-height:28px; max-height:28px; padding:0 12px; gap:12px; font-size:10px; }
 </style>

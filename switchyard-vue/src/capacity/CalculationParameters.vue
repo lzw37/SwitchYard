@@ -416,131 +416,9 @@
             </template>
         </el-dialog>
 
-        <el-dialog
-            v-model="tractionDialogVisible"
-            :title="t('calculationParameters.traction.title')"
-            width="1080px"
-            class="calc-traction-dialog"
-            destroy-on-close
-        >
-            <div v-if="tractionResult" class="calc-traction-content">
-                <div class="calc-traction-summary">
-                    <div>
-                        <span>{{ t('calculationParameters.traction.currentRoute') }}</span>
-                        <strong>{{ tractionResult.routeLabel }}</strong>
-                    </div>
-                    <el-tag type="info" size="small">{{ t('calculationParameters.traction.sampleTag') }}</el-tag>
-                </div>
-
-                <div class="calc-traction-charts">
-                    <section class="calc-traction-panel">
-                        <header>
-                            <h3>{{ t('calculationParameters.traction.velocityDistance') }}</h3>
-                            <span>{{ formatDistance(tractionResult.totalDistance) }}</span>
-                        </header>
-                        <svg class="calc-traction-chart" :viewBox="`0 0 ${tractionResult.velocityCurve.width} ${tractionResult.velocityCurve.height}`">
-                            <line
-                                v-for="tick in tractionResult.velocityCurve.xTicks"
-                                :key="`vx-${tick.value}`"
-                                class="calc-traction-grid-line"
-                                :x1="tick.x"
-                                :x2="tick.x"
-                                :y1="tractionResult.velocityCurve.plotTop"
-                                :y2="tractionResult.velocityCurve.plotBottom"
-                            />
-                            <line
-                                v-for="tick in tractionResult.velocityCurve.yTicks"
-                                :key="`vy-${tick.value}`"
-                                class="calc-traction-grid-line"
-                                :x1="tractionResult.velocityCurve.plotLeft"
-                                :x2="tractionResult.velocityCurve.plotRight"
-                                :y1="tick.y"
-                                :y2="tick.y"
-                            />
-                            <polyline class="calc-traction-velocity-line" :points="tractionResult.velocityCurve.points" />
-                            <text v-for="tick in tractionResult.velocityCurve.xTicks" :key="`vxl-${tick.value}`" class="calc-traction-axis-label" :x="tick.x" :y="tractionResult.velocityCurve.height - 10" text-anchor="middle">
-                                {{ formatDistanceTick(tick.value) }}
-                            </text>
-                            <text v-for="tick in tractionResult.velocityCurve.yTicks" :key="`vyl-${tick.value}`" class="calc-traction-axis-label" :x="8" :y="tick.y + 4">
-                                {{ formatSpeedTick(tick.value) }}
-                            </text>
-                        </svg>
-                    </section>
-
-                    <section class="calc-traction-panel">
-                        <header>
-                            <h3>{{ t('calculationParameters.traction.timeDistance') }}</h3>
-                            <span>{{ formatTime(tractionResult.totalTime) }}</span>
-                        </header>
-                        <svg class="calc-traction-chart" :viewBox="`0 0 ${tractionResult.timeCurve.width} ${tractionResult.timeCurve.height}`">
-                            <line
-                                v-for="tick in tractionResult.timeCurve.xTicks"
-                                :key="`tx-${tick.value}`"
-                                class="calc-traction-grid-line"
-                                :x1="tick.x"
-                                :x2="tick.x"
-                                :y1="tractionResult.timeCurve.plotTop"
-                                :y2="tractionResult.timeCurve.plotBottom"
-                            />
-                            <line
-                                v-for="tick in tractionResult.timeCurve.yTicks"
-                                :key="`ty-${tick.value}`"
-                                class="calc-traction-grid-line"
-                                :x1="tractionResult.timeCurve.plotLeft"
-                                :x2="tractionResult.timeCurve.plotRight"
-                                :y1="tick.y"
-                                :y2="tick.y"
-                            />
-                            <polyline class="calc-traction-time-line" :points="tractionResult.timeCurve.points" />
-                            <text v-for="tick in tractionResult.timeCurve.xTicks" :key="`txl-${tick.value}`" class="calc-traction-axis-label" :x="tick.x" :y="tractionResult.timeCurve.height - 10" text-anchor="middle">
-                                {{ formatDistanceTick(tick.value) }}
-                            </text>
-                            <text v-for="tick in tractionResult.timeCurve.yTicks" :key="`tyl-${tick.value}`" class="calc-traction-axis-label" :x="8" :y="tick.y + 4">
-                                {{ formatTimeTick(tick.value) }}
-                            </text>
-                        </svg>
-                    </section>
-                </div>
-
-                <div class="calc-traction-tables">
-                    <section class="calc-traction-panel">
-                        <header><h3>{{ t('calculationParameters.traction.linkTimes') }}</h3></header>
-                        <el-table :data="tractionResult.linkResults" size="small" max-height="240">
-                            <el-table-column prop="linkName" :label="t('calculationParameters.traction.fields.link')" min-width="120" show-overflow-tooltip />
-                            <el-table-column :label="t('calculationParameters.traction.fields.length')" width="90" align="right">
-                                <template #default="{ row }">{{ formatDistance(row.length) }}</template>
-                            </el-table-column>
-                            <el-table-column :label="t('calculationParameters.traction.fields.entryTime')" width="98" align="right">
-                                <template #default="{ row }">{{ formatTime(row.entryTime) }}</template>
-                            </el-table-column>
-                            <el-table-column :label="t('calculationParameters.traction.fields.exitTime')" width="98" align="right">
-                                <template #default="{ row }">{{ formatTime(row.exitTime) }}</template>
-                            </el-table-column>
-                            <el-table-column :label="t('calculationParameters.traction.fields.speed')" width="116" align="right">
-                                <template #default="{ row }">{{ formatSpeed(row.speedIn) }} / {{ formatSpeed(row.speedOut) }}</template>
-                            </el-table-column>
-                        </el-table>
-                    </section>
-
-                    <section class="calc-traction-panel">
-                        <header><h3>{{ t('calculationParameters.traction.cellOccupations') }}</h3></header>
-                        <el-table :data="tractionResult.cellResults" size="small" max-height="240">
-                            <el-table-column prop="cellName" :label="t('calculationParameters.manager.fields.cellID')" min-width="150" show-overflow-tooltip />
-                            <el-table-column :label="t('calculationParameters.traction.fields.startTime')" width="110" align="right">
-                                <template #default="{ row }">{{ formatTime(row.startTime) }}</template>
-                            </el-table-column>
-                            <el-table-column :label="t('calculationParameters.traction.fields.endTime')" width="110" align="right">
-                                <template #default="{ row }">{{ formatTime(row.endTime) }}</template>
-                            </el-table-column>
-                            <el-table-column :label="t('calculationParameters.traction.fields.duration')" width="100" align="right">
-                                <template #default="{ row }">{{ formatTime(row.endTime - row.startTime) }}</template>
-                            </el-table-column>
-                        </el-table>
-                    </section>
-                </div>
-            </div>
-            <el-empty v-else :description="t('calculationParameters.traction.noRoute')" />
-        </el-dialog>
+        <TractionCalculationDialog v-if="tractionDialogVisible" v-model="tractionDialogVisible"
+            :instance-i-d="selectedInstanceId" :station-scheme-i-d="currentStationSchemeId"
+            :route-i-d="selectedRouteId" :route-label="[selectedRouteId, selectedStationRoute?.description].filter(Boolean).join(' - ')" />
     </section>
 </template>
 
@@ -560,6 +438,7 @@ import CalculationParameterSetManager from './components/CalculationParameterSet
 import { namedTrackCellNames } from './components/chartRowKinds'
 import StationLayoutEditor from './components/StationLayoutEditor.vue'
 import StationLayoutViewToolbar from './components/StationLayoutViewToolbar.vue'
+import TractionCalculationDialog from '@/traction/TractionCalculationDialog.vue'
 
 interface StationSchemeOption { id: string; name: string }
 interface RouteListSelectOption { id: string; name: string }
@@ -627,45 +506,6 @@ interface BatchRouteTimeSetting {
     selectedRouteIds: string[]
     startOccupationShift: number | null
     endOccupationShift: number | null
-}
-interface TractionPoint { distance: number; value: number }
-interface TractionTick { value: number; x: number; y: number }
-interface TractionCurveRender {
-    width: number
-    height: number
-    plotLeft: number
-    plotRight: number
-    plotTop: number
-    plotBottom: number
-    points: string
-    xTicks: TractionTick[]
-    yTicks: TractionTick[]
-}
-interface TractionLinkResult {
-    linkID: string
-    linkName: string
-    length: number
-    distanceStart: number
-    distanceEnd: number
-    entryTime: number
-    exitTime: number
-    speedIn: number
-    speedOut: number
-}
-interface TractionCellResult {
-    cellID: string
-    cellName: string
-    startTime: number
-    endTime: number
-}
-interface TractionCalculationResult {
-    routeLabel: string
-    totalDistance: number
-    totalTime: number
-    velocityCurve: TractionCurveRender
-    timeCurve: TractionCurveRender
-    linkResults: TractionLinkResult[]
-    cellResults: TractionCellResult[]
 }
 
 const props = withDefaults(defineProps<{ selectedInstanceId?: string | null }>(), { selectedInstanceId: '' })
@@ -904,7 +744,6 @@ const calcCenterStyle = computed(() => (
         ? { gridTemplateRows: `${layoutPaneHeight.value}px 8px minmax(150px, 1fr)` }
         : {}
 ))
-const tractionResult = computed(() => buildSampleTractionResult(selectedStationRoute.value))
 
 let stationSchemeLoadVersion = 0
 let disposed = false
@@ -1309,165 +1148,12 @@ function getLinkDisplayName(linkID: string) {
     return readString(link, 'name', 'Name').trim() || id
 }
 
-function getRouteLinkLength(linkID: string, index: number) {
-    const link = mapById(getLayoutTrackItems()).get(linkID)
-    const x1 = Number(link?.x1 ?? link?.X1)
-    const y1 = Number(link?.y1 ?? link?.Y1)
-    const x2 = Number(link?.x2 ?? link?.X2)
-    const y2 = Number(link?.y2 ?? link?.Y2)
-    const length = Math.hypot(x2 - x1, y2 - y1)
-    return Number.isFinite(length) && length > 1 ? Math.max(30, length) : 80 + (index % 4) * 18
-}
-
-function getCellLinkIDs(cellID: string) {
-    const cell = layoutCells.value.find((item) => String(item.id || '').trim() === cellID)
-    return parseRouteIdText(cell?.linkIDList)
-}
-
-function getSampleVelocity(distance: number, totalDistance: number) {
-    const ratio = totalDistance > 0 ? clampValue(distance / totalDistance, 0, 1) : 0
-    const wave = Math.sin(Math.PI * ratio)
-    const ripple = Math.sin(ratio * Math.PI * 5) * 3
-    return Math.max(8, Number((18 + 58 * wave + ripple).toFixed(1)))
-}
-
-function buildSampleTractionResult(route: StationRoute | null): TractionCalculationResult | null {
-    if (!route) return null
-    const cellIDs = parseRouteIdText(route.cellList)
-    const fallbackLinkIDs = cellIDs.flatMap((cellID) => getCellLinkIDs(cellID))
-    const linkIDs = normalizeRouteListValues(parseRouteIdText(route.linkList).length > 0 ? parseRouteIdText(route.linkList) : fallbackLinkIDs)
-    if (linkIDs.length === 0) return null
-
-    const linkLengths = linkIDs.map((linkID, index) => getRouteLinkLength(linkID, index))
-    const totalDistance = linkLengths.reduce((sum, length) => sum + length, 0)
-    let distance = 0
-    let time = 0
-    const velocityPoints: TractionPoint[] = [{ distance: 0, value: getSampleVelocity(0, totalDistance) }]
-    const timePoints: TractionPoint[] = [{ distance: 0, value: 0 }]
-    const linkResults = linkIDs.map((linkID, index) => {
-        const length = linkLengths[index] ?? getRouteLinkLength(linkID, index)
-        const distanceStart = distance
-        const distanceEnd = distance + length
-        const speedIn = getSampleVelocity(distanceStart, totalDistance)
-        const speedOut = getSampleVelocity(distanceEnd, totalDistance)
-        const averageSpeed = Math.max(8, (speedIn + speedOut) / 2)
-        const entryTime = time
-        const exitTime = time + length / (averageSpeed / 3.6)
-        distance = distanceEnd
-        time = exitTime
-        velocityPoints.push({ distance: distanceEnd, value: speedOut })
-        timePoints.push({ distance: distanceEnd, value: exitTime })
-        return {
-            linkID,
-            linkName: getLinkDisplayName(linkID),
-            length,
-            distanceStart,
-            distanceEnd,
-            entryTime,
-            exitTime,
-            speedIn,
-            speedOut,
-        }
-    })
-
-    const cellResults = buildSampleTractionCellResults(cellIDs, linkResults)
-    const maxVelocity = Math.max(...velocityPoints.map((point) => point.value), 1)
-    const maxTime = Math.max(...timePoints.map((point) => point.value), 1)
-    return {
-        routeLabel: route.description ? `${route.id} - ${route.description}` : route.id,
-        totalDistance,
-        totalTime: time,
-        velocityCurve: buildTractionCurveRender(velocityPoints, totalDistance, maxVelocity),
-        timeCurve: buildTractionCurveRender(timePoints, totalDistance, maxTime),
-        linkResults,
-        cellResults,
-    }
-}
-
-function buildSampleTractionCellResults(cellIDs: string[], linkResults: TractionLinkResult[]) {
-    const routeLinkIDSet = new Set(linkResults.map((link) => link.linkID))
-    return cellIDs.map((cellID, index) => {
-        let matchedLinks = getCellLinkIDs(cellID)
-            .filter((linkID) => routeLinkIDSet.has(linkID))
-            .map((linkID) => linkResults.find((link) => link.linkID === linkID))
-            .filter((link): link is TractionLinkResult => Boolean(link))
-
-        if (matchedLinks.length === 0 && cellIDs.length > 0) {
-            const startIndex = Math.floor(index * linkResults.length / cellIDs.length)
-            const endIndex = Math.max(startIndex, Math.ceil((index + 1) * linkResults.length / cellIDs.length) - 1)
-            matchedLinks = linkResults.slice(startIndex, endIndex + 1)
-        }
-
-        const startTime = matchedLinks.length > 0 ? Math.min(...matchedLinks.map((link) => link.entryTime)) : 0
-        const endTime = matchedLinks.length > 0 ? Math.max(...matchedLinks.map((link) => link.exitTime)) : startTime
-        return {
-            cellID,
-            cellName: getCellDisplayName(cellID) || cellID,
-            startTime,
-            endTime,
-        }
-    })
-}
-
-function createTractionTicks(maxValue: number, count = 4) {
-    const safeMax = Math.max(1, maxValue)
-    return Array.from({ length: count + 1 }, (_, index) => Number((safeMax * index / count).toFixed(1)))
-}
-
-function buildTractionCurveRender(points: TractionPoint[], maxDistance: number, maxValue: number): TractionCurveRender {
-    const width = 480
-    const height = 220
-    const plotLeft = 42
-    const plotRight = width - 16
-    const plotTop = 14
-    const plotBottom = height - 34
-    const safeDistance = Math.max(1, maxDistance)
-    const safeValue = Math.max(1, maxValue)
-    const xOf = (distance: number) => plotLeft + (distance / safeDistance) * (plotRight - plotLeft)
-    const yOf = (value: number) => plotBottom - (value / safeValue) * (plotBottom - plotTop)
-    return {
-        width,
-        height,
-        plotLeft,
-        plotRight,
-        plotTop,
-        plotBottom,
-        points: points.map((point) => `${xOf(point.distance).toFixed(1)},${yOf(point.value).toFixed(1)}`).join(' '),
-        xTicks: createTractionTicks(safeDistance).map((value) => ({ value, x: xOf(value), y: 0 })),
-        yTicks: createTractionTicks(safeValue).map((value) => ({ value, x: 0, y: yOf(value) })),
-    }
-}
-
 function openTractionCalculationDialog() {
     if (!selectedStationRoute.value) {
         ElMessage.warning(t('calculationParameters.manager.messages.selectRoute'))
         return
     }
     tractionDialogVisible.value = true
-}
-
-function formatDistance(value: number) {
-    return `${Number(value || 0).toFixed(1)} m`
-}
-
-function formatDistanceTick(value: number) {
-    return Number(value || 0).toFixed(0)
-}
-
-function formatSpeed(value: number) {
-    return `${Number(value || 0).toFixed(1)} km/h`
-}
-
-function formatSpeedTick(value: number) {
-    return Number(value || 0).toFixed(0)
-}
-
-function formatTime(value: number) {
-    return `${Number(value || 0).toFixed(1)} s`
-}
-
-function formatTimeTick(value: number) {
-    return Number(value || 0).toFixed(0)
 }
 
 function handleGanttTimeChange(change: GanttTimeChange) {
@@ -2053,10 +1739,6 @@ async function handleStationSchemeChange() {
     await Promise.all([loadStationRoutes(), loadStationRouteEnds()])
 }
 
-function clampValue(value: number, min: number, max: number) {
-    return Math.max(min, Math.min(max, value))
-}
-
 function resetRoutePaneWidth() {
     routePaneWidth.value = 320
 }
@@ -2316,112 +1998,6 @@ onBeforeUnmount(() => {
     height: auto;
     margin-right: 0;
     white-space: normal;
-}
-
-.calc-traction-content {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-}
-
-.calc-traction-summary {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 8px 10px;
-    border: 1px solid #d8e2ef;
-    border-radius: 6px;
-    background: #f8fafc;
-}
-
-.calc-traction-summary div {
-    display: inline-flex;
-    align-items: center;
-    min-width: 0;
-    gap: 8px;
-    color: #526071;
-    font-size: 12px;
-}
-
-.calc-traction-summary strong {
-    min-width: 0;
-    overflow: hidden;
-    color: #1f2937;
-    font-size: 13px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.calc-traction-charts,
-.calc-traction-tables {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    gap: 12px;
-}
-
-.calc-traction-panel {
-    min-width: 0;
-    overflow: hidden;
-    border: 1px solid #d8e2ef;
-    border-radius: 6px;
-    background: #fff;
-}
-
-.calc-traction-panel header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    padding: 8px 10px;
-    border-bottom: 1px solid #e4ecf5;
-    background: #f8fafc;
-}
-
-.calc-traction-panel h3 {
-    margin: 0;
-    color: #243244;
-    font-size: 13px;
-    font-weight: 700;
-}
-
-.calc-traction-panel header span {
-    color: #607080;
-    font-size: 12px;
-    white-space: nowrap;
-}
-
-.calc-traction-chart {
-    display: block;
-    width: 100%;
-    height: 230px;
-    background: #fff;
-}
-
-.calc-traction-grid-line {
-    stroke: #e6edf5;
-    stroke-width: 1;
-}
-
-.calc-traction-velocity-line,
-.calc-traction-time-line {
-    fill: none;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-    stroke-width: 3;
-}
-
-.calc-traction-velocity-line {
-    stroke: #16a34a;
-}
-
-.calc-traction-time-line {
-    stroke: #2563eb;
-}
-
-.calc-traction-axis-label {
-    fill: #64748b;
-    font-size: 10px;
 }
 
 .calc-route-time-input {
