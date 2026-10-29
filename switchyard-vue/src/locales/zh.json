@@ -1435,6 +1435,44 @@
         }
     },
     "modelSolving": {
+        "parameters": {
+            "title": "求解参数",
+            "hint": "时间容差分别设置允许提前和允许延后的秒数。参数随任务草稿自动保存，并同步到请求数据。",
+            "readOnly": "本次任务使用的求解参数。"
+        },
+        "workspace": {
+            "configuration": "任务配置",
+            "newTask": "新建求解任务",
+            "resize": "拖动调整任务列表宽度（双击恢复 1/4）",
+            "information": "任务信息",
+            "historyHint": "已提交任务的配置为历史快照，调整配置请新建任务。",
+            "draftHint": "选择站场方案、作业计划和 Agent，生成请求数据后提交求解。",
+            "loadingTask": "正在加载任务信息…",
+            "originalRequest": "该任务提交时的原始请求数据",
+            "editInput": "编辑请求 JSON",
+            "reloadInput": "重新加载请求",
+            "taskName": "任务名称",
+            "createdAt": "创建时间",
+            "createFirst": "点击左侧“新建求解任务”创建并保存草稿。",
+            "createFailed": "创建求解任务失败",
+            "saveFailed": "草稿保存失败，请重试后再开始求解。",
+            "retrySave": "重试保存",
+            "saveState": {
+                "saved": "草稿已保存",
+                "pending": "等待保存…",
+                "saving": "正在保存…",
+                "error": "草稿保存失败"
+            }
+        },
+        "viewer": {
+            "expand": "全部展开",
+            "collapse": "全部折叠",
+            "copy": "复制 JSON",
+            "copied": "JSON 已复制",
+            "copyFailed": "复制失败，请重试",
+            "items": "项",
+            "keys": "个字段"
+        },
         "fields": {
             "stationScheme": "站场方案",
             "operationPlan": "作业计划",
@@ -1443,7 +1481,7 @@
             "account": "认证账号",
             "models": "可用模型",
             "selectedAgent": "执行 Agent",
-            "model": "求解模型",
+            "model": "求解器",
             "workload": "并发任务",
             "cpu": "CPU",
             "memory": "内存"
@@ -1452,14 +1490,14 @@
             "stationScheme": "请选择站场方案",
             "operationPlan": "请选择作业计划",
             "agent": "请选择在线 Agent",
-            "model": "请选择模型",
+            "model": "请选择求解器",
             "input": "生成输入数据后，可在这里检查或编辑 JSON",
             "result": "求解完成后，结果 JSON 将显示在这里"
         },
         "actions": {
             "generateInput": "生成请求数据",
             "refreshConnections": "刷新连接",
-            "solve": "发送求解请求",
+            "solve": "开始求解",
             "refreshJob": "刷新任务",
             "downloadResult": "下载结果 JSON"
         },
@@ -1491,11 +1529,11 @@
             "noJob": "尚未提交求解任务"
         },
         "hints": {
-            "editableJson": "发送前可编辑"
+            "editableJson": "求解参数在上方表单配置，其他请求数据可在 JSON 中调整。"
         },
         "manager": {
             "title": "求解任务管理",
-            "hint": "任务在后台执行，关闭或刷新网页后可在此继续查看。列表包含各实例的任务。",
+            "hint": "仅显示当前实例的任务，关闭网页后可重新进入。",
             "all": "全部任务",
             "active": "进行中",
             "jobId": "任务 ID",
@@ -1510,6 +1548,8 @@
             "cancel": "取消任务",
             "retry": "使用原输入重试",
             "delete": "删除记录",
+            "actions": "操作",
+            "deleteActiveHint": "请先取消任务，等待计算代理确认停止后再删除记录。",
             "cancelConfirm": "确定取消任务 {id} 吗？已完成的计算将无法继续。",
             "deleteConfirm": "确定删除任务 {id} 的记录、输入和结果吗？已生成的作业计划将保留。",
             "cancelSuccess": "已请求取消，等待计算代理确认停止",
@@ -1519,6 +1559,7 @@
             "actionFailed": "任务操作失败"
         },
         "jobs": {
+            "draft": "草稿",
             "cancelling": "取消中",
             "cancelled": "已取消",
             "queued": "等待中",

@@ -1,7 +1,13 @@
-export type SolveJobStatus = 'queued' | 'running' | 'cancelling' | 'cancelled' | 'completed' | 'failed'
+import type { SolveSettings } from './solveSettings'
+
+export type SolveJobStatus = 'draft' | 'queued' | 'running' | 'cancelling' | 'cancelled' | 'completed' | 'failed'
 
 export interface SolveJob {
     jobId: string
+    name: string
+    revision: number
+    settings?: SolveSettings
+    createdAt: string
     agentId: string
     agentName: string
     modelId: string

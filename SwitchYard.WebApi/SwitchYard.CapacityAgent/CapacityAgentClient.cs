@@ -47,7 +47,7 @@ internal sealed class CapacityAgentClient
     /// <summary>
     /// 实际能力求解器的注册表，供任务查找求解器及向服务端公布描述信息。
     /// </summary>
-    private readonly CapacitySolverRegistry _solvers;
+    private readonly CapacitySolverRegistry _capacitySolverRegistry;
     /// <summary>
     /// 已加载并校验的代理配置，提供并发上限、资源配额、状态上报间隔和共享策略。
     /// </summary>
@@ -121,7 +121,7 @@ internal sealed class CapacityAgentClient
         _passwordHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(password))).ToLowerInvariant();
         _agentId = agentId;
         _agentName = agentName;
-        _solvers = solvers;
+        _capacitySolverRegistry = solvers;
         _options = options;
         _httpClient = new HttpClient { BaseAddress = serverUri, Timeout = TimeSpan.FromSeconds(30) };
     }
@@ -233,7 +233,7 @@ internal sealed class CapacityAgentClient
             Logger.Information("开始求解，求解器 {SolverId}，CPU {CpuCoreCount} 核、内存 {MemoryLimitMb} MB",
                 command.ModelId, job.Resources.CpuCoreCount, job.Resources.MemoryLimitBytes / (1024L * 1024L));
             await TryReportStatusAsync(job.Token);
-            if (!_solvers.TryGet(command.ModelId, out var solver))
+            if (!_capacitySolverRegistry.TryGet(command.ModelId, out var solver))
                 throw new InvalidOperationException($"不支持求解器 {command.ModelId}。");
 
             // JSON 只在网络边界解析一次；共享领域层组装完成后直接传对象给 Solver。
@@ -280,7 +280,9 @@ internal sealed class CapacityAgentClient
             var connection = _registeredConnection ?? throw new InvalidOperationException("CapacityAgent 正在重连。");
             await connection.InvokeAsync("ReportProgress", new CapacitySolveJobProgress
             {
-                JobId = jobId, Percent = percent, Message = message
+                JobId = jobId,
+                Percent = percent,
+                Message = message
             }, cancellationToken);
         }
         catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
@@ -300,7 +302,7 @@ internal sealed class CapacityAgentClient
             {
                 AgentId = _agentId,
                 Name = _agentName,
-                Models = _solvers.Descriptors.ToList(),
+                Models = _capacitySolverRegistry.Descriptors.ToList(),
                 ActiveJobIds = _activeJobs.Keys.Concat(_pendingCompletions.Keys).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(id => id, StringComparer.Ordinal).ToList(),
                 Resources = _resources.CreateStatus(_options, _activeJobs.Values.Select(job => job.Resources)),
                 AccessPolicy = CreateAccessPolicy()

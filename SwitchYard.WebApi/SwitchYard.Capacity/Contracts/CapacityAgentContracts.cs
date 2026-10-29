@@ -90,9 +90,29 @@ public sealed class CapacityTaskResourceLimits
 
 public sealed class CapacitySolveJobRequest
 {
+    public string? Name { get; set; }
+    public string? InstanceId { get; set; }
     public string AgentId { get; set; } = string.Empty;
     public string ModelId { get; set; } = CapacityAgentProtocol.StationCapacityModelId;
     public JsonElement Input { get; set; }
+}
+
+public sealed class CapacitySolveDraftRequest
+{
+    public string InstanceId { get; set; } = string.Empty;
+    public string? Name { get; set; }
+    public string AgentId { get; set; } = string.Empty;
+    public string ModelId { get; set; } = string.Empty;
+    public string? StationSchemeId { get; set; }
+    public string? OperationPlanId { get; set; }
+    public JsonElement? Input { get; set; }
+    public long Revision { get; set; }
+    public StationCapacitySolveSettings? Settings { get; set; }
+}
+
+public sealed class CapacitySolveStartRequest
+{
+    public long Revision { get; set; }
 }
 
 public sealed class StationCapacityInputRequest
@@ -129,6 +149,10 @@ public sealed class CapacitySolveJobCompletion
 
 public sealed class CapacitySolveJob
 {
+    public string Name { get; set; } = string.Empty;
+    public DateTimeOffset CreatedAt { get; set; }
+    public long Revision { get; set; } = 1;
+    public StationCapacitySolveSettings? Settings { get; set; }
     public string JobId { get; set; } = string.Empty;
     public string AgentId { get; set; } = string.Empty;
     public string AgentName { get; set; } = string.Empty;

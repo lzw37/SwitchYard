@@ -1435,6 +1435,44 @@
         }
     },
     "modelSolving": {
+        "parameters": {
+            "title": "Solver parameters",
+            "hint": "Set the permitted early and late shifts in seconds. Parameters are saved with the task draft and synchronized to the request.",
+            "readOnly": "Parameters used for this task."
+        },
+        "workspace": {
+            "configuration": "CONFIGURATION",
+            "newTask": "New solve task",
+            "resize": "Drag to resize the task list; double-click to restore 1/4",
+            "information": "Task information",
+            "historyHint": "Submitted tasks show their saved configuration. Create a new task to change it.",
+            "draftHint": "Choose a scheme, operation plan and Agent, then generate and submit the request.",
+            "loadingTask": "Loading task information…",
+            "originalRequest": "Original input submitted with this task",
+            "editInput": "Edit request JSON",
+            "reloadInput": "Reload request",
+            "taskName": "Task name",
+            "createdAt": "Created",
+            "createFirst": "Choose New solve task in the sidebar to create a saved draft.",
+            "createFailed": "Could not create solve task",
+            "saveFailed": "Could not save the draft. Retry before starting.",
+            "retrySave": "Retry save",
+            "saveState": {
+                "saved": "Draft saved",
+                "pending": "Waiting to save…",
+                "saving": "Saving…",
+                "error": "Could not save draft"
+            }
+        },
+        "viewer": {
+            "expand": "Expand all",
+            "collapse": "Collapse all",
+            "copy": "Copy JSON",
+            "copied": "JSON copied",
+            "copyFailed": "Could not copy JSON. Please try again.",
+            "items": "items",
+            "keys": "keys"
+        },
         "fields": {
             "stationScheme": "Station Scheme",
             "operationPlan": "Operation Plan",
@@ -1443,7 +1481,7 @@
             "account": "Account",
             "models": "Models",
             "selectedAgent": "Execution Agent",
-            "model": "Solver Model",
+            "model": "Solver",
             "workload": "Jobs",
             "cpu": "CPU",
             "memory": "Memory"
@@ -1452,14 +1490,14 @@
             "stationScheme": "Select a station scheme",
             "operationPlan": "Select an operation plan",
             "agent": "Select an online agent",
-            "model": "Select a model",
+            "model": "Select a solver",
             "input": "Generate input data, then review or edit its JSON here",
             "result": "The result JSON will appear here after solving"
         },
         "actions": {
             "generateInput": "Generate Request Data",
             "refreshConnections": "Refresh Connections",
-            "solve": "Send Solve Request",
+            "solve": "Start solving",
             "refreshJob": "Refresh Job",
             "downloadResult": "Download Result JSON"
         },
@@ -1491,11 +1529,11 @@
             "noJob": "No solve job submitted"
         },
         "hints": {
-            "editableJson": "Editable before dispatch"
+            "editableJson": "Configure solver parameters in the form above; other request fields can be edited as JSON."
         },
         "manager": {
             "title": "Solve task manager",
-            "hint": "Tasks run in the background and remain accessible after closing or refreshing this page. Tasks from all instances are listed.",
+            "hint": "Tasks for this instance remain available after closing the page.",
             "all": "All tasks",
             "active": "Active",
             "jobId": "Task ID",
@@ -1510,6 +1548,8 @@
             "cancel": "Cancel task",
             "retry": "Retry original input",
             "delete": "Delete record",
+            "actions": "Actions",
+            "deleteActiveHint": "Cancel the task and wait for the agent to confirm it has stopped before deleting the record.",
             "cancelConfirm": "Cancel task {id}? Its computation cannot be resumed.",
             "deleteConfirm": "Delete task {id}, its input and result? Generated operation plans will be kept.",
             "cancelSuccess": "Cancellation requested; waiting for the agent to stop",
@@ -1519,6 +1559,7 @@
             "actionFailed": "Task operation failed"
         },
         "jobs": {
+            "draft": "Draft",
             "cancelling": "Cancelling",
             "cancelled": "Cancelled",
             "queued": "Queued",

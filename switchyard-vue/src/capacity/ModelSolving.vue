@@ -1,11 +1,15 @@
 <template>
-    <section class="model-solving">
-        <SolveJobManager ref="jobManager" :selected-job-id="selectedJobId" @select="selectJob" />
-        <div class="toolbar">
-            <div class="toolbar-field">
+    <section ref="workspaceElement" class="model-solving" :style="{ '--sidebar-width': sidebarWidth + 'px' }">
+        <SolveJobManager ref="jobManager" :instance-id="selectedInstanceId" :selected-job-id="selectedJobId" :busy="managementBusy || submitting || creatingTask" :auto-select="!draftMode" @new="startNewTask" @select="selectJob" @cancel="manageJob('cancel', $event)" @delete="manageJob('delete', $event)" />
+        <PaneDivider :model-value="sidebarWidth" :min="sidebarMin" :max="sidebarMax" :reset-value="defaultSidebarWidth" :label="t('modelSolving.workspace.resize')" @update:model-value="resizeSidebar" @reset="resetSidebar" />
+        <main class="task-workspace">
+            <el-card v-loading="pollingJob && !currentJob" class="configuration-card" shadow="never">
+                <template #header><div class="section-heading"><div><span class="section-eyebrow">{{ t('modelSolving.workspace.configuration') }}</span><h3>{{ currentJob?.name || t('modelSolving.workspace.newTask') }}</h3></div><ActionButton :icon="Connection" :label="t('modelSolving.sections.connections')" @click="agentManagerVisible = true; loadAgents(false)" /></div></template>
+                <div v-if="currentJob" class="task-name-field"><span class="field-label">{{ t('modelSolving.workspace.taskName') }}</span><el-input v-model="taskName" :disabled="formLocked" maxlength="100" :placeholder="currentJob.name" @change="persistDraftNow" /><span v-if="currentJob.status === 'draft'" class="draft-save-state" :class="{ 'has-error': draftSaveState === 'error' }">{{ t('modelSolving.workspace.saveState.' + draftSaveState) }}<el-button v-if="draftSaveState === 'error'" link type="danger" @click="persistDraftNow">{{ t('modelSolving.workspace.retrySave') }}</el-button></span></div>
+                <div class="configuration-fields">            <div class="form-field">
                 <span class="field-label">{{ t('modelSolving.fields.stationScheme') }}</span>
                 <el-select
-                    v-model="stationSchemeId"
+                    v-model="stationSchemeId" :disabled="formLocked || submitting || !selectedInstanceId" @change="draftMode = true"
                     :loading="loadingSchemes"
                     :placeholder="t('modelSolving.placeholders.stationScheme')"
                     filterable
@@ -18,12 +22,12 @@
                     />
                 </el-select>
             </div>
-            <div class="toolbar-field">
+            <div class="form-field">
                 <span class="field-label">{{ t('modelSolving.fields.operationPlan') }}</span>
                 <el-select
                     v-model="operationPlanId"
                     :loading="loadingPlans"
-                    :disabled="!stationSchemeId"
+                    :disabled="formLocked || submitting || !stationSchemeId" @change="draftMode = true"
                     :placeholder="t('modelSolving.placeholders.operationPlan')"
                     filterable
                 >
@@ -35,48 +39,39 @@
                     />
                 </el-select>
             </div>
-            <div class="toolbar-field preset-toolbar-field">
-                <span class="field-label">{{ t('modelSolving.presets.fields.preset') }}</span>
-                <el-select
-                    v-model="selectedPresetId"
-                    :loading="loadingPresets"
-                    clearable
-                    filterable
-                    :placeholder="t('modelSolving.presets.placeholders.select')"
-                    @change="applySelectedPreset"
-                >
-                    <el-option
-                        v-for="preset in presets"
-                        :key="preset.presetId"
-                        :label="preset.name"
-                        :value="preset.presetId"
-                    />
-                </el-select>
-            </div>
-            <div class="toolbar-actions">
-                <ActionButton
-                    :loading="generatingInput"
-                    :disabled="!canGenerateInput"
-                    @click="generateInput"
-                 :icon="MagicStick" :label="t('modelSolving.actions.generateInput')" />
-                <ActionButton :loading="loadingAgents" @click="loadAgents(false)" :icon="Refresh" :label="t('modelSolving.actions.refreshConnections')" />
-                <ActionButton @click="openPresetManager" :icon="Setting" :label="t('modelSolving.presets.actions.manage')" />
-            </div>
-        </div>
 
-        <div class="workspace-grid" :style="{ '--job-pane-width': `${jobPaneWidth}px`, '--connections-pane-height': `${connectionsPaneHeight}px` }">
-            <PaneDivider v-model="jobPaneWidth" reverse class="model-column-divider" :min="280" :max="720" :label="t('modelSolving.sections.job')" />
-            <PaneDivider v-model="connectionsPaneHeight" direction="vertical" class="model-row-divider" :min="220" :max="720" :label="t('modelSolving.sections.input')" />
-            <el-card class="panel connection-panel" shadow="never">
-                <template #header>
-                    <div class="panel-header">
-                        <span>{{ t('modelSolving.sections.connections') }}</span>
-                        <el-tag :type="connectedAgents.length > 0 ? 'success' : 'info'" size="small">
-                            {{ t('modelSolving.connection.onlineCount', { count: connectedAgents.length }) }}
-                        </el-tag>
-                    </div>
+                    <div class="form-field"><span class="field-label">{{ t('modelSolving.fields.selectedAgent') }}</span><div class="agent-picker">
+                        <el-select v-model="selectedAgentId" :disabled="formLocked || submitting" :placeholder="t('modelSolving.placeholders.agent')" @change="handleAgentSelectionChange" filterable>
+                            <el-option v-for="agent in agents" :key="agent.agentId" :label="agent.name" :value="agent.agentId" :disabled="!agent.isConnected || !agent.canUse || !agent.isAvailable" />
+                            <el-option v-if="selectedAgentId && !agents.some(a => a.agentId === selectedAgentId)" :label="currentJob?.agentName || selectedAgentId" :value="selectedAgentId" />
+                        </el-select><el-tooltip :content="selectedAgentStatus"><span class="agent-lamp-box" role="status" :aria-label="selectedAgentStatus"><span class="agent-lamp" :class="selectedAgent ? 'is-' + agentTagType(selectedAgent) : 'is-info'" /></span></el-tooltip>
+                    </div></div>
+                    <div class="form-field"><span class="field-label">{{ t('modelSolving.fields.model') }}</span><el-select v-model="selectedModelId" :disabled="formLocked || !availableModels.length" :placeholder="t('modelSolving.placeholders.model')"><el-option v-for="model in availableModels" :key="model.id" :label="model.name + ' (' + model.version + ')'" :value="model.id" /><el-option v-if="selectedModelId && !availableModels.some(model => model.id === selectedModelId)" :label="selectedModelId" :value="selectedModelId" /></el-select></div>
+                </div>
+                <SolverParametersForm v-if="selectedModelId && currentJob" v-model="solverSettings" :solver-name="selectedModelName" :disabled="formLocked" />
+                <div class="configuration-footer"><span class="configuration-hint">{{ !currentJob ? t('modelSolving.workspace.createFirst') : formLocked ? t('modelSolving.workspace.historyHint') : t('modelSolving.workspace.draftHint') }}</span><span v-if="selectedModelId" class="model-chip">{{ selectedModelName }}</span>
+                    <ActionButton v-if="!formLocked" :icon="MagicStick" :label="t('modelSolving.actions.generateInput')" :loading="generatingInput" :disabled="!canGenerateInput" @click="generateInput" />
+                    <ActionButton v-if="!formLocked" type="primary" variant="icon-text" :icon="VideoPlay" :label="t('modelSolving.actions.solve')" :loading="submitting" :disabled="!canSubmit" @click="submitJob" />
+                </div>
+            </el-card>
+            <el-card class="job-information-card" shadow="never">
+                <template #header><div class="section-heading"><div class="information-heading"><h3>{{ t('modelSolving.workspace.information') }}</h3><el-tag v-if="currentJob" :type="jobTagType(currentJob.status)" size="small">{{ jobStatusText(currentJob.status) }}</el-tag></div>
+                    <div v-if="currentJob" class="job-actions"><ActionButton :icon="Refresh" :label="t('modelSolving.actions.refreshJob')" :loading="pollingJob" :disabled="managementBusy" @click="refreshCurrentJob()" />
+                        <el-button v-if="isSolveJobActive(currentJob.status)" type="warning" plain size="small" :disabled="managementBusy || currentJob.status === 'cancelling'" @click="manageJob('cancel')">{{ t('modelSolving.manager.cancel') }}</el-button>
+                        <template v-else-if="currentJob.status !== 'draft'"><el-button size="small" :disabled="managementBusy" @click="manageJob('retry')">{{ t('modelSolving.manager.retry') }}</el-button><el-button type="danger" plain size="small" :disabled="managementBusy" @click="manageJob('delete')">{{ t('modelSolving.manager.delete') }}</el-button></template><el-button v-if="currentJob.status === 'draft'" type="danger" plain size="small" :disabled="managementBusy || submitting" @click="manageJob('delete')">{{ t('modelSolving.manager.delete') }}</el-button>
+                    </div></div></template>
+                <template v-if="currentJob"><el-progress :percentage="currentJob.progress" :stroke-width="7" :status="currentJob.status === 'failed' ? 'exception' : currentJob.status === 'completed' ? 'success' : undefined" /><p class="job-progress-message">{{ currentJob.progressMessage }}</p>
+                    <el-alert v-if="currentJob.error" :title="currentJob.error" type="error" :closable="false" show-icon />
+                    <div class="job-metadata"><div><span>{{ t('modelSolving.manager.jobId') }}</span><strong class="job-id">{{ currentJob.jobId }}</strong></div><div><span>{{ t(currentJob.status === 'draft' ? 'modelSolving.workspace.createdAt' : 'modelSolving.manager.submittedAt') }}</span><strong>{{ formatDateTime(currentJob.status === 'draft' ? currentJob.createdAt : currentJob.submittedAt) }}</strong></div><div><span>{{ t('modelSolving.manager.completedAt') }}</span><strong>{{ currentJob.completedAt ? formatDateTime(currentJob.completedAt) : '—' }}</strong></div><div v-if="currentJob.resultOperationPlanId"><span>{{ t('modelSolving.manager.resultPlan') }}</span><strong>{{ currentJob.resultOperationPlanName || currentJob.resultOperationPlanId }}</strong></div></div>
                 </template>
-
+                <div v-else class="draft-information"><el-icon><Document /></el-icon><span>{{ selectedJobId ? t('modelSolving.workspace.loadingTask') : t('modelSolving.workspace.draftHint') }}</span></div>
+            </el-card>
+            <el-card class="data-card" shadow="never"><el-tabs v-model="activeDataTab" class="data-tabs">
+                <el-tab-pane :label="t('modelSolving.sections.input')" name="request"><div class="data-heading"><span>{{ formLocked ? t('modelSolving.workspace.originalRequest') : t('modelSolving.hints.editableJson') }}</span><el-button v-if="!formLocked" size="small" :icon="Edit" :disabled="!selectedInstanceId || generatingInput || submitting" @click="openInputEditor">{{ t('modelSolving.workspace.editInput') }}</el-button><el-button v-else-if="requestLoadError" size="small" :icon="Refresh" @click="loadJobInput(selectedJobId)">{{ t('modelSolving.workspace.reloadInput') }}</el-button></div><el-alert v-if="requestLoadError" :title="requestLoadError" type="error" :closable="false" show-icon /><JsonViewer :source="formLocked ? jobInputJson : inputJson" :loading="loadingJobInput || generatingInput" :empty-text="t('modelSolving.placeholders.input')" /></el-tab-pane>
+                <el-tab-pane :label="t('modelSolving.sections.result')" name="result"><div class="data-heading"><span>{{ resultSummary || t('modelSolving.placeholders.result') }}</span><ActionButton :icon="Download" :label="t('modelSolving.actions.downloadResult')" :disabled="!currentJob?.result" @click="downloadResult" /></div><JsonViewer :source="resultJson" :empty-text="t('modelSolving.placeholders.result')" /></el-tab-pane>
+            </el-tabs></el-card>
+        </main>
+        <el-dialog v-model="agentManagerVisible" :title="t('modelSolving.sections.connections')" width="min(1120px, 94vw)"><div class="agent-dialog-heading"><el-tag :type="connectedAgents.length ? 'success' : 'info'">{{ t('modelSolving.connection.onlineCount', { count: connectedAgents.length }) }}</el-tag><ActionButton :icon="Refresh" :loading="loadingAgents" :label="t('modelSolving.actions.refreshConnections')" @click="loadAgents(false)" /></div>
                 <el-table
                     :data="agents"
                     row-key="agentId"
@@ -120,7 +115,7 @@
                     <div class="toolbar-field grow">
                         <span class="field-label">{{ t('modelSolving.fields.selectedAgent') }}</span>
                         <el-select
-                            v-model="selectedAgentId"
+                            v-model="selectedAgentId" :disabled="formLocked"
                             :placeholder="t('modelSolving.placeholders.agent')"
                             @change="handleAgentSelectionChange"
                         >
@@ -137,9 +132,9 @@
                         <span class="field-label">{{ t('modelSolving.fields.model') }}</span>
                         <el-select
                             v-model="selectedModelId"
-                            :disabled="availableModels.length === 0"
+                            :disabled="formLocked || availableModels.length === 0"
                             :placeholder="t('modelSolving.placeholders.model')"
-                            @change="selectedPresetId = ''"
+
                         >
                             <el-option
                                 v-for="model in availableModels"
@@ -173,219 +168,21 @@
                         <small>{{ t('modelSolving.resources.allocated', { cpu: selectedAgent.resources.allocatedCpuCores, memory: formatBytes(selectedAgent.resources.allocatedMemoryBytes) }) }}</small>
                     </div>
                 </div>
-            </el-card>
-
-            <el-card class="panel job-panel" shadow="never">
-                <template #header>
-                    <div class="panel-header">
-                        <span>{{ t('modelSolving.sections.job') }}</span>
-                        <el-tag v-if="currentJob" :type="jobTagType(currentJob.status)" size="small">
-                            {{ jobStatusText(currentJob.status) }}
-                        </el-tag>
-                    </div>
-                </template>
-
-                <div v-if="currentJob" class="job-summary">
-                    <div class="job-id">{{ currentJob.jobId }}</div>
-                    <el-progress
-                        :percentage="currentJob.progress"
-                        :status="currentJob.status === 'failed' ? 'exception' : currentJob.status === 'completed' ? 'success' : undefined"
-                    />
-                    <div class="job-message">{{ currentJob.error || currentJob.progressMessage }}</div>
-                    <div class="job-meta">
-                        <span>{{ currentJob.agentName }}</span>
-                        <span>{{ formatDateTime(currentJob.submittedAt) }}</span>
-                    </div>
-                    <div v-if="currentJob.completedAt" class="job-message">{{ t('modelSolving.manager.completedAt') }}: {{ formatDateTime(currentJob.completedAt) }}</div>
-                    <div v-if="currentJob.sourceOperationPlanId" class="job-message">{{ t('modelSolving.manager.sourcePlan') }}: {{ currentJob.instanceId }} / {{ currentJob.stationSchemeId }} / {{ currentJob.sourceOperationPlanId }}</div>
-                    <div v-if="currentJob.resultOperationPlanId" class="job-message">{{ t('modelSolving.manager.resultPlan') }}: {{ currentJob.resultOperationPlanName || currentJob.resultOperationPlanId }}</div>
-                </div>
-                <el-empty v-else :description="t('modelSolving.empty.noJob')" :image-size="62" />
-
-                <div class="job-actions">
-                    <ActionButton
-                        variant="icon-text"
-                        type="primary"
-                        :loading="submitting"
-                        :disabled="!canSubmit"
-                        @click="submitJob"
-                     :icon="VideoPlay" :label="t('modelSolving.actions.solve')" />
-                    <ActionButton
-                        :disabled="!currentJob"
-                        :loading="pollingJob"
-                        @click="refreshCurrentJob()"
-                     :icon="Refresh" :label="t('modelSolving.actions.refreshJob')" />
-                    <ActionButton
-                        variant="icon-text"
-                        type="success"
-                        :disabled="!currentJob?.result"
-                        @click="downloadResult"
-                     :icon="Download" :label="t('modelSolving.actions.downloadResult')" />
-                </div>
-                <div v-if="currentJob" class="job-actions">
-                    <el-button :disabled="managementBusy" @click="viewJobInput">{{ t('modelSolving.manager.viewInput') }}</el-button>
-                    <el-button v-if="isSolveJobActive(currentJob.status)" type="danger" plain
-                        :disabled="managementBusy || currentJob.status === 'cancelling'" @click="manageJob('cancel')">
-                        {{ t('modelSolving.manager.cancel') }}
-                    </el-button>
-                    <template v-else>
-                        <el-button :disabled="managementBusy" @click="manageJob('retry')">{{ t('modelSolving.manager.retry') }}</el-button>
-                        <el-button type="danger" plain :disabled="managementBusy" @click="manageJob('delete')">{{ t('modelSolving.manager.delete') }}</el-button>
-                    </template>
-                </div>
-            </el-card>
-
-            <el-card class="panel json-panel" shadow="never">
-                <template #header>
-                    <div class="panel-header">
-                        <span>{{ t('modelSolving.sections.input') }}</span>
-                    </div>
-                </template>
-                <el-input
-                    v-model="inputJson"
-                    type="textarea"
-                    resize="none"
-                    spellcheck="false"
-                    :placeholder="t('modelSolving.placeholders.input')"
-                />
-            </el-card>
-
-            <el-card class="panel json-panel result-panel" shadow="never">
-                <template #header>
-                    <div class="panel-header">
-                        <span>{{ t('modelSolving.sections.result') }}</span>
-                        <span v-if="resultSummary" class="panel-hint">{{ resultSummary }}</span>
-                    </div>
-                </template>
-                <el-input
-                    :model-value="resultJson"
-                    type="textarea"
-                    resize="none"
-                    readonly
-                    spellcheck="false"
-                    :placeholder="t('modelSolving.placeholders.result')"
-                />
-            </el-card>
-        </div>
-
-        <el-dialog v-model="jobInputVisible" :title="t('modelSolving.manager.viewInput')" width="min(900px, 92vw)">
-            <el-input :model-value="jobInputJson" type="textarea" :rows="22" readonly />
         </el-dialog>
-
-        <el-dialog
-            v-model="presetManagerVisible"
-            :title="t('modelSolving.presets.title')"
-            width="680px"
-            :close-on-click-modal="false"
-        >
-            <div class="preset-dialog-toolbar">
-                <el-select
-                    v-model="editingPresetId"
-                    clearable
-                    filterable
-                    :placeholder="t('modelSolving.presets.placeholders.newPreset')"
-                    @change="loadPresetIntoForm"
-                >
-                    <el-option
-                        v-for="preset in presets"
-                        :key="preset.presetId"
-                        :label="preset.name"
-                        :value="preset.presetId"
-                    />
-                </el-select>
-                <ActionButton @click="startNewPreset" :icon="Plus" :label="t('modelSolving.presets.actions.new')" />
-            </div>
-
-            <el-form label-width="128px" class="preset-form">
-                <el-form-item :label="t('modelSolving.presets.fields.name')" required>
-                    <el-input v-model="presetForm.name" maxlength="100" show-word-limit />
-                </el-form-item>
-                <el-form-item :label="t('modelSolving.presets.fields.description')">
-                    <el-input v-model="presetForm.description" maxlength="500" show-word-limit />
-                </el-form-item>
-                <el-form-item :label="t('modelSolving.fields.agent')" required>
-                    <el-select
-                        v-model="presetForm.agentId"
-                        filterable
-                        allow-create
-                        default-first-option
-                        :placeholder="t('modelSolving.placeholders.agent')"
-                    >
-                        <el-option
-                            v-for="agent in agents"
-                            :key="agent.agentId"
-                            :label="agentPresetOptionLabel(agent)"
-                            :value="agent.agentId"
-                            :disabled="!agent.canUse"
-                        />
-                    </el-select>
-                </el-form-item>
-                <el-form-item :label="t('modelSolving.fields.model')" required>
-                    <el-select
-                        v-model="presetForm.modelId"
-                        filterable
-                        allow-create
-                        default-first-option
-                        :placeholder="t('modelSolving.placeholders.model')"
-                    >
-                        <el-option
-                            v-for="model in presetModelOptions"
-                            :key="model.id"
-                            :label="`${model.name} (${model.version})`"
-                            :value="model.id"
-                        />
-                    </el-select>
-                </el-form-item>
-                <el-divider>{{ t('modelSolving.presets.sections.settings') }}</el-divider>
-                <div class="preset-settings-grid">
-                    <el-form-item :label="t('modelSolving.presets.fields.leftTolerance')">
-                        <el-input-number v-model="presetForm.settings.leftShiftToleranceSeconds" :min="0" :max="172800" :step="60" />
-                    </el-form-item>
-                    <el-form-item :label="t('modelSolving.presets.fields.rightTolerance')">
-                        <el-input-number v-model="presetForm.settings.rightShiftToleranceSeconds" :min="0" :max="172800" :step="60" />
-                    </el-form-item>
-                    <el-form-item :label="t('modelSolving.presets.fields.timeLimit')">
-                        <el-input-number v-model="presetForm.settings.timeLimitSeconds" :min="1" :max="86400" :step="60" />
-                    </el-form-item>
-                    <el-form-item :label="t('modelSolving.presets.fields.threadCount')">
-                        <el-input-number v-model="presetForm.settings.threadCount" :min="1" :max="128" :step="1" />
-                    </el-form-item>
-                </div>
-                <el-form-item :label="t('modelSolving.presets.fields.objective')">
-                    <el-select v-model="presetForm.settings.objective">
-                        <el-option :label="t('modelSolving.presets.objectives.minEndTime')" value="min-end-time" />
-                        <el-option :label="t('modelSolving.presets.objectives.minDuration')" value="min-duration" />
-                        <el-option :label="t('modelSolving.presets.objectives.minStartAndEnd')" value="min-start-and-end" />
-                    </el-select>
-                </el-form-item>
-            </el-form>
-
-            <template #footer>
-                <div class="preset-dialog-footer">
-                    <ActionButton
-                        variant="text"
-                        v-if="editingPresetId"
-                        type="danger"
-                        :loading="savingPreset"
-                        @click="deletePreset"
-                     :icon="Delete" :label="t('modelSolving.presets.actions.delete')" />
-                    <span class="preset-dialog-footer-spacer" />
-                    <ActionButton variant="text" @click="presetManagerVisible = false" :icon="Close" :label="t('operationPlan.actions.cancel')" />
-                    <ActionButton variant="text" type="primary" :loading="savingPreset" @click="savePreset" :icon="Check" :label="t('operationPlan.actions.save')" />
-                </div>
-            </template>
-        </el-dialog>
+        <el-dialog v-model="inputEditorVisible" :title="t('modelSolving.workspace.editInput')" width="min(900px, 94vw)" :close-on-click-modal="false"><el-input v-model="editingInputJson" type="textarea" :rows="22" spellcheck="false" class="input-editor" /><template #footer><el-button @click="inputEditorVisible = false">{{ t('operationPlan.actions.cancel') }}</el-button><el-button type="primary" @click="saveInputEdit">{{ t('operationPlan.actions.save') }}</el-button></template></el-dialog>
     </section>
 </template>
 
 <script setup lang="ts">
-const jobPaneWidth = ref(380)
-const connectionsPaneHeight = ref(340)
 import ActionButton from '@/components/ui/ActionButton.vue'
 import PaneDivider from '@/components/ui/PaneDivider.vue'
 import SolveJobManager from './components/SolveJobManager.vue'
+import SolverParametersForm from './components/SolverParametersForm.vue'
+import { applySolveSettings, normalizeSolveSettings } from './solveSettings'
+import JsonViewer from '@/components/ui/JsonViewer.vue'
 import { isSolveJobActive, type SolveJob } from './solveJobs'
-import { Check, Close, Delete, Download, MagicStick, Plus, Refresh, Setting, VideoPlay } from '@element-plus/icons-vue'
+import { SolveDraftSaveQueue } from './solveDraftSaveQueue'
+import { Connection, Document, Download, Edit, MagicStick, Refresh, VideoPlay } from '@element-plus/icons-vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useCapacityStore } from '@/stores/capacity'
 import { useStationSchemeSelection } from './useStationSchemeSelection'
@@ -441,63 +238,51 @@ interface CapacityAgentResources {
     collectedAt: string
 }
 
-interface SolveSettings {
-    leftShiftToleranceSeconds: number
-    rightShiftToleranceSeconds: number
-    timeLimitSeconds: number
-    threadCount: number
-    objective: string
-}
-
-interface SolvePreset {
-    presetId: string
-    name: string
-    description: string
-    agentId: string
-    modelId: string
-    settings: SolveSettings
-    createdAt?: string
-    updatedAt?: string
-}
-
-interface SolvePresetForm {
-    name: string
-    description: string
-    agentId: string
-    modelId: string
-    settings: SolveSettings
-}
-
 const props = defineProps<{ selectedInstanceId: string }>()
 const { t } = useI18n()
 
 const stationSchemes = ref<StationScheme[]>([])
 const operationPlans = ref<OperationPlan[]>([])
 const agents = ref<CapacityAgent[]>([])
-const presets = ref<SolvePreset[]>([])
 const capacityStore = useCapacityStore()
 const stationSchemeId = useStationSchemeSelection(() => props.selectedInstanceId)
 const operationPlanId = ref('')
 const selectedAgentId = ref('')
 const selectedModelId = ref('')
-const selectedPresetId = ref('')
-const editingPresetId = ref('')
-const presetManagerVisible = ref(false)
-const presetForm = ref<SolvePresetForm>(createEmptyPresetForm())
+const solverSettings = ref(normalizeSolveSettings())
 const inputJson = ref('')
 const currentJob = ref<SolveJob | null>(null)
 const selectedJobId = ref('')
 const jobManager = ref<InstanceType<typeof SolveJobManager>>()
 const managementBusy = ref(false)
-const jobInputVisible = ref(false)
 const jobInputJson = ref('')
+const requestLoadError = ref('')
+const loadingJobInput = ref(false)
+const inputEditorVisible = ref(false)
+const editingInputJson = ref('')
+const agentManagerVisible = ref(false)
+const activeDataTab = ref('request')
+const draftMode = ref(false)
+const creatingTask = ref(false)
+const draftReady = ref(false)
+const taskName = ref('')
+const saveTick = ref(0)
+const formLocked = computed(() => !currentJob.value || currentJob.value.status !== 'draft' || !draftReady.value || creatingTask.value || submitting.value)
+const workspaceElement = ref<HTMLElement>()
+const workspaceWidth = ref(1280)
+const sidebarWidth = ref(318)
+const sidebarMin = computed(() => Math.min(240, Math.max(180, workspaceWidth.value / 4)))
+const sidebarMax = computed(() => Math.max(sidebarMin.value, workspaceWidth.value - 440))
+const defaultSidebarWidth = computed(() => Math.round(Math.min(sidebarMax.value, Math.max(sidebarMin.value, (workspaceWidth.value - 8) / 4))))
+let sidebarWasResized = false
+let resizeObserver: ResizeObserver | undefined
+let inputLoadVersion = 0
 let jobRequestVersion = 0
+let instanceVersion = 0
 let disposed = false
 const loadingSchemes = ref(false)
 const loadingPlans = ref(false)
 const loadingAgents = ref(false)
-const loadingPresets = ref(false)
-const savingPreset = ref(false)
 const generatingInput = ref(false)
 const submitting = ref(false)
 const pollingJob = ref(false)
@@ -510,17 +295,15 @@ const selectedAgent = computed(() =>
     agents.value.find((agent) => agent.agentId === selectedAgentId.value) || null,
 )
 const availableModels = computed(() => selectedAgent.value?.models || [])
-const selectedPreset = computed(() =>
-    presets.value.find((preset) => preset.presetId === selectedPresetId.value) || null,
-)
-const presetModelOptions = computed(() =>
-    agents.value.find((agent) => agent.agentId === presetForm.value.agentId)?.models || [],
-)
+const selectedModelName = computed(() => availableModels.value.find(model => model.id === selectedModelId.value)?.name || selectedModelId.value)
+const selectedAgentStatus = computed(() => selectedAgent.value ? agentStatusText(selectedAgent.value) : selectedAgentId.value ? t('modelSolving.connection.offline') : t('modelSolving.placeholders.agent'))
+const draftSaveState = computed(() => { saveTick.value; return draftQueue.state(selectedJobId.value) })
 const canGenerateInput = computed(() =>
-    Boolean(props.selectedInstanceId && stationSchemeId.value && operationPlanId.value),
+    Boolean(!formLocked.value && !submitting.value && props.selectedInstanceId && stationSchemeId.value && operationPlanId.value),
 )
 const canSubmit = computed(() => {
     return Boolean(
+        !formLocked.value && props.selectedInstanceId &&
         selectedAgent.value?.isConnected &&
         selectedAgent.value?.canUse &&
         selectedAgent.value?.isAvailable &&
@@ -542,51 +325,43 @@ const resultSummary = computed(() => {
     return `${status} · ${trainCount} ${t('modelSolving.units.trains')} · ${solveTime}`
 })
 
-function createDefaultSettings(): SolveSettings {
-    return {
-        leftShiftToleranceSeconds: 50400,
-        rightShiftToleranceSeconds: 50400,
-        timeLimitSeconds: 3600,
-        threadCount: 12,
-        objective: 'min-end-time',
-    }
+const draftQueue = new SolveDraftSaveQueue(
+    async (id, value, revision) => (await axios.put<SolveJob>('/api/capacity-agents/jobs/' + encodeURIComponent(id) + '/draft', { ...value, revision })).data,
+    () => { saveTick.value++ },
+    (id, job) => {
+        if (!disposed && selectedJobId.value === id && currentJob.value?.status === 'draft') {
+            currentJob.value = job
+            void jobManager.value?.refresh(false)
+        }
+    },
+)
+function scheduleDraftSave() {
+    const job = currentJob.value
+    if (!draftReady.value || job?.status !== 'draft' || job.instanceId !== props.selectedInstanceId) return
+    draftQueue.schedule(job.jobId, {
+        instanceId: job.instanceId, name: taskName.value,
+        stationSchemeId: stationSchemeId.value, operationPlanId: operationPlanId.value,
+        agentId: selectedAgentId.value, modelId: selectedModelId.value,
+        settings: { ...solverSettings.value },
+        input: inputJson.value.trim() ? JSON.parse(inputJson.value) : null,
+    }, job.revision)
 }
-
-function createEmptyPresetForm(): SolvePresetForm {
-    return {
-        name: '',
-        description: '',
-        agentId: '',
-        modelId: 'station-capacity-v1',
-        settings: createDefaultSettings(),
-    }
+async function flushDraft(id = selectedJobId.value) { await draftQueue.flush(id) }
+async function persistDraftNow() {
+    try { await flushDraft() }
+    catch (error) { ElMessage.error(apiErrorMessage(error, t('modelSolving.workspace.saveFailed'))) }
 }
-
-function normalizeSettings(value: any): SolveSettings {
-    const defaults = createDefaultSettings()
-    return {
-        leftShiftToleranceSeconds: Number(value?.leftShiftToleranceSeconds ?? defaults.leftShiftToleranceSeconds),
-        rightShiftToleranceSeconds: Number(value?.rightShiftToleranceSeconds ?? defaults.rightShiftToleranceSeconds),
-        timeLimitSeconds: Number(value?.timeLimitSeconds ?? defaults.timeLimitSeconds),
-        threadCount: Number(value?.threadCount ?? defaults.threadCount),
-        objective: String(value?.objective || defaults.objective),
+watch([taskName, stationSchemeId, operationPlanId, selectedAgentId, selectedModelId, inputJson, solverSettings], scheduleDraftSave, { flush: 'sync' })
+watch(solverSettings, () => {
+    if (draftReady.value && currentJob.value?.status === 'draft' && inputJson.value.trim()) {
+        inputJson.value = JSON.stringify(applySolveSettings(JSON.parse(inputJson.value), solverSettings.value), null, 2)
     }
-}
-
-function normalizePreset(value: any): SolvePreset | null {
-    const presetId = String(value?.presetId || '').trim()
-    if (!presetId) return null
-    return {
-        presetId,
-        name: String(value?.name || '').trim(),
-        description: String(value?.description || '').trim(),
-        agentId: String(value?.agentId || '').trim(),
-        modelId: String(value?.modelId || 'station-capacity-v1').trim(),
-        settings: normalizeSettings(value?.settings),
-        createdAt: value?.createdAt,
-        updatedAt: value?.updatedAt,
+}, { flush: 'sync' })
+watch(stationSchemeId, () => {
+    if (draftReady.value && currentJob.value?.status === 'draft' && currentJob.value.instanceId === props.selectedInstanceId) {
+        operationPlanId.value = ''; inputJson.value = ''
     }
-}
+}, { flush: 'sync' })
 
 async function loadStationSchemes() {
     const instanceID = props.selectedInstanceId
@@ -603,7 +378,7 @@ async function loadStationSchemes() {
         stationSchemes.value = (Array.isArray(response.data) ? response.data : [])
             .map((item: any) => ({ id: String(item.id || '').trim(), name: String(item.name || '').trim() }))
             .filter((item: StationScheme) => item.id)
-        if (requestedSchemeId === stationSchemeId.value && !stationSchemes.value.some(scheme => scheme.id === stationSchemeId.value)) {
+        if (!formLocked.value && requestedSchemeId === stationSchemeId.value && !stationSchemes.value.some(scheme => scheme.id === stationSchemeId.value)) {
             const firstScheme = stationSchemes.value[0]?.id
             if (firstScheme) stationSchemeId.value = firstScheme
             else capacityStore.clearStationScheme(instanceID)
@@ -640,7 +415,7 @@ async function loadOperationPlans() {
                 name: String(item.name || '').trim(),
             }))
             .filter((item: OperationPlan) => item.operationPlanID)
-        operationPlanId.value = operationPlans.value.find((plan) => plan.operationPlanID === 'default')?.operationPlanID
+        operationPlanId.value = operationPlanId.value || operationPlans.value.find((plan) => plan.operationPlanID === 'default')?.operationPlanID
             || operationPlans.value[0]?.operationPlanID
             || ''
     } catch (error) {
@@ -657,16 +432,10 @@ async function loadAgents(silent = true) {
     try {
         const response = await axios.get<CapacityAgent[]>('/api/capacity-agents')
         agents.value = (Array.isArray(response.data) ? response.data : []).map(normalizeAgent)
-        if (selectedPreset.value) {
-            selectedAgentId.value = selectedPreset.value.agentId
-            selectedModelId.value = selectedPreset.value.modelId
-        } else if (!connectedAgents.value.some((agent) =>
-            agent.agentId === selectedAgentId.value && agent.canUse && agent.isAvailable)) {
-            selectedAgentId.value = connectedAgents.value.find((agent) => agent.canUse && agent.isAvailable)?.agentId || ''
-            syncSelectedModel()
-        } else {
-            syncSelectedModel()
+        if (!selectedAgentId.value && !formLocked.value) {
+            selectedAgentId.value = connectedAgents.value.find(agent => agent.canUse && agent.isAvailable)?.agentId || ''
         }
+        syncSelectedModel()
     } catch (error) {
         console.error(error)
         if (!silent) ElMessage.error(t('modelSolving.messages.loadAgentsFailed'))
@@ -675,135 +444,59 @@ async function loadAgents(silent = true) {
     }
 }
 
-async function loadPresets(selectPresetId = selectedPresetId.value) {
-    loadingPresets.value = true
+function resizeSidebar(value: number) { sidebarWidth.value = value; sidebarWasResized = true }
+function resetSidebar() { sidebarWasResized = false; sidebarWidth.value = defaultSidebarWidth.value }
+function clearTaskSelection() {
+    draftReady.value = false; taskName.value = ''; solverSettings.value = normalizeSolveSettings()
+    jobRequestVersion++; inputLoadVersion++
+    currentJob.value = null; selectedJobId.value = ''
+    jobInputJson.value = ''; requestLoadError.value = ''
+    pollingJob.value = false; loadingJobInput.value = false
+}
+async function startNewTask() {
+    if (managementBusy.value || submitting.value || creatingTask.value || !props.selectedInstanceId) return
+    const version = instanceVersion
+    creatingTask.value = true
     try {
-        const response = await axios.get<SolvePreset[]>('/api/capacity-agents/presets')
-        presets.value = (Array.isArray(response.data) ? response.data : [])
-            .map(normalizePreset)
-            .filter((preset): preset is SolvePreset => preset !== null)
-        selectedPresetId.value = presets.value.some((preset) => preset.presetId === selectPresetId)
-            ? selectPresetId
-            : (presets.value[0]?.presetId || '')
-        applySelectedPreset()
-    } catch (error) {
-        console.error(error)
-        ElMessage.error(apiErrorMessage(error, t('modelSolving.presets.messages.loadFailed')))
-    } finally {
-        loadingPresets.value = false
-    }
+        await flushDraft()
+        if (!isCurrentInstance(version)) return
+        const { data } = await axios.post<SolveJob>('/api/capacity-agents/jobs/drafts', {
+            instanceId: props.selectedInstanceId, stationSchemeId: stationSchemeId.value,
+            operationPlanId: operationPlanId.value, agentId: selectedAgentId.value, modelId: selectedModelId.value,
+        })
+        if (!isCurrentInstance(version)) return
+        clearTaskSelection(); inputJson.value = ''; currentJob.value = data; selectedJobId.value = data.jobId
+        syncJobFields(data); draftReady.value = true; draftMode.value = true; activeDataTab.value = 'request'
+        await jobManager.value?.revealJob()
+    } catch (error) { if (isCurrentInstance(version)) ElMessage.error(apiErrorMessage(error, t('modelSolving.workspace.createFailed'))) }
+    finally { creatingTask.value = false }
 }
-
-function applySelectedPreset() {
-    const preset = selectedPreset.value
-    if (!preset) return
-    selectedAgentId.value = preset.agentId
-    selectedModelId.value = preset.modelId
-    if (inputJson.value.trim()) {
-        try {
-            const input = JSON.parse(inputJson.value)
-            input.settings = { ...preset.settings }
-            inputJson.value = JSON.stringify(input, null, 2)
-        } catch {
-            // The editable JSON may temporarily be invalid; preserve the user's text.
-        }
-    }
+function syncJobFields(job: SolveJob) {
+    solverSettings.value = normalizeSolveSettings(job.settings)
+    taskName.value = job.name
+    if (job.stationSchemeId) stationSchemeId.value = job.stationSchemeId
+    operationPlanId.value = job.sourceOperationPlanId || ''
+    selectedAgentId.value = job.agentId; selectedModelId.value = job.modelId
 }
-
-function openPresetManager() {
-    presetManagerVisible.value = true
-    editingPresetId.value = selectedPresetId.value
-    loadPresetIntoForm()
+function openInputEditor() { editingInputJson.value = inputJson.value; inputEditorVisible.value = true; draftMode.value = true }
+async function saveInputEdit() {
+    let formatted: string
+    try { formatted = JSON.stringify(applySolveSettings(JSON.parse(editingInputJson.value), solverSettings.value), null, 2) }
+    catch { ElMessage.error(t('modelSolving.messages.invalidJson')); return }
+    inputJson.value = formatted
+    try { await flushDraft(); inputEditorVisible.value = false; activeDataTab.value = 'request' }
+    catch (error) { ElMessage.error(apiErrorMessage(error, t('modelSolving.workspace.saveFailed'))) }
 }
-
-function startNewPreset() {
-    editingPresetId.value = ''
-    presetForm.value = {
-        ...createEmptyPresetForm(),
-        agentId: selectedAgentId.value,
-        modelId: selectedModelId.value || 'station-capacity-v1',
-    }
-}
-
-function loadPresetIntoForm() {
-    const preset = presets.value.find((item) => item.presetId === editingPresetId.value)
-    if (!preset) {
-        startNewPreset()
-        return
-    }
-    presetForm.value = {
-        name: preset.name,
-        description: preset.description,
-        agentId: preset.agentId,
-        modelId: preset.modelId,
-        settings: { ...preset.settings },
-    }
-}
-
-async function savePreset() {
-    const form = presetForm.value
-    if (!form.name.trim() || !form.agentId.trim() || !form.modelId.trim()) {
-        ElMessage.warning(t('modelSolving.presets.messages.required'))
-        return
-    }
-
-    savingPreset.value = true
-    try {
-        const payload = {
-            presetId: editingPresetId.value || undefined,
-            name: form.name.trim(),
-            description: form.description.trim(),
-            agentId: form.agentId.trim(),
-            modelId: form.modelId.trim(),
-            settings: { ...form.settings },
-        }
-        const response = editingPresetId.value
-            ? await axios.put(`/api/capacity-agents/presets/${editingPresetId.value}`, payload)
-            : await axios.post('/api/capacity-agents/presets', payload)
-        const saved = normalizePreset(response.data)
-        if (!saved) throw new Error('Invalid solve preset response')
-        await loadPresets(saved.presetId)
-        editingPresetId.value = saved.presetId
-        loadPresetIntoForm()
-        ElMessage.success(t('modelSolving.presets.messages.saved'))
-    } catch (error) {
-        console.error(error)
-        ElMessage.error(apiErrorMessage(error, t('modelSolving.presets.messages.saveFailed')))
-    } finally {
-        savingPreset.value = false
-    }
-}
-
-async function deletePreset() {
-    const preset = presets.value.find((item) => item.presetId === editingPresetId.value)
-    if (!preset) return
-    try {
-        await ElMessageBox.confirm(
-            t('modelSolving.presets.messages.deleteConfirm', { name: preset.name }),
-            t('modelSolving.presets.actions.delete'),
-            { type: 'warning' },
-        )
-    } catch {
-        return
-    }
-
-    savingPreset.value = true
-    try {
-        await axios.delete(`/api/capacity-agents/presets/${preset.presetId}`)
-        const wasSelected = selectedPresetId.value === preset.presetId
-        await loadPresets(wasSelected ? '' : selectedPresetId.value)
-        startNewPreset()
-        ElMessage.success(t('modelSolving.presets.messages.deleted'))
-    } catch (error) {
-        console.error(error)
-        ElMessage.error(apiErrorMessage(error, t('modelSolving.presets.messages.deleteFailed')))
-    } finally {
-        savingPreset.value = false
-    }
+function isCurrentInstance(version: number) {
+    return !disposed && version === instanceVersion
 }
 
 async function generateInput() {
     if (!canGenerateInput.value) return
+    const instanceRequestVersion = instanceVersion
+    const draftId = selectedJobId.value
+    const scheme = stationSchemeId.value, plan = operationPlanId.value
+    draftMode.value = true
     generatingInput.value = true
     try {
         const response = await axios.post('/api/capacity-agents/preview-input', {
@@ -811,50 +504,43 @@ async function generateInput() {
             stationSchemeId: stationSchemeId.value,
             operationPlanId: operationPlanId.value,
         })
+        if (!isCurrentInstance(instanceRequestVersion)) return
         const generatedInput = response.data as Record<string, unknown>
-        if (selectedPreset.value) {
-            generatedInput.settings = { ...selectedPreset.value.settings }
-        }
-        inputJson.value = JSON.stringify(generatedInput, null, 2)
+        if (formLocked.value || selectedJobId.value !== draftId || stationSchemeId.value !== scheme || operationPlanId.value !== plan) return
+        inputJson.value = JSON.stringify(applySolveSettings(generatedInput, solverSettings.value), null, 2)
+        activeDataTab.value = 'request'
+        await flushDraft(draftId)
+        if (!isCurrentInstance(instanceRequestVersion) || selectedJobId.value !== draftId) return
         ElMessage.success(t('modelSolving.messages.inputGenerated'))
     } catch (error: any) {
+        if (!isCurrentInstance(instanceRequestVersion)) return
         console.error(error)
         ElMessage.error(apiErrorMessage(error, t('modelSolving.messages.generateInputFailed')))
     } finally {
-        generatingInput.value = false
+        if (isCurrentInstance(instanceRequestVersion)) generatingInput.value = false
     }
 }
 
 async function submitJob() {
-    if (!canSubmit.value) return
-    let input: unknown
-    try {
-        input = JSON.parse(inputJson.value)
-    } catch {
-        ElMessage.error(t('modelSolving.messages.invalidJson'))
-        return
-    }
-
+    if (!canSubmit.value || !currentJob.value || currentJob.value.status !== 'draft') return
+    const id = selectedJobId.value
+    const version = instanceVersion
     submitting.value = true
     try {
-        const response = await axios.post<SolveJob>('/api/capacity-agents/jobs', {
-            agentId: selectedAgentId.value,
-            modelId: selectedModelId.value,
-            input,
+        await flushDraft(id)
+        if (!isCurrentInstance(version) || selectedJobId.value !== id) return
+        const { data } = await axios.post<SolveJob>('/api/capacity-agents/jobs/' + encodeURIComponent(id) + '/start', {
+            revision: draftQueue.revision(id, currentJob.value.revision),
         })
-        currentJob.value = response.data
-        selectedJobId.value = response.data.jobId
+        if (!isCurrentInstance(version) || selectedJobId.value !== id) return
         jobRequestVersion++
-        pollingJob.value = false
-        void jobManager.value?.refresh(false)
+        draftReady.value = false; draftQueue.forget(id)
+        currentJob.value = data; jobInputJson.value = inputJson.value
+        syncJobFields(data); draftMode.value = false
+        void jobManager.value?.revealJob(); void loadAgents(true)
         ElMessage.success(t('modelSolving.messages.jobSubmitted'))
-        await loadAgents(true)
-    } catch (error: any) {
-        console.error(error)
-        ElMessage.error(apiErrorMessage(error, t('modelSolving.messages.submitFailed')))
-    } finally {
-        submitting.value = false
-    }
+    } catch (error) { if (isCurrentInstance(version)) ElMessage.error(apiErrorMessage(error, t('modelSolving.messages.submitFailed'))) }
+    finally { submitting.value = false }
 }
 
 async function refreshCurrentJob(silent = false) {
@@ -865,8 +551,11 @@ async function refreshCurrentJob(silent = false) {
     try {
         const response = await axios.get<SolveJob>(`/api/capacity-agents/jobs/${encodeURIComponent(jobId)}`)
         if (disposed || requestVersion !== jobRequestVersion || selectedJobId.value !== jobId) return
+        if (response.data.instanceId !== props.selectedInstanceId) return
+        if (response.data.revision < (currentJob.value?.revision ?? 0)) return
         const previousStatus = currentJob.value?.status
         currentJob.value = response.data
+        if (!previousStatus) syncJobFields(response.data)
         if (previousStatus && previousStatus !== response.data.status && response.data.status === 'completed') {
             ElMessage.success(t('modelSolving.messages.jobCompleted'))
         } else if (previousStatus && previousStatus !== response.data.status && response.data.status === 'failed') {
@@ -887,57 +576,78 @@ async function refreshCurrentJob(silent = false) {
 }
 
 async function selectJob(jobId: string) {
-    selectedJobId.value = jobId
-    currentJob.value = null
-    await refreshCurrentJob()
+    if (!props.selectedInstanceId || managementBusy.value || creatingTask.value || submitting.value) return
+    const instance = instanceVersion
+    try { await flushDraft() }
+    catch (error) { ElMessage.error(apiErrorMessage(error, t('modelSolving.workspace.saveFailed'))); return }
+    if (!isCurrentInstance(instance) || creatingTask.value || submitting.value) return
+    clearTaskSelection(); draftQueue.forget(jobId)
+    selectedJobId.value = jobId; draftMode.value = false; activeDataTab.value = 'request'
+    await Promise.all([refreshCurrentJob(), loadJobInput(jobId)])
+    if (!isCurrentInstance(instance) || selectedJobId.value !== jobId || requestLoadError.value || !currentJob.value) return
+    if (currentJob.value.status === 'draft') {
+        inputJson.value = jobInputJson.value === 'null' ? '' : jobInputJson.value
+        draftReady.value = true; draftMode.value = true
+    }
 }
 
-async function viewJobInput() {
-    const jobId = selectedJobId.value
+async function loadJobInput(jobId: string) {
+    const version = ++inputLoadVersion
+    const instanceRequestVersion = instanceVersion
+    loadingJobInput.value = true; requestLoadError.value = ''
     try {
-        const response = await axios.get(`/api/capacity-agents/jobs/${encodeURIComponent(jobId)}/input`)
-        if (disposed || selectedJobId.value !== jobId) return
+        const response = await axios.get('/api/capacity-agents/jobs/' + encodeURIComponent(jobId) + '/input')
+        if (!isCurrentInstance(instanceRequestVersion) || version !== inputLoadVersion || selectedJobId.value !== jobId) return
         jobInputJson.value = JSON.stringify(response.data, null, 2)
-        jobInputVisible.value = true
     } catch (error) {
-        ElMessage.error(apiErrorMessage(error, t('modelSolving.messages.refreshJobFailed')))
-    }
+        if (isCurrentInstance(instanceRequestVersion) && version === inputLoadVersion && selectedJobId.value === jobId)
+            requestLoadError.value = apiErrorMessage(error, t('modelSolving.messages.refreshJobFailed'))
+    } finally { if (version === inputLoadVersion) loadingJobInput.value = false }
 }
 
-async function manageJob(action: 'cancel' | 'retry' | 'delete') {
-    const job = currentJob.value
-    if (!job || managementBusy.value) return
-    if (action !== 'retry') {
-        try {
-            await ElMessageBox.confirm(t(`modelSolving.manager.${action}Confirm`, { id: job.jobId }), t(`modelSolving.manager.${action}`), { type: 'warning' })
-        } catch { return }
-    }
+async function manageJob(action: 'cancel' | 'retry' | 'delete', job = currentJob.value) {
+    if (!job || managementBusy.value || job.instanceId !== props.selectedInstanceId) return
+    const instanceRequestVersion = instanceVersion
     managementBusy.value = true
-    jobRequestVersion++
-    pollingJob.value = false
     try {
+        if (action !== 'retry') {
+            try {
+                await ElMessageBox.confirm(t(`modelSolving.manager.${action}Confirm`, { id: job.jobId }), t(`modelSolving.manager.${action}`), { type: 'warning' })
+            } catch { return }
+        }
+        if (!isCurrentInstance(instanceRequestVersion)) return
+        jobRequestVersion++
+        pollingJob.value = false
         const url = `/api/capacity-agents/jobs/${encodeURIComponent(job.jobId)}`
         if (action === 'delete') {
+            if (job.status === 'draft') await flushDraft(job.jobId).catch(() => {})
             await axios.delete(url)
+            draftQueue.forget(job.jobId)
+            if (!isCurrentInstance(instanceRequestVersion)) return
             if (selectedJobId.value === job.jobId) {
-                selectedJobId.value = ''
-                currentJob.value = null
+                clearTaskSelection()
             }
         } else {
             const response = await axios.post<SolveJob>(`${url}/${action}`)
+            if (!isCurrentInstance(instanceRequestVersion)) return
             if (selectedJobId.value === job.jobId) {
                 jobRequestVersion++
                 selectedJobId.value = response.data.jobId
                 currentJob.value = response.data
+                syncJobFields(response.data)
+                if (action === 'retry') void loadJobInput(response.data.jobId)
             }
         }
         ElMessage.success(t(`modelSolving.manager.${action}Success`))
     } catch (error) {
+        if (!isCurrentInstance(instanceRequestVersion)) return
         ElMessage.error(apiErrorMessage(error, t('modelSolving.manager.actionFailed')))
     } finally {
         managementBusy.value = false
-        void jobManager.value?.refresh(false)
-        void loadAgents(true)
+        if (!disposed) {
+            void jobManager.value?.refresh(false)
+            void loadAgents(true)
+        }
     }
 }
 
@@ -956,27 +666,24 @@ function downloadResult() {
 }
 
 function selectAgent(agent: CapacityAgent | undefined) {
-    if (!agent?.isConnected || !agent.canUse || !agent.isAvailable) return
-    selectedPresetId.value = ''
+    if (formLocked.value || !agent?.isConnected || !agent.canUse || !agent.isAvailable) return
     selectedAgentId.value = agent.agentId
     syncSelectedModel()
 }
 
 function handleAgentSelectionChange() {
-    selectedPresetId.value = ''
+    draftMode.value = true
     syncSelectedModel()
 }
 
 function syncSelectedModel() {
-    if (!availableModels.value.some((model) => model.id === selectedModelId.value)) {
+    if (!formLocked.value && !availableModels.value.some((model) => model.id === selectedModelId.value)) {
         selectedModelId.value = availableModels.value[0]?.id || ''
     }
 }
 
 function clearPlansAndInput() {
     operationPlans.value = []
-    operationPlanId.value = ''
-    inputJson.value = ''
 }
 
 function agentStatusText(agent: CapacityAgent) {
@@ -1002,12 +709,6 @@ function agentTagType(agent: CapacityAgent) {
 function agentOptionLabel(agent: CapacityAgent) {
     if (!agent.canUse) return `${agent.name} · ${t('modelSolving.connection.accessDenied')}`
     return `${agent.name} · ${t('modelSolving.resources.availableSlots', { count: agent.resources.availableJobSlots })}`
-}
-
-function agentPresetOptionLabel(agent: CapacityAgent) {
-    return agent.canUse
-        ? `${agent.name} (${agent.agentId})`
-        : `${agent.name} (${agent.agentId}) · ${t('modelSolving.connection.accessDenied')}`
 }
 
 function agentModelNames(agent: CapacityAgent) {
@@ -1097,13 +798,33 @@ function apiErrorMessage(error: any, fallback: string) {
     return fallback
 }
 
+watch(() => props.selectedInstanceId, () => {
+    instanceVersion++
+    jobRequestVersion++
+    selectedJobId.value = ''
+    currentJob.value = null
+    inputJson.value = ''
+    inputEditorVisible.value = false
+    inputLoadVersion++; loadingJobInput.value = false; requestLoadError.value = ''
+    draftMode.value = false; activeDataTab.value = 'request'
+    jobInputJson.value = ''
+    pollingJob.value = false
+    generatingInput.value = false
+    submitting.value = false
+}, { flush: 'sync' })
 watch(() => props.selectedInstanceId, () => void loadStationSchemes(), { immediate: true })
 watch([() => props.selectedInstanceId, stationSchemeId], () => void loadOperationPlans(), { immediate: true })
-watch(operationPlanId, () => { inputJson.value = '' })
+watch(operationPlanId, () => { if (draftReady.value && currentJob.value?.status === 'draft' && currentJob.value.instanceId === props.selectedInstanceId) inputJson.value = '' }, { flush: 'sync' })
 
 onMounted(() => {
+    resizeObserver = new ResizeObserver(entries => {
+        const width = entries[0]?.contentRect.width || 0
+        if (!width) return
+        workspaceWidth.value = width
+        sidebarWidth.value = sidebarWasResized ? Math.min(sidebarMax.value, Math.max(sidebarMin.value, sidebarWidth.value)) : defaultSidebarWidth.value
+    })
+    if (workspaceElement.value) resizeObserver.observe(workspaceElement.value)
     void loadAgents(false)
-    void loadPresets()
     pollingTimer = window.setInterval(() => {
         void loadAgents(true)
         if (selectedJobId.value && (!currentJob.value || isSolveJobActive(currentJob.value.status))) {
@@ -1113,286 +834,70 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+    void draftQueue.flushAll().catch(() => {})
     disposed = true
+    resizeObserver?.disconnect()
+    inputLoadVersion++
     jobRequestVersion++
     schemeLoadVersion++
     planLoadVersion++
     if (pollingTimer !== undefined) window.clearInterval(pollingTimer)
 })
 </script>
-
 <style scoped>
-.model-solving {
-    width: 100%;
-    height: 100%;
-    min-height: 0;
-    padding: 12px;
-    overflow: auto;
-    box-sizing: border-box;
-    background: #fff;
-}
-
-.toolbar,
-.selection-row,
-.panel-header,
-.job-meta,
-.job-actions {
-    display: flex;
-    align-items: center;
-}
-
-.toolbar {
-    flex-wrap: wrap;
-    gap: 12px;
-    margin-bottom: 12px;
-    padding: 12px;
-    border: 1px solid #dbe6f1;
-    border-radius: 6px;
-    background: #fff;
-}
-
-.toolbar-field {
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-    min-width: 220px;
-}
-
-.toolbar-field.grow {
-    flex: 1;
-    min-width: 180px;
-}
-
-.preset-toolbar-field {
-    min-width: 240px;
-}
-
-.field-label {
-    color: #52667d;
-    font-size: 12px;
-    font-weight: 600;
-}
-
-.toolbar-actions {
-    display: flex;
-    align-items: flex-end;
-    gap: 8px;
-    min-height: 54px;
-}
-
-.preset-dialog-toolbar,
-.preset-dialog-footer {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.preset-dialog-footer {
-    flex-wrap: wrap;
-}
-
-.preset-dialog-toolbar {
-    margin-bottom: 18px;
-}
-
-.preset-dialog-toolbar .el-select {
-    flex: 1;
-}
-
-.preset-form :deep(.el-select),
-.preset-form :deep(.el-input-number) {
-    width: 100%;
-}
-
-.preset-settings-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    column-gap: 14px;
-}
-
-.preset-dialog-footer-spacer {
-    flex: 1;
-}
-
-.workspace-grid {
-    display: grid;
-    grid-template-columns: minmax(320px, 1fr) 8px minmax(280px, var(--job-pane-width));
-    grid-template-rows: var(--connections-pane-height) 8px minmax(300px, 1fr);
-    gap: 0;
-    min-height: calc(100% - 92px);
-}
-
-.model-column-divider { grid-column: 2; grid-row: 1 / 4; }
-.model-row-divider { grid-column: 1 / 4; grid-row: 2; }
-.connection-panel { grid-column: 1; grid-row: 1; overflow: auto; }
-.job-panel { grid-column: 3; grid-row: 1; overflow: auto; }
-.json-panel { grid-column: 1; grid-row: 3; }
-.result-panel { grid-column: 3; grid-row: 3; }
-.panel { min-width: 0; min-height: 0; border-radius: 6px; }
-
-.panel :deep(.el-card__header) {
-    padding: 8px 12px;
-}
-
-.panel :deep(.el-card__body) {
-    padding: 8px 12px;
-}
-
-.panel-header {
-    justify-content: space-between;
-    gap: 12px;
-    color: #1f3a56;
-    font-size: 13px;
-    font-weight: 600;
-}
-
-.panel-hint {
-    overflow: hidden;
-    color: #7a8ca0;
-    font-size: 12px;
-    font-weight: 400;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.selection-row {
-    gap: 12px;
-    margin-top: 14px;
-}
-
-.agent-resource-grid {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 8px;
-    margin-top: 12px;
-}
-
-.resource-card {
-    display: flex;
-    min-width: 0;
-    padding: 9px 10px;
-    border: 1px solid #e1e9f2;
-    border-radius: 7px;
-    background: #f8fafc;
-    flex-direction: column;
-    gap: 5px;
-}
-
-.resource-card > span,
-.resource-card > small {
-    overflow: hidden;
-    color: #7a8ca0;
-    font-size: 11px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.resource-card > strong {
-    overflow: hidden;
-    color: #29445f;
-    font-size: 13px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.job-panel :deep(.el-card__body) {
-    display: flex;
-    min-height: 190px;
-    flex-direction: column;
-}
-
-.job-summary {
-    display: flex;
-    flex: 1;
-    flex-direction: column;
-    gap: 10px;
-}
-
-.job-id {
-    overflow: hidden;
-    color: #49627c;
-    font-family: Consolas, monospace;
-    font-size: 12px;
-    text-overflow: ellipsis;
-}
-
-.job-message {
-    min-height: 22px;
-    color: #52667d;
-    font-size: 13px;
-}
-
-.job-meta {
-    justify-content: space-between;
-    gap: 8px;
-    color: #8291a3;
-    font-size: 12px;
-}
-
-.job-actions {
-    flex-wrap: wrap;
-    gap: 8px;
-    margin-top: 14px;
-}
-
-.job-actions :deep(.el-button + .el-button) {
-    margin-left: 0;
-}
-
-.json-panel :deep(.el-card__body),
-.json-panel :deep(.el-textarea),
-.json-panel :deep(.el-textarea__inner) {
-    height: 100%;
-    min-height: 0;
-}
-
-.json-panel :deep(.el-card__body) {
-    height: calc(100% - 53px);
-}
-
-.json-panel :deep(.el-textarea__inner) {
-    padding: 12px;
-    border: 0;
-    box-shadow: none;
-    background: #f8fafc;
-    color: #334155;
-    font-family: Consolas, 'Courier New', monospace;
-    font-size: 12px;
-    line-height: 1.55;
-}
-
-.result-panel :deep(.el-textarea__inner) {
-    background: #f8fafc;
-    color: #334155;
-}
-
-@media (max-width: 1100px) {
-    .model-column-divider, .model-row-divider { display: none; }
-    .panel { grid-column: auto; grid-row: auto; }
-    .workspace-grid {
-        grid-template-columns: 1fr;
-        grid-template-rows: auto auto 420px 420px;
-        gap: 8px;
-    }
-}
-
-@media (max-width: 700px) {
-    .toolbar-field,
-    .toolbar-actions {
-        width: 100%;
-    }
-
-    .selection-row {
-        align-items: stretch;
-        flex-direction: column;
-    }
-
-    .preset-settings-grid {
-        grid-template-columns: 1fr;
-    }
-
-    .agent-resource-grid {
-        grid-template-columns: 1fr 1fr;
-    }
-}
+.model-solving { height: 100%; width: 100%; min-height: 0; display: grid; grid-template-columns: var(--sidebar-width) 8px minmax(0, 1fr); padding: 12px; box-sizing: border-box; overflow: hidden; background: #f5f7fa; }
+.task-workspace { display: flex; flex-direction: column; gap: 12px; min-width: 0; min-height: 0; overflow: auto; padding-left: 10px; }
+.configuration-card, .job-information-card { flex-shrink: 0; border-radius: 8px; }
+.configuration-card :deep(.el-card__header), .job-information-card :deep(.el-card__header) { padding: 13px 18px; }
+.configuration-card :deep(.el-card__body), .job-information-card :deep(.el-card__body) { padding: 16px 18px; }
+.section-heading, .information-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.section-heading { flex-wrap: wrap; }
+h3 { font-size: 14px; font-weight: 600; color: #2b435b; margin: 0; }
+.section-eyebrow { display: block; color: #97a4b4; font-size: 10px; letter-spacing: 1px; margin-bottom: 5px; }
+.configuration-fields { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+.form-field, .toolbar-field { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.field-label { font-size: 12px; color: #5a6e84; }
+.agent-picker { display: flex; align-items: center; gap: 8px; }
+.agent-picker .el-select { flex: 1; min-width: 0; }
+.agent-lamp-box { display: flex; align-items: center; justify-content: center; flex: 0 0 30px; height: 30px; border: 1px solid #e6ebf1; border-radius: 6px; background: #fafbfd; }
+.agent-lamp { width: 9px; height: 9px; border-radius: 50%; background: #a7b2c0; box-shadow: 0 0 0 3px #a7b2c017; }
+.agent-lamp.is-success { background: #38a675; box-shadow: 0 0 0 3px #38a67520; }
+.agent-lamp.is-warning { background: #e4a332; box-shadow: 0 0 0 3px #e4a33220; }
+.agent-lamp.is-danger { background: #d86666; box-shadow: 0 0 0 3px #d8666620; }
+.task-name-field { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+.task-name-field .el-input { max-width: 380px; }
+.draft-save-state { color: #7f91a5; font-size: 11px; }
+.draft-save-state.has-error { color: #df6464; }
+.configuration-footer { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 16px; }
+.configuration-hint { flex: 1; min-width: 180px; color: #8a98aa; font-size: 11px; line-height: 1.7; }
+.model-chip { color: #70839b; background: #f1f5f9; border-radius: 4px; padding: 4px 8px; font-size: 11px; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.job-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.job-actions :deep(.el-button + .el-button) { margin-left: 0; }
+.job-progress-message { color: #718298; font-size: 12px; margin: 8px 0 12px; }
+.job-metadata { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 14px 22px; margin-top: 14px; }
+.job-metadata > div { display: flex; flex-direction: column; min-width: 0; gap: 6px; }
+.job-metadata span { color: #94a1b1; font-size: 11px; }
+.job-metadata strong { color: #4d637a; font-size: 12px; font-weight: 400; overflow-wrap: anywhere; }
+.job-metadata .job-id { font-family: ui-monospace, Consolas, monospace; }
+.draft-information { display: flex; align-items: center; gap: 10px; color: #8b9aac; font-size: 12px; line-height: 1.8; }
+.draft-information .el-icon { font-size: 22px; color: #a4b7cd; }
+.data-card { display: flex; flex-direction: column; flex: 1 0 320px; min-height: 320px; border-radius: 8px; }
+.data-card :deep(.el-card__body) { display: flex; flex-direction: column; flex: 1; min-height: 0; padding: 0; }
+.data-tabs { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.data-tabs :deep(.el-tabs__header) { margin: 0; flex-shrink: 0; padding: 0 18px; }
+.data-tabs :deep(.el-tabs__item) { height: 46px; font-size: 13px; }
+.data-tabs :deep(.el-tabs__nav-wrap::after) { height: 1px; }
+.data-tabs :deep(.el-tabs__content) { flex: 1; min-height: 0; }
+.data-tabs :deep(.el-tab-pane) { height: 100%; min-height: 0; display: flex; flex-direction: column; padding: 12px 16px 16px; box-sizing: border-box; }
+.data-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: 28px; margin-bottom: 10px; color: #8b99ab; font-size: 11px; }
+.agent-dialog-heading { display: flex; justify-content: space-between; gap: 12px; align-items: center; margin-bottom: 16px; }
+.selection-row { display: flex; gap: 16px; margin-top: 18px; }
+.toolbar-field.grow { flex: 1; }
+.agent-resource-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 18px; }
+.resource-card { display: flex; flex-direction: column; gap: 8px; border: 1px solid #e6edf5; border-radius: 7px; padding: 14px; background: #f8fafc; }
+.resource-card span, .resource-card small { color: #8b9bad; font-size: 11px; }
+.resource-card strong { color: #415c78; font-size: 13px; font-weight: 500; }
+.input-editor :deep(textarea) { font: 12px/1.7 ui-monospace, Consolas, monospace; }
+@media (max-width: 1100px) { .configuration-fields { grid-template-columns: 1fr 1fr; gap: 10px; } .job-metadata { grid-template-columns: 1fr 1fr; } .agent-resource-grid { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 760px) { .model-solving { display: flex; flex-direction: column; gap: 12px; overflow: auto; } .model-solving > .solve-job-manager { height: 320px; flex-shrink: 0; } .model-solving > .sy-pane-divider { display: none; } .task-workspace { flex-shrink: 0; overflow: visible; padding-left: 0; } .configuration-fields { grid-template-columns: 1fr; } .data-card { height: 420px; flex: none; } }
 </style>

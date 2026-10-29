@@ -144,6 +144,38 @@ public sealed class CapacityAgentsController : ControllerBase
     }
 
     [Authorize]
+    [HttpPost("jobs/drafts")]
+    public IActionResult CreateDraft([FromBody] CapacitySolveDraftRequest request)
+    {
+        var username = User.Identity?.Name;
+        if (string.IsNullOrWhiteSpace(username)) return Unauthorized();
+        var (job, error) = _jobs.CreateDraft(request, username);
+        return job == null ? BadRequest(new { message = error }) : CreatedAtAction(nameof(GetJob), new { jobId = job.JobId }, job);
+    }
+
+    [Authorize]
+    [HttpPut("jobs/{jobId}/draft")]
+    public IActionResult UpdateDraft(string jobId, [FromBody] CapacitySolveDraftRequest request)
+    {
+        var access = CheckJobAccess(jobId);
+        if (access != null) return access;
+        var (job, error) = _jobs.UpdateDraft(jobId, request);
+        return job == null ? Conflict(new { message = error }) : Ok(job);
+    }
+
+    [Authorize]
+    [HttpPost("jobs/{jobId}/start")]
+    public async Task<IActionResult> StartJob(string jobId, [FromBody] CapacitySolveStartRequest request, CancellationToken cancellationToken)
+    {
+        var access = CheckJobAccess(jobId);
+        if (access != null) return access;
+        var (job, error) = await _jobs.StartAsync(jobId, request.Revision, cancellationToken);
+        if (job == null) return Conflict(new { message = error });
+        if (error != null) return StatusCode(503, job);
+        return AcceptedAtAction(nameof(GetJob), new { jobId = job.JobId }, job);
+    }
+
+    [Authorize]
     [HttpPost("jobs")]
     public async Task<IActionResult> SubmitJob(
         [FromBody] CapacitySolveJobRequest request,
@@ -260,17 +292,17 @@ public sealed class CapacityAgentsController : ControllerBase
 
     [Authorize]
     [HttpGet("jobs")]
-    public IActionResult GetJobs([FromQuery] int limit = 50)
+    public IActionResult GetJobs([FromQuery] int limit = 50, [FromQuery] string? instanceId = null)
     {
         var username = User.Identity?.Name ?? string.Empty;
-        return Ok(_jobs.GetRecent(username, IsAdmin(), limit));
+        return Ok(_jobs.GetRecent(username, IsAdmin(), limit, instanceId));
     }
 
     [Authorize]
     [HttpGet("jobs/page")]
-    public IActionResult GetJobPage([FromQuery] int limit = 20, [FromQuery] int offset = 0, [FromQuery] string? status = null)
+    public IActionResult GetJobPage([FromQuery] int limit = 20, [FromQuery] int offset = 0, [FromQuery] string? status = null, [FromQuery] string? instanceId = null)
     {
-        var page = _jobs.GetPage(User.Identity?.Name ?? string.Empty, IsAdmin(), limit, offset, status);
+        var page = _jobs.GetPage(User.Identity?.Name ?? string.Empty, IsAdmin(), limit, offset, status, instanceId);
         return Ok(new { items = page.Items, total = page.Total });
     }
 
